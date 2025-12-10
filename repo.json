@@ -1,0 +1,26 @@
+[
+{
+  "Author": "MTVirux",
+  "Name": "Kaleidoscope",
+  "Punchline": "PLACEHOLDER PUNCHLINE",
+  "Description": "DM @mtvirux on discord for assistance or bug reports.",
+  "Tags": [
+    "Terror"
+  ],
+  "InternalName": "Kaleidoscope",
+  "AssemblyVersion": "1.0.0.0",
+  "TestingAssemblyVersion": "1.0.0.0",
+  "RepoUrl": "https://github.com/MTVirux/Kaleidoscope",
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 13,
+  "TestingDalamudApiLevel": 13,
+  "IsHide": "False",
+  "IsTestingExclusive": "False",
+  "DownloadCount": 69,
+  "LastUpdate": 1765318173,
+  "DownloadLinkInstall": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.3.1.4/Kaleidoscope.zip",
+  "DownloadLinkUpdate": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.3.1.4/Kaleidoscope.zip",
+  "DownloadLinkTesting": "https://github.com/MTVirux/Kaleidoscope/releases/download/testing_1.3.1.6/Kaleidoscope.zip",
+  "IconUrl": "https://raw.githubusercontent.com/MTVirux/Kaleidoscope/main/images/icon.png"
+}
+]
