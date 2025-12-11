@@ -5,3 +5,4 @@ private/
 scripts/
 .github/*
 !.github/workflows
+build.lock
