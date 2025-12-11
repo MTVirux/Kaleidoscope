@@ -1,4 +1,4 @@
-namespace CrystalTerror.Gui.MainWindow
+namespace Kaleidoscope.Gui.MainWindow
 {
     using System.Reflection;
     using Dalamud.Interface.Windowing;
@@ -6,14 +6,18 @@ namespace CrystalTerror.Gui.MainWindow
 
         public class MainWindow : Window
     {
+        private readonly MoneyTrackerComponent _moneyTracker = new();
+
         public MainWindow() : base(GetDisplayTitle())
         {
-            Size = new System.Numerics.Vector2(400, 300);
+            Size = new System.Numerics.Vector2(600, 360);
         }
 
         public override void Draw()
         {
             ImGui.TextUnformatted("Main UI");
+            ImGui.Separator();
+            _moneyTracker.Draw();
         }
 
         private static string GetDisplayTitle()

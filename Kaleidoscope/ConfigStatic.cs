@@ -1,4 +1,4 @@
-namespace CrystalTerror
+namespace Kaleidoscope
 {
     /// <summary>
     /// Static configuration values that don't change at runtime.

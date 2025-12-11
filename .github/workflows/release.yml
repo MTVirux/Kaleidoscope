@@ -35,12 +35,12 @@ jobs:
           $content = $json | ConvertTo-Json
           set-content -Path $path -Value $content
       - name: Archive
-        run: Compress-Archive -Path CrystalTerror/bin/Release/* -DestinationPath CrystalTerror.zip
+        run: Compress-Archive -Path Kaleidoscope/bin/Release/* -DestinationPath Kaleidoscope.zip
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:
           path: |
-            ./CrystalTerror/bin/Release/*
+            ./Kaleidoscope/bin/Release/*
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -58,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./CrystalTerror.zip
-          asset_name: CrystalTerror.zip
+          asset_path: ./Kaleidoscope.zip
+          asset_name: Kaleidoscope.zip
           asset_content_type: application/zip
 
       - name: Write out repo.json
@@ -70,9 +70,9 @@ jobs:
           $json[0].AssemblyVersion = $ver
           $json[0].TestingAssemblyVersion = $ver
           $json[0].LastUpdate = [int][double]::Parse((Get-Date -UFormat %s))
-          $json[0].DownloadLinkInstall = $json.DownloadLinkInstall -replace '[^/]+/CrystalTerror.zip',"$ver/CrystalTerror.zip"
-          $json[0].DownloadLinkTesting = $json.DownloadLinkTesting -replace '[^/]+/CrystalTerror.zip',"$ver/CrystalTerror.zip"
-          $json[0].DownloadLinkUpdate = $json.DownloadLinkUpdate -replace '[^/]+/CrystalTerror.zip',"$ver/CrystalTerror.zip"
+          $json[0].DownloadLinkInstall = $json.DownloadLinkInstall -replace '[^/]+/Kaleidoscope.zip',"$ver/Kaleidoscope.zip"
+          $json[0].DownloadLinkTesting = $json.DownloadLinkTesting -replace '[^/]+/Kaleidoscope.zip',"$ver/Kaleidoscope.zip"
+          $json[0].DownloadLinkUpdate = $json.DownloadLinkUpdate -replace '[^/]+/Kaleidoscope.zip',"$ver/Kaleidoscope.zip"
           $content = $json | ConvertTo-Json -AsArray
           set-content -Path $path -Value $content
 

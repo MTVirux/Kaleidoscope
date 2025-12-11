@@ -1,17 +1,16 @@
-namespace CrystalTerror.Gui.ConfigWindow;
+namespace Kaleidoscope.Gui.ConfigWindow;
 
-using CrystalTerror.Gui.Common;
-using NightmareUI.OtterGuiWrapper.FileSystems.Configuration;
+using Kaleidoscope.Gui.Common;
 
 /// <summary>
 /// Container component for the config window content.
-/// Handles rendering of configuration tabs and entries via the file system.
+/// Minimal stub to avoid external dependency on NightmareUI's ConfigFileSystem.
 /// </summary>
 public class ConfigWindowContainerComponent : IUIComponent
 {
-    private readonly ConfigFileSystem fileSystem;
+    private readonly object fileSystem;
 
-    public ConfigWindowContainerComponent(ConfigFileSystem fileSystem)
+    public ConfigWindowContainerComponent(object fileSystem)
     {
         this.fileSystem = fileSystem;
     }

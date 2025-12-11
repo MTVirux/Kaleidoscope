@@ -1,4 +1,4 @@
-namespace CrystalTerror.Gui.Common;
+namespace Kaleidoscope.Gui.Common;
 
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -10,13 +10,13 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 /// </summary>
 public class WindowLockButtonComponent
 {
-    private readonly CrystalTerrorPlugin plugin;
+    private readonly Kaleidoscope.KaleidoscopePlugin plugin;
     private readonly bool isConfigWindow;
     private FontAwesomeIcon currentIcon;
 
     public FontAwesomeIcon CurrentIcon => currentIcon;
 
-    public WindowLockButtonComponent(CrystalTerrorPlugin plugin, bool isConfigWindow = false)
+    public WindowLockButtonComponent(Kaleidoscope.KaleidoscopePlugin plugin, bool isConfigWindow = false)
     {
         this.plugin = plugin;
         this.isConfigWindow = isConfigWindow;

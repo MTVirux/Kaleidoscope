@@ -8,31 +8,34 @@ namespace Kaleidoscope
     {
         public string Name => "Crystal Terror";
 
-        public Configuration Config { get; private set; }
+        public Kaleidoscope.Configuration Config { get; private set; }
 
         private readonly IDalamudPluginInterface pluginInterface;
         private readonly WindowSystem windowSystem;
-        private readonly Gui.MainWindow.MainWindow mainWindow;
-        private readonly Gui.ConfigWindow.ConfigWindow configWindow;
+        private readonly Kaleidoscope.Gui.MainWindow.MainWindow mainWindow;
+        private readonly Kaleidoscope.Gui.ConfigWindow.ConfigWindow configWindow;
 
         public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
         {
             this.pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
 
-            var cfg = this.pluginInterface.GetPluginConfig() as Configuration;
+            var cfg = this.pluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
             if (cfg == null)
             {
-                cfg = new Configuration();
+                cfg = new Kaleidoscope.Configuration();
                 this.pluginInterface.SavePluginConfig(cfg);
             }
             this.Config = cfg;
 
             this.windowSystem = new WindowSystem("Kaleidoscope");
-            this.mainWindow = new Gui.MainWindow.MainWindow();
-            this.configWindow = new Gui.ConfigWindow.ConfigWindow();
+            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow();
+            this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow();
 
             this.windowSystem.AddWindow(this.mainWindow);
             this.windowSystem.AddWindow(this.configWindow);
+
+            // Open the main window by default when the plugin loads
+            this.mainWindow.IsOpen = true;
 
             this.pluginInterface.UiBuilder.Draw += this.DrawUi;
             this.pluginInterface.UiBuilder.OpenConfigUi += this.OpenConfigUi;

@@ -1,4 +1,4 @@
-namespace CrystalTerror.Gui.MainWindow
+namespace Kaleidoscope.Gui.MainWindow
 {
         public class MainWindowContainerComponent
     {

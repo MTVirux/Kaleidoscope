@@ -1,4 +1,4 @@
-namespace CrystalTerror.Gui.Common
+namespace Kaleidoscope.Gui.Common
 {
     /// <summary>
     /// Minimal UI component interface used by the plugin UI.

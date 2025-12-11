@@ -4,7 +4,7 @@
 		"commands": [
 			{
 				"match": "\\.cs$",
-				"cmd": "pwsh -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path \\\"${workspaceFolder}\\\\scripts\\\\build\\\\debug.ps1\\\") { & \\\"${workspaceFolder}\\\\scripts\\\\build\\\\debug.ps1\\\" } else { dotnet build \\\"${workspaceFolder}\\\\CrystalTerror.sln\\\" -c Debug }\""
+				"cmd": "pwsh -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path \\\"${workspaceFolder}\\\\scripts\\\\build\\\\debug.ps1\\\") { & \\\"${workspaceFolder}\\\\scripts\\\\build\\\\debug.ps1\\\" } else { dotnet build \\\"${workspaceFolder}\\\\Kaleidoscope.sln\\\" -c Debug }\""
 			}
 		]
 	}

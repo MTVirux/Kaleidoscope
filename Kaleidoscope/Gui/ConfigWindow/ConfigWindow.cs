@@ -1,4 +1,4 @@
-namespace CrystalTerror.Gui.ConfigWindow
+namespace Kaleidoscope.Gui.ConfigWindow
 {
     using System;
     using Dalamud.Interface.Windowing;
@@ -6,7 +6,7 @@ namespace CrystalTerror.Gui.ConfigWindow
 
         public class ConfigWindow : Window, IDisposable
     {
-        public ConfigWindow() : base("CrystalTerror Configuration")
+        public ConfigWindow() : base("Kaleidoscope Configuration")
         {
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
         }

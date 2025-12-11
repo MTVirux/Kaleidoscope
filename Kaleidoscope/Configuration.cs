@@ -1,6 +1,6 @@
 using Dalamud.Configuration;
 
-namespace CrystalTerror
+namespace Kaleidoscope
 {
         public class Configuration : IPluginConfiguration
     {
