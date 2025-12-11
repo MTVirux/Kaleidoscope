@@ -35,11 +35,15 @@ namespace CrystalTerror
             this.windowSystem.AddWindow(this.configWindow);
 
             this.pluginInterface.UiBuilder.Draw += this.DrawUi;
+            this.pluginInterface.UiBuilder.OpenConfigUi += this.OpenConfigUi;
+            this.pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
         }
 
         public void Dispose()
         {
             this.pluginInterface.UiBuilder.Draw -= this.DrawUi;
+            this.pluginInterface.UiBuilder.OpenConfigUi -= this.OpenConfigUi;
+            this.pluginInterface.UiBuilder.OpenMainUi -= this.OpenMainUi;
             this.windowSystem.RemoveAllWindows();
             if (this.mainWindow is IDisposable mw)
                 mw.Dispose();
@@ -49,5 +53,9 @@ namespace CrystalTerror
         }
 
         private void DrawUi() => this.windowSystem.Draw();
+
+        private void OpenConfigUi() => this.configWindow.IsOpen = true;
+
+        private void OpenMainUi() => this.mainWindow.IsOpen = true;
     }
 }
