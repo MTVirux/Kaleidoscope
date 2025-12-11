@@ -13,7 +13,6 @@ namespace Kaleidoscope.Gui.MainWindow
     internal class MoneyTrackerComponent
     {
         private readonly MoneyTrackerHelper _helper;
-        private static readonly System.Random _rnd = new();
         private DateTime _lastSampleTime = DateTime.MinValue;
         private int _sampleIntervalMs = 1000; // sample every second
 
@@ -49,14 +48,6 @@ namespace Kaleidoscope.Gui.MainWindow
 
         // LoadForCharacter handled by helper
 
-        private float SimulateNext()
-        {
-            // small random walk to emulate gil changes
-            var delta = (float)(_rnd.NextDouble() * 15000.0 - 5000.0);
-            var next = _helper.LastValue + delta;
-            if (next < 0) next = 0;
-            return next;
-        }
 
         public void Draw()
         {
@@ -90,44 +81,17 @@ namespace Kaleidoscope.Gui.MainWindow
                 if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
                 {
                     // Delegate to helper for sampling and persistence, maintain lastSampleTime in UI
-                    _helper.SampleFromGameOrSimulate();
+                    _helper.SampleFromGame();
                     _lastSampleTime = now;
                 }
             }
-            catch { /* If reading fails, use simulated values */ }
-
-            if (ImGui.Button("Sample Now"))
+            catch 
             {
-                // force sample immediately using game data if available
-                _helper.SampleFromGameOrSimulate();
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("Add Random"))
-            {
-                _helper.PushSample((float)(_rnd.Next(0, 1000000)));
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("Clear"))
-            {
-                // helper owns data storage
-                _helper.ClearForSelectedCharacter();
-                try
-                {
-                    // Clear is handled by helper
-                }
-                catch { }
-            }
-
-            // Refresh series and character selection
-            ImGui.SameLine();
-            if (ImGui.Button("Refresh Series"))
-            {
-                _helper.RefreshAvailableCharacters();
+                // ignore sampling errors
             }
 
             if (!string.IsNullOrEmpty(_dbPath))
             {
-                ImGui.SameLine();
                 if (ImGui.Button("Clear DB"))
             {
                 ImGui.OpenPopup("moneytracker_clear_db_confirm");
@@ -189,7 +153,7 @@ namespace Kaleidoscope.Gui.MainWindow
             }
             else
             {
-                ImGui.TextUnformatted("No data yet. Click 'Sample Now' to add a point.");
+                ImGui.TextUnformatted("No data yet.");
             }
 
             ImGui.Separator();

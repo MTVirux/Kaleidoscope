@@ -15,7 +15,6 @@ namespace Kaleidoscope.Gui.MainWindow
         private SqliteConnection? _connection;
         private readonly string? _dbPath;
         private readonly int _maxSamples;
-        private readonly Random _rnd = new();
         private readonly List<float> _samples;
         public IReadOnlyList<float> Samples => _samples;
 
@@ -26,15 +25,17 @@ namespace Kaleidoscope.Gui.MainWindow
         public ulong SelectedCharacterId { get; private set; }
         public string LastStatusMessage { get; private set; } = string.Empty;
 
+        private void SetStatus(string message)
+        {
+            LastStatusMessage = $"{DateTime.UtcNow:O} - {message}";
+        }
+
         public MoneyTrackerHelper(string? dbPath, int maxSamples = 200, float startingValue = 100000f)
         {
             _dbPath = dbPath;
             _maxSamples = maxSamples;
             _samples = new List<float>();
             LastValue = startingValue;
-            // Seed initial values so UI isn't empty
-            for (var i = 0; i < 40; i++) _samples.Add(SimulateNext());
-            if (_samples.Count > 0) LastValue = _samples[^1];
             EnsureConnection();
             TryLoadSaved();
         }
@@ -77,6 +78,12 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
         public void PushSample(float v)
         {
+            // Avoid storing duplicate consecutive samples for the same character
+            if (_samples.Count > 0 && Math.Abs(_samples[^1] - v) < 0.0001f)
+            {
+                SetStatus("Duplicate sample; skipped.");
+                return;
+            }
             _samples.Add(v);
             if (_samples.Count > _maxSamples) _samples.RemoveAt(0);
             LastValue = v;
@@ -222,13 +229,6 @@ ORDER BY p.timestamp ASC";
             catch { }
         }
 
-        public float SimulateNext()
-        {
-            var delta = (float)(_rnd.NextDouble() * 15000.0 - 5000.0);
-            var next = LastValue + delta;
-            if (next < 0) next = 0;
-            return next;
-        }
 
         public void ClearForSelectedCharacter()
         {
@@ -274,7 +274,7 @@ ORDER BY p.timestamp ASC";
                         _samples.Clear();
                         AvailableCharacters.Clear();
                         SelectedCharacterId = 0;
-                        LastStatusMessage = "Cleared Money Tracker DB.";
+                        SetStatus("Cleared Money Tracker DB.");
                     }
                 }
                 catch { }
@@ -312,7 +312,7 @@ ORDER BY p.timestamp ASC";
                 var safeName = string.IsNullOrEmpty(name) ? cid.ToString() : string.Concat(name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-')).Replace(' ', '_');
                 var fileName = Path.Combine(saveDir, $"moneytracker-gil-{safeName}-{cid}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv");
                 File.WriteAllText(fileName, sb.ToString());
-                LastStatusMessage = $"Exported to {fileName}";
+                SetStatus($"Exported to {fileName}");
                 return fileName;
             }
             catch
@@ -321,42 +321,65 @@ ORDER BY p.timestamp ASC";
             }
         }
 
-        public void SampleFromGameOrSimulate()
+        public void SampleFromGame()
         {
             try
             {
                 unsafe
                 {
+                    // Prefer InventoryManager if available
+                    var im = InventoryManager.Instance();
+                    if (im != null)
+                    {
+                        try
+                        {
+                            var gil = (float)im->GetGil();
+                            if (Math.Abs(gil - LastValue) > 0.0001f)
+                            {
+                                PushSample(gil);
+                            }
+                            else
+                            {
+                                SetStatus("Skipping sample identical to last.");
+                            }
+                        }
+                        catch
+                        {
+                            SetStatus("Failed to read gil from InventoryManager.");
+                        }
+                        return;
+                    }
+
+                    // Fallback to CurrencyManager only if InventoryManager isn't available
                     var cm = CurrencyManager.Instance();
                     if (cm != null)
                     {
                         try
                         {
-                            uint gil = 0;
-                            try
+                            var gil = (float)cm->GetItemCount(1);
+                            if (Math.Abs(gil - LastValue) > 0.0001f)
                             {
-                                var im = InventoryManager.Instance();
-                                if (im != null)
-                                    gil = im->GetGil();
+                                PushSample(gil);
                             }
-                            catch { gil = 0; }
-                            if (gil == 0)
+                            else
                             {
-                                try { gil = cm->GetItemCount(1); } catch { gil = 0; }
+                                SetStatus("Skipping sample identical to last.");
                             }
-                            if (gil != 0) PushSample((float)gil);
-                            else PushSample(SimulateNext());
                         }
                         catch
                         {
-                            PushSample(SimulateNext());
+                            SetStatus("Failed to read gil from CurrencyManager.");
                         }
                         return;
                     }
+
+                    SetStatus("No game currency data available; sampling skipped.");
                 }
             }
-            catch { }
-            PushSample(SimulateNext());
+            catch (Exception ex)
+            {
+                SetStatus($"Sampling error: {ex.Message}");
+            }
         }
     }
 }
