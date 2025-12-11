@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.ClientState.Objects.Enums;
 using ECommons.DalamudServices;
 using ECommons.GameFunctions;
@@ -22,16 +23,8 @@ namespace Kaleidoscope.Libs
                     return "You";
                 }
                 
-                // delegate to shared CharacterLib for lookup (includes monitor, object table, and DB fallback)
-                try
-                {
-                    return CriticalCommonLib.Services.CharacterLib.GetCharacterName(contentId, false);
-                }
-                catch
-                {
-                    // last-resort fallback to numeric id
-                    return contentId.ToString();
-                }
+                // last-resort fallback to numeric id (no reliable global lookup available here)
+                return contentId.ToString();
             }
             catch
             {

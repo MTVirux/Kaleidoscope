@@ -92,6 +92,8 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 {
                     EnsureConnection();
                     var cid = Svc.ClientState.LocalContentId;
+                    // Ignore saving when we don't have a valid character/content id (0)
+                    if (cid == 0) return;
                     if (_connection == null) return;
                     using var cmd = _connection.CreateCommand();
                     cmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
@@ -126,6 +128,8 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     EnsureConnection();
                     if (_connection == null) return;
                     var cid = Svc.ClientState.LocalContentId;
+                    // If we don't have a valid character/content id, do not attempt to load saved data
+                    if (cid == 0) return;
                     var arr = new List<(DateTime ts, long value)>();
                     using var cmd = _connection.CreateCommand();
                     cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
@@ -235,6 +239,8 @@ ORDER BY p.timestamp ASC";
                     EnsureConnection();
                     if (_connection == null) return;
                     var cid = SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId;
+                    // If the resolved character/content id is invalid, nothing to clear
+                    if (cid == 0) return;
                     using var cmd = _connection.CreateCommand();
                     cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable=$v AND character_id=$c);";
                     cmd.Parameters.AddWithValue("$v", "Gil");
@@ -282,6 +288,8 @@ ORDER BY p.timestamp ASC";
                 EnsureConnection();
                 if (_connection == null) return null;
                 var cid = characterId == null || characterId == 0 ? SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId : (ulong)characterId;
+                // Do not export when we don't have a valid character/content id
+                if (cid == 0) return null;
                 using var cmd = _connection.CreateCommand();
                 cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
 JOIN series s ON p.series_id = s.id
