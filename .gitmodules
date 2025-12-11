@@ -10,3 +10,6 @@
 [submodule "External/CriticalCommonLib"]
 	path = External/CriticalCommonLib
 	url = https://github.com/Critical-Impact/CriticalCommonLib.git
+[submodule "CriticalCommonLib"]
+	path = CriticalCommonLib
+	url = https://github.com/Critical-Impact/CriticalCommonLib.git
