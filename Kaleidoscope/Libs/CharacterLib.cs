@@ -21,13 +21,17 @@ namespace Kaleidoscope.Libs
                     if (!string.IsNullOrEmpty(name)) return $"You ({name})";
                     return "You";
                 }
-
-                // try to find an in-memory object with that content id
-                var found = Svc.Objects.FirstOrDefault(x => x is IPlayerCharacter pc && pc.Struct()->ContentId == contentId);
-                if (found != null) return (found as IPlayerCharacter)?.Name.ToString() ?? contentId.ToString();
-
-                // fallback to numeric id
-                return contentId.ToString();
+                
+                // delegate to shared CharacterLib for lookup (includes monitor, object table, and DB fallback)
+                try
+                {
+                    return CriticalCommonLib.Services.CharacterLib.GetCharacterName(contentId, false);
+                }
+                catch
+                {
+                    // last-resort fallback to numeric id
+                    return contentId.ToString();
+                }
             }
             catch
             {
