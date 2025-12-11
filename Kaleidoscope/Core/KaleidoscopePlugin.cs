@@ -2,6 +2,8 @@ namespace Kaleidoscope
 {
     using System;
     using Dalamud.Interface.Windowing;
+    using Microsoft.Data.Sqlite;
+    using System.IO;
     using Dalamud.Plugin;
 
     public sealed class KaleidoscopePlugin : IDalamudPlugin, IDisposable
@@ -13,11 +15,18 @@ namespace Kaleidoscope
         private readonly IDalamudPluginInterface pluginInterface;
         private readonly WindowSystem windowSystem;
         private readonly Kaleidoscope.Gui.MainWindow.MainWindow mainWindow;
+        private System.Threading.Timer? _samplerTimer;
+        private string? _dbPath;
+        private volatile bool _samplerEnabled = true;
+        private int _samplerIntervalSeconds = 60;
         private readonly Kaleidoscope.Gui.ConfigWindow.ConfigWindow configWindow;
 
         public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
         {
             this.pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
+
+            // Initialize ECommons services (Svc) so UI components and services can access Dalamud services.
+            ECommons.DalamudServices.Svc.Init(pluginInterface);
 
             var cfg = this.pluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
             if (cfg == null)
@@ -28,7 +37,91 @@ namespace Kaleidoscope
             this.Config = cfg;
 
             this.windowSystem = new WindowSystem("Kaleidoscope");
-            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow();
+            var saveDir = this.pluginInterface.GetPluginConfigDirectory();
+            _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
+            // Create and pass simple sampler controls to the UI (callbacks)
+            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(_dbPath,
+                () => _samplerEnabled,
+                enabled => _samplerEnabled = enabled,
+                () => _samplerIntervalSeconds,
+                sec => {
+                    if (sec <= 0) sec = 1;
+                    _samplerIntervalSeconds = sec;
+                    // Recreate the timer with the new interval if it's enabled
+                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
+                }
+            );
+            // Start a basic sampler that uses the same storage to record gil periodically while the plugin runs.
+                _samplerTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    if (!_samplerEnabled) return;
+                    var now = DateTime.UtcNow;
+                    var cid = ECommons.DalamudServices.Svc.ClientState.LocalContentId;
+                    uint gil = 0;
+                    unsafe
+                    {
+                        var im = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+                        if (im != null) gil = im->GetGil();
+                        var cm = FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager.Instance();
+                        if (gil == 0 && cm != null)
+                        {
+                            try { gil = cm->GetItemCount(1); } catch { gil = 0; }
+                        }
+                    }
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(_dbPath))
+                        {
+                            var dir = System.IO.Path.GetDirectoryName(_dbPath)!;
+                            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
+                            var csb = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = _dbPath, Mode = SqliteOpenMode.ReadWriteCreate };
+                            using var conn = new Microsoft.Data.Sqlite.SqliteConnection(csb.ToString());
+                            conn.Open();
+                            using var initCmd = conn.CreateCommand();
+                            initCmd.CommandText = @"CREATE TABLE IF NOT EXISTS series (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    variable TEXT NOT NULL,
+    character_id INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_id INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    value INTEGER NOT NULL,
+    FOREIGN KEY(series_id) REFERENCES series(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
+CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
+";
+                            initCmd.ExecuteNonQuery();
+                            using var cmd = conn.CreateCommand();
+                            cmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
+                            cmd.Parameters.AddWithValue("$v", "Gil");
+                            cmd.Parameters.AddWithValue("$c", (long)cid);
+                            var r = cmd.ExecuteScalar();
+                            long seriesId;
+                            if (r != null && r != DBNull.Value) seriesId = (long)r;
+                            else
+                            {
+                                cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
+                                seriesId = (long)cmd.ExecuteScalar();
+                            }
+                            cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("$s", seriesId);
+                            cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
+                            cmd.Parameters.AddWithValue("$v", (long)gil);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch { }
+                }
+                catch { }
+            }, null, TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
             this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow();
 
             this.windowSystem.AddWindow(this.mainWindow);
@@ -53,6 +146,7 @@ namespace Kaleidoscope
 
             if (this.configWindow is IDisposable cw)
                 cw.Dispose();
+            _samplerTimer?.Dispose();
         }
 
         private void DrawUi() => this.windowSystem.Draw();

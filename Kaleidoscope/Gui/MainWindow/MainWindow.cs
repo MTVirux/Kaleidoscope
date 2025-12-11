@@ -1,16 +1,18 @@
 namespace Kaleidoscope.Gui.MainWindow
 {
     using System.Reflection;
+    using System;
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
         public class MainWindow : Window
     {
-        private readonly MoneyTrackerComponent _moneyTracker = new();
+        private readonly MoneyTrackerComponent _moneyTracker;
 
-        public MainWindow() : base(GetDisplayTitle())
+        public MainWindow(string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle())
         {
             Size = new System.Numerics.Vector2(600, 360);
+            _moneyTracker = new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
         }
 
         public override void Draw()
