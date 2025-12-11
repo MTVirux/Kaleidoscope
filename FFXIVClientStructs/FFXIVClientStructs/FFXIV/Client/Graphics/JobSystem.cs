@@ -1,8 +1,0 @@
-namespace FFXIVClientStructs.FFXIV.Client.Graphics;
-
-// Client::Graphics::JobSystem<T>
-[StructLayout(LayoutKind.Explicit, Size = 0xC0)]
-public unsafe struct JobSystem {
-    [FieldOffset(0x20)] public void* CallbackThisArg;
-    [FieldOffset(0x28)] public delegate* unmanaged<void*, void*, void> CallbackFunction;
-}

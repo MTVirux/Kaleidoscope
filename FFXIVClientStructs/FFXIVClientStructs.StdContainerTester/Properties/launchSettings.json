@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "FFXIVClientStructs.StdContainerTester": {
-      "commandName": "Project",
-      "nativeDebugging": true
-    }
-  }
-}
