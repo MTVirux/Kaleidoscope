@@ -115,20 +115,6 @@ namespace Kaleidoscope.Gui.ConfigWindow
                 ImGui.EndPopup();
             }
 
-            // Window pin settings
-            var pinMain = this.config.PinMainWindow;
-            if (ImGui.Checkbox("Pin main window", ref pinMain))
-            {
-                this.config.PinMainWindow = pinMain;
-                this.saveConfig();
-            }
-            var pinConfig = this.config.PinConfigWindow;
-            if (ImGui.Checkbox("Pin config window", ref pinConfig))
-            {
-                this.config.PinConfigWindow = pinConfig;
-                this.saveConfig();
-            }
-
             ImGui.Separator();
 
             // Sampler controls (optional, only if callbacks provided)
