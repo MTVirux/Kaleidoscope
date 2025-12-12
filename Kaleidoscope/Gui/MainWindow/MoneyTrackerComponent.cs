@@ -14,6 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow
     internal class MoneyTrackerComponent
     {
         private readonly MoneyTrackerHelper _helper;
+        private bool _pointsPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
         private int _sampleIntervalMs = 1000; // sample every 1000 milliseconds (default 1s)
 
@@ -177,12 +178,59 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                     }
                     catch { }
+                    // Debug: right-click the plot to open a popup listing all data points + timestamps
+                    #if DEBUG
+                    try
+                    {
+                        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                        {
+                            ImGui.OpenPopup("moneytracker_points_popup");
+                            _pointsPopupOpen = true;
+                        }
+                    }
+                    catch { }
+                    #endif
                 }
             }
             else
             {
                 ImGui.TextUnformatted("No data yet.");
             }
+
+            // Popup showing all stored points with timestamps (debug-only)
+            #if DEBUG
+            if (ImGui.BeginPopupModal("moneytracker_points_popup", ref _pointsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                try
+                {
+                    var pts = _helper.GetPoints();
+                    if (pts.Count == 0)
+                    {
+                        ImGui.TextUnformatted("No data points available.");
+                    }
+                    else
+                    {
+                        ImGui.TextUnformatted($"Points for character: {_helper.SelectedCharacterId}");
+                        ImGui.Separator();
+                        ImGui.BeginChild("moneytracker_points_child", new Vector2(700, 300), true);
+                        for (var i = 0; i < pts.Count; i++)
+                        {
+                            var p = pts[i];
+                            ImGui.TextUnformatted($"{i}: {p.ts:O}  {p.value:N0}");
+                        }
+                        ImGui.EndChild();
+                    }
+                }
+                catch { }
+
+                if (ImGui.Button("Close"))
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+
+                ImGui.EndPopup();
+            }
+            #endif
 
             ImGui.Separator();
             if (ImGui.Button("Export CSV") && !string.IsNullOrEmpty(_dbPath))

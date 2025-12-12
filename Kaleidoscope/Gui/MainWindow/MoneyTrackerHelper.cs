@@ -330,6 +330,42 @@ ORDER BY p.timestamp ASC";
             }
         }
 
+        /// <summary>
+        /// Retrieve all stored points (timestamp + value) for the provided character id (or selected character if null).
+        /// This is used for debug UI to display exact timestamps.
+        /// </summary>
+        public List<(DateTime ts, long value)> GetPoints(ulong? characterId = null)
+        {
+            var res = new List<(DateTime ts, long value)>();
+            if (string.IsNullOrEmpty(_dbPath)) return res;
+            try
+            {
+                lock (_fileLock)
+                {
+                    EnsureConnection();
+                    if (_connection == null) return res;
+                    var cid = characterId == null || characterId == 0 ? (SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId) : (ulong)characterId;
+                    if (cid == 0) return res;
+                    using var cmd = _connection.CreateCommand();
+                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+JOIN series s ON p.series_id = s.id
+WHERE s.variable = $v AND s.character_id = $c
+ORDER BY p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$v", "Gil");
+                    cmd.Parameters.AddWithValue("$c", (long)cid);
+                    using var rdr = cmd.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        var ticks = rdr.GetFieldValue<long>(0);
+                        var val = rdr.GetFieldValue<long>(1);
+                        res.Add((new DateTime(ticks, DateTimeKind.Utc), val));
+                    }
+                }
+            }
+            catch { }
+            return res;
+        }
+
         public void SampleFromGame()
         {
             try
