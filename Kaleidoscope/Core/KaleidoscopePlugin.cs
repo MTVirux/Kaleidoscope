@@ -62,6 +62,7 @@ namespace Kaleidoscope
             try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
             try { this.Config.ContentGridCellWidthPercent = this.GeneralConfig.ContentGridCellWidthPercent; } catch { }
             try { this.Config.ContentGridCellHeightPercent = this.GeneralConfig.ContentGridCellHeightPercent; } catch { }
+            try { this.Config.EditMode = this.GeneralConfig.EditMode; } catch { }
             try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
             try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
             try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
@@ -69,7 +70,21 @@ namespace Kaleidoscope
             try { this.Config.ConfigWindowPos = this.WindowConfig.ConfigWindowPos; } catch { }
             try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
 
+            try { Kaleidoscope.Gui.TopBar.TopBar.EditMode = this.Config.EditMode; } catch { }
             this.windowSystem = new WindowSystem("Kaleidoscope");
+            // Ensure toggling edit-mode from the TopBar persists into per-category general.json
+            try
+            {
+                Kaleidoscope.Gui.TopBar.TopBar.OnEditModeChanged = (v) => {
+                    try
+                    {
+                        this.Config.EditMode = v;
+                        this.SaveConfig();
+                    }
+                    catch { }
+                };
+            }
+            catch { }
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
@@ -255,7 +270,8 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     ShowOnStart = this.Config.ShowOnStart,
                     ExclusiveFullscreen = this.Config.ExclusiveFullscreen,
                     ContentGridCellWidthPercent = this.Config.ContentGridCellWidthPercent,
-                    ContentGridCellHeightPercent = this.Config.ContentGridCellHeightPercent
+                    ContentGridCellHeightPercent = this.Config.ContentGridCellHeightPercent,
+                    EditMode = this.Config.EditMode
                 };
                 this.ConfigManager.Save("general.json", g);
                 // Sampler

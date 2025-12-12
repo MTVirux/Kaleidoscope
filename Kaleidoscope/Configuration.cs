@@ -26,5 +26,7 @@ namespace Kaleidoscope
         // These control the width and height of each grid cell inside the content container.
         public float ContentGridCellWidthPercent { get; set; } = 25f;
         public float ContentGridCellHeightPercent { get; set; } = 25f;
+        // When true, content containers should show their grid/edit overlays by default.
+        public bool EditMode { get; set; } = false;
     }
 }

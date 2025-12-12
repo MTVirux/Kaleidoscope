@@ -22,7 +22,44 @@ namespace Kaleidoscope.Gui.TopBar
         public static bool IsAnimating => _progress > 0f && _progress < 1f;
 
         // When true, content containers should show their grid/edit overlays.
-        public static bool EditMode { get; set; } = false;
+        private static bool _editMode = false;
+        public static bool EditMode
+        {
+            get => _editMode;
+            set
+            {
+                if (_editMode == value) return;
+                _editMode = value;
+                try
+                {
+                    var cfg = ECommons.DalamudServices.Svc.PluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
+                    if (cfg != null)
+                    {
+                        cfg.EditMode = value;
+                        try { ECommons.DalamudServices.Svc.PluginInterface.SavePluginConfig(cfg); } catch { }
+                    }
+                }
+                catch { }
+                try
+                {
+                    OnEditModeChanged?.Invoke(value);
+                }
+                catch { }
+            }
+        }
+
+        static TopBar()
+        {
+            try
+            {
+                var cfg = ECommons.DalamudServices.Svc.PluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
+                if (cfg != null) _editMode = cfg.EditMode;
+            }
+            catch { }
+        }
+
+        // Invoked when edit mode changes. Plugin can register to persist per-category config.
+        public static Action<bool>? OnEditModeChanged;
 
         public static void ForceHide()
         {
