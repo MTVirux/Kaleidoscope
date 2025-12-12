@@ -1,4 +1,3 @@
-using System;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using Kaleidoscope.Models;

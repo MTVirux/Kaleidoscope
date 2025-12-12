@@ -1,6 +1,5 @@
 namespace Kaleidoscope.Gui.ConfigWindow
 {
-    using System;
     using Dalamud.Interface.Windowing;
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;

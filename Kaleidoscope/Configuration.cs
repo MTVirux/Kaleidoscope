@@ -1,5 +1,4 @@
 using Dalamud.Configuration;
-using System.Numerics;
 
 namespace Kaleidoscope
 {

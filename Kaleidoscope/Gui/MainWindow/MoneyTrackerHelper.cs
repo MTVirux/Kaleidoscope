@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Microsoft.Data.Sqlite;
 using ECommons.DalamudServices;
-using System.Text;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using System.Text;
 
 namespace Kaleidoscope.Gui.MainWindow
 {

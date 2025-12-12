@@ -4,7 +4,6 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using OtterGui.Text;
-using System.Numerics;
 
 public class WindowLockButton
 {

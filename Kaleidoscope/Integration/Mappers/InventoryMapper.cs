@@ -1,8 +1,7 @@
-using System;
-using System.Collections.Generic;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using Kaleidoscope.Models;
+using System.Collections.Generic;
 
 namespace Kaleidoscope.Integration.Mappers
 {

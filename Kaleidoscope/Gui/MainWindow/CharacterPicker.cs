@@ -1,8 +1,5 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
-using System.Numerics;
-using System;
-using System.Linq;
 using ECommons.DalamudServices;
 
 namespace Kaleidoscope.Gui.MainWindow

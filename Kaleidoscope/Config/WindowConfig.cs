@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace Kaleidoscope.Config
 {
     public class WindowConfig

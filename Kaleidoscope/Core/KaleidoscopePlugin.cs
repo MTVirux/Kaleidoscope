@@ -1,10 +1,9 @@
 namespace Kaleidoscope
 {
-    using System;
     using Dalamud.Interface.Windowing;
     using Kaleidoscope.Gui.TopBar;
     using Microsoft.Data.Sqlite;
-    using System.IO;
+    
     using Dalamud.Plugin;
 
     public sealed class KaleidoscopePlugin : IDalamudPlugin, IDisposable

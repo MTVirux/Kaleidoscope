@@ -1,10 +1,10 @@
 namespace Kaleidoscope.Gui.MainWindow
 {
-    using System.Reflection;
-    using System;
+    
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
+    using ECommons.Logging;
     using Kaleidoscope.Gui.TopBar;
     using OtterGui.Text;
     using Dalamud.Interface;
@@ -150,6 +150,7 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             // Ensure the window is resizable in all states
             Flags &= ~ImGuiWindowFlags.NoResize;
+            
             // Ensure titlebar is visible and normal behavior when not in the separate fullscreen window.
             Flags &= ~ImGuiWindowFlags.NoTitleBar;
             if (this.plugin.Config.PinMainWindow)

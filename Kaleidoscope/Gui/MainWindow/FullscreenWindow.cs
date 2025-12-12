@@ -1,18 +1,13 @@
 namespace Kaleidoscope.Gui.MainWindow
 {
-    using System;
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
-    using ECommons.Logging;
     using Kaleidoscope.Gui.TopBar;
 
     public class FullscreenWindow : Window
     {
-#if DEBUG
-        private System.Numerics.Vector2 _lastWindowPos = new System.Numerics.Vector2(float.MinValue, float.MinValue);
-        private System.Numerics.Vector2 _lastWindowSize = new System.Numerics.Vector2(float.MinValue, float.MinValue);
-#endif
+        
         private readonly MoneyTrackerComponent _moneyTracker;
         private readonly Kaleidoscope.KaleidoscopePlugin plugin;
 
@@ -45,20 +40,6 @@ namespace Kaleidoscope.Gui.MainWindow
             // Draw topbar on fullscreen window so the exit button is present
             try { TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize()); } catch { }
 
-#if DEBUG
-            try
-            {
-                var pos = ImGui.GetWindowPos();
-                var size = ImGui.GetWindowSize();
-                if (pos != _lastWindowPos || size != _lastWindowSize)
-                {
-                    _lastWindowPos = pos;
-                    _lastWindowSize = size;
-                    PluginLog.Verbose($"Main window pos=({pos.X:F1},{pos.Y:F1}) size=({size.X:F1}x{size.Y:F1})");
-                }
-            }
-            catch { }
-#endif
         }
     }
 }

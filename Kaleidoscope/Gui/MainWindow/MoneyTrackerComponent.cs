@@ -1,11 +1,6 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
-using System.Numerics;
-using System.Globalization;
 using ECommons.DalamudServices;
-using System.Collections.Generic;
-using System.Linq;
-using System;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Libs;
 

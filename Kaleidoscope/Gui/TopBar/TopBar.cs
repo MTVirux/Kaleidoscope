@@ -1,7 +1,5 @@
 namespace Kaleidoscope.Gui.TopBar
 {
-    using System;
-    using System.Numerics;
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
