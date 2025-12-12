@@ -184,12 +184,21 @@ ORDER BY p.timestamp ASC";
                     while (rdr.Read())
                     {
                         var cid = rdr.GetFieldValue<long>(0);
+                        // Ignore invalid/unknown character ids (0)
+                        if (cid == 0) continue;
                         AvailableCharacters.Add((ulong)cid);
                     }
                     if (AvailableCharacters.Count > 0 && !AvailableCharacters.Contains(SelectedCharacterId))
                     {
                         SelectedCharacterId = AvailableCharacters[0];
                         LoadForCharacter(SelectedCharacterId);
+                    }
+                    else if (AvailableCharacters.Count == 0)
+                    {
+                        // No valid saved characters — clear selection and samples
+                        SelectedCharacterId = 0;
+                        _samples.Clear();
+                        LastValue = 0f;
                     }
                 }
             }
