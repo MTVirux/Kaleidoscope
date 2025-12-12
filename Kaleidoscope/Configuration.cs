@@ -8,6 +8,9 @@ namespace Kaleidoscope
 
         // Keep a single simple setting to control whether the UI opens on start.
         public bool ShowOnStart { get; set; } = true;
+        // When true, plugin will open in fullscreen by default and will close
+        // instead of returning to the main window when exiting fullscreen.
+        public bool ExclusiveFullscreen { get; set; } = false;
         
         // Window pin states used by the UI lock button component.
         public bool PinMainWindow { get; set; } = false;

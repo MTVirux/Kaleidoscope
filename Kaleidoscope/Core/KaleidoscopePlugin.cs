@@ -59,6 +59,7 @@ namespace Kaleidoscope
 
             // Copy per-file values into the runtime single config for compatibility with existing code
             try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
+            try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
             try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
             try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
             try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
@@ -189,7 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow(
                 this,
                 this.Config,
-                () => this.pluginInterface.SavePluginConfig(this.Config),
+                () => this.SaveConfig(),
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
                 () => _samplerIntervalSeconds * 1000,
@@ -209,11 +210,25 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             this.windowSystem.AddWindow(this.fullscreenWindow);
             this.windowSystem.AddWindow(this.configWindow);
 
-            // Open the main window by default when the plugin loads
-            this.mainWindow.IsOpen = true;
-
-            // Ensure fullscreen window starts closed
-            this.fullscreenWindow.IsOpen = false;
+            // Open UI by default when the plugin loads. Respect exclusive-fullscreen setting.
+            if (this.Config.ShowOnStart)
+            {
+                if (this.Config.ExclusiveFullscreen)
+                {
+                    this.fullscreenWindow.IsOpen = true;
+                    this.mainWindow.IsOpen = false;
+                }
+                else
+                {
+                    this.mainWindow.IsOpen = true;
+                    this.fullscreenWindow.IsOpen = false;
+                }
+            }
+            else
+            {
+                this.mainWindow.IsOpen = false;
+                this.fullscreenWindow.IsOpen = false;
+            }
 
             // Register chat/command handlers to open the main UI
             try
@@ -234,7 +249,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             try
             {
                 // General
-                var g = new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart };
+                var g = new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart, ExclusiveFullscreen = this.Config.ExclusiveFullscreen };
                 this.ConfigManager.Save("general.json", g);
                 // Sampler
                 var s = new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = this._samplerEnabled, SamplerIntervalMs = this._samplerIntervalSeconds * 1000 };
@@ -289,15 +304,23 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             catch { }
         }
 
-        // Called by TopBar/FullscreenWindow to request exiting fullscreen and restoring main window
+        // Called by TopBar/FullscreenWindow to request exiting fullscreen. Behavior differs when
+        // exclusive-fullscreen is enabled (close instead of returning to main window).
         public void RequestExitFullscreen()
         {
             try
             {
-                // Close fullscreen and reopen main
+                // Close fullscreen. If exclusive fullscreen is enabled, do not reopen the main window.
                 this.fullscreenWindow.IsOpen = false;
-                this.mainWindow.IsOpen = true;
-                try { this.mainWindow.ExitFullscreen(); } catch { }
+                if (this.Config.ExclusiveFullscreen)
+                {
+                    TopBar.ForceHide();
+                }
+                else
+                {
+                    this.mainWindow.IsOpen = true;
+                    try { this.mainWindow.ExitFullscreen(); } catch { }
+                }
             }
             catch { }
         }
