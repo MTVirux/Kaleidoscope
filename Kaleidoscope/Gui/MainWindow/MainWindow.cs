@@ -28,7 +28,7 @@ namespace Kaleidoscope.Gui.MainWindow
             try { return _moneyTracker.ExportCsv(); } catch { return null; }
         }
 
-        public MainWindow(string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle())
+        public MainWindow(string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
             Size = new System.Numerics.Vector2(600, 360);
             _moneyTracker = new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
@@ -39,9 +39,13 @@ namespace Kaleidoscope.Gui.MainWindow
             // Replace main content with four outlined containers stacked vertically.
             // They occupy the available content region height in percentages: 15%, 5%, 60%, 20%.
             // Use the current window size as a reliable fallback for layout calculations.
-            var winSize = ImGui.GetWindowSize();
-            var width = winSize.X;
-            var totalHeight = winSize.Y;
+            // Use the available content region so layout accounts for titlebar/padding and avoids scrollbars
+            var avail = ImGui.GetContentRegionAvail();
+            var availWidth = avail.X;
+            var availHeightRaw = avail.Y;
+            // Use 90% of the available content width for all containers and center them horizontally
+            var childWidth = availWidth * 0.9f;
+            var totalHeight = availHeightRaw;
 
             // Ensure a sane minimum height (avoid referencing nullable external Size bindings)
             if (totalHeight <= 0f)
@@ -51,11 +55,25 @@ namespace Kaleidoscope.Gui.MainWindow
 
             var percents = new float[] { 0.15f, 0.05f, 0.60f, 0.20f };
 
+            // Account for ImGui vertical spacings: we add top spacing, spacing between each container and bottom spacing.
+            // Subtract total spacing height from the window height so the percentage heights apply to the remaining area.
+            var style = ImGui.GetStyle();
+            var spacingY = style.ItemSpacing.Y;
+            var spacingCount = percents.Length + 1; // top + between each + bottom
+            var totalSpacing = spacingY * spacingCount;
+            var availHeight = MathF.Max(1f, totalHeight - totalSpacing);
+
+            // add top spacing so spacing above first equals spacing between containers
+            //ImGui.Spacing();
+
             for (var i = 0; i < percents.Length; ++i)
             {
-                var h = MathF.Max(1f, totalHeight * percents[i]);
+                var h = MathF.Max(1f, availHeight * percents[i]);
                 var childId = $"##kaleido_container_{i}";
-                ImGui.BeginChild(childId, new System.Numerics.Vector2(width, h), true);
+                // center child horizontally (set absolute cursor X to avoid accumulating offsets)
+                var indent = (availWidth - childWidth) / 2f;
+                if (indent > 0f) ImGui.SetCursorPosX(indent);
+                ImGui.BeginChild(childId, new System.Numerics.Vector2(childWidth, h), true);
 
                 // Optional label (top-left) inside the container
                 var label = $"Container {i + 1} - {percents[i] * 100:0}%";
@@ -64,8 +82,14 @@ namespace Kaleidoscope.Gui.MainWindow
                 ImGui.EndChild();
 
                 // Add a small spacing between containers to visually separate them
-                if (i < percents.Length - 1)
+                if (i < percents.Length - 1){
                     ImGui.Spacing();
+                }
+                else
+                {
+                    // add bottom spacing after the last container so top/bottom spacing match
+                    //ImGui.Spacing();
+                }
             }
         }
 
