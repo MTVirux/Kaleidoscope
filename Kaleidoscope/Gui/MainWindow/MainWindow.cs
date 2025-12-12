@@ -53,6 +53,9 @@ namespace Kaleidoscope.Gui.MainWindow
             // The saved size is applied only when the user pins the window (saved on pin action).
             _moneyTracker = sharedMoneyTracker ?? new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
 
+            // Enforce a sensible minimum size for the main window
+            this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 120) };
+
             // Create and add title bar buttons
             TitleBarButtons.Add(new TitleBarButton
             {
@@ -87,6 +90,8 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // TopBar exit requests are handled by the plugin so it can toggle windows.
             TopBar.OnExitFullscreenRequested = () => { try { this.plugin.RequestExitFullscreen(); } catch { } };
+            // TopBar config requests should open the plugin config UI.
+            TopBar.OnOpenConfigRequested = () => { try { this.plugin.OpenConfigUi(); } catch { } };
 
             var lockTb = new TitleBarButton
             {
@@ -148,25 +153,45 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void PreDraw()
         {
-            // Ensure the window is resizable in all states
-            Flags &= ~ImGuiWindowFlags.NoResize;
-            
-            // Ensure titlebar is visible and normal behavior when not in the separate fullscreen window.
-            Flags &= ~ImGuiWindowFlags.NoTitleBar;
+            // When pinned, lock position and size; when unpinned, allow moving and resizing.
             if (this.plugin.Config.PinMainWindow)
             {
-                Flags |= ImGuiWindowFlags.NoMove;
-                ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
+                Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
+                try
+                {
+                    ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
+                    ImGui.SetNextWindowSize(this.plugin.Config.MainWindowSize);
+                }
+                catch { }
             }
             else
             {
                 Flags &= ~ImGuiWindowFlags.NoMove;
+                Flags &= ~ImGuiWindowFlags.NoResize;
             }
+
+            // Ensure titlebar is visible and normal behavior when not in the separate fullscreen window.
+            Flags &= ~ImGuiWindowFlags.NoTitleBar;
 
             // Ensure titlebar button icon reflects current configuration every frame
             if (this.lockButton != null)
             {
                 this.lockButton.Icon = this.plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+            }
+
+            // If exclusive fullscreen is enabled, immediately switch to fullscreen
+            // when the main window is shown so the plugin opens in fullscreen mode
+            // and does not remain in the main window.
+            if (this.plugin.Config.ExclusiveFullscreen)
+            {
+                try
+                {
+                    // Prevent further PreDraw calls for this window by closing it
+                    // before requesting the fullscreen window to open.
+                    this.IsOpen = false;
+                    this.plugin.RequestShowFullscreen();
+                }
+                catch { }
             }
         }
 
@@ -174,6 +199,8 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             // Render a top bar positioned relative to this main window (shows when Alt held).
             // Keep drawing while the topbar is animating so it can animate out after exit.
+            TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
+            
             if (TopBar.IsAnimating)
             {
                 TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
