@@ -15,6 +15,7 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly MoneyTrackerHelper _helper;
         private bool _pointsPopupOpen = false;
+        private bool _namesPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
         private int _sampleIntervalMs = 1000; // sample every 1000 milliseconds (default 1s)
 
@@ -35,23 +36,21 @@ namespace Kaleidoscope.Gui.MainWindow
             _setSamplerInterval = setSamplerInterval;
         }
 
+        public bool HasDb => !string.IsNullOrEmpty(_dbPath);
+
+        public int CleanUnassociatedCharacters()
+        {
+            try
+            {
+                return _helper.CleanUnassociatedCharacterData();
+            }
+            catch { return 0; }
+        }
+
 
 
         public void Draw()
         {
-            if (_getSamplerEnabled != null && _setSamplerEnabled != null)
-            {
-                if (_getSamplerInterval != null && _setSamplerInterval != null)
-                {
-                    var interval = _getSamplerInterval();
-                    if (ImGui.InputInt("Sample Interval (ms)", ref interval))
-                    {
-                        if (interval < 1) interval = 1;
-                        _setSamplerInterval(interval);
-                    }
-                }
-            }
-
             // Try to sample from the game's currency manager at most once per _sampleIntervalMs.
             try
             {
@@ -98,12 +97,39 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 var idx = _helper.AvailableCharacters.IndexOf(_helper.SelectedCharacterId);
                 if (idx < 0) idx = 0;
-                var names = _helper.AvailableCharacters.Select(id => CharacterLib.GetCharacterName(id)).ToArray();
+                // If we're logged into a character, ensure the available list is refreshed
+                // and auto-select that character when data exists for them.
+                try
+                {
+                    // If logged into a character, refresh the available characters list
+                    // from the DB so the dropdown stays up-to-date, but do NOT
+                    // automatically select/load that character. Selection should
+                    // only occur when the user chooses from the dropdown.
+                    var localCid = Svc.ClientState.LocalContentId;
+                    if (localCid != 0 && !_helper.AvailableCharacters.Contains(localCid))
+                    {
+                        _helper.RefreshAvailableCharacters();
+                    }
+                }
+                catch { }
+                var names = _helper.AvailableCharacters.Select(id => _helper.GetCharacterDisplayName(id)).ToArray();
                 if (ImGui.Combo("Character", ref idx, names, names.Length))
                 {
                     var id = _helper.AvailableCharacters[idx];
                     _helper.LoadForCharacter(id);
                 }
+
+#if DEBUG
+                try
+                {
+                    if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    {
+                        ImGui.OpenPopup("moneytracker_names_popup");
+                        _namesPopupOpen = true;
+                    }
+                }
+                catch { }
+#endif
             }
 
             float min = float.MaxValue;
@@ -231,6 +257,42 @@ namespace Kaleidoscope.Gui.MainWindow
                 ImGui.EndPopup();
             }
             #endif
+
+#if DEBUG
+            // Popup showing all stored character names + cids (debug-only)
+            if (ImGui.BeginPopupModal("moneytracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                try
+                {
+                    var entries = _helper.GetAllStoredCharacterNames();
+                    if (entries.Count == 0)
+                    {
+                        ImGui.TextUnformatted("No stored character names in DB.");
+                    }
+                    else
+                    {
+                        ImGui.TextUnformatted("Stored character names and CIDs:");
+                        ImGui.Separator();
+                        ImGui.BeginChild("moneytracker_names_child", new Vector2(600, 300), true);
+                        for (var i = 0; i < entries.Count; i++)
+                        {
+                            var e = entries[i];
+                            var display = string.IsNullOrEmpty(e.name) ? "(null)" : e.name;
+                            ImGui.TextUnformatted($"{i}: {e.cid}  {display}");
+                        }
+                        ImGui.EndChild();
+                    }
+                }
+                catch { }
+
+                if (ImGui.Button("Close"))
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+
+                ImGui.EndPopup();
+            }
+#endif
 
             ImGui.Separator();
             if (ImGui.Button("Export CSV") && !string.IsNullOrEmpty(_dbPath))

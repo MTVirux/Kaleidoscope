@@ -112,12 +112,30 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                 cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
                                 seriesId = (long)cmd.ExecuteScalar();
                             }
-                            cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
+                            // Avoid inserting duplicate consecutive points: check last saved value for this series.
+                            cmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
                             cmd.Parameters.Clear();
                             cmd.Parameters.AddWithValue("$s", seriesId);
-                            cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
-                            cmd.Parameters.AddWithValue("$v", (long)gil);
-                            cmd.ExecuteNonQuery();
+                            var lastValObj = cmd.ExecuteScalar();
+                            var shouldInsert = true;
+                            if (lastValObj != null && lastValObj != DBNull.Value)
+                            {
+                                try
+                                {
+                                    var lastVal = (long)lastValObj;
+                                    if (lastVal == (long)gil) shouldInsert = false;
+                                }
+                                catch { }
+                            }
+                            if (shouldInsert)
+                            {
+                                cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
+                                cmd.Parameters.Clear();
+                                cmd.Parameters.AddWithValue("$s", seriesId);
+                                cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
+                                cmd.Parameters.AddWithValue("$v", (long)gil);
+                                cmd.ExecuteNonQuery();
+                            }
                         }
                     }
                     catch { }
@@ -144,6 +162,13 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             // Open the main window by default when the plugin loads
             this.mainWindow.IsOpen = true;
 
+            // Register chat/command handlers to open the main UI
+            try
+            {
+                ECommons.DalamudServices.Svc.Commands.AddHandler("/kld", new Dalamud.Game.Command.CommandInfo((s, a) => this.OpenMainUi()) { HelpMessage = "Open Kaleidoscope UI", ShowInHelp = true });
+                ECommons.DalamudServices.Svc.Commands.AddHandler("/kaleidoscope", new Dalamud.Game.Command.CommandInfo((s, a) => this.OpenMainUi()) { HelpMessage = "Open Kaleidoscope UI", ShowInHelp = true });
+            }
+            catch { }
             this.pluginInterface.UiBuilder.Draw += this.DrawUi;
             this.pluginInterface.UiBuilder.OpenConfigUi += this.OpenConfigUi;
             this.pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
@@ -151,6 +176,12 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
         public void Dispose()
         {
+            try
+            {
+                ECommons.DalamudServices.Svc.Commands.RemoveHandler("/kld");
+                ECommons.DalamudServices.Svc.Commands.RemoveHandler("/kaleidoscope");
+            }
+            catch { }
             this.pluginInterface.UiBuilder.Draw -= this.DrawUi;
             this.pluginInterface.UiBuilder.OpenConfigUi -= this.OpenConfigUi;
             this.pluginInterface.UiBuilder.OpenMainUi -= this.OpenMainUi;

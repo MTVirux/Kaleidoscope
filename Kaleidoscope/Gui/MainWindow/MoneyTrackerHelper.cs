@@ -11,6 +11,10 @@ namespace Kaleidoscope.Gui.MainWindow
 {
     internal class MoneyTrackerHelper
     {
+        // Track the last seen local content id so we only auto-switch when
+        // the active character actually changes.
+        private ulong _lastSeenLocalCid = 0;
+
         private readonly object _fileLock = new();
         private SqliteConnection? _connection;
         private readonly string? _dbPath;
@@ -67,10 +71,80 @@ CREATE TABLE IF NOT EXISTS points (
     FOREIGN KEY(series_id) REFERENCES series(id)
 );
 
+CREATE TABLE IF NOT EXISTS character_names (
+    character_id INTEGER PRIMARY KEY,
+    name TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
 CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
 ";
                     cmd.ExecuteNonQuery();
+                    // Perform a one-time cleanup of stored names to remove wrappers like "You (Name)".
+                    try
+                    {
+                        MigrateStoredNames();
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        private void MigrateStoredNames()
+        {
+            if (_connection == null) return;
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "SELECT character_id, name FROM character_names";
+                using var rdr = cmd.ExecuteReader();
+                var updates = new List<(long cid, string newName)>();
+                var deletes = new List<long>();
+                while (rdr.Read())
+                {
+                    var cid = rdr.GetFieldValue<long>(0);
+                    string? name = null;
+                    if (!rdr.IsDBNull(1)) name = rdr.GetFieldValue<string>(1);
+                    var sanitized = SanitizeName(name);
+                    // If the stored name sanitizes to just "You", treat it as a placeholder and schedule removal
+                    if (!string.IsNullOrEmpty(sanitized) && string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
+                    {
+                        deletes.Add(cid);
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(sanitized) && !string.Equals(sanitized, name, StringComparison.Ordinal))
+                    {
+                        updates.Add((cid, sanitized));
+                    }
+                }
+                rdr.Close();
+
+                foreach (var u in updates)
+                {
+                    try
+                    {
+                        using var up = _connection.CreateCommand();
+                        up.CommandText = "UPDATE character_names SET name = $n WHERE character_id = $c";
+                        up.Parameters.AddWithValue("$n", u.newName);
+                        up.Parameters.AddWithValue("$c", u.cid);
+                        up.ExecuteNonQuery();
+                    }
+                    catch { }
+                }
+
+                // Remove placeholder names that resolved to "You" (case-insensitive).
+                foreach (var cidToRemove in deletes)
+                {
+                    try
+                    {
+                        using var del = _connection.CreateCommand();
+                        del.CommandText = "DELETE FROM character_names WHERE character_id = $c";
+                        del.Parameters.AddWithValue("$c", cidToRemove);
+                        del.ExecuteNonQuery();
+                    }
+                    catch { }
                 }
             }
             catch { }
@@ -78,7 +152,13 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
         public void PushSample(float v)
         {
-            // Avoid storing duplicate consecutive samples for the same character
+            // Avoid storing duplicate consecutive samples for the same character.
+            // Also avoid storing if the new value equals the last known value (e.g. when samples list is empty).
+            if (Math.Abs(LastValue - v) < 0.0001f)
+            {
+                SetStatus("Duplicate sample; skipped (matches last value).");
+                return;
+            }
             if (_samples.Count > 0 && Math.Abs(_samples[^1] - v) < 0.0001f)
             {
                 SetStatus("Duplicate sample; skipped.");
@@ -108,18 +188,90 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     cmd.Parameters.AddWithValue("$c", (long)cid);
                     var r = cmd.ExecuteScalar();
                     long seriesId;
+                    var isNewSeries = false;
                     if (r != null && r != DBNull.Value) seriesId = (long)r;
                     else
                     {
                         cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
                         seriesId = (long)cmd.ExecuteScalar();
+                        isNewSeries = true;
                     }
+
+                    // Persist the character name (if available) into a simple mapping table so
+                    // exported files and future UI lookups can use the stored name even when
+                    // runtime name resolution is unavailable.
+                    try
+                    {
+                        var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            // Strip any "You (Name)" wrapper so we persist only the character name.
+                            try
+                            {
+                                var sanitized = name;
+                                var idxOpen = sanitized.IndexOf('(');
+                                var idxClose = sanitized.LastIndexOf(')');
+                                if (idxOpen >= 0 && idxClose > idxOpen)
+                                {
+                                    sanitized = sanitized.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
+                                }
+                                // If the sanitized result is still just "You", try to get the local player name directly.
+                                if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        var lp = Svc.ClientState.LocalPlayer?.Name.ToString();
+                                        if (!string.IsNullOrEmpty(lp)) sanitized = lp;
+                                    }
+                                    catch { }
+                                }
+
+                                if (!string.IsNullOrEmpty(sanitized))
+                                {
+                                    using var nameCmd = _connection.CreateCommand();
+                                    nameCmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name) VALUES($c, $n)";
+                                    nameCmd.Parameters.AddWithValue("$c", (long)cid);
+                                    nameCmd.Parameters.AddWithValue("$n", sanitized);
+                                    nameCmd.ExecuteNonQuery();
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+
                     cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
                     cmd.Parameters.Clear();
                     cmd.Parameters.AddWithValue("$s", seriesId);
                     cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
                     cmd.Parameters.AddWithValue("$v", (long)LastValue);
                     cmd.ExecuteNonQuery();
+
+                    // If we created a new series for this cid, add it to the in-memory list
+                    // so UI dropdowns update immediately without waiting for a DB refresh.
+                    try
+                    {
+                        if (isNewSeries)
+                        {
+                            if (!AvailableCharacters.Contains(cid)) AvailableCharacters.Add(cid);
+                        }
+
+                        // If the sample belongs to the currently-logged-in character,
+                        // automatically switch the selection to it only when the
+                        // active character actually changed since the last seen value.
+                        try
+                        {
+                            var localCid = Svc.ClientState.LocalContentId;
+                            if (localCid != 0 && cid == localCid && localCid != _lastSeenLocalCid)
+                            {
+                                SelectedCharacterId = cid;
+                                LoadForCharacter(cid);
+                                _lastSeenLocalCid = localCid;
+                            }
+                        }
+                        catch { }
+                    }
+                    catch { }
                 }
             }
             catch { /* swallow save errors */ }
@@ -190,8 +342,19 @@ ORDER BY p.timestamp ASC";
                     }
                     if (AvailableCharacters.Count > 0 && !AvailableCharacters.Contains(SelectedCharacterId))
                     {
-                        SelectedCharacterId = AvailableCharacters[0];
-                        LoadForCharacter(SelectedCharacterId);
+                        // Prefer selecting the currently-logged-in character if available,
+                        // but only auto-switch when the active character actually changed
+                        // since the last seen local CID. Do not automatically pick the
+                        // first stored character to avoid forcing a selection when the
+                        // user hasn't changed characters.
+                        var localCid = Svc.ClientState.LocalContentId;
+                        if (localCid != 0 && AvailableCharacters.Contains(localCid) && localCid != _lastSeenLocalCid)
+                        {
+                            SelectedCharacterId = localCid;
+                            LoadForCharacter(SelectedCharacterId);
+                            _lastSeenLocalCid = localCid;
+                        }
+                        // otherwise: leave current SelectedCharacterId as-is (may be 0)
                     }
                     else if (AvailableCharacters.Count == 0)
                     {
@@ -203,6 +366,121 @@ ORDER BY p.timestamp ASC";
                 }
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Get a display name for the provided character id.
+        /// Prefer the stored name in the `character_names` table, fall back to
+        /// runtime lookup via `CharacterLib.GetCharacterName` and finally to the CID string.
+        /// </summary>
+        public string GetCharacterDisplayName(ulong characterId)
+        {
+            try
+            {
+                lock (_fileLock)
+                {
+                    EnsureConnection();
+                    if (_connection != null)
+                    {
+                        using var cmd = _connection.CreateCommand();
+                        cmd.CommandText = "SELECT name FROM character_names WHERE character_id = $c LIMIT 1";
+                        cmd.Parameters.AddWithValue("$c", (long)characterId);
+                        var r = cmd.ExecuteScalar();
+                        if (r != null && r != DBNull.Value)
+                        {
+                            var s = r as string;
+                            if (!string.IsNullOrEmpty(s))
+                            {
+                                var sanitized = SanitizeName(s);
+                                if (!string.IsNullOrEmpty(sanitized)) return sanitized;
+                                return s;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                var runtime = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
+                if (!string.IsNullOrEmpty(runtime))
+                {
+                    try
+                    {
+                        var sanitized = runtime;
+                        var idxOpen = sanitized.IndexOf('(');
+                        var idxClose = sanitized.LastIndexOf(')');
+                        if (idxOpen >= 0 && idxClose > idxOpen)
+                        {
+                            sanitized = sanitized.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
+                        }
+                        if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { var lp = Svc.ClientState.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
+                        }
+                        if (!string.IsNullOrEmpty(sanitized)) return sanitized;
+                    }
+                    catch { return runtime; }
+                }
+            }
+            catch { }
+
+            return characterId.ToString();
+        }
+
+        private static string? SanitizeName(string? raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return raw;
+            try
+            {
+                var s = raw.Trim();
+                // Look for patterns like "You (Name)" or "You(Name)" and extract the inner name.
+                var idxOpen = s.IndexOf('(');
+                var idxClose = s.LastIndexOf(')');
+                if (idxOpen >= 0 && idxClose > idxOpen)
+                {
+                    var inner = s.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
+                    if (!string.IsNullOrEmpty(inner)) return inner;
+                }
+                // If it starts with "You " then strip that prefix.
+                if (s.StartsWith("You ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var rem = s.Substring(4).Trim();
+                    if (!string.IsNullOrEmpty(rem)) return rem;
+                }
+                return s;
+            }
+            catch { return raw; }
+        }
+
+        /// <summary>
+        /// Return all stored character ids and names from the `character_names` table.
+        /// Used by debug UI to list what has been persisted.
+        /// </summary>
+        public List<(ulong cid, string? name)> GetAllStoredCharacterNames()
+        {
+            var res = new List<(ulong cid, string? name)>();
+            try
+            {
+                lock (_fileLock)
+                {
+                    EnsureConnection();
+                    if (_connection == null) return res;
+                    using var cmd = _connection.CreateCommand();
+                    cmd.CommandText = "SELECT character_id, name FROM character_names ORDER BY character_id";
+                    using var rdr = cmd.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        var cid = rdr.GetFieldValue<long>(0);
+                        string? name = null;
+                        if (!rdr.IsDBNull(1)) name = rdr.GetFieldValue<string>(1);
+                        if (cid != 0) res.Add(((ulong)cid, name));
+                    }
+                }
+            }
+            catch { }
+            return res;
         }
 
         public void LoadForCharacter(ulong characterId)
@@ -287,6 +565,77 @@ ORDER BY p.timestamp ASC";
                     }
                 }
                 catch { }
+            }
+
+            /// <summary>
+            /// Remove all stored series and points for characters that do not have a
+            /// corresponding entry in the `character_names` table (i.e. no name association).
+            /// Returns the number of characters removed.
+            /// </summary>
+            public int CleanUnassociatedCharacterData()
+            {
+                var removed = 0;
+                if (string.IsNullOrEmpty(_dbPath)) return removed;
+                try
+                {
+                    lock (_fileLock)
+                    {
+                        EnsureConnection();
+                        if (_connection == null) return removed;
+
+                        // Find all character_ids which have series data but no name association
+                        var idsToRemove = new List<long>();
+                        using (var sel = _connection.CreateCommand())
+                        {
+                            sel.CommandText = "SELECT DISTINCT character_id FROM series WHERE variable=$v AND character_id NOT IN (SELECT character_id FROM character_names)";
+                            sel.Parameters.AddWithValue("$v", "Gil");
+                            using var rdr = sel.ExecuteReader();
+                            while (rdr.Read())
+                            {
+                                var cid = rdr.GetFieldValue<long>(0);
+                                if (cid != 0) idsToRemove.Add(cid);
+                            }
+                        }
+
+                        if (idsToRemove.Count == 0)
+                        {
+                            SetStatus("No unassociated characters found.");
+                            return 0;
+                        }
+
+                        // Delete points and series for those character ids
+                        using (var tx = _connection.BeginTransaction())
+                        {
+                            try
+                            {
+                                foreach (var cid in idsToRemove)
+                                {
+                                    using var cmd = _connection.CreateCommand();
+                                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable=$v AND character_id=$c);";
+                                    cmd.Parameters.AddWithValue("$v", "Gil");
+                                    cmd.Parameters.AddWithValue("$c", cid);
+                                    cmd.ExecuteNonQuery();
+
+                                    cmd.CommandText = "DELETE FROM series WHERE variable=$v AND character_id=$c";
+                                    cmd.ExecuteNonQuery();
+                                    removed++;
+                                }
+
+                                tx.Commit();
+                            }
+                            catch
+                            {
+                                try { tx.Rollback(); } catch { }
+                            }
+                        }
+
+                        // Refresh in-memory available characters state
+                        try { RefreshAvailableCharacters(); } catch { }
+                        SetStatus($"Cleaned {removed} unassociated character(s) from DB.");
+                    }
+                }
+                catch { }
+                return removed;
             }
 
         public string? ExportCsv(ulong? characterId = null)
