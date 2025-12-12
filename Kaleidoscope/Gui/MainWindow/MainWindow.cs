@@ -5,8 +5,7 @@ namespace Kaleidoscope.Gui.MainWindow
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
     using ECommons.Logging;
-    using Kaleidoscope.Gui.TopBar;
-    using Kaleidoscope.Gui.Widgets;
+    
     using OtterGui.Text;
     using Dalamud.Interface;
 
@@ -89,10 +88,7 @@ namespace Kaleidoscope.Gui.MainWindow
             fullscreenButton = fsTb;
             TitleBarButtons.Add(fullscreenButton);
 
-            // TopBar exit requests are handled by the plugin so it can toggle windows.
-            TopBar.OnExitFullscreenRequested = () => { try { this.plugin.RequestExitFullscreen(); } catch { } };
-            // TopBar config requests should open the plugin config UI.
-            TopBar.OnOpenConfigRequested = () => { try { this.plugin.OpenConfigUi(); } catch { } };
+            // TopBar removed: config and exit requests handled by titlebar buttons and plugin commands.
 
             var lockTb = new TitleBarButton
             {
@@ -148,8 +144,7 @@ namespace Kaleidoscope.Gui.MainWindow
             }
             catch { }
 
-            // Force the topbar to animate out
-            TopBar.ForceHide();
+            // TopBar removed: nothing to force-hide.
         }
 
         public override void PreDraw()
@@ -198,21 +193,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
-            // Render a top bar positioned relative to this main window (shows when Alt held).
-            // Keep drawing while the topbar is animating so it can animate out after exit.
-            TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
-            
-            if (TopBar.IsAnimating)
-            {
-                TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
-            }
-
-            // Draw the main content using the shared money tracker component inside the content container.
-            try
-            {
-                using var c = ContentContainer.Begin(0.5f);
-            }
-            catch { }
+            // Main content drawing: the removed ContentContainer and TopBar are not used.
         }
 
         private static string GetDisplayTitle()

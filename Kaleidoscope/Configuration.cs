@@ -28,5 +28,24 @@ namespace Kaleidoscope
         public float ContentGridCellHeightPercent { get; set; } = 25f;
         // When true, content containers should show their grid/edit overlays by default.
         public bool EditMode { get; set; } = false;
+
+        // Layout persistence: allow multiple named layouts each containing a set of components.
+        public List<ContentLayoutState> Layouts { get; set; } = new List<ContentLayoutState>() { new ContentLayoutState() { Name = "Default" } };
+        // Name of the currently active layout. If missing, the first layout will be used.
+        public string ActiveLayoutName { get; set; } = "Default";
+    }
+
+    public class ContentLayoutState
+    {
+        public string Name { get; set; } = string.Empty;
+        public List<ContentComponentState> Components { get; set; } = new List<ContentComponentState>();
+    }
+
+    public class ContentComponentState
+    {
+        public int Col { get; set; }
+        public int Row { get; set; }
+        public int ColSpan { get; set; }
+        public int RowSpan { get; set; }
     }
 }

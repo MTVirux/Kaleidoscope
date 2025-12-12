@@ -1,7 +1,7 @@
 namespace Kaleidoscope
 {
     using Dalamud.Interface.Windowing;
-    using Kaleidoscope.Gui.TopBar;
+    
     using Microsoft.Data.Sqlite;
     
     using Dalamud.Plugin;
@@ -70,21 +70,7 @@ namespace Kaleidoscope
             try { this.Config.ConfigWindowPos = this.WindowConfig.ConfigWindowPos; } catch { }
             try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
 
-            try { Kaleidoscope.Gui.TopBar.TopBar.EditMode = this.Config.EditMode; } catch { }
             this.windowSystem = new WindowSystem("Kaleidoscope");
-            // Ensure toggling edit-mode from the TopBar persists into per-category general.json
-            try
-            {
-                Kaleidoscope.Gui.TopBar.TopBar.OnEditModeChanged = (v) => {
-                    try
-                    {
-                        this.Config.EditMode = v;
-                        this.SaveConfig();
-                    }
-                    catch { }
-                };
-            }
-            catch { }
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
@@ -322,7 +308,6 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 // Hide main and show fullscreen
                 this.mainWindow.IsOpen = false;
                 this.fullscreenWindow.IsOpen = true;
-                TopBar.ForceHide();
             }
             catch { }
         }
@@ -337,7 +322,6 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 this.fullscreenWindow.IsOpen = false;
                 if (this.Config.ExclusiveFullscreen)
                 {
-                    TopBar.ForceHide();
                 }
                 else
                 {
