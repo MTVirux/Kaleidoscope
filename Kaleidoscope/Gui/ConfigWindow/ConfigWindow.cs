@@ -5,6 +5,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using OtterGui.Text;
     using Dalamud.Interface;
+    using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
     public class ConfigWindow : Window, IDisposable
     {
@@ -19,11 +20,13 @@ namespace Kaleidoscope.Gui.ConfigWindow
         private readonly Action? _clearAllData;
         private readonly Func<int>? _cleanUnassociatedCharacters;
         private readonly Func<string?>? _exportCsv;
-        private bool _clearDbOpen = false;
-        private bool _sanitizeDbOpen = false;
-        private int _selectedTab = 0; // 0=General,1=Data,2=Sampler,3=Windows
+        private int _selectedTab = 0; // 0=General,1=Data,2=Sampler
 
         private TitleBarButton? lockButton;
+        private GeneralCategory? generalCategory;
+        private DataCategory? dataCategory;
+        private SamplerCategory? samplerCategory;
+        
 
         public ConfigWindow(Kaleidoscope.KaleidoscopePlugin plugin, Kaleidoscope.Configuration config, Action saveConfig,
             Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null,
@@ -75,6 +78,11 @@ namespace Kaleidoscope.Gui.ConfigWindow
             lockButton = lockTb;
             TitleBarButtons.Add(lockButton);
 
+            // Create category renderers
+            this.generalCategory = new GeneralCategory(this.plugin, this.config, this.saveConfig);
+            this.dataCategory = new DataCategory(this._hasDb, this._clearAllData, this._cleanUnassociatedCharacters, this._exportCsv);
+            this.samplerCategory = new SamplerCategory(this.getSamplerEnabled, this.setSamplerEnabled, this.getSamplerIntervalMs, this.setSamplerIntervalMs, () => this.saveConfig());
+
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
         }
 
@@ -109,12 +117,9 @@ namespace Kaleidoscope.Gui.ConfigWindow
 
             // Sidebar
             ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
-            ImGui.TextUnformatted("Settings");
-            ImGui.Separator();
             if (ImGui.Selectable("General", _selectedTab == 0)) _selectedTab = 0;
             if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
             if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
-            if (ImGui.Selectable("Windows", _selectedTab == 3)) _selectedTab = 3;
             ImGui.EndChild();
 
             ImGui.SameLine();
@@ -123,118 +128,15 @@ namespace Kaleidoscope.Gui.ConfigWindow
             ImGui.BeginChild("##config_content", new System.Numerics.Vector2(fullSize.X - sidebarWidth, 0), false);
             if (_selectedTab == 0)
             {
-                ImGui.TextUnformatted("General");
-                ImGui.Separator();
-                var showOnStart = this.config.ShowOnStart;
-                if (ImGui.Checkbox("Show on start", ref showOnStart))
-                {
-                    this.config.ShowOnStart = showOnStart;
-                    this.saveConfig();
-                }
+                this.generalCategory?.Draw();
             }
             else if (_selectedTab == 1)
             {
-                ImGui.TextUnformatted("Data Management");
-                ImGui.Separator();
-                var hasDb = this._hasDb != null ? this._hasDb() : false;
-                if (ImGui.Button("Export CSV") && hasDb)
-                {
-                    try
-                    {
-                        var fileName = this._exportCsv != null ? this._exportCsv() : null;
-                        if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
-                    }
-                    catch { }
-                }
-
-                if (hasDb)
-                {
-                    if (ImGui.Button("Clear DB"))
-                    {
-                        ImGui.OpenPopup("config_clear_db_confirm");
-                        _clearDbOpen = true;
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.Button("Sanitize DB Data"))
-                    {
-                        ImGui.OpenPopup("config_sanitize_db_confirm");
-                        _sanitizeDbOpen = true;
-                    }
-                }
-
-                if (ImGui.BeginPopupModal("config_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
-                {
-                    ImGui.TextUnformatted("This will permanently delete all saved Money Tracker data from the DB for all characters. Proceed?");
-                    if (ImGui.Button("Yes"))
-                    {
-                        try { this._clearAllData?.Invoke(); } catch { }
-                        ImGui.CloseCurrentPopup();
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.Button("No"))
-                    {
-                        ImGui.CloseCurrentPopup();
-                    }
-                    ImGui.EndPopup();
-                }
-
-                if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
-                {
-                    ImGui.TextUnformatted("This will remove Money Tracker data for characters that do not have a stored name association. Proceed?");
-                    if (ImGui.Button("Yes"))
-                    {
-                        try { this._cleanUnassociatedCharacters?.Invoke(); } catch { }
-                        ImGui.CloseCurrentPopup();
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.Button("No"))
-                    {
-                        ImGui.CloseCurrentPopup();
-                    }
-                    ImGui.EndPopup();
-                }
+                this.dataCategory?.Draw();
             }
             else if (_selectedTab == 2)
             {
-                ImGui.TextUnformatted("Sampler");
-                ImGui.Separator();
-                if (this.getSamplerEnabled != null && this.setSamplerEnabled != null)
-                {
-                    var enabled = this.getSamplerEnabled();
-                    if (ImGui.Checkbox("Enable sampler", ref enabled))
-                    {
-                        this.setSamplerEnabled(enabled);
-                        this.saveConfig();
-                    }
-                }
-
-                if (this.getSamplerIntervalMs != null && this.setSamplerIntervalMs != null)
-                {
-                    var interval = this.getSamplerIntervalMs();
-                    if (ImGui.InputInt("Sampler interval (ms)", ref interval))
-                    {
-                        if (interval < 1) interval = 1;
-                        this.setSamplerIntervalMs(interval);
-                        this.saveConfig();
-                    }
-                }
-            }
-            else if (_selectedTab == 3)
-            {
-                ImGui.TextUnformatted("Windows");
-                ImGui.Separator();
-                var pinMain = this.config.PinMainWindow;
-                if (ImGui.Checkbox("Pin main window", ref pinMain))
-                {
-                    this.config.PinMainWindow = pinMain;
-                    this.saveConfig();
-                }
-                var pinConfig = this.config.PinConfigWindow;
-                if (ImGui.Checkbox("Pin config window", ref pinConfig))
-                {
-                    this.config.PinConfigWindow = pinConfig;
-                    this.saveConfig();
-                }
+                this.samplerCategory?.Draw();
             }
 
             ImGui.EndChild();
