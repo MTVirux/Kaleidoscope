@@ -18,7 +18,7 @@ namespace Kaleidoscope
         private System.Threading.Timer? _samplerTimer;
         private string? _dbPath;
         private volatile bool _samplerEnabled = true;
-        private int _samplerIntervalSeconds = 60;
+        private int _samplerIntervalSeconds = 1; // default to 1 second
         private readonly Kaleidoscope.Gui.ConfigWindow.ConfigWindow configWindow;
 
         public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
@@ -40,12 +40,14 @@ namespace Kaleidoscope
             var saveDir = this.pluginInterface.GetPluginConfigDirectory();
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
+            // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
             this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(_dbPath,
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
-                () => _samplerIntervalSeconds,
-                sec => {
-                    if (sec <= 0) sec = 1;
+                () => _samplerIntervalSeconds * 1000,
+                ms => {
+                    if (ms <= 0) ms = 1;
+                    var sec = (ms + 999) / 1000; // convert ms to seconds, rounding up
                     _samplerIntervalSeconds = sec;
                     // Recreate the timer with the new interval if it's enabled
                     _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
@@ -122,7 +124,19 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 }
                 catch { }
             }, null, TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-            this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow();
+            this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow(
+                this.Config,
+                () => this.pluginInterface.SavePluginConfig(this.Config),
+                () => _samplerEnabled,
+                enabled => _samplerEnabled = enabled,
+                () => _samplerIntervalSeconds * 1000,
+                ms => {
+                    if (ms <= 0) ms = 1;
+                    var sec = (ms + 999) / 1000;
+                    _samplerIntervalSeconds = sec;
+                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
+                }
+            );
 
             this.windowSystem.AddWindow(this.mainWindow);
             this.windowSystem.AddWindow(this.configWindow);

@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly MoneyTrackerHelper _helper;
         private DateTime _lastSampleTime = DateTime.MinValue;
-        private int _sampleIntervalMs = 1000; // sample every second
+        private int _sampleIntervalMs = 1000; // sample every 1000 milliseconds (default 1s)
 
         private readonly string? _dbPath;
         private Func<bool>? _getSamplerEnabled;
@@ -26,46 +26,23 @@ namespace Kaleidoscope.Gui.MainWindow
         public MoneyTrackerComponent(string? dbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null)
         {
             _dbPath = dbPath;
-            // create helper that handles all gil management and persistence
             _helper = new MoneyTrackerHelper(_dbPath, 200, 100000f);
             _getSamplerEnabled = getSamplerEnabled;
             _setSamplerEnabled = setSamplerEnabled;
             _getSamplerInterval = getSamplerInterval;
             _setSamplerInterval = setSamplerInterval;
-            // helper already ensures connection and loads saved data
         }
 
-        // local UI functions call into the helper.
-
-        // moved to helper
-        // EnsureConnection is handled by helper
-
-        // TrySave is handled by helper
-
-        // TryLoadSaved handled by helper
-
-        // RefreshAvailableCharacters is handled by helper
-
-        // LoadForCharacter handled by helper
 
 
         public void Draw()
         {
-            ImGui.TextUnformatted("Gil (live)");
-
-            // Sampler controls (if provided by the plugin)
             if (_getSamplerEnabled != null && _setSamplerEnabled != null)
             {
-                var enabled = _getSamplerEnabled();
-                if (ImGui.Checkbox("Enable Sampling", ref enabled))
-                {
-                    _setSamplerEnabled(enabled);
-                }
-                ImGui.SameLine();
                 if (_getSamplerInterval != null && _setSamplerInterval != null)
                 {
                     var interval = _getSamplerInterval();
-                    if (ImGui.InputInt("Sampler Interval (s)", ref interval))
+                    if (ImGui.InputInt("Sample Interval (ms)", ref interval))
                     {
                         if (interval < 1) interval = 1;
                         _setSamplerInterval(interval);
@@ -76,7 +53,8 @@ namespace Kaleidoscope.Gui.MainWindow
             // Try to sample from the game's currency manager at most once per _sampleIntervalMs.
             try
             {
-                if (_getSamplerInterval != null) _sampleIntervalMs = Math.Max(1, _getSamplerInterval()) * 1000;
+                // _getSamplerInterval() now returns milliseconds from the UI/plugin wrapper
+                if (_getSamplerInterval != null) _sampleIntervalMs = Math.Max(1, _getSamplerInterval());
                 var now = DateTime.UtcNow;
                 if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
                 {
