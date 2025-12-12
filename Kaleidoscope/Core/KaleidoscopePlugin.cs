@@ -12,6 +12,10 @@ namespace Kaleidoscope
         public string Name => "Crystal Terror";
 
         public Kaleidoscope.Configuration Config { get; private set; }
+        public Kaleidoscope.Config.ConfigManager ConfigManager { get; private set; }
+        public Kaleidoscope.Config.GeneralConfig GeneralConfig { get; private set; }
+        public Kaleidoscope.Config.SamplerConfig SamplerConfig { get; private set; }
+        public Kaleidoscope.Config.WindowConfig WindowConfig { get; private set; }
 
         private readonly IDalamudPluginInterface pluginInterface;
         private readonly WindowSystem windowSystem;
@@ -39,8 +43,31 @@ namespace Kaleidoscope
             }
             this.Config = cfg;
 
-            this.windowSystem = new WindowSystem("Kaleidoscope");
+            // Create per-category config manager and load per-category files. Keep the single plugin config as compatibility
+            // and copy values to/from per-category objects so runtime code continues to read from `this.Config`.
             var saveDir = this.pluginInterface.GetPluginConfigDirectory();
+            this.ConfigManager = new Kaleidoscope.Config.ConfigManager(saveDir);
+            this.GeneralConfig = this.ConfigManager.LoadOrCreate("general.json", () => new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart });
+            this.SamplerConfig = this.ConfigManager.LoadOrCreate("sampler.json", () => new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 });
+            this.WindowConfig = this.ConfigManager.LoadOrCreate("windows.json", () => new Kaleidoscope.Config.WindowConfig {
+                PinMainWindow = this.Config.PinMainWindow,
+                PinConfigWindow = this.Config.PinConfigWindow,
+                MainWindowPos = this.Config.MainWindowPos,
+                MainWindowSize = this.Config.MainWindowSize,
+                ConfigWindowPos = this.Config.ConfigWindowPos,
+                ConfigWindowSize = this.Config.ConfigWindowSize
+            });
+
+            // Copy per-file values into the runtime single config for compatibility with existing code
+            try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
+            try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
+            try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
+            try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
+            try { this.Config.MainWindowSize = this.WindowConfig.MainWindowSize; } catch { }
+            try { this.Config.ConfigWindowPos = this.WindowConfig.ConfigWindowPos; } catch { }
+            try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
+
+            this.windowSystem = new WindowSystem("Kaleidoscope");
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
@@ -204,6 +231,27 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
         public void SaveConfig()
         {
             try { this.pluginInterface.SavePluginConfig(this.Config); } catch { }
+            // Also persist per-category files by copying values from the runtime config into files
+            try
+            {
+                // General
+                var g = new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart };
+                this.ConfigManager.Save("general.json", g);
+                // Sampler
+                var s = new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = this._samplerEnabled, SamplerIntervalMs = this._samplerIntervalSeconds * 1000 };
+                this.ConfigManager.Save("sampler.json", s);
+                // Windows
+                var w = new Kaleidoscope.Config.WindowConfig {
+                    PinMainWindow = this.Config.PinMainWindow,
+                    PinConfigWindow = this.Config.PinConfigWindow,
+                    MainWindowPos = this.Config.MainWindowPos,
+                    MainWindowSize = this.Config.MainWindowSize,
+                    ConfigWindowPos = this.Config.ConfigWindowPos,
+                    ConfigWindowSize = this.Config.ConfigWindowSize
+                };
+                this.ConfigManager.Save("windows.json", w);
+            }
+            catch { }
         }
 
         public void Dispose()
