@@ -2,6 +2,7 @@ namespace Kaleidoscope.Gui.TopBar
 {
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
+    using ECommons.DalamudServices;
 
     public static class TopBar
     {
@@ -12,6 +13,8 @@ namespace Kaleidoscope.Gui.TopBar
         private const float TransitionDuration = 0.18f;
         // Optional callback that will be invoked when the topbar's exit-fullscreen button is pressed.
         public static Action? OnExitFullscreenRequested;
+        // Optional callback invoked when the topbar's config button is pressed.
+        public static Action? OnOpenConfigRequested;
         // Force the bar to hide (used by MainWindow when exiting fullscreen so the bar can animate out)
         private static bool _forceHide = false;
 
@@ -98,6 +101,25 @@ namespace Kaleidoscope.Gui.TopBar
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
                 }
             }
+
+            // Config button to the left of the exit button
+            var cfgBtnMin = new System.Numerics.Vector2(btnMin.X - padding - btnSize.X, btnMin.Y);
+            var cfgBtnMax = cfgBtnMin + btnSize;
+            var cfgBg = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.12f * eased));
+            drawList.AddRectFilled(cfgBtnMin, cfgBtnMax, cfgBg, 4f);
+            var cfgText = "⚙";
+            var cfgTxtPos = new System.Numerics.Vector2(cfgBtnMin.X + (btnSize.X - ImGui.CalcTextSize(cfgText).X) / 2, cfgBtnMin.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
+            drawList.AddText(cfgTxtPos, txtCol, cfgText);
+
+            var cfgHovered = mouse.X >= cfgBtnMin.X && mouse.Y >= cfgBtnMin.Y && mouse.X <= cfgBtnMax.X && mouse.Y <= cfgBtnMax.Y;
+            if (cfgHovered)
+            {
+                ImGui.SetTooltip("Open settings");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    try { OnOpenConfigRequested?.Invoke(); } catch { }
+                }
+            }
         }
 
         // Draw relative to a parent window position/size. The bar will be positioned
@@ -165,6 +187,27 @@ namespace Kaleidoscope.Gui.TopBar
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
+                }
+            }
+
+            // Config button to the left of the exit button
+            var cfgBtnMin2 = new System.Numerics.Vector2(btnMin.X - padding - btnSize.X, btnMin.Y);
+            var cfgBtnMax2 = cfgBtnMin2 + btnSize;
+            var cfgBg2 = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.12f * eased));
+            drawList.AddRectFilled(cfgBtnMin2, cfgBtnMax2, cfgBg2, 4f);
+            var cfgText2 = "⚙";
+            var cfgTxtSize2 = ImGui.CalcTextSize(cfgText2);
+            var cfgTxtPos2 = new System.Numerics.Vector2(cfgBtnMin2.X + (btnSize.X - cfgTxtSize2.X) / 2, cfgBtnMin2.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
+            drawList.AddText(cfgTxtPos2, txtCol, cfgText2);
+
+            var mouse2 = ImGui.GetMousePos();
+            var cfgHovered2 = mouse2.X >= cfgBtnMin2.X && mouse2.Y >= cfgBtnMin2.Y && mouse2.X <= cfgBtnMax2.X && mouse2.Y <= cfgBtnMax2.Y;
+            if (cfgHovered2)
+            {
+                ImGui.SetTooltip("Open settings");
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    try { OnOpenConfigRequested?.Invoke(); } catch { }
                 }
             }
 
