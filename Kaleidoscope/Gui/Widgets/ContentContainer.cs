@@ -69,6 +69,8 @@ public static class ContentContainer
             // We draw the grid overlay manually in Dispose so the borders don't collide.
             var tableFlags = ImGuiTableFlags.None;
             var table = ImRaii.Table(tableId, cols, tableFlags, innerSize);
+            // Publish current grid info so components and interactions can use it.
+            try { ContentComponentManager.SetActiveGrid(innerPos, innerSize, cols, (int)Math.Max(1, (int)Math.Floor(100f / Math.Max(1f, cellH))), cellW, cellH); } catch { }
             try
             {
                 // Set initial column widths based on the configured percent
@@ -164,6 +166,8 @@ internal sealed class ContentContainerEnd : ImRaii.IEndObject
                 var cellWpx = _size.X / (float)cols;
                 var cellHpx = _size.Y / (float)rows;
                 var thicknessGrid = Math.Max(1f, ImGui.GetStyle().ChildBorderSize * 0.7f);
+                // Let the component manager draw any components and handle interactions
+                try { ContentComponentManager.UpdateAndDraw(_pos, _size, cols, rows, cellWpx, cellHpx); } catch { }
 
                 // Vertical lines
                 for (var i = 1; i < cols; ++i)
@@ -207,6 +211,8 @@ internal sealed class ContentContainerEnd : ImRaii.IEndObject
             }
         }
         catch { }
+
+        try { ContentComponentManager.ClearActiveGrid(); } catch { }
 
         _disposed = true;
     }
