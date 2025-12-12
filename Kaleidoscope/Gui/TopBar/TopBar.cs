@@ -76,15 +76,16 @@ namespace Kaleidoscope.Gui.TopBar
             drawList.AddRectFilled(rectMin, rectMax, bgCol, 0f);
             drawList.AddText(textPos, textCol, "Kaleidoscope");
 
-            // Add an exit-fullscreen button on the right side when fully or partially visible
+            // Add an exit-fullscreen button on the right side when fully or partially visible.
+            // Use a plain ASCII 'X' and remove the separate config button so titlebar uses regular text only.
             var btnSize = new System.Numerics.Vector2(28f, 20f);
             var padding = 8f;
             var btnMin = new System.Numerics.Vector2(rectMax.X - padding - btnSize.X, rectMin.Y + (BarHeight - btnSize.Y) / 2);
             var btnMax = btnMin + btnSize;
             var btnBg = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.15f * eased));
             drawList.AddRectFilled(btnMin, btnMax, btnBg, 4f);
-            // draw an X or icon center
-            var xText = "✕";
+            // draw a plain 'X' in the center
+            var xText = "X";
             var txtCol = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(baseText.X, baseText.Y, baseText.Z, baseText.W * eased));
             var txtPos = new System.Numerics.Vector2(btnMin.X + (btnSize.X - ImGui.CalcTextSize(xText).X) / 2, btnMin.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
             drawList.AddText(txtPos, txtCol, xText);
@@ -97,27 +98,7 @@ namespace Kaleidoscope.Gui.TopBar
                 ImGui.SetTooltip("Exit fullscreen");
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
-                    // Request exit; let MainWindow handle actual state change and force-hide
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
-                }
-            }
-
-            // Config button to the left of the exit button
-            var cfgBtnMin = new System.Numerics.Vector2(btnMin.X - padding - btnSize.X, btnMin.Y);
-            var cfgBtnMax = cfgBtnMin + btnSize;
-            var cfgBg = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.12f * eased));
-            drawList.AddRectFilled(cfgBtnMin, cfgBtnMax, cfgBg, 4f);
-            var cfgText = "⚙";
-            var cfgTxtPos = new System.Numerics.Vector2(cfgBtnMin.X + (btnSize.X - ImGui.CalcTextSize(cfgText).X) / 2, cfgBtnMin.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
-            drawList.AddText(cfgTxtPos, txtCol, cfgText);
-
-            var cfgHovered = mouse.X >= cfgBtnMin.X && mouse.Y >= cfgBtnMin.Y && mouse.X <= cfgBtnMax.X && mouse.Y <= cfgBtnMax.Y;
-            if (cfgHovered)
-            {
-                ImGui.SetTooltip("Open settings");
-                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                {
-                    try { OnOpenConfigRequested?.Invoke(); } catch { }
                 }
             }
         }
@@ -173,7 +154,7 @@ namespace Kaleidoscope.Gui.TopBar
             var btnMax = btnMin + btnSize;
             var btnBg = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.15f * eased));
             drawList.AddRectFilled(btnMin, btnMax, btnBg, 4f);
-            var xText = "✕";
+            var xText = "X";
             var txtCol = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(baseText.X, baseText.Y, baseText.Z, baseText.W * eased));
             var txtSize = ImGui.CalcTextSize(xText);
             var txtPos = new System.Numerics.Vector2(btnMin.X + (btnSize.X - txtSize.X) / 2, btnMin.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
@@ -187,27 +168,6 @@ namespace Kaleidoscope.Gui.TopBar
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
-                }
-            }
-
-            // Config button to the left of the exit button
-            var cfgBtnMin2 = new System.Numerics.Vector2(btnMin.X - padding - btnSize.X, btnMin.Y);
-            var cfgBtnMax2 = cfgBtnMin2 + btnSize;
-            var cfgBg2 = ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, 0.12f * eased));
-            drawList.AddRectFilled(cfgBtnMin2, cfgBtnMax2, cfgBg2, 4f);
-            var cfgText2 = "⚙";
-            var cfgTxtSize2 = ImGui.CalcTextSize(cfgText2);
-            var cfgTxtPos2 = new System.Numerics.Vector2(cfgBtnMin2.X + (btnSize.X - cfgTxtSize2.X) / 2, cfgBtnMin2.Y + (btnSize.Y - ImGui.GetFontSize()) / 2);
-            drawList.AddText(cfgTxtPos2, txtCol, cfgText2);
-
-            var mouse2 = ImGui.GetMousePos();
-            var cfgHovered2 = mouse2.X >= cfgBtnMin2.X && mouse2.Y >= cfgBtnMin2.Y && mouse2.X <= cfgBtnMax2.X && mouse2.Y <= cfgBtnMax2.Y;
-            if (cfgHovered2)
-            {
-                ImGui.SetTooltip("Open settings");
-                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                {
-                    try { OnOpenConfigRequested?.Invoke(); } catch { }
                 }
             }
 
