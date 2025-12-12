@@ -2,6 +2,7 @@ namespace Kaleidoscope
 {
     using System;
     using Dalamud.Interface.Windowing;
+    using Kaleidoscope.Gui.TopBar;
     using Microsoft.Data.Sqlite;
     using System.IO;
     using Dalamud.Plugin;
@@ -15,6 +16,8 @@ namespace Kaleidoscope
         private readonly IDalamudPluginInterface pluginInterface;
         private readonly WindowSystem windowSystem;
         private readonly Kaleidoscope.Gui.MainWindow.MainWindow mainWindow;
+        private readonly Kaleidoscope.Gui.MainWindow.FullscreenWindow fullscreenWindow;
+        private readonly Kaleidoscope.Gui.MainWindow.MoneyTrackerComponent moneyTrackerComponent;
         private System.Threading.Timer? _samplerTimer;
         private string? _dbPath;
         private volatile bool _samplerEnabled = true;
@@ -41,7 +44,8 @@ namespace Kaleidoscope
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
-            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, _dbPath,
+            // Create a shared MoneyTrackerComponent and provide it to both main and fullscreen windows
+            this.moneyTrackerComponent = new Kaleidoscope.Gui.MainWindow.MoneyTrackerComponent(_dbPath,
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
                 () => _samplerIntervalSeconds * 1000,
@@ -53,6 +57,20 @@ namespace Kaleidoscope
                     _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
                 }
             );
+
+            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, this.moneyTrackerComponent, _dbPath,
+                () => _samplerEnabled,
+                enabled => _samplerEnabled = enabled,
+                () => _samplerIntervalSeconds * 1000,
+                ms => {
+                    if (ms <= 0) ms = 1;
+                    var sec = (ms + 999) / 1000; // convert ms to seconds, rounding up
+                    _samplerIntervalSeconds = sec;
+                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
+                }
+            );
+
+            this.fullscreenWindow = new Kaleidoscope.Gui.MainWindow.FullscreenWindow(this, this.moneyTrackerComponent);
             // Start a basic sampler that uses the same storage to record gil periodically while the plugin runs.
                 _samplerTimer = new System.Threading.Timer(_ =>
             {
@@ -162,10 +180,14 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             );
 
             this.windowSystem.AddWindow(this.mainWindow);
+            this.windowSystem.AddWindow(this.fullscreenWindow);
             this.windowSystem.AddWindow(this.configWindow);
 
             // Open the main window by default when the plugin loads
             this.mainWindow.IsOpen = true;
+
+            // Ensure fullscreen window starts closed
+            this.fullscreenWindow.IsOpen = false;
 
             // Register chat/command handlers to open the main UI
             try
@@ -199,9 +221,38 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             if (this.mainWindow is IDisposable mw)
                 mw.Dispose();
 
+            if (this.fullscreenWindow is IDisposable fw)
+                fw.Dispose();
+
             if (this.configWindow is IDisposable cw)
                 cw.Dispose();
             _samplerTimer?.Dispose();
+        }
+
+        // Called by MainWindow to request showing the fullscreen window. This hides the main window.
+        public void RequestShowFullscreen()
+        {
+            try
+            {
+                // Hide main and show fullscreen
+                this.mainWindow.IsOpen = false;
+                this.fullscreenWindow.IsOpen = true;
+                TopBar.ForceHide();
+            }
+            catch { }
+        }
+
+        // Called by TopBar/FullscreenWindow to request exiting fullscreen and restoring main window
+        public void RequestExitFullscreen()
+        {
+            try
+            {
+                // Close fullscreen and reopen main
+                this.fullscreenWindow.IsOpen = false;
+                this.mainWindow.IsOpen = true;
+                try { this.mainWindow.ExitFullscreen(); } catch { }
+            }
+            catch { }
         }
 
         private void DrawUi() => this.windowSystem.Draw();

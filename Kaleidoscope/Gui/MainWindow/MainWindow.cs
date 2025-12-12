@@ -5,12 +5,16 @@ namespace Kaleidoscope.Gui.MainWindow
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
+    using Kaleidoscope.Gui.TopBar;
     using OtterGui.Text;
     using Dalamud.Interface;
 
         public class MainWindow : Window
     {
         private readonly MoneyTrackerComponent _moneyTracker;
+            // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
+            private System.Numerics.Vector2 _savedPos = new System.Numerics.Vector2(100, 100);
+            private System.Numerics.Vector2 _savedSize = new System.Numerics.Vector2(800, 600);
             // Draggable container state
             private readonly System.Numerics.Vector2[] _containerPos = new System.Numerics.Vector2[4];
             private readonly System.Numerics.Vector2[] _containerSize = new System.Numerics.Vector2[4];
@@ -41,14 +45,13 @@ namespace Kaleidoscope.Gui.MainWindow
         private readonly Kaleidoscope.KaleidoscopePlugin plugin;
         private TitleBarButton? lockButton;
         private TitleBarButton? fullscreenButton;
-        private bool _isFullscreen = false;
 
-        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, MoneyTrackerComponent sharedMoneyTracker, string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
             this.plugin = plugin;
             // Do not set `Size` here to avoid forcing a window size each frame.
             // The saved size is applied only when the user pins the window (saved on pin action).
-            _moneyTracker = new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
+            _moneyTracker = sharedMoneyTracker ?? new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
 
             // Create and add title bar buttons
             TitleBarButtons.Add(new TitleBarButton
@@ -64,17 +67,26 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 Icon = FontAwesomeIcon.ArrowsUpDownLeftRight,
                 IconOffset = new System.Numerics.Vector2(2, 2),
-                ShowTooltip = () => ImGui.SetTooltip(_isFullscreen ? "Exit fullscreen" : "Enter fullscreen"),
+                ShowTooltip = () => ImGui.SetTooltip("Toggle fullscreen"),
             };
             fsTb.Click = (m) =>
             {
-                if (m == ImGuiMouseButton.Left)
+                if (m != ImGuiMouseButton.Left) return;
+
+                // Enter fullscreen: save current window pos/size and ask the plugin to show the fullscreen window.
+                try
                 {
-                    _isFullscreen = !_isFullscreen;
+                    _savedPos = ImGui.GetWindowPos();
+                    _savedSize = ImGui.GetWindowSize();
+                    try { this.plugin.RequestShowFullscreen(); } catch { }
                 }
+                catch { }
             };
             fullscreenButton = fsTb;
             TitleBarButtons.Add(fullscreenButton);
+
+            // TopBar exit requests are handled by the plugin so it can toggle windows.
+            TopBar.OnExitFullscreenRequested = () => { try { this.plugin.RequestExitFullscreen(); } catch { } };
 
             var lockTb = new TitleBarButton
             {
@@ -109,35 +121,45 @@ namespace Kaleidoscope.Gui.MainWindow
             TitleBarButtons.Add(lockButton);
         }
 
+        // Expose an explicit exit fullscreen helper so TopBar can call it.
+        public void ExitFullscreen()
+        {
+            // Restore saved pos/size when returning from fullscreen.
+            try
+            {
+                ImGui.SetNextWindowPos(_savedPos);
+                ImGui.SetNextWindowSize(_savedSize);
+                try
+                {
+                    if (this.plugin.Config.PinMainWindow)
+                    {
+                        this.plugin.Config.MainWindowPos = _savedPos;
+                        this.plugin.Config.MainWindowSize = _savedSize;
+                        this.plugin.SaveConfig();
+                    }
+                }
+                catch { }
+            }
+            catch { }
+
+            // Force the topbar to animate out
+            TopBar.ForceHide();
+        }
+
         public override void PreDraw()
         {
             // Ensure the window is resizable in all states
             Flags &= ~ImGuiWindowFlags.NoResize;
-
-            // Fullscreen handling: when enabled, force window to cover the display and disable move/resize
-            if (_isFullscreen)
+            // Ensure titlebar is visible and normal behavior when not in the separate fullscreen window.
+            Flags &= ~ImGuiWindowFlags.NoTitleBar;
+            if (this.plugin.Config.PinMainWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove;
-                Flags |= ImGuiWindowFlags.NoResize;
-                try
-                {
-                    var io = ImGui.GetIO();
-                    ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
-                    ImGui.SetNextWindowSize(io.DisplaySize);
-                }
-                catch { }
+                ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
             }
             else
             {
-                if (this.plugin.Config.PinMainWindow)
-                {
-                    Flags |= ImGuiWindowFlags.NoMove;
-                    ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
-                }
-                else
-                {
-                    Flags &= ~ImGuiWindowFlags.NoMove;
-                }
+                Flags &= ~ImGuiWindowFlags.NoMove;
             }
 
             // Ensure titlebar button icon reflects current configuration every frame
@@ -149,7 +171,15 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
-            
+            // Render a top bar positioned relative to this main window (shows when Alt held).
+            // Keep drawing while the topbar is animating so it can animate out after exit.
+            if (TopBar.IsAnimating)
+            {
+                TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
+            }
+
+            // Draw the main content using the shared money tracker component
+            //try { _moneyTracker?.Draw(); } catch { }
         }
 
         private static string GetDisplayTitle()

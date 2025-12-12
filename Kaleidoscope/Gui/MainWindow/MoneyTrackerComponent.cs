@@ -11,7 +11,7 @@ using Kaleidoscope.Libs;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
-    internal class MoneyTrackerComponent
+    public class MoneyTrackerComponent
     {
         private readonly MoneyTrackerHelper _helper;
         private readonly CharacterPicker _characterPicker;
