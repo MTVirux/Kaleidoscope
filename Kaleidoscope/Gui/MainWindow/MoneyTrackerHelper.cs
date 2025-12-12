@@ -27,7 +27,8 @@ namespace Kaleidoscope.Gui.MainWindow
 
         private void SetStatus(string message)
         {
-            LastStatusMessage = $"{DateTime.UtcNow:O} - {message}";
+            // Status messages removed per request: do not record or display messages.
+            // Intentionally left blank to suppress any runtime status output.
         }
 
         public MoneyTrackerHelper(string? dbPath, int maxSamples = 200, float startingValue = 100000f)

@@ -4,6 +4,7 @@ namespace Kaleidoscope.Gui.MainWindow
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
     using Kaleidoscope.Gui.TopBar;
+    using Kaleidoscope.Gui.Widgets;
 
     public class FullscreenWindow : Window
     {
@@ -39,7 +40,13 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             // Draw topbar on fullscreen window so the exit button is present
             try { TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize()); } catch { }
-
+            // Draw the fullscreen content inside the content container.
+            try
+            {
+                using var c = ContentContainer.Begin(5f);
+                _moneyTracker?.Draw();
+            }
+            catch { }
         }
     }
 }

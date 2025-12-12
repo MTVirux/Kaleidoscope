@@ -6,6 +6,7 @@ namespace Kaleidoscope.Gui.MainWindow
     using Dalamud.Bindings.ImGui;
     using ECommons.Logging;
     using Kaleidoscope.Gui.TopBar;
+    using Kaleidoscope.Gui.Widgets;
     using OtterGui.Text;
     using Dalamud.Interface;
 
@@ -206,8 +207,12 @@ namespace Kaleidoscope.Gui.MainWindow
                 TopBar.Draw(ImGui.GetWindowPos(), ImGui.GetWindowSize());
             }
 
-            // Draw the main content using the shared money tracker component
-            //try { _moneyTracker?.Draw(); } catch { }
+            // Draw the main content using the shared money tracker component inside the content container.
+            try
+            {
+                using var c = ContentContainer.Begin(0.5f);
+            }
+            catch { }
         }
 
         private static string GetDisplayTitle()
