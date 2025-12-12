@@ -36,10 +36,37 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
-            ImGui.TextUnformatted("Main UI");
-            ImGui.Separator();
-            // DB buttons moved to Config Window (Data Management)
-            _moneyTracker.Draw();
+            // Replace main content with four outlined containers stacked vertically.
+            // They occupy the available content region height in percentages: 15%, 5%, 60%, 20%.
+            // Use the current window size as a reliable fallback for layout calculations.
+            var winSize = ImGui.GetWindowSize();
+            var width = winSize.X;
+            var totalHeight = winSize.Y;
+
+            // Ensure a sane minimum height (avoid referencing nullable external Size bindings)
+            if (totalHeight <= 0f)
+            {
+                totalHeight = 1f;
+            }
+
+            var percents = new float[] { 0.15f, 0.05f, 0.60f, 0.20f };
+
+            for (var i = 0; i < percents.Length; ++i)
+            {
+                var h = MathF.Max(1f, totalHeight * percents[i]);
+                var childId = $"##kaleido_container_{i}";
+                ImGui.BeginChild(childId, new System.Numerics.Vector2(width, h), true);
+
+                // Optional label (top-left) inside the container
+                var label = $"Container {i + 1} - {percents[i] * 100:0}%";
+                ImGui.TextUnformatted(label);
+
+                ImGui.EndChild();
+
+                // Add a small spacing between containers to visually separate them
+                if (i < percents.Length - 1)
+                    ImGui.Spacing();
+            }
         }
 
         private static string GetDisplayTitle()
