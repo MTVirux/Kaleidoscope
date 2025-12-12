@@ -38,6 +38,16 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public bool HasDb => !string.IsNullOrEmpty(_dbPath);
 
+        public void ClearAllData()
+        {
+            try { _helper.ClearAllData(); } catch { }
+        }
+
+        public string? ExportCsv()
+        {
+            try { return _helper.ExportCsv(); } catch { return null; }
+        }
+
         public int CleanUnassociatedCharacters()
         {
             try
@@ -69,29 +79,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 // ignore sampling errors
             }
 
-            if (!string.IsNullOrEmpty(_dbPath))
-            {
-                if (ImGui.Button("Clear DB"))
-            {
-                ImGui.OpenPopup("moneytracker_clear_db_confirm");
-                _clearDbOpen = true;
-            }
-            }
-            if (ImGui.BeginPopupModal("moneytracker_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
-            {
-                ImGui.TextUnformatted("This will permanently delete all saved Money Tracker data from the DB for all characters. Proceed?");
-                if (ImGui.Button("Yes"))
-                {
-                    _helper.ClearAllData();
-                    ImGui.CloseCurrentPopup();
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("No"))
-                {
-                    ImGui.CloseCurrentPopup();
-                }
-                ImGui.EndPopup();
-            }
+            // DB buttons moved to Config Window (Data Management)
 
             if (_helper.AvailableCharacters.Count > 0)
             {
@@ -295,15 +283,6 @@ namespace Kaleidoscope.Gui.MainWindow
 #endif
 
             ImGui.Separator();
-            if (ImGui.Button("Export CSV") && !string.IsNullOrEmpty(_dbPath))
-            {
-                try
-                {
-                    var fileName = _helper.ExportCsv();
-                    // last message is stored on helper
-                }
-                catch { }
-            }
             // we don't show an else here — the previous block already shows a 'No data' message if graph empty
             if (!string.IsNullOrEmpty(_helper.LastStatusMessage))
             {

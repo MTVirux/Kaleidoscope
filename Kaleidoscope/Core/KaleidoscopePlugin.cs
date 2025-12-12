@@ -153,7 +153,11 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     var sec = (ms + 999) / 1000;
                     _samplerIntervalSeconds = sec;
                     _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-                }
+                },
+                () => this.mainWindow.HasDb,
+                () => { try { this.mainWindow.ClearAllData(); } catch { } },
+                () => { try { return this.mainWindow.CleanUnassociatedCharacters(); } catch { return 0; } },
+                () => { try { return this.mainWindow.ExportCsv(); } catch { return null; } }
             );
 
             this.windowSystem.AddWindow(this.mainWindow);
