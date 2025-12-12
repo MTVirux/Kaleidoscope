@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public class MainWindow : Window
     {
-        private readonly MoneyTrackerComponent _moneyTracker;
+        private readonly GilTrackerComponent _moneyTracker;
             // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
             private System.Numerics.Vector2 _savedPos = new System.Numerics.Vector2(100, 100);
             private System.Numerics.Vector2 _savedSize = new System.Numerics.Vector2(800, 600);
@@ -46,12 +46,12 @@ namespace Kaleidoscope.Gui.MainWindow
         private TitleBarButton? lockButton;
         private TitleBarButton? fullscreenButton;
 
-        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, MoneyTrackerComponent sharedMoneyTracker, string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, GilTrackerComponent sharedMoneyTracker, string? gilTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
             this.plugin = plugin;
             // Do not set `Size` here to avoid forcing a window size each frame.
             // The saved size is applied only when the user pins the window (saved on pin action).
-            _moneyTracker = sharedMoneyTracker ?? new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
+            _moneyTracker = sharedMoneyTracker ?? new GilTrackerComponent(gilTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
 
             // Enforce a sensible minimum size for the main window
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 120) };

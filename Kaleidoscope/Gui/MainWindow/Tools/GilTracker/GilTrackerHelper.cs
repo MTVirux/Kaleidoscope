@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
-    internal class MoneyTrackerHelper
+    internal class GilTrackerHelper
     {
         // Track the last seen local content id so we only auto-switch when
         // the active character actually changes.
@@ -31,7 +31,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Intentionally left blank to suppress any runtime status output.
         }
 
-        public MoneyTrackerHelper(string? dbPath, int maxSamples = 200, float startingValue = 100000f)
+        public GilTrackerHelper(string? dbPath, int maxSamples = 200, float startingValue = 100000f)
         {
             _dbPath = dbPath;
             _maxSamples = maxSamples;
@@ -558,7 +558,7 @@ ORDER BY p.timestamp ASC";
                         _samples.Clear();
                         AvailableCharacters.Clear();
                         SelectedCharacterId = 0;
-                        SetStatus("Cleared Money Tracker DB.");
+                        SetStatus("Cleared GilTracker DB.");
                     }
                 }
                 catch { }
@@ -665,7 +665,7 @@ ORDER BY p.timestamp ASC";
                 // Try to include character name in the filename if available to make exported files easier to identify.
                 var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
                 var safeName = string.IsNullOrEmpty(name) ? cid.ToString() : string.Concat(name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-')).Replace(' ', '_');
-                var fileName = Path.Combine(saveDir, $"moneytracker-gil-{safeName}-{cid}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv");
+                var fileName = Path.Combine(saveDir, $"giltracker-gil-{safeName}-{cid}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv");
                 File.WriteAllText(fileName, sb.ToString());
                 SetStatus($"Exported to {fileName}");
                 return fileName;

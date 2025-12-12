@@ -6,12 +6,12 @@ namespace Kaleidoscope.Gui.MainWindow
 {
     internal class CharacterPicker
     {
-        private readonly MoneyTrackerHelper _helper;
+        private readonly GilTrackerHelper _helper;
 #if DEBUG
         private bool _namesPopupOpen = false;
 #endif
 
-        public CharacterPicker(MoneyTrackerHelper helper)
+        public CharacterPicker(GilTrackerHelper helper)
         {
             _helper = helper ?? throw new ArgumentNullException(nameof(helper));
         }
@@ -44,7 +44,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                     {
-                        ImGui.OpenPopup("moneytracker_names_popup");
+                        ImGui.OpenPopup("giltracker_names_popup");
                         _namesPopupOpen = true;
                     }
                 }
@@ -53,7 +53,7 @@ namespace Kaleidoscope.Gui.MainWindow
             }
 
 #if DEBUG
-            if (ImGui.BeginPopupModal("moneytracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.BeginPopupModal("giltracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
                 try
                 {
@@ -66,7 +66,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         ImGui.TextUnformatted("Stored character names and CIDs:");
                         ImGui.Separator();
-                        ImGui.BeginChild("moneytracker_names_child", new Vector2(600, 300), true);
+                        ImGui.BeginChild("giltracker_names_child", new Vector2(600, 300), true);
                         for (var i = 0; i < entries.Count; i++)
                         {
                             var e = entries[i];

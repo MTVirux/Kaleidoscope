@@ -53,7 +53,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
 
             if (ImGui.BeginPopupModal("config_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
-                ImGui.TextUnformatted("This will permanently delete all saved Money Tracker data from the DB for all characters. Proceed?");
+                ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
                     try { this._clearAllData?.Invoke(); } catch { }
@@ -69,7 +69,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
 
             if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
-                ImGui.TextUnformatted("This will remove Money Tracker data for characters that do not have a stored name association. Proceed?");
+                ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
                     try { this._cleanUnassociatedCharacters?.Invoke(); } catch { }

@@ -8,10 +8,10 @@ namespace Kaleidoscope.Gui.MainWindow
     public class FullscreenWindow : Window
     {
         
-        private readonly MoneyTrackerComponent _moneyTracker;
+        private readonly GilTrackerComponent _moneyTracker;
         private readonly Kaleidoscope.KaleidoscopePlugin plugin;
 
-        public FullscreenWindow(Kaleidoscope.KaleidoscopePlugin plugin, MoneyTrackerComponent sharedMoneyTracker) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        public FullscreenWindow(Kaleidoscope.KaleidoscopePlugin plugin, GilTrackerComponent sharedMoneyTracker) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
         {
             this.plugin = plugin;
             _moneyTracker = sharedMoneyTracker;
@@ -36,7 +36,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
-            // Fullscreen window no longer draws the removed TopBar/Widgets.
+            
         }
     }
 }

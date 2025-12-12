@@ -20,7 +20,7 @@ namespace Kaleidoscope
         private readonly WindowSystem windowSystem;
         private readonly Kaleidoscope.Gui.MainWindow.MainWindow mainWindow;
         private readonly Kaleidoscope.Gui.MainWindow.FullscreenWindow fullscreenWindow;
-        private readonly Kaleidoscope.Gui.MainWindow.MoneyTrackerComponent moneyTrackerComponent;
+        private readonly Kaleidoscope.Gui.MainWindow.GilTrackerComponent gilTrackerComponent;
         private System.Threading.Timer? _samplerTimer;
         private string? _dbPath;
         private volatile bool _samplerEnabled = true;
@@ -71,11 +71,11 @@ namespace Kaleidoscope
             try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
 
             this.windowSystem = new WindowSystem("Kaleidoscope");
-            _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
+            _dbPath = System.IO.Path.Combine(saveDir, "giltracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
-            // Create a shared MoneyTrackerComponent and provide it to both main and fullscreen windows
-            this.moneyTrackerComponent = new Kaleidoscope.Gui.MainWindow.MoneyTrackerComponent(_dbPath,
+            // Create a shared GilTrackerComponent and provide it to both main and fullscreen windows
+            this.gilTrackerComponent = new Kaleidoscope.Gui.MainWindow.GilTrackerComponent(_dbPath,
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
                 () => _samplerIntervalSeconds * 1000,
@@ -88,7 +88,7 @@ namespace Kaleidoscope
                 }
             );
 
-            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, this.moneyTrackerComponent, _dbPath,
+            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, this.gilTrackerComponent, _dbPath,
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
                 () => _samplerIntervalSeconds * 1000,
@@ -100,7 +100,7 @@ namespace Kaleidoscope
                 }
             );
 
-            this.fullscreenWindow = new Kaleidoscope.Gui.MainWindow.FullscreenWindow(this, this.moneyTrackerComponent);
+            this.fullscreenWindow = new Kaleidoscope.Gui.MainWindow.FullscreenWindow(this, this.gilTrackerComponent);
             // Start a basic sampler that uses the same storage to record gil periodically while the plugin runs.
                 _samplerTimer = new System.Threading.Timer(_ =>
             {

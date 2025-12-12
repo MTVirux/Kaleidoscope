@@ -6,9 +6,9 @@ using Kaleidoscope.Libs;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
-    public class MoneyTrackerComponent
+    public class GilTrackerComponent
     {
-        private readonly MoneyTrackerHelper _helper;
+        private readonly GilTrackerHelper _helper;
         private readonly CharacterPicker _characterPicker;
         private bool _pointsPopupOpen = false;
         private bool _namesPopupOpen = false;
@@ -22,10 +22,10 @@ namespace Kaleidoscope.Gui.MainWindow
         private Action<int>? _setSamplerInterval;
         private bool _clearDbOpen = false;
 
-        public MoneyTrackerComponent(string? dbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null)
+        public GilTrackerComponent(string? dbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null)
         {
             _dbPath = dbPath;
-            _helper = new MoneyTrackerHelper(_dbPath, 200, 100000f);
+            _helper = new GilTrackerHelper(_dbPath, 200, 100000f);
             _characterPicker = new CharacterPicker(_helper);
             _getSamplerEnabled = getSamplerEnabled;
             _setSamplerEnabled = setSamplerEnabled;
@@ -111,7 +111,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         max = min + 1f;
                     }
 
-                    ImGui.BeginChild("moneytracker_plot_child", new System.Numerics.Vector2(graphWidth, graphHeight), false);
+                    ImGui.BeginChild("giltracker_plot_child", new System.Numerics.Vector2(graphWidth, graphHeight), false);
                     ImGui.PlotLines("##gilplot", arr, arr.Length);
                     ImGui.EndChild();
                 }
@@ -174,7 +174,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                         {
-                            ImGui.OpenPopup("moneytracker_points_popup");
+                            ImGui.OpenPopup("giltracker_points_popup");
                             _pointsPopupOpen = true;
                         }
                     }
@@ -189,7 +189,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // Popup showing all stored points with timestamps (debug-only)
             #if DEBUG
-            if (ImGui.BeginPopupModal("moneytracker_points_popup", ref _pointsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.BeginPopupModal("giltracker_points_popup", ref _pointsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
                 try
                 {
@@ -202,7 +202,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         ImGui.TextUnformatted($"Points for character: {_helper.SelectedCharacterId}");
                         ImGui.Separator();
-                        ImGui.BeginChild("moneytracker_points_child", new Vector2(700, 300), true);
+                        ImGui.BeginChild("giltracker_points_child", new Vector2(700, 300), true);
                         for (var i = 0; i < pts.Count; i++)
                         {
                             var p = pts[i];
@@ -223,6 +223,7 @@ namespace Kaleidoscope.Gui.MainWindow
             #endif
 
             
+
 
             ImGui.Separator();
             // we don't show an else here — the previous block already shows a 'No data' message if graph empty
