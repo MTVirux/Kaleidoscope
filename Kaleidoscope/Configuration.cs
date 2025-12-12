@@ -1,4 +1,5 @@
 using Dalamud.Configuration;
+using System.Numerics;
 
 namespace Kaleidoscope
 {
@@ -12,5 +13,11 @@ namespace Kaleidoscope
         // Window pin states used by the UI lock button component.
         public bool PinMainWindow { get; set; } = false;
         public bool PinConfigWindow { get; set; } = false;
+        
+        // Saved position/size for windows when pinned
+        public Vector2 MainWindowPos { get; set; } = new Vector2(100, 100);
+        public Vector2 MainWindowSize { get; set; } = new Vector2(600, 400);
+        public Vector2 ConfigWindowPos { get; set; } = new Vector2(100, 100);
+        public Vector2 ConfigWindowSize { get; set; } = new Vector2(600, 400);
     }
 }

@@ -4,9 +4,12 @@ namespace Kaleidoscope.Gui.ConfigWindow
     using Dalamud.Interface.Windowing;
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
+    using OtterGui.Text;
+    using Dalamud.Interface;
 
     public class ConfigWindow : Window, IDisposable
     {
+        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
         private readonly Kaleidoscope.Configuration config;
         private readonly Action saveConfig;
         private readonly Func<bool>? getSamplerEnabled;
@@ -20,12 +23,15 @@ namespace Kaleidoscope.Gui.ConfigWindow
         private bool _clearDbOpen = false;
         private bool _sanitizeDbOpen = false;
 
-        public ConfigWindow(Kaleidoscope.Configuration config, Action saveConfig,
+        private TitleBarButton? lockButton;
+
+        public ConfigWindow(Kaleidoscope.KaleidoscopePlugin plugin, Kaleidoscope.Configuration config, Action saveConfig,
             Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null,
             Func<int>? getSamplerIntervalMs = null, Action<int>? setSamplerIntervalMs = null,
             Func<bool>? hasDb = null, Action? clearAllData = null, Func<int>? cleanUnassociatedCharacters = null, Func<string?>? exportCsv = null)
             : base("Kaleidoscope Configuration")
         {
+            this.plugin = plugin;
             this.config = config ?? throw new ArgumentNullException(nameof(config));
             this.saveConfig = saveConfig ?? throw new ArgumentNullException(nameof(saveConfig));
             this.getSamplerEnabled = getSamplerEnabled;
@@ -37,10 +43,50 @@ namespace Kaleidoscope.Gui.ConfigWindow
             this._cleanUnassociatedCharacters = cleanUnassociatedCharacters;
             this._exportCsv = exportCsv;
 
+            var lockTb = new TitleBarButton
+            {
+                Icon = plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+                IconOffset = new System.Numerics.Vector2(3, 2),
+                ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
+            };
+
+            lockTb.Click = (m) =>
+            {
+                if (m == ImGuiMouseButton.Left)
+                {
+                    plugin.Config.PinConfigWindow = !plugin.Config.PinConfigWindow;
+                    try { plugin.SaveConfig(); } catch { }
+                    lockTb.Icon = plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                }
+            };
+
+            lockButton = lockTb;
+            TitleBarButtons.Add(lockButton);
+
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
         }
 
         public void Dispose() { }
+
+        public override void PreDraw()
+        {
+            if (this.plugin.Config.PinConfigWindow)
+            {
+                Flags |= ImGuiWindowFlags.NoMove;
+                Flags &= ~ImGuiWindowFlags.NoResize;
+                ImGui.SetNextWindowPos(this.plugin.Config.ConfigWindowPos);
+                ImGui.SetNextWindowSize(this.plugin.Config.ConfigWindowSize);
+            }
+            else
+            {
+                Flags &= ~ImGuiWindowFlags.NoMove;
+            }
+
+            if (this.lockButton != null)
+            {
+                this.lockButton.Icon = this.plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+            }
+        }
 
         public override void Draw()
         {

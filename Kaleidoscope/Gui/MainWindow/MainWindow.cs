@@ -5,6 +5,8 @@ namespace Kaleidoscope.Gui.MainWindow
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
+    using OtterGui.Text;
+    using Dalamud.Interface;
 
         public class MainWindow : Window
     {
@@ -28,10 +30,64 @@ namespace Kaleidoscope.Gui.MainWindow
             try { return _moneyTracker.ExportCsv(); } catch { return null; }
         }
 
-        public MainWindow(string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
+        private TitleBarButton? lockButton;
+
+        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, string? moneyTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
+            this.plugin = plugin;
             Size = new System.Numerics.Vector2(600, 360);
             _moneyTracker = new MoneyTrackerComponent(moneyTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
+
+            // Create and add title bar buttons
+            TitleBarButtons.Add(new TitleBarButton
+            {
+                Click = (m) => { if (m == ImGuiMouseButton.Left) plugin.OpenConfigUi(); },
+                Icon = FontAwesomeIcon.Cog,
+                IconOffset = new System.Numerics.Vector2(2, 2),
+                ShowTooltip = () => ImGui.SetTooltip("Open settings"),
+            });
+
+            var lockTb = new TitleBarButton
+            {
+                Icon = plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+                IconOffset = new System.Numerics.Vector2(3, 2),
+                ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
+            };
+
+            lockTb.Click = (m) =>
+            {
+                if (m == ImGuiMouseButton.Left)
+                {
+                    plugin.Config.PinMainWindow = !plugin.Config.PinMainWindow;
+                    try { plugin.SaveConfig(); } catch { }
+                    lockTb.Icon = plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                }
+            };
+
+            lockButton = lockTb;
+            TitleBarButtons.Add(lockButton);
+        }
+
+        public override void PreDraw()
+        {
+            if (this.plugin.Config.PinMainWindow)
+            {
+                Flags |= ImGuiWindowFlags.NoMove;
+                Flags &= ~ImGuiWindowFlags.NoResize;
+                ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
+                ImGui.SetNextWindowSize(this.plugin.Config.MainWindowSize);
+            }
+            else
+            {
+                Flags &= ~ImGuiWindowFlags.NoMove;
+            }
+
+            // Ensure titlebar button icon reflects current configuration every frame
+            if (this.lockButton != null)
+            {
+                this.lockButton.Icon = this.plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+            }
         }
 
         public override void Draw()

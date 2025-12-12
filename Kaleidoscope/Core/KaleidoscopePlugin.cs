@@ -41,7 +41,7 @@ namespace Kaleidoscope
             _dbPath = System.IO.Path.Combine(saveDir, "moneytracker.sqlite");
             // Create and pass simple sampler controls to the UI (callbacks)
             // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
-            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(_dbPath,
+            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, _dbPath,
                 () => _samplerEnabled,
                 enabled => _samplerEnabled = enabled,
                 () => _samplerIntervalSeconds * 1000,
@@ -143,6 +143,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 catch { }
             }, null, TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
             this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow(
+                this,
                 this.Config,
                 () => this.pluginInterface.SavePluginConfig(this.Config),
                 () => _samplerEnabled,
@@ -178,6 +179,11 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             this.pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
         }
 
+        public void SaveConfig()
+        {
+            try { this.pluginInterface.SavePluginConfig(this.Config); } catch { }
+        }
+
         public void Dispose()
         {
             try
@@ -200,7 +206,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
         private void DrawUi() => this.windowSystem.Draw();
 
-        private void OpenConfigUi() => this.configWindow.IsOpen = true;
+        public void OpenConfigUi() => this.configWindow.IsOpen = true;
 
         private void OpenMainUi() => this.mainWindow.IsOpen = true;
     }
