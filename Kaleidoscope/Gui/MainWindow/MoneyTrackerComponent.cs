@@ -1,6 +1,7 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using System.Numerics;
+using System.Globalization;
 using ECommons.DalamudServices;
 using System.Collections.Generic;
 using System.Linq;
@@ -115,7 +116,7 @@ namespace Kaleidoscope.Gui.MainWindow
             if (min == float.MaxValue) min = 0;
             if (max == float.MinValue) max = 0;
 
-            ImGui.TextUnformatted($"Current: {(long)_helper.LastValue}  Min: {(long)min}  Max: {(long)max}");
+            ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}  Min: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}  Max: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
             if (_helper.FirstSampleTime.HasValue && _helper.LastSampleTime.HasValue)
             {
                 ImGui.TextUnformatted($"Range: {_helper.FirstSampleTime:O} -> {_helper.LastSampleTime:O}");
@@ -128,6 +129,55 @@ namespace Kaleidoscope.Gui.MainWindow
                 var arr = _helper.Samples.ToArray();
                 // Use the simpler overload to avoid binding differences across ImGui builds
                 ImGui.PlotLines("##gilplot", arr, arr.Length);
+                // Show a tooltip with a nicely formatted value when hovering the plot
+                if (ImGui.IsItemHovered())
+                {
+                    try
+                    {
+                        var minRect = ImGui.GetItemRectMin();
+                        var maxRect = ImGui.GetItemRectMax();
+                        var mouse = ImGui.GetMousePos();
+                        var width = maxRect.X - minRect.X;
+                        if (width > 0 && arr.Length > 0)
+                        {
+                            var rel = (mouse.X - minRect.X) / width;
+                            var idx = (int)Math.Floor(rel * arr.Length);
+                            if (idx < 0) idx = 0;
+                            if (idx >= arr.Length) idx = arr.Length - 1;
+                            var val = arr[idx];
+                            string FormatValue(float v)
+                            {
+                                if (Math.Abs(v - Math.Truncate(v)) < 0.0001f)
+                                    return ((long)v).ToString("N0", CultureInfo.InvariantCulture);
+                                return v.ToString("N2", CultureInfo.InvariantCulture);
+                            }
+
+                            var currentStr = $"{idx}:{FormatValue(val)}";
+                            // If we have a previous value, show the percent change in parentheses (no plus sign for positive)
+                            if (idx > 0)
+                            {
+                                var prev = arr[idx - 1];
+                                if (Math.Abs(prev) < 0.00001f)
+                                {
+                                    ImGui.SetTooltip($"{currentStr} (N/A)");
+                                }
+                                else
+                                {
+                                    var percent = (((double)val - (double)prev) / Math.Abs((double)prev)) * 100.0;
+                                    var sign = percent < 0 ? "-" : "";
+                                    var percentAbs = Math.Abs(percent);
+                                    var percentStr = percentAbs.ToString("0.##", CultureInfo.InvariantCulture);
+                                    ImGui.SetTooltip($"{currentStr} ({sign}{percentStr}%)");
+                                }
+                            }
+                            else
+                            {
+                                ImGui.SetTooltip(currentStr);
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
             else
             {
