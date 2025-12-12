@@ -21,6 +21,9 @@ namespace Kaleidoscope.Gui.TopBar
         // Expose whether the topbar is currently animating (used so callers can keep drawing it until it finishes)
         public static bool IsAnimating => _progress > 0f && _progress < 1f;
 
+        // When true, content containers should show their grid/edit overlays.
+        public static bool EditMode { get; set; } = false;
+
         public static void ForceHide()
         {
             _forceHide = true;
@@ -76,6 +79,21 @@ namespace Kaleidoscope.Gui.TopBar
             drawList.AddRectFilled(rectMin, rectMax, bgCol, 0f);
             drawList.AddText(textPos, textCol, "Kaleidoscope");
 
+            // Create a transparent ImGui window positioned over the bar to capture mouse input
+            try
+            {
+                var winFlags = ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNavFocus | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground;
+                ImGui.SetNextWindowPos(rectMin, ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new System.Numerics.Vector2(displaySize.X, BarHeight), ImGuiCond.Always);
+                ImGui.SetNextWindowFocus();
+                if (ImGui.Begin("##TopBar_Block_Screen_Window", winFlags))
+                {
+                    // Intentionally empty: the window exists to consume input and has focus.
+                }
+                ImGui.End();
+            }
+            catch { }
+
             // Add an exit-fullscreen button on the right side when fully or partially visible.
             // Use a plain ASCII 'X' and remove the separate config button so titlebar uses regular text only.
             var btnSize = new System.Numerics.Vector2(28f, 20f);
@@ -101,6 +119,33 @@ namespace Kaleidoscope.Gui.TopBar
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
                 }
             }
+
+            // Edit Mode toggle button (to left of exit button)
+            try
+            {
+                var editBtnSize = new System.Numerics.Vector2(90f, 20f);
+                var editBtnMax = new System.Numerics.Vector2(btnMin.X - 8f, btnMax.Y);
+                var editBtnMin = new System.Numerics.Vector2(editBtnMax.X - editBtnSize.X, editBtnMax.Y - editBtnSize.Y);
+                var editBgAlpha = 0.12f * eased;
+                var isOn = EditMode;
+                var editBgCol = isOn ? ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0.2f, 0.5f, 0.9f, editBgAlpha * 1.6f)) : ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, editBgAlpha));
+                drawList.AddRectFilled(editBtnMin, editBtnMax, editBgCol, 4f);
+                var editText = "Edit Mode";
+                var editTxtCol = txtCol;
+                var editTxtPos = new System.Numerics.Vector2(editBtnMin.X + (editBtnSize.X - ImGui.CalcTextSize(editText).X) / 2, editBtnMin.Y + (editBtnSize.Y - ImGui.GetFontSize()) / 2);
+                drawList.AddText(editTxtPos, editTxtCol, editText);
+
+                var hoveredEdit = mouse.X >= editBtnMin.X && mouse.Y >= editBtnMin.Y && mouse.X <= editBtnMax.X && mouse.Y <= editBtnMax.Y;
+                if (hoveredEdit)
+                {
+                    ImGui.SetTooltip("Toggle Edit Mode\nShow grid in content container");
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        EditMode = !EditMode;
+                    }
+                }
+            }
+            catch { }
         }
 
         // Draw relative to a parent window position/size. The bar will be positioned
@@ -147,6 +192,21 @@ namespace Kaleidoscope.Gui.TopBar
             drawList.AddRectFilled(rectMin, rectMax, bgCol, 0f);
             drawList.AddText(textPos, textCol, "Kaleidoscope");
 
+            // Create a transparent ImGui window positioned over the parent bar area to capture mouse input
+            try
+            {
+                var winFlags = ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNavFocus | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground;
+                ImGui.SetNextWindowPos(parentPos, ImGuiCond.Always);
+                ImGui.SetNextWindowSize(new System.Numerics.Vector2(parentSize.X, BarHeight), ImGuiCond.Always);
+                ImGui.SetNextWindowFocus();
+                if (ImGui.Begin("##TopBar_Block_Parent_Window", winFlags))
+                {
+                    // Intentionally empty: the window exists to consume input and has focus.
+                }
+                ImGui.End();
+            }
+            catch { }
+
             // Add an exit-fullscreen button to the right
             var btnSize = new System.Numerics.Vector2(28f, 20f);
             var padding = 8f;
@@ -170,6 +230,33 @@ namespace Kaleidoscope.Gui.TopBar
                     try { OnExitFullscreenRequested?.Invoke(); } catch { }
                 }
             }
+
+            // Edit Mode toggle button (to left of exit button)
+            try
+            {
+                var editBtnSize = new System.Numerics.Vector2(90f, 20f);
+                var editBtnMax = new System.Numerics.Vector2(btnMin.X - 8f, btnMax.Y);
+                var editBtnMin = new System.Numerics.Vector2(editBtnMax.X - editBtnSize.X, editBtnMax.Y - editBtnSize.Y);
+                var editBgAlpha = 0.12f * eased;
+                var isOn = EditMode;
+                var editBgCol = isOn ? ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0.2f, 0.5f, 0.9f, editBgAlpha * 1.6f)) : ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(0f, 0f, 0f, editBgAlpha));
+                drawList.AddRectFilled(editBtnMin, editBtnMax, editBgCol, 4f);
+                var editText = "Edit Mode";
+                var editTxtCol = txtCol;
+                var editTxtPos = new System.Numerics.Vector2(editBtnMin.X + (editBtnSize.X - ImGui.CalcTextSize(editText).X) / 2, editBtnMin.Y + (editBtnSize.Y - ImGui.GetFontSize()) / 2);
+                drawList.AddText(editTxtPos, editTxtCol, editText);
+
+                var hoveredEdit = mouse.X >= editBtnMin.X && mouse.Y >= editBtnMin.Y && mouse.X <= editBtnMax.X && mouse.Y <= editBtnMax.Y;
+                if (hoveredEdit)
+                {
+                    ImGui.SetTooltip("Toggle Edit Mode\nShow grid in content container");
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        EditMode = !EditMode;
+                    }
+                }
+            }
+            catch { }
 
             drawList.PopClipRect();
         }

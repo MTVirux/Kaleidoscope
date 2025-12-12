@@ -60,6 +60,8 @@ namespace Kaleidoscope
             // Copy per-file values into the runtime single config for compatibility with existing code
             try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
             try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
+            try { this.Config.ContentGridCellWidthPercent = this.GeneralConfig.ContentGridCellWidthPercent; } catch { }
+            try { this.Config.ContentGridCellHeightPercent = this.GeneralConfig.ContentGridCellHeightPercent; } catch { }
             try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
             try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
             try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
@@ -249,7 +251,12 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             try
             {
                 // General
-                var g = new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart, ExclusiveFullscreen = this.Config.ExclusiveFullscreen };
+                var g = new Kaleidoscope.Config.GeneralConfig {
+                    ShowOnStart = this.Config.ShowOnStart,
+                    ExclusiveFullscreen = this.Config.ExclusiveFullscreen,
+                    ContentGridCellWidthPercent = this.Config.ContentGridCellWidthPercent,
+                    ContentGridCellHeightPercent = this.Config.ContentGridCellHeightPercent
+                };
                 this.ConfigManager.Save("general.json", g);
                 // Sampler
                 var s = new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = this._samplerEnabled, SamplerIntervalMs = this._samplerIntervalSeconds * 1000 };

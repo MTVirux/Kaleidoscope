@@ -44,7 +44,6 @@ namespace Kaleidoscope.Gui.MainWindow
             try
             {
                 using var c = ContentContainer.Begin(5f);
-                _moneyTracker?.Draw();
             }
             catch { }
         }

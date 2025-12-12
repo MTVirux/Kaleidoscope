@@ -21,5 +21,10 @@ namespace Kaleidoscope
         public Vector2 MainWindowSize { get; set; } = new Vector2(600, 400);
         public Vector2 ConfigWindowPos { get; set; } = new Vector2(100, 100);
         public Vector2 ConfigWindowSize { get; set; } = new Vector2(600, 400);
+
+        // Content container grid cell sizes as percentages (1-100).
+        // These control the width and height of each grid cell inside the content container.
+        public float ContentGridCellWidthPercent { get; set; } = 25f;
+        public float ContentGridCellHeightPercent { get; set; } = 25f;
     }
 }
