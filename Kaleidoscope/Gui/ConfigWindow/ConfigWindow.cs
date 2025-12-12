@@ -54,7 +54,19 @@ namespace Kaleidoscope.Gui.ConfigWindow
             {
                 if (m == ImGuiMouseButton.Left)
                 {
-                    plugin.Config.PinConfigWindow = !plugin.Config.PinConfigWindow;
+                    // Toggle pinned state. When enabling pin, capture the current window
+                    // position and size so the config window remains where the user placed it.
+                    var newPinned = !plugin.Config.PinConfigWindow;
+                    plugin.Config.PinConfigWindow = newPinned;
+                    if (newPinned)
+                    {
+                        try
+                        {
+                            plugin.Config.ConfigWindowPos = ImGui.GetWindowPos();
+                            plugin.Config.ConfigWindowSize = ImGui.GetWindowSize();
+                        }
+                        catch { }
+                    }
                     try { plugin.SaveConfig(); } catch { }
                     lockTb.Icon = plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
                 }
@@ -70,12 +82,13 @@ namespace Kaleidoscope.Gui.ConfigWindow
 
         public override void PreDraw()
         {
+            // Ensure the config window is resizable in all states
+            Flags &= ~ImGuiWindowFlags.NoResize;
+
             if (this.plugin.Config.PinConfigWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove;
-                Flags &= ~ImGuiWindowFlags.NoResize;
                 ImGui.SetNextWindowPos(this.plugin.Config.ConfigWindowPos);
-                ImGui.SetNextWindowSize(this.plugin.Config.ConfigWindowSize);
             }
             else
             {
