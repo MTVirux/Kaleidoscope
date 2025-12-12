@@ -14,6 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow
     internal class MoneyTrackerComponent
     {
         private readonly MoneyTrackerHelper _helper;
+        private readonly CharacterPicker _characterPicker;
         private bool _pointsPopupOpen = false;
         private bool _namesPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
@@ -30,6 +31,7 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             _dbPath = dbPath;
             _helper = new MoneyTrackerHelper(_dbPath, 200, 100000f);
+            _characterPicker = new CharacterPicker(_helper);
             _getSamplerEnabled = getSamplerEnabled;
             _setSamplerEnabled = setSamplerEnabled;
             _getSamplerInterval = getSamplerInterval;
@@ -81,44 +83,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // DB buttons moved to Config Window (Data Management)
 
-            if (_helper.AvailableCharacters.Count > 0)
-            {
-                var idx = _helper.AvailableCharacters.IndexOf(_helper.SelectedCharacterId);
-                if (idx < 0) idx = 0;
-                // If we're logged into a character, ensure the available list is refreshed
-                // and auto-select that character when data exists for them.
-                try
-                {
-                    // If logged into a character, refresh the available characters list
-                    // from the DB so the dropdown stays up-to-date, but do NOT
-                    // automatically select/load that character. Selection should
-                    // only occur when the user chooses from the dropdown.
-                    var localCid = Svc.ClientState.LocalContentId;
-                    if (localCid != 0 && !_helper.AvailableCharacters.Contains(localCid))
-                    {
-                        _helper.RefreshAvailableCharacters();
-                    }
-                }
-                catch { }
-                var names = _helper.AvailableCharacters.Select(id => _helper.GetCharacterDisplayName(id)).ToArray();
-                if (ImGui.Combo("Character", ref idx, names, names.Length))
-                {
-                    var id = _helper.AvailableCharacters[idx];
-                    _helper.LoadForCharacter(id);
-                }
-
-#if DEBUG
-                try
-                {
-                    if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-                    {
-                        ImGui.OpenPopup("moneytracker_names_popup");
-                        _namesPopupOpen = true;
-                    }
-                }
-                catch { }
-#endif
-            }
+            _characterPicker.Draw();
 
             float min = float.MaxValue;
             float max = float.MinValue;
@@ -132,18 +97,34 @@ namespace Kaleidoscope.Gui.MainWindow
             if (max == float.MinValue) max = 0;
 
             ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}  Min: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}  Max: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
-            if (_helper.FirstSampleTime.HasValue && _helper.LastSampleTime.HasValue)
-            {
-                ImGui.TextUnformatted($"Range: {_helper.FirstSampleTime:O} -> {_helper.LastSampleTime:O}");
-            }
 
             // Plot the samples
             if (_helper.Samples.Count > 0)
             {
                 // ImGui.PlotLines expects a float array
                 var arr = _helper.Samples.ToArray();
-                // Use the simpler overload to avoid binding differences across ImGui builds
-                ImGui.PlotLines("##gilplot", arr, arr.Length);
+                // Expand the plot to fill the available content region by hosting it in a sized child
+                try
+                {
+                    var avail = ImGui.GetContentRegionAvail();
+                    var graphWidth = Math.Max(100f, avail.X);
+                    var graphHeight = Math.Max(100f, avail.Y);
+
+                    // Ensure we have a non-zero vertical range for plotting
+                    if (Math.Abs(max - min) < 0.0001f)
+                    {
+                        max = min + 1f;
+                    }
+
+                    ImGui.BeginChild("moneytracker_plot_child", new System.Numerics.Vector2(graphWidth, graphHeight), false);
+                    ImGui.PlotLines("##gilplot", arr, arr.Length);
+                    ImGui.EndChild();
+                }
+                catch
+                {
+                    // Fall back to default small plot if anything goes wrong
+                    ImGui.PlotLines("##gilplot", arr, arr.Length);
+                }
                 // Show a tooltip with a nicely formatted value when hovering the plot
                 if (ImGui.IsItemHovered())
                 {
@@ -246,41 +227,7 @@ namespace Kaleidoscope.Gui.MainWindow
             }
             #endif
 
-#if DEBUG
-            // Popup showing all stored character names + cids (debug-only)
-            if (ImGui.BeginPopupModal("moneytracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
-            {
-                try
-                {
-                    var entries = _helper.GetAllStoredCharacterNames();
-                    if (entries.Count == 0)
-                    {
-                        ImGui.TextUnformatted("No stored character names in DB.");
-                    }
-                    else
-                    {
-                        ImGui.TextUnformatted("Stored character names and CIDs:");
-                        ImGui.Separator();
-                        ImGui.BeginChild("moneytracker_names_child", new Vector2(600, 300), true);
-                        for (var i = 0; i < entries.Count; i++)
-                        {
-                            var e = entries[i];
-                            var display = string.IsNullOrEmpty(e.name) ? "(null)" : e.name;
-                            ImGui.TextUnformatted($"{i}: {e.cid}  {display}");
-                        }
-                        ImGui.EndChild();
-                    }
-                }
-                catch { }
-
-                if (ImGui.Button("Close"))
-                {
-                    ImGui.CloseCurrentPopup();
-                }
-
-                ImGui.EndPopup();
-            }
-#endif
+            
 
             ImGui.Separator();
             // we don't show an else here — the previous block already shows a 'No data' message if graph empty
