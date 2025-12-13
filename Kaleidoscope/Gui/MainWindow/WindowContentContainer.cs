@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Collections.Generic;
 using Kaleidoscope;
@@ -11,6 +12,20 @@ namespace Kaleidoscope.Gui.MainWindow
         private readonly Func<float> _getCellWidthPercent;
         private readonly Func<float> _getCellHeightPercent;
         private readonly Func<int> _getSubdivisions;
+        private Action<string, Vector2>? _toolFactory;
+        private Vector2 _lastContextClickRel;
+        // Index of the tool that was right-clicked to open the tool-specific context menu
+        private int _contextToolIndex = -1;
+
+        private class ToolRegistration
+        {
+            public string Id = string.Empty;
+            public string Label = string.Empty;
+            public string? Description;
+            public Func<Vector2, ToolComponent> Factory = (_) => throw new InvalidOperationException();
+        }
+
+        private readonly List<ToolRegistration> _toolRegistry = new List<ToolRegistration>();
         private class ToolEntry
         {
             public ToolComponent Tool;
@@ -35,6 +50,28 @@ namespace Kaleidoscope.Gui.MainWindow
             _getCellWidthPercent = getCellWidthPercent ?? (() => 25f);
             _getCellHeightPercent = getCellHeightPercent ?? (() => 25f);
             _getSubdivisions = getSubdivisions ?? (() => 4);
+        }
+
+        // Allows the host (e.g. MainWindow) to supply a factory to create tools
+        public void SetToolFactory(Action<string, Vector2> factory)
+        {
+            _toolFactory = factory;
+        }
+
+        // Register a tool for the "Add tool" menu. The factory receives the click-relative
+        // position and should return a configured ToolComponent (position may be adjusted by
+        // the container snapping logic afterwards).
+        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent> factory, string? description = null)
+        {
+            if (string.IsNullOrEmpty(id)) throw new ArgumentException("id");
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            _toolRegistry.Add(new ToolRegistration { Id = id, Label = label ?? id, Description = description, Factory = factory });
+        }
+
+        public void UnregisterTool(string id)
+        {
+            var idx = _toolRegistry.FindIndex(x => x.Id == id);
+            if (idx >= 0) _toolRegistry.RemoveAt(idx);
         }
 
         public void AddTool(ToolComponent tool)
@@ -140,6 +177,92 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                 }
                 catch { }
+
+                // Right-click on the content region should open a context menu to add tools
+                if (editMode)
+                {
+                    var io = ImGui.GetIO();
+                    var mouse = io.MousePos;
+                    var isOverContent = mouse.X >= contentMin.X && mouse.X <= contentMax.X && mouse.Y >= contentMin.Y && mouse.Y <= contentMax.Y;
+                    if (isOverContent && io.MouseClicked[1])
+                    {
+                        // If the click is over an existing tool, open the tool-specific popup
+                        var clickedTool = -1;
+                        try
+                        {
+                            for (var ti = 0; ti < _tools.Count; ti++)
+                            {
+                                var tt = _tools[ti].Tool;
+                                if (!tt.Visible) continue;
+                                var tmin = tt.Position + contentOrigin;
+                                var tmax = tmin + tt.Size;
+                                if (mouse.X >= tmin.X && mouse.X <= tmax.X && mouse.Y >= tmin.Y && mouse.Y <= tmax.Y)
+                                {
+                                    clickedTool = ti;
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+
+                        if (clickedTool >= 0)
+                        {
+                            _contextToolIndex = clickedTool;
+                            _lastContextClickRel = mouse - contentOrigin;
+                            ImGui.SetNextWindowPos(mouse);
+                            ImGui.OpenPopup("tool_context_menu");
+                        }
+                        else
+                        {
+                            _lastContextClickRel = mouse - contentOrigin;
+                            ImGui.SetNextWindowPos(mouse);
+                            ImGui.OpenPopup("content_context_menu");
+                        }
+                    }
+
+                    if (ImGui.BeginPopup("content_context_menu"))
+                    {
+                        try
+                        {
+                            if (ImGui.BeginMenu("Add tool"))
+                            {
+                                // Enumerate registered tools
+                                foreach (var reg in _toolRegistry)
+                                {
+                                    if (ImGui.MenuItem(reg.Label))
+                                    {
+                                        try
+                                        {
+                                            var tool = reg.Factory(_lastContextClickRel);
+                                            if (tool != null)
+                                            {
+                                                // Snap to sub-grid on placement if possible
+                                                try
+                                                {
+                                                    var subdivisions = Math.Max(1, _getSubdivisions());
+                                                    var subW = cellW / subdivisions;
+                                                    var subH = cellH / subdivisions;
+                                                    tool.Position = new Vector2(
+                                                        MathF.Round(tool.Position.X / subW) * subW,
+                                                        MathF.Round(tool.Position.Y / subH) * subH
+                                                    );
+                                                }
+                                                catch { }
+                                                AddTool(tool);
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                }
+
+                                ImGui.EndMenu();
+                            }
+                        }
+                        catch { }
+
+                        ImGui.EndPopup();
+                    }
+                }
             }
 
             for (var i = 0; i < _tools.Count; i++)
