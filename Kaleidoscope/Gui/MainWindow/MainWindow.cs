@@ -21,9 +21,8 @@ namespace Kaleidoscope.Gui.MainWindow
         private WindowContentContainer? _contentContainer;
         private TitleBarButton? editModeButton;
         // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
-        private Vector2 _savedPos = new Vector2(100, 100);
-        private Vector2 _savedSize = new Vector2(800, 600);
-        private bool _sanitizeDbOpen = false;
+        private Vector2 _savedPos = ConfigStatic.DefaultWindowPosition;
+        private Vector2 _savedSize = ConfigStatic.DefaultWindowSize;
 
         // Reference to WindowService for window coordination (set after construction due to circular dependency)
         private WindowService? _windowService;
@@ -66,7 +65,7 @@ namespace Kaleidoscope.Gui.MainWindow
             _filenameService = filenameService;
             _moneyTracker = gilTrackerComponent;
 
-            SizeConstraints = new WindowSizeConstraints() { MinimumSize = new Vector2(300, 120) };
+            SizeConstraints = new WindowSizeConstraints() { MinimumSize = ConfigStatic.MinimumWindowSize };
 
             InitializeTitleBarButtons();
             InitializeContentContainer();
@@ -164,8 +163,6 @@ namespace Kaleidoscope.Gui.MainWindow
 
         private void InitializeContentContainer()
         {
-            var dbPath = _filenameService.GilTrackerDbPath;
-
             // Create content container
             _contentContainer = new WindowContentContainer(
                 () => Config.ContentGridCellWidthPercent,
@@ -173,10 +170,10 @@ namespace Kaleidoscope.Gui.MainWindow
                 () => Config.GridSubdivisions);
 
             // Register available tools
-            WindowToolRegistrar.RegisterTools(_contentContainer, dbPath);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
 
             // Add default GilTracker tool
-            var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), dbPath);
+            var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), _filenameService, _samplerService);
             if (defaultGt != null) _contentContainer.AddTool(defaultGt);
 
             // Apply saved layout or add defaults
@@ -198,7 +195,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
             if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
             {
-                _contentContainer.ApplyLayout(layout.Tools);
+                _contentContainer?.ApplyLayout(layout.Tools);
                 if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName)) 
                     Config.ActiveLayoutName = layout.Name;
             }
@@ -207,12 +204,14 @@ namespace Kaleidoscope.Gui.MainWindow
                 // No saved layout: add Character Picker as default
                 var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
                 cpTool.Position = new Vector2(420, 50);
-                _contentContainer.AddTool(cpTool);
+                _contentContainer?.AddTool(cpTool);
             }
         }
 
         private void WireLayoutCallbacks()
         {
+            if (_contentContainer == null) return;
+            
             _contentContainer.OnSaveLayout = (name, tools) =>
             {
                 if (string.IsNullOrWhiteSpace(name)) return;

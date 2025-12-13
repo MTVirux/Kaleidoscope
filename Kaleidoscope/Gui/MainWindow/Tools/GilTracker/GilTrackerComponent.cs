@@ -10,49 +10,26 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly GilTrackerHelper _helper;
         private readonly CharacterPicker _characterPicker;
-        private readonly SamplerService? _samplerService;
-        private readonly FilenameService? _filenameService;
+        private readonly SamplerService _samplerService;
 
         // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
         public string? DbPath => _dbPath;
         private bool _pointsPopupOpen = false;
-        private bool _namesPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
-        private int _sampleIntervalMs = 1000;
+        private int _sampleIntervalMs = ConfigStatic.DefaultSamplerIntervalMs;
 
         private readonly string? _dbPath;
-        private bool _clearDbOpen = false;
-
-        // Legacy callback fields for backward compatibility during transition
-        private Func<bool>? _getSamplerEnabled;
-        private Action<bool>? _setSamplerEnabled;
-        private Func<int>? _getSamplerInterval;
-        private Action<int>? _setSamplerInterval;
 
         /// <summary>
-        /// DI-friendly constructor.
+        /// DI constructor. Shares the database service from SamplerService.
         /// </summary>
         public GilTrackerComponent(FilenameService filenameService, SamplerService samplerService)
         {
-            _filenameService = filenameService;
             _samplerService = samplerService;
-            _dbPath = filenameService.GilTrackerDbPath;
-            _helper = new GilTrackerHelper(_dbPath, 200, 100000f);
+            _dbPath = filenameService.DatabasePath;
+            // Share the database service from SamplerService to avoid duplicate connections
+            _helper = new GilTrackerHelper(samplerService.DbService, ConfigStatic.GilTrackerMaxSamples, ConfigStatic.GilTrackerStartingValue);
             _characterPicker = new CharacterPicker(_helper);
-        }
-
-        /// <summary>
-        /// Legacy constructor for backward compatibility.
-        /// </summary>
-        public GilTrackerComponent(string? dbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null)
-        {
-            _dbPath = dbPath;
-            _helper = new GilTrackerHelper(_dbPath, 200, 100000f);
-            _characterPicker = new CharacterPicker(_helper);
-            _getSamplerEnabled = getSamplerEnabled;
-            _setSamplerEnabled = setSamplerEnabled;
-            _getSamplerInterval = getSamplerInterval;
-            _setSamplerInterval = setSamplerInterval;
         }
 
         public bool HasDb => !string.IsNullOrEmpty(_dbPath);
@@ -102,15 +79,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Try to sample from the game's currency manager at most once per _sampleIntervalMs.
             try
             {
-                // Prefer injected SamplerService, fall back to legacy callbacks
-                if (_samplerService != null)
-                {
-                    _sampleIntervalMs = Math.Max(1, _samplerService.IntervalMs);
-                }
-                else if (_getSamplerInterval != null)
-                {
-                    _sampleIntervalMs = Math.Max(1, _getSamplerInterval());
-                }
+                _sampleIntervalMs = Math.Max(1, _samplerService.IntervalMs);
 
                 var now = DateTime.UtcNow;
                 if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
@@ -120,9 +89,9 @@ namespace Kaleidoscope.Gui.MainWindow
                     _lastSampleTime = now;
                 }
             }
-            catch 
+            catch (Exception ex)
             {
-                // ignore sampling errors
+                LogService.Debug($"[GilTrackerComponent] Sampling error: {ex.Message}");
             }
 
             // DB buttons moved to Config Window (Data Management)
@@ -140,7 +109,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Force the plotted minimum baseline to 0 so the graph always starts at zero.
             // Force the plotted maximum to a fixed ceiling so the Y-axis covers a known range.
             min = 0f;
-            max = 999_999_999f;
+            max = ConfigStatic.GilTrackerMaxGil;
 
             //ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}\nMin: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}\nMax: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
 
@@ -160,7 +129,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     var graphHeight = avail.Y <= 0f ? 0f : avail.Y;
 
                     // Ensure we have a non-zero vertical range for plotting
-                    if (Math.Abs(max - min) < 0.0001f)
+                    if (Math.Abs(max - min) < ConfigStatic.FloatEpsilon)
                     {
                         max = min + 1f;
                     }
@@ -199,7 +168,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             var val = arr[idx];
                             string FormatValue(float v)
                             {
-                                if (Math.Abs(v - Math.Truncate(v)) < 0.0001f)
+                                if (Math.Abs(v - Math.Truncate(v)) < ConfigStatic.FloatEpsilon)
                                     return ((long)v).ToString("N0", CultureInfo.InvariantCulture);
                                 return v.ToString("N2", CultureInfo.InvariantCulture);
                             }
@@ -209,7 +178,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             if (idx > 0)
                             {
                                 var prev = arr[idx - 1];
-                                if (Math.Abs(prev) < 0.00001f)
+                                if (Math.Abs(prev) < ConfigStatic.FloatEpsilon)
                                 {
                                     ImGui.SetTooltip($"{currentStr} (N/A)");
                                 }
@@ -269,7 +238,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         ImGui.TextUnformatted($"Points for character: {_helper.SelectedCharacterId}");
                         ImGui.Separator();
-                        ImGui.BeginChild("giltracker_points_child", new Vector2(700, 300), true);
+                        ImGui.BeginChild("giltracker_points_child", ConfigStatic.GilTrackerPointsPopupSize, true);
                         for (var i = 0; i < pts.Count; i++)
                         {
                             var p = pts[i];
@@ -291,16 +260,6 @@ namespace Kaleidoscope.Gui.MainWindow
                 ImGui.EndPopup();
             }
             #endif
-
-            
-
-
-            //ImGui.Separator();
-            // we don't show an else here — the previous block already shows a 'No data' message if graph empty
-            if (!string.IsNullOrEmpty(_helper.LastStatusMessage))
-            {
-                ImGui.TextUnformatted(_helper.LastStatusMessage);
-            }
         }
     }
 }

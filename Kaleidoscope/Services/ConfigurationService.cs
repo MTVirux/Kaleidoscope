@@ -39,7 +39,7 @@ namespace Kaleidoscope.Services
             var saveDir = _pluginInterface.GetPluginConfigDirectory();
             ConfigManager = new ConfigManager(saveDir);
             GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-            SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 });
+            SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = ConfigStatic.DefaultSamplerIntervalMs });
             WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig {
                 PinMainWindow = Config.PinMainWindow,
                 PinConfigWindow = Config.PinConfigWindow,
@@ -71,7 +71,7 @@ namespace Kaleidoscope.Services
             if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && 
                 !Config.Layouts.Any(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
             {
-                Config.ActiveLayoutName = null;
+                Config.ActiveLayoutName = string.Empty;
             }
             else if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && Config.Layouts.Count > 0)
             {

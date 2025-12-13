@@ -11,8 +11,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker
         {
             _inner = inner;
             Title = "Gil Tracker";
-            // default size
-            Size = new Vector2(360, 220);
+            Size = ConfigStatic.GilTrackerToolSize;
         }
 
         public override void DrawContent()

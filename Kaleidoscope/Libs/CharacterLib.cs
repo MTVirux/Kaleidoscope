@@ -23,7 +23,7 @@ namespace Kaleidoscope.Libs
             return true;
         }
 
-        public static string GetCharacterName(ulong contentId)
+        public static string? GetCharacterName(ulong contentId)
         {
             try
             {

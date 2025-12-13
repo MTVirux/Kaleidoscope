@@ -11,6 +11,8 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
+        private readonly FilenameService _filenameService;
+        private readonly SamplerService _samplerService;
         private readonly GilTrackerComponent _moneyTracker;
         private readonly WindowContentContainer _contentContainer;
 
@@ -24,6 +26,8 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             _log = log;
             _configService = configService;
+            _filenameService = filenameService;
+            _samplerService = samplerService;
             // Use the shared gil tracker from the sampler service
             _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
 
@@ -36,13 +40,12 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 // Register the same toolset as the main window. Registrar will
                 // construct concrete tool instances; each instance is independent.
-                var dbPath = _moneyTracker?.DbPath;
-                WindowToolRegistrar.RegisterTools(_contentContainer, dbPath);
+                WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
 
                 // Add a default independent GilTracker tool instance (connected to same DB file)
                 try
                 {
-                    var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), dbPath);
+                    var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), _filenameService, _samplerService);
                     if (defaultGt != null) _contentContainer.AddTool(defaultGt);
                 }
                 catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GilTracker creation failed: {ex.Message}"); }

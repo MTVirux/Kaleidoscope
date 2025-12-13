@@ -9,12 +9,17 @@ public class FilenameService
 {
     public string ConfigDirectory { get; }
     public string ConfigFile { get; }
-    public string GilTrackerDbPath { get; }
+    
+    /// <summary>
+    /// Path to the main Kaleidoscope SQLite database.
+    /// Stores time-series data for gil tracking, inventory snapshots, currencies, etc.
+    /// </summary>
+    public string DatabasePath { get; }
 
     public FilenameService(IDalamudPluginInterface pi)
     {
         ConfigDirectory = pi.GetPluginConfigDirectory();
         ConfigFile = pi.ConfigFile.FullName;
-        GilTrackerDbPath = Path.Combine(ConfigDirectory, "giltracker.sqlite");
+        DatabasePath = Path.Combine(ConfigDirectory, "kaleidoscope.sqlite");
     }
 }

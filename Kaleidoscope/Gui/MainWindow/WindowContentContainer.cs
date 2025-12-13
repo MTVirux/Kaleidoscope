@@ -23,7 +23,7 @@ namespace Kaleidoscope.Gui.MainWindow
             public string Id = string.Empty;
             public string Label = string.Empty;
             public string? Description;
-            public Func<Vector2, ToolComponent> Factory = (_) => throw new InvalidOperationException();
+            public Func<Vector2, ToolComponent?> Factory = (_) => null;
         }
 
         private readonly List<ToolRegistration> _toolRegistry = new List<ToolRegistration>();
@@ -51,7 +51,6 @@ namespace Kaleidoscope.Gui.MainWindow
         public Action<string>? OnLoadLayout;
         public Func<List<string>>? GetAvailableLayoutNames;
         private bool _saveLayoutPopupOpen = false;
-        private bool _loadLayoutPopupOpen = false;
         private string _layoutNameBuffer = string.Empty;
         private bool _layoutDirty = false;
 
@@ -97,8 +96,8 @@ namespace Kaleidoscope.Gui.MainWindow
 
         // Register a tool for the "Add tool" menu. The factory receives the click-relative
         // position and should return a configured ToolComponent (position may be adjusted by
-        // the container snapping logic afterwards).
-        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent> factory, string? description = null)
+        // the container snapping logic afterwards). Factory may return null if tool creation fails.
+        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null)
         {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("id");
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -198,7 +197,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     var subH = cellH / subdivisions;
 
                     // To avoid heavy rendering, cap the number of lines drawn
-                    const int MaxLines = 512; // total per axis
+                    const int MaxLines = ConfigStatic.MaxGridLines; // total per axis
 
                     // Vertical lines
                     var totalV = (int)MathF.Ceiling((contentMax.X - contentMin.X) / subW) + 1;
@@ -372,7 +371,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         try
                         {
                             ImGui.TextUnformatted("Enter a name for this layout:");
-                            ImGui.InputText("##layoutname", ref _layoutNameBuffer, 128);
+                            ImGui.InputText("##layoutname", ref _layoutNameBuffer, ConfigStatic.TextInputBufferSize);
                             if (ImGui.Button("Save"))
                             {
                                 if (!string.IsNullOrWhiteSpace(_layoutNameBuffer))
@@ -466,7 +465,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                         // Use mouse-start based delta and clamp large jumps to avoid UI lockups
                         var rawDelta = io.MousePos - te.DragMouseStart;
-                        const float MaxDelta = 2000f;
+                        const float MaxDelta = ConfigStatic.MaxDragDelta;
                         rawDelta.X = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.X));
                         rawDelta.Y = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.Y));
                         var newPos = te.OrigPos + rawDelta;
@@ -531,7 +530,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                         // Use mouse-start based delta and clamp large jumps
                         var rawDelta = io.MousePos - te.ResizeMouseStart;
-                        const float MaxDelta = 2000f;
+                        const float MaxDelta = ConfigStatic.MaxDragDelta;
                         rawDelta.X = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.X));
                         rawDelta.Y = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.Y));
                         var newSize = new Vector2(MathF.Max(50f, te.OrigSize.X + rawDelta.X), MathF.Max(50f, te.OrigSize.Y + rawDelta.Y));
