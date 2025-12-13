@@ -44,6 +44,37 @@ namespace Kaleidoscope.Gui.MainWindow
         }
 
         private readonly List<ToolEntry> _tools = new List<ToolEntry>();
+        
+        // Layout callbacks (host can set these to persist/load named layouts)
+        public Action<string, List<ToolLayoutState>>? OnSaveLayout;
+        public Action<string>? OnLoadLayout;
+        public Func<List<string>>? GetAvailableLayoutNames;
+        private bool _saveLayoutPopupOpen = false;
+        private bool _loadLayoutPopupOpen = false;
+        private string _layoutNameBuffer = string.Empty;
+        private bool _layoutDirty = false;
+
+        // Callback invoked when the layout changes. Host should persist the provided tool layout.
+        public Action<List<ToolLayoutState>>? OnLayoutChanged;
+
+        // Mark the layout as dirty (changed) so hosts can persist it.
+        private void MarkLayoutDirty()
+        {
+            _layoutDirty = true;
+            try
+            {
+                OnLayoutChanged?.Invoke(ExportLayout());
+            }
+            catch { }
+        }
+
+        // Attempt to consume the dirty flag. Returns true if it was set.
+        public bool TryConsumeLayoutDirty()
+        {
+            if (!_layoutDirty) return false;
+            _layoutDirty = false;
+            return true;
+        }
 
         public WindowContentContainer(Func<float>? getCellWidthPercent = null, Func<float>? getCellHeightPercent = null, Func<int>? getSubdivisions = null)
         {
@@ -77,6 +108,7 @@ namespace Kaleidoscope.Gui.MainWindow
         public void AddTool(ToolComponent tool)
         {
             _tools.Add(new ToolEntry(tool));
+            MarkLayoutDirty();
         }
 
         public List<ToolLayoutState> ExportLayout()
@@ -93,6 +125,8 @@ namespace Kaleidoscope.Gui.MainWindow
                     Position = t.Position,
                     Size = t.Size,
                     Visible = t.Visible,
+                    BackgroundEnabled = t is { } ? t.BackgroundEnabled : false,
+                    BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
                 });
             }
             return ret;
@@ -112,6 +146,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     match.Position = entry.Position;
                     match.Size = entry.Size;
                     match.Visible = entry.Visible;
+                    try { match.BackgroundEnabled = entry.BackgroundEnabled; match.BackgroundColor = entry.BackgroundColor; } catch { }
                 }
             }
         }
@@ -257,9 +292,62 @@ namespace Kaleidoscope.Gui.MainWindow
 
                                 ImGui.EndMenu();
                             }
+                            ImGui.Separator();
+                            // Save / Load layouts
+                            if (ImGui.MenuItem("Save layout..."))
+                            {
+                                _layoutNameBuffer = "";
+                                _saveLayoutPopupOpen = true;
+                                ImGui.OpenPopup("save_layout_popup");
+                            }
+
+                            if (ImGui.BeginMenu("Load layout"))
+                            {
+                                try
+                                {
+                                    var names = GetAvailableLayoutNames?.Invoke() ?? new List<string>();
+                                    foreach (var n in names)
+                                    {
+                                        if (ImGui.MenuItem(n))
+                                        {
+                                            try { OnLoadLayout?.Invoke(n); } catch { }
+                                            ImGui.CloseCurrentPopup();
+                                        }
+                                    }
+                                }
+                                catch { }
+
+                                ImGui.EndMenu();
+                            }
                         }
                         catch { }
 
+                        ImGui.EndPopup();
+                    }
+                    // Save layout modal
+                    if (ImGui.BeginPopupModal("save_layout_popup", ref _saveLayoutPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+                    {
+                        try
+                        {
+                            ImGui.TextUnformatted("Enter a name for this layout:");
+                            ImGui.InputText("##layoutname", ref _layoutNameBuffer, 128);
+                            if (ImGui.Button("Save"))
+                            {
+                                if (!string.IsNullOrWhiteSpace(_layoutNameBuffer))
+                                {
+                                    try { OnSaveLayout?.Invoke(_layoutNameBuffer, ExportLayout()); } catch { }
+                                    ImGui.CloseCurrentPopup();
+                                    _saveLayoutPopupOpen = false;
+                                }
+                            }
+                            ImGui.SameLine();
+                            if (ImGui.Button("Cancel"))
+                            {
+                                ImGui.CloseCurrentPopup();
+                                _saveLayoutPopupOpen = false;
+                            }
+                        }
+                        catch { }
                         ImGui.EndPopup();
                     }
                 }
@@ -275,6 +363,20 @@ namespace Kaleidoscope.Gui.MainWindow
                 var id = $"tool_{i}_{t.Id}";
 
                 ImGui.PushID(id);
+                // If the tool has a background enabled, draw a filled rectangle behind
+                // the child at the tool's absolute screen position. Drawing it before
+                // the child ensures it remains behind the tool's UI.
+                try
+                {
+                    if (t.BackgroundEnabled)
+                    {
+                        var screenMin = t.Position + contentOrigin;
+                        var screenMax = screenMin + t.Size;
+                        var col = ImGui.GetColorU32(t.BackgroundColor);
+                        dl.AddRectFilled(screenMin, screenMax, col);
+                    }
+                }
+                catch { }
                 ImGui.BeginChild(id, t.Size, true);
                 // Title bar inside the child
                 ImGui.TextUnformatted(t.Title);
@@ -348,6 +450,8 @@ namespace Kaleidoscope.Gui.MainWindow
                                 t.Position = snapped;
                             }
                             catch { }
+                            // mark layout changed on drag end so host can persist
+                            MarkLayoutDirty();
                         }
 
                         te.Dragging = false;
@@ -402,6 +506,8 @@ namespace Kaleidoscope.Gui.MainWindow
                                 t.Size = snappedSize;
                             }
                             catch { }
+                            // mark layout changed on resize end so host can persist
+                            MarkLayoutDirty();
                         }
 
                         te.Resizing = false;
@@ -409,6 +515,67 @@ namespace Kaleidoscope.Gui.MainWindow
                 }
 
                 ImGui.PopID();
+            }
+            // Tool-specific context popup (opened when right-clicking a tool in edit mode)
+            if (ImGui.BeginPopup("tool_context_menu"))
+            {
+                try
+                {
+                    // If the stored index is invalid (e.g., layout changed between
+                    // the right-click and popup render), try to resolve the tool by
+                    // the last recorded click position.
+                    if (!(_contextToolIndex >= 0 && _contextToolIndex < _tools.Count))
+                    {
+                        try
+                        {
+                            var wp = ImGui.GetWindowPos();
+                            var co = wp + new Vector2(0, ImGui.GetFrameHeight());
+                            var absClick = co + _lastContextClickRel;
+                            var found = -1;
+                            for (var ti = 0; ti < _tools.Count; ti++)
+                            {
+                                var tt = _tools[ti].Tool;
+                                if (!tt.Visible) continue;
+                                var tmin = tt.Position + co;
+                                var tmax = tmin + tt.Size;
+                                if (absClick.X >= tmin.X && absClick.X <= tmax.X && absClick.Y >= tmin.Y && absClick.Y <= tmax.Y)
+                                {
+                                    found = ti;
+                                    break;
+                                }
+                            }
+                            if (found >= 0) _contextToolIndex = found;
+                        }
+                        catch { }
+                    }
+
+                    if (_contextToolIndex >= 0 && _contextToolIndex < _tools.Count)
+                    {
+                        var t = _tools[_contextToolIndex].Tool;
+                        ImGui.TextUnformatted(t.Title ?? "Tool");
+                        ImGui.Separator();
+                        var bg = t.BackgroundEnabled;
+                        if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
+                        var col = t.BackgroundColor;
+                        if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
+                        ImGui.Separator();
+                        if (ImGui.MenuItem("Remove component"))
+                        {
+                            try
+                            {
+                                _tools.RemoveAt(_contextToolIndex);
+                                MarkLayoutDirty();
+                            }
+                            catch { }
+                            ImGui.CloseCurrentPopup();
+                        }
+                        ImGui.Separator();
+                        if (ImGui.Button("Close")) ImGui.CloseCurrentPopup();
+                    }
+                }
+                catch { }
+                ImGui.EndPopup();
+                _contextToolIndex = -1;
             }
         }
     }

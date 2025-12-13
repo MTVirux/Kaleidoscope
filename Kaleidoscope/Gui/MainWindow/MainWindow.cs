@@ -7,6 +7,7 @@ namespace Kaleidoscope.Gui.MainWindow
     using ECommons.Logging;
     
     using OtterGui.Text;
+    using System.Linq;
     using Dalamud.Interface;
 
         public class MainWindow : Window
@@ -140,11 +141,18 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         try
                         {
-                            var layout = plugin.Config.Layouts?.Find(x => x.Name == plugin.Config.ActiveLayoutName) ?? plugin.Config.Layouts?.FirstOrDefault();
+                            var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
+                            var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName) ? plugin.Config.ActiveLayoutName : null;
+                            ContentLayoutState? layout = null;
+                            if (activeName != null)
+                                layout = layouts.Find(x => x.Name == activeName);
+                            layout ??= layouts.FirstOrDefault();
+
                             if (layout == null)
                             {
-                                layout = new ContentLayoutState() { Name = plugin.Config.ActiveLayoutName ?? "Default" };
-                                plugin.Config.Layouts.Add(layout);
+                                // No saved layouts exist yet; create a new one with a sensible name.
+                                layout = new ContentLayoutState() { Name = activeName ?? "Default" };
+                                layouts.Add(layout);
                             }
                             layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
                             plugin.SaveConfig();
@@ -180,22 +188,102 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 var gtTool = new Tools.GilTracker.GilTrackerTool(_moneyTracker);
                 _contentContainer.AddTool(gtTool);
-                var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
-                cpTool.Position = new System.Numerics.Vector2(420, 50);
-                _contentContainer.AddTool(cpTool);
 
-                // Apply saved layout if available
+                // Decide whether to add default-only tools (CharacterPicker).
+                // If any saved layouts exist, prefer applying them and do not auto-add default tools
+                // so removed tools aren't reintroduced.
+                var layouts = plugin.Config.Layouts ?? new List<ContentLayoutState>();
+                var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName) ? plugin.Config.ActiveLayoutName : null;
+                ContentLayoutState? layout = null;
+                if (activeName != null)
+                    layout = layouts.Find(x => x.Name == activeName);
+                layout ??= layouts.FirstOrDefault();
+
+                if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
+                {
+                    _contentContainer.ApplyLayout(layout.Tools);
+                    if (string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)) plugin.Config.ActiveLayoutName = layout.Name;
+                }
+                else
+                {
+                    // No saved layout present: add the Character Picker as a default tool on first run.
+                    var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
+                    cpTool.Position = new System.Numerics.Vector2(420, 50);
+                    _contentContainer.AddTool(cpTool);
+                }
+            }
+            catch { }
+
+            // Wire layout persistence callbacks so the content container can save/load named layouts
+            _contentContainer.OnSaveLayout = (name, tools) =>
+            {
                 try
                 {
-                    var layout = plugin.Config.Layouts?.Find(x => x.Name == plugin.Config.ActiveLayoutName) ?? plugin.Config.Layouts?.FirstOrDefault();
-                    if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
+                    if (string.IsNullOrWhiteSpace(name)) return;
+                    var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
+                    var existing = layouts.Find(x => x.Name == name);
+                    if (existing == null)
                     {
-                        _contentContainer.ApplyLayout(layout.Tools);
+                        existing = new ContentLayoutState { Name = name };
+                        layouts.Add(existing);
+                    }
+                    existing.Tools = tools ?? new List<ToolLayoutState>();
+                    plugin.Config.ActiveLayoutName = name;
+                    try { plugin.SaveConfig(); } catch { }
+                    try { ECommons.Logging.PluginLog.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)"); } catch { }
+                }
+                catch { }
+            };
+
+            _contentContainer.OnLoadLayout = (name) =>
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(name)) return;
+                    var layouts = plugin.Config.Layouts ?? new List<ContentLayoutState>();
+                    var found = layouts.Find(x => x.Name == name);
+                    if (found != null)
+                    {
+                        _contentContainer.ApplyLayout(found.Tools);
+                        plugin.Config.ActiveLayoutName = name;
+                        try { plugin.SaveConfig(); } catch { }
+                        try { ECommons.Logging.PluginLog.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)"); } catch { }
                     }
                 }
                 catch { }
-            }
-            catch { }
+            };
+
+            _contentContainer.GetAvailableLayoutNames = () =>
+            {
+                try
+                {
+                    return (plugin.Config.Layouts ?? new List<ContentLayoutState>()).Select(x => x.Name).ToList();
+                }
+                catch { return new List<string>(); }
+            };
+
+            // Immediate persistence on any layout change (drag/resize/add/remove)
+            _contentContainer.OnLayoutChanged = (tools) =>
+            {
+                try
+                {
+                    var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)
+                        ? plugin.Config.ActiveLayoutName
+                        : (plugin.Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                    var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
+                    var existing = layouts.Find(x => x.Name == activeName);
+                    if (existing == null)
+                    {
+                        existing = new ContentLayoutState { Name = activeName };
+                        layouts.Add(existing);
+                    }
+                    existing.Tools = tools ?? new List<ToolLayoutState>();
+                    plugin.Config.ActiveLayoutName = activeName;
+                    try { plugin.SaveConfig(); } catch { }
+                    try { ECommons.Logging.PluginLog.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)"); } catch { }
+                }
+                catch { }
+            };
         }
 
         // Expose an explicit exit fullscreen helper so TopBar can call it.
@@ -220,6 +308,20 @@ namespace Kaleidoscope.Gui.MainWindow
             catch { }
 
             // TopBar removed: nothing to force-hide.
+        }
+
+        // Called by host to apply a layout stored in plugin.Config by name.
+        public void ApplyLayoutByName(string name)
+        {
+            try
+            {
+                var layout = plugin.Config.Layouts?.Find(x => x.Name == name) ?? plugin.Config.Layouts?.FirstOrDefault();
+                if (layout != null && _contentContainer != null)
+                {
+                    _contentContainer.ApplyLayout(layout.Tools);
+                }
+            }
+            catch { }
         }
 
         public override void PreDraw()
@@ -272,6 +374,28 @@ namespace Kaleidoscope.Gui.MainWindow
             try
             {
                 _contentContainer?.Draw(this.plugin.Config.EditMode);
+                // If the container reports layout changes, persist them into the active layout
+                    try
+                    {
+                        if (_contentContainer != null && _contentContainer.TryConsumeLayoutDirty())
+                        {
+                            try { ECommons.Logging.PluginLog.Information("Detected layout dirty, persisting active layout"); } catch { }
+                            var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)
+                                ? plugin.Config.ActiveLayoutName
+                                : (plugin.Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                            var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
+                            var existing = layouts.Find(x => x.Name == activeName);
+                            if (existing == null)
+                            {
+                                existing = new ContentLayoutState { Name = activeName };
+                                layouts.Add(existing);
+                            }
+                            existing.Tools = _contentContainer.ExportLayout();
+                            plugin.Config.ActiveLayoutName = activeName;
+                            try { plugin.SaveConfig(); } catch { }
+                        }
+                    }
+                    catch { }
             }
             catch { }
         }
