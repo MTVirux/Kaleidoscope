@@ -303,20 +303,9 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                             if (!AvailableCharacters.Contains(cid)) AvailableCharacters.Add(cid);
                         }
 
-                        // If the sample belongs to the currently-logged-in character,
-                        // automatically switch the selection to it only when the
-                        // active character actually changed since the last seen value.
-                        try
-                        {
-                            var localCid = Svc.PlayerState.ContentId;
-                            if (localCid != 0 && cid == localCid && localCid != _lastSeenLocalCid)
-                            {
-                                SelectedCharacterId = cid;
-                                LoadForCharacter(cid);
-                                _lastSeenLocalCid = localCid;
-                            }
-                        }
-                        catch { }
+                        // Do not automatically switch the UI picker to the current character.
+                        // Keep stored series and available characters up-to-date, but leave
+                        // selection changes to the user's explicit actions.
                     }
                     catch { }
                 }
@@ -333,9 +322,25 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 {
                     EnsureConnection();
                     if (_connection == null) return;
-                    var cid = Svc.PlayerState.ContentId;
-                    // If we don't have a valid character/content id, do not attempt to load saved data
+                    // Refresh the in-memory list of available characters first.
+                    try { RefreshAvailableCharacters(); } catch { }
+
+                    // If the UI picker is currently set to 'All' (SelectedCharacterId == 0),
+                    // load the aggregate series instead of the local player's series so the
+                    // graph matches the picker selection on startup.
+                    if (SelectedCharacterId == 0)
+                    {
+                        try { LoadAllCharacters(); } catch { }
+                        return;
+                    }
+
+                    // Otherwise load the explicitly selected character. If for some reason
+                    // no selection is present, fall back to the local player's content id.
+                    var cid = SelectedCharacterId;
+                    if (cid == 0) cid = Svc.PlayerState.ContentId;
+                    // If we still don't have a valid character id, nothing to load.
                     if (cid == 0) return;
+
                     var arr = new List<(DateTime ts, long value)>();
                     using var cmd = _connection.CreateCommand();
                     cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
@@ -394,13 +399,9 @@ ORDER BY p.timestamp ASC";
                         // since the last seen local CID. Do not automatically pick the
                         // first stored character to avoid forcing a selection when the
                         // user hasn't changed characters.
-                        var localCid = Svc.PlayerState.ContentId;
-                        if (localCid != 0 && AvailableCharacters.Contains(localCid) && localCid != _lastSeenLocalCid)
-                        {
-                            SelectedCharacterId = localCid;
-                            LoadForCharacter(SelectedCharacterId);
-                            _lastSeenLocalCid = localCid;
-                        }
+                        // Do not automatically change the SelectedCharacterId here. Prefer
+                        // leaving the current selection untouched so the user's picker choice
+                        // is not overridden when available characters are refreshed.
                         // otherwise: leave current SelectedCharacterId as-is (may be 0)
                     }
                     else if (AvailableCharacters.Count == 0)

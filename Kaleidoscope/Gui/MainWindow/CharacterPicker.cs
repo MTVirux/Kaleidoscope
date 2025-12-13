@@ -36,12 +36,32 @@ namespace Kaleidoscope.Gui.MainWindow
             catch { }
 
             var count = _helper.AvailableCharacters.Count;
-            // Build display names, inserting an "All" option at index 0
-            var displayList = new List<string>();
-            displayList.Add("All");
+            // Build a filtered list of visible character ids (hide entries where
+            // the display resolver falls back to the raw numeric CID). This keeps
+            // the dropdown free of numeric CIDs when no name is available.
+            var visibleIds = new List<ulong>();
             if (count > 0)
             {
-                displayList.AddRange(_helper.AvailableCharacters.Select(id => _helper.GetCharacterDisplayName(id)));
+                foreach (var id in _helper.AvailableCharacters)
+                {
+                    try
+                    {
+                        var name = _helper.GetCharacterDisplayName(id);
+                        if (!string.IsNullOrEmpty(name) && name != id.ToString())
+                        {
+                            visibleIds.Add(id);
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            var visibleCount = visibleIds.Count;
+            // Build display names, inserting an "All" option at index 0
+            var displayList = new List<string> { "All" };
+            if (visibleCount > 0)
+            {
+                displayList.AddRange(visibleIds.Select(id => _helper.GetCharacterDisplayName(id)));
             }
             else
             {
@@ -51,10 +71,10 @@ namespace Kaleidoscope.Gui.MainWindow
             var names = displayList.ToArray();
 
             var idx = 0;
-            if (count > 0)
+            if (visibleCount > 0)
             {
                 // SelectedCharacterId maps to index+1 in the displayList because 0 == All
-                var selIndex = _helper.AvailableCharacters.IndexOf(_helper.SelectedCharacterId);
+                var selIndex = visibleIds.IndexOf(_helper.SelectedCharacterId);
                 idx = selIndex < 0 ? 0 : selIndex + 1;
             }
 
@@ -68,9 +88,9 @@ namespace Kaleidoscope.Gui.MainWindow
                             // Load aggregated data across all characters
                             _helper.LoadAllCharacters();
                         }
-                    else if (count > 0)
+                    else if (visibleCount > 0)
                     {
-                        var id = _helper.AvailableCharacters[idx - 1];
+                        var id = visibleIds[idx - 1];
                         _helper.LoadForCharacter(id);
                     }
                 }
