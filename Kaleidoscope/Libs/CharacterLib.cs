@@ -29,12 +29,12 @@ namespace Kaleidoscope.Libs
                     if (!string.IsNullOrEmpty(oname)) return oname;
                 }
 
-                // last-resort fallback to numeric id (no reliable global lookup available here)
-                return contentId.ToString();
+                // last-resort fallback: return null (no reliable global lookup available here)
+                return null;
             }
             catch
             {
-                return contentId.ToString();
+                return null;
             }
         }
     }

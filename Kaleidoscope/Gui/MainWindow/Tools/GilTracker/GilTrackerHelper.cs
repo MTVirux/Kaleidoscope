@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using ECommons.DalamudServices;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using System.Text;
+using System.Linq;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
@@ -104,6 +105,12 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     string? name = null;
                     if (!rdr.IsDBNull(1)) name = rdr.GetFieldValue<string>(1);
                     var sanitized = SanitizeName(name);
+                    // If the stored name contains any digit, treat it as invalid and schedule removal
+                    if (!string.IsNullOrEmpty(sanitized) && sanitized.Any(char.IsDigit))
+                    {
+                        deletes.Add(cid);
+                        continue;
+                    }
                     // If the stored name sanitizes to just "You", treat it as a placeholder and schedule removal
                     if (!string.IsNullOrEmpty(sanitized) && string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                     {
