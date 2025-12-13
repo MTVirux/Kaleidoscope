@@ -71,10 +71,10 @@ namespace Kaleidoscope.Integration.Mappers
                 FreeCompany = c->FreeCompanyTagString
             };
 
-            // Try to populate primary inventory (Inventory1) if InventoryManager is available
+            // Try to populate primary inventory (Inventory1) via GameStateService wrapper
             try
             {
-                var invMgr = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+                var invMgr = Kaleidoscope.Services.GameStateService.InventoryManagerInstance();
                 if (invMgr != null)
                 {
                     var inv = invMgr->GetInventoryContainer(FFXIVClientStructs.FFXIV.Client.Game.InventoryType.Inventory1);

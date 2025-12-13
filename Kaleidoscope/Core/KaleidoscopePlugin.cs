@@ -83,13 +83,13 @@ namespace Kaleidoscope
                 {
                     if (!_samplerEnabled) return;
                     var now = DateTime.UtcNow;
-                    var cid = ECommons.DalamudServices.Svc.PlayerState.ContentId;
+                    var cid = Kaleidoscope.Services.GameStateService.PlayerContentId;
                     uint gil = 0;
                     unsafe
                     {
-                        var im = FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance();
+                        var im = Kaleidoscope.Services.GameStateService.InventoryManagerInstance();
                         if (im != null) gil = im->GetGil();
-                        var cm = FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager.Instance();
+                        var cm = Kaleidoscope.Services.GameStateService.CurrencyManagerInstance();
                         if (gil == 0 && cm != null)
                         {
                             try { gil = cm->GetItemCount(1); } catch { gil = 0; }

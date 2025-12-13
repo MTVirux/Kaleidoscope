@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 using ECommons.DalamudServices;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using System.Text;
 using System.Linq;
 
@@ -926,7 +925,7 @@ ORDER BY p.timestamp ASC";
                 unsafe
                 {
                     // Prefer InventoryManager if available
-                    var im = InventoryManager.Instance();
+                    var im = Kaleidoscope.Services.GameStateService.InventoryManagerInstance();
                     if (im != null)
                     {
                         try
@@ -949,7 +948,7 @@ ORDER BY p.timestamp ASC";
                     }
 
                     // Fallback to CurrencyManager only if InventoryManager isn't available
-                    var cm = CurrencyManager.Instance();
+                    var cm = Kaleidoscope.Services.GameStateService.CurrencyManagerInstance();
                     if (cm != null)
                     {
                         try

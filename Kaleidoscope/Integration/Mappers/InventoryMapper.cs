@@ -85,7 +85,7 @@ namespace Kaleidoscope.Integration.Mappers
 
             try
             {
-                var mgr = InventoryManager.Instance();
+                var mgr = Kaleidoscope.Services.GameStateService.InventoryManagerInstance();
                 if (mgr == null) return result;
 
                 var types = new InventoryType[] {

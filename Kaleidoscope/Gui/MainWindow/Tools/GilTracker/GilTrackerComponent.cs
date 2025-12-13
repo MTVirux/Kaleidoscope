@@ -1,7 +1,6 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Libs;
 
 namespace Kaleidoscope.Gui.MainWindow
