@@ -1,12 +1,10 @@
 namespace Kaleidoscope.Gui.ConfigWindow;
 
-using Kaleidoscope.Gui.Common;
-
 /// <summary>
 /// Container component for the config window content.
 /// Minimal stub to avoid external dependency on NightmareUI's ConfigFileSystem.
 /// </summary>
-public class ConfigWindowContainerComponent : IUIComponent
+public class ConfigWindowContainerComponent
 {
     private readonly object fileSystem;
 
