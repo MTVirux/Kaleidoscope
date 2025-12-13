@@ -10,6 +10,8 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly GilTrackerHelper _helper;
         private readonly CharacterPicker _characterPicker;
+        // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
+        public string? DbPath => _dbPath;
         private bool _pointsPopupOpen = false;
         private bool _namesPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
@@ -88,10 +90,12 @@ namespace Kaleidoscope.Gui.MainWindow
                 if (v < min) min = v;
                 if (v > max) max = v;
             }
-            if (min == float.MaxValue) min = 0;
-            if (max == float.MinValue) max = 0;
+            // Force the plotted minimum baseline to 0 so the graph always starts at zero.
+            // Force the plotted maximum to a fixed ceiling so the Y-axis covers a known range.
+            min = 0f;
+            max = 999_999_999f;
 
-            ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}\nMin: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}\nMax: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
+            //ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}\nMin: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}\nMax: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
 
             // Plot the samples
             if (_helper.Samples.Count > 0)
@@ -102,8 +106,11 @@ namespace Kaleidoscope.Gui.MainWindow
                 try
                 {
                     var avail = ImGui.GetContentRegionAvail();
-                    var graphWidth = Math.Max(100f, avail.X);
-                    var graphHeight = Math.Max(100f, avail.Y);
+                    // Allow the plot child to auto-size to the remaining available region.
+                    // If ImGui reports a non-positive available size, pass 0 so BeginChild will
+                    // use the remaining window space rather than a forced minimum.
+                    var graphWidth = avail.X <= 0f ? 0f : avail.X;
+                    var graphHeight = avail.Y <= 0f ? 0f : avail.Y;
 
                     // Ensure we have a non-zero vertical range for plotting
                     if (Math.Abs(max - min) < 0.0001f)
@@ -112,7 +119,14 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
 
                     ImGui.BeginChild("giltracker_plot_child", new System.Numerics.Vector2(graphWidth, graphHeight), false);
-                    ImGui.PlotLines("##gilplot", arr, arr.Length);
+                    // Set the next item's width to the child's available width so the plot expands horizontally.
+                    var childAvailAfterBegin = ImGui.GetContentRegionAvail();
+                    ImGui.SetNextItemWidth(Math.Max(1f, childAvailAfterBegin.X));
+                    // Try to use the PlotLines overload that accepts an explicit graph size
+                    // (overlay string, scale min/max, graph size) so the plot covers the
+                    // full child height as well as width.
+                    var plotSize = new System.Numerics.Vector2(Math.Max(1f, childAvailAfterBegin.X), Math.Max(1f, childAvailAfterBegin.Y));
+                    ImGui.PlotLines("##gilplot", arr, arr.Length, "", min, max, plotSize);
                     ImGui.EndChild();
                 }
                 catch
