@@ -159,6 +159,20 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                         catch { }
                     }
+                    else
+                    {
+                        // When enabling edit mode, capture the current window position/size
+                        // and force the window to be pinned so it doesn't move/resize while
+                        // the user edits HUD layout.
+                        try
+                        {
+                            plugin.Config.PinMainWindow = true;
+                            try { plugin.Config.MainWindowPos = ImGui.GetWindowPos(); } catch { }
+                            try { plugin.Config.MainWindowSize = ImGui.GetWindowSize(); } catch { }
+                            try { plugin.SaveConfig(); } catch { }
+                        }
+                        catch { }
+                    }
                     try { plugin.Config.EditMode = newState; plugin.SaveConfig(); }
                     catch { }
                 }
@@ -327,6 +341,24 @@ namespace Kaleidoscope.Gui.MainWindow
         public override void PreDraw()
         {
             // When pinned, lock position and size; when unpinned, allow moving and resizing.
+            // Force pin (lock) when edit mode is active so layout editing cannot be interrupted
+            // by moving/resizing the main window.
+            try
+            {
+                if (this.plugin.Config.EditMode && !this.plugin.Config.PinMainWindow)
+                {
+                    this.plugin.Config.PinMainWindow = true;
+                    try
+                    {
+                        this.plugin.Config.MainWindowPos = ImGui.GetWindowPos();
+                        this.plugin.Config.MainWindowSize = ImGui.GetWindowSize();
+                    }
+                    catch { }
+                    try { this.plugin.SaveConfig(); } catch { }
+                }
+            }
+            catch { }
+
             if (this.plugin.Config.PinMainWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
