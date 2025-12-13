@@ -45,7 +45,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), dbPath);
                     if (defaultGt != null) _contentContainer.AddTool(defaultGt);
                 }
-                catch { }
+                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GilTracker creation failed: {ex.Message}"); }
                 // Attempt to apply a saved layout if present (use Config.Layouts like main window)
                 try
                 {
@@ -61,7 +61,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         _contentContainer.ApplyLayout(layout.Tools);
                     }
                 }
-                catch { }
+                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Layout apply failed: {ex.Message}"); }
 
                 // Wire layout persistence callbacks for fullscreen window as well
                 _contentContainer.OnSaveLayout = (name, tools) =>
@@ -81,7 +81,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         _configService.Save();
                         _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnSaveLayout failed: {ex.Message}"); }
                 };
 
                 _contentContainer.OnLoadLayout = (name) =>
@@ -99,7 +99,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]");
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLoadLayout failed: {ex.Message}"); }
                 };
 
                 _contentContainer.GetAvailableLayoutNames = () =>
@@ -108,7 +108,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         return (Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>()).Select(x => x.Name).ToList();
                     }
-                    catch { return new System.Collections.Generic.List<string>(); }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GetAvailableLayoutNames failed: {ex.Message}"); return new System.Collections.Generic.List<string>(); }
                 };
 
                 _contentContainer.OnLayoutChanged = (tools) =>
@@ -130,10 +130,10 @@ namespace Kaleidoscope.Gui.MainWindow
                         _configService.Save();
                         _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLayoutChanged failed: {ex.Message}"); }
                 };
             }
-            catch { }
+            catch (Exception ex) { LogService.Error("[FullscreenWindow] Content container initialization failed", ex); }
         }
 
         public override void PreDraw()
@@ -149,7 +149,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
                 ImGui.SetNextWindowSize(io.DisplaySize);
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] PreDraw size setup failed: {ex.Message}"); }
         }
 
         public override void Draw()
@@ -167,13 +167,14 @@ namespace Kaleidoscope.Gui.MainWindow
                     var fsEdit = io.KeyCtrl && io.KeyShift;
                     _contentContainer?.Draw(fsEdit);
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Fall back to config value if IO access fails for any reason
+                    LogService.Debug($"[FullscreenWindow] Draw IO check failed: {ex.Message}");
                     _contentContainer?.Draw(Config.EditMode);
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }
         }
     }
 }

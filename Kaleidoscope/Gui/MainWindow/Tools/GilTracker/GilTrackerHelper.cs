@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using ECommons.DalamudServices;
 using System.Text;
 using System.Linq;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
@@ -82,10 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     {
                         MigrateStoredNames();
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Name migration failed: {ex.Message}"); }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Error($"[GilTracker] Database initialization failed: {ex.Message}", ex); }
         }
 
         private void MigrateStoredNames()
@@ -134,7 +135,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         up.Parameters.AddWithValue("$c", u.cid);
                         up.ExecuteNonQuery();
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Failed to update name for CID {u.cid}: {ex.Message}"); }
                 }
 
                 // Remove placeholder names that resolved to "You" (case-insensitive).
@@ -147,10 +148,10 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         del.Parameters.AddWithValue("$c", cidToRemove);
                         del.ExecuteNonQuery();
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Failed to delete placeholder name for CID {cidToRemove}: {ex.Message}"); }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] Name migration query failed: {ex.Message}"); }
         }
 
         public void PushSample(float v, ulong? sampleCharacterId = null)
@@ -182,7 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         }
                     }
                 }
-                catch { lastPersisted = null; }
+                catch (Exception ex) { LogService.Debug($"[GilTracker] Last persisted value lookup failed: {ex.Message}"); lastPersisted = null; }
 
                 if (lastPersisted.HasValue && Math.Abs((double)lastPersisted.Value - v) < 0.0001) 
                 {
@@ -209,10 +210,10 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 else if (SelectedCharacterId == 0)
                 {
                     // If viewing aggregate, reload combined series to include this sample
-                    try { LoadAllCharacters(); } catch { }
+                    try { LoadAllCharacters(); } catch (Exception ex) { LogService.Debug($"[GilTracker] LoadAllCharacters in PushSample failed: {ex.Message}"); }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] PushSample failed: {ex.Message}"); }
         }
 
         private void TrySaveFor(ulong cid, long value)
@@ -260,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                 }
                                 if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
+                                    try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch (Exception ex) { LogService.Debug($"[GilTracker] LocalPlayer name lookup failed: {ex.Message}"); }
                                 }
                                 if (!string.IsNullOrEmpty(sanitized))
                                 {
@@ -278,13 +279,13 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                             nameCmd.ExecuteNonQuery();
                                         }
                                     }
-                                    catch { }
+                                    catch (Exception ex) { LogService.Debug($"[GilTracker] Character name insert failed: {ex.Message}"); }
                                 }
                             }
-                            catch { }
+                            catch (Exception ex) { LogService.Debug($"[GilTracker] Character name sanitization failed: {ex.Message}"); }
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Character name resolution failed: {ex.Message}"); }
 
                     cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
                     cmd.Parameters.Clear();
@@ -306,10 +307,10 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         // Keep stored series and available characters up-to-date, but leave
                         // selection changes to the user's explicit actions.
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Available characters update failed: {ex.Message}"); }
                 }
             }
-            catch { /* swallow save errors */ }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] TrySaveFor failed for CID {cid}: {ex.Message}"); }
         }
 
         private void TryLoadSaved()
@@ -322,14 +323,14 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     EnsureConnection();
                     if (_connection == null) return;
                     // Refresh the in-memory list of available characters first.
-                    try { RefreshAvailableCharacters(); } catch { }
+                    try { RefreshAvailableCharacters(); } catch (Exception ex) { LogService.Debug($"[GilTracker] RefreshAvailableCharacters failed: {ex.Message}"); }
 
                     // If the UI picker is currently set to 'All' (SelectedCharacterId == 0),
                     // load the aggregate series instead of the local player's series so the
                     // graph matches the picker selection on startup.
                     if (SelectedCharacterId == 0)
                     {
-                        try { LoadAllCharacters(); } catch { }
+                        try { LoadAllCharacters(); } catch (Exception ex) { LogService.Debug($"[GilTracker] LoadAllCharacters in TryLoadSaved failed: {ex.Message}"); }
                         return;
                     }
 
@@ -368,7 +369,7 @@ ORDER BY p.timestamp ASC";
                     RefreshAvailableCharacters();
                 }
             }
-            catch { /* do not crash on read errors */ }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] TryLoadSaved read error: {ex.Message}"); /* do not crash on read errors */ }
         }
 
         public void RefreshAvailableCharacters()
@@ -412,7 +413,7 @@ ORDER BY p.timestamp ASC";
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] RefreshAvailableCharacters failed: {ex.Message}"); }
         }
 
         /// <summary>
@@ -446,7 +447,7 @@ ORDER BY p.timestamp ASC";
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] DB name lookup for CID {characterId} failed: {ex.Message}"); }
 
             try
             {
@@ -464,14 +465,14 @@ ORDER BY p.timestamp ASC";
                         }
                         if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                         {
-                            try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
+                            try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch (Exception ex) { LogService.Debug($"[GilTracker] LocalPlayer fallback failed: {ex.Message}"); }
                         }
                         if (!string.IsNullOrEmpty(sanitized)) return sanitized;
                     }
-                    catch { return runtime; }
+                    catch (Exception ex) { LogService.Debug($"[GilTracker] Name sanitization in display failed: {ex.Message}"); return runtime; }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] Runtime name lookup failed: {ex.Message}"); }
 
             return characterId.ToString();
         }
@@ -498,7 +499,7 @@ ORDER BY p.timestamp ASC";
                 }
                 return s;
             }
-            catch { return raw; }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] SanitizeName failed: {ex.Message}"); return raw; }
         }
 
         /// <summary>
@@ -526,7 +527,7 @@ ORDER BY p.timestamp ASC";
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] GetAllStoredCharacterNames failed: {ex.Message}"); }
             return res;
         }
 
@@ -560,7 +561,7 @@ ORDER BY p.timestamp ASC";
                     SelectedCharacterId = characterId;
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] LoadForCharacter failed for CID {characterId}: {ex.Message}"); }
         }
 
         /// <summary>
@@ -662,7 +663,7 @@ ORDER BY s.character_id, p.timestamp ASC";
                     SelectedCharacterId = 0;
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] LoadAllCharacters failed: {ex.Message}"); }
         }
 
 
@@ -687,7 +688,7 @@ ORDER BY s.character_id, p.timestamp ASC";
                     _samples.Clear();
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Error($"[GilTracker] ClearForSelectedCharacter failed: {ex.Message}", ex); }
         }
 
             /// <summary>
@@ -713,7 +714,7 @@ ORDER BY s.character_id, p.timestamp ASC";
                         SetStatus("Cleared GilTracker DB.");
                     }
                 }
-                catch { }
+                catch (Exception ex) { LogService.Error($"[GilTracker] ClearAllData failed: {ex.Message}", ex); }
             }
 
             /// <summary>
@@ -772,18 +773,19 @@ ORDER BY s.character_id, p.timestamp ASC";
 
                                 tx.Commit();
                             }
-                            catch
+                            catch (Exception ex)
                             {
-                                try { tx.Rollback(); } catch { }
+                                LogService.Error($"[GilTracker] CleanUnassociatedCharacterData transaction failed: {ex.Message}", ex);
+                                try { tx.Rollback(); } catch (Exception rollbackEx) { LogService.Debug($"[GilTracker] Rollback failed: {rollbackEx.Message}"); }
                             }
                         }
 
                         // Refresh in-memory available characters state
-                        try { RefreshAvailableCharacters(); } catch { }
+                        try { RefreshAvailableCharacters(); } catch (Exception ex) { LogService.Debug($"[GilTracker] RefreshAvailableCharacters after clean failed: {ex.Message}"); }
                         SetStatus($"Cleaned {removed} unassociated character(s) from DB.");
                     }
                 }
-                catch { }
+                catch (Exception ex) { LogService.Error($"[GilTracker] CleanUnassociatedCharacterData failed: {ex.Message}", ex); }
                 return removed;
             }
 
@@ -853,8 +855,9 @@ ORDER BY p.timestamp ASC";
                 SetStatus($"Exported to {fileName}");
                 return fileName;
             }
-            catch
+            catch (Exception ex)
             {
+                LogService.Error($"[GilTracker] ExportCsv failed: {ex.Message}", ex);
                 return null;
             }
         }
@@ -914,7 +917,7 @@ ORDER BY p.timestamp ASC";
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[GilTracker] GetPoints failed: {ex.Message}"); }
             return res;
         }
 
@@ -940,8 +943,9 @@ ORDER BY p.timestamp ASC";
                                 SetStatus("Skipping sample identical to last.");
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            LogService.Debug($"[GilTracker] InventoryManager read failed: {ex.Message}");
                             SetStatus("Failed to read gil from InventoryManager.");
                         }
                         return;
@@ -963,8 +967,9 @@ ORDER BY p.timestamp ASC";
                                 SetStatus("Skipping sample identical to last.");
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            LogService.Debug($"[GilTracker] CurrencyManager read failed: {ex.Message}");
                             SetStatus("Failed to read gil from CurrencyManager.");
                         }
                         return;

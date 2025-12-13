@@ -12,13 +12,13 @@ namespace Kaleidoscope.Services
         public static FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* InventoryManagerInstance()
         {
             try { return FFXIVClientStructs.FFXIV.Client.Game.InventoryManager.Instance(); }
-            catch { return null; }
+            catch (Exception ex) { LogService.Debug($"[GameStateService] InventoryManager.Instance() failed: {ex.Message}"); return null; }
         }
 
         public static FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager* CurrencyManagerInstance()
         {
             try { return FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager.Instance(); }
-            catch { return null; }
+            catch (Exception ex) { LogService.Debug($"[GameStateService] CurrencyManager.Instance() failed: {ex.Message}"); return null; }
         }
 
         public static ulong PlayerContentId => Svc.PlayerState.ContentId;
@@ -28,7 +28,7 @@ namespace Kaleidoscope.Services
             get
             {
                 try { return Svc.Objects.LocalPlayer?.Name.ToString(); }
-                catch { return null; }
+                catch (Exception ex) { LogService.Debug($"[GameStateService] LocalPlayer name access failed: {ex.Message}"); return null; }
             }
         }
     }

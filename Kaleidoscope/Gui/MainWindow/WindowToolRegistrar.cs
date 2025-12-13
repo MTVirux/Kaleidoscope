@@ -1,6 +1,7 @@
 namespace Kaleidoscope.Gui.MainWindow
 {
     using System.Numerics;
+    using Kaleidoscope.Services;
 
     public static class WindowToolRegistrar
     {
@@ -15,7 +16,10 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 container.RegisterTool("GilTracker", "Gil Tracker", pos => CreateToolInstance("GilTracker", pos, sharedDbPath), "Track gil and history");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to register tools", ex);
+            }
         }
 
         // Create a new tool instance by id. Each call returns a fresh instance
@@ -40,7 +44,10 @@ namespace Kaleidoscope.Gui.MainWindow
                     return gt;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.Error($"Failed to create tool instance '{id}'", ex);
+            }
             return null;
         }
     }

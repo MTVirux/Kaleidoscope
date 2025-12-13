@@ -69,7 +69,7 @@ public class SamplerService : IDisposable
                 var cm = GameStateService.CurrencyManagerInstance();
                 if (gil == 0 && cm != null)
                 {
-                    try { gil = cm->GetItemCount(1); } catch { gil = 0; }
+                    try { gil = cm->GetItemCount(1); } catch (Exception ex) { LogService.Debug($"[SamplerService] CurrencyManager read failed: {ex.Message}"); gil = 0; }
                 }
             }
 

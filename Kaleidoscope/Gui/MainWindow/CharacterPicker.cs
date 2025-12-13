@@ -1,6 +1,7 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
@@ -31,9 +32,12 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                 }
                 // Keep the list sorted for predictable ordering
-                try { _helper.AvailableCharacters.Sort(); } catch { }
+                _helper.AvailableCharacters.Sort();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.Debug($"Character refresh error: {ex.Message}");
+            }
 
             var count = _helper.AvailableCharacters.Count;
             // Build a filtered list of visible character ids (hide entries where
@@ -52,7 +56,10 @@ namespace Kaleidoscope.Gui.MainWindow
                             visibleIds.Add(id);
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogService.Debug($"Display name error for {id}: {ex.Message}");
+                    }
                 }
             }
 
@@ -95,7 +102,10 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.Error("Character selection error", ex);
+            }
 
 #if DEBUG
             try
@@ -106,7 +116,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     _namesPopupOpen = true;
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[CharacterPicker] Debug popup trigger failed: {ex.Message}"); }
 #endif
 
 #if DEBUG
@@ -133,7 +143,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         ImGui.EndChild();
                     }
                 }
-                catch { }
+                catch (Exception ex) { LogService.Debug($"[CharacterPicker] Debug popup content render failed: {ex.Message}"); }
 
                 if (ImGui.Button("Close"))
                 {

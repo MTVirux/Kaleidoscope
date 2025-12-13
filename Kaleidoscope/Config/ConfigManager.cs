@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using System.IO;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Config
 {
@@ -28,7 +29,7 @@ namespace Kaleidoscope.Config
                     if (obj != null) return obj;
                 }
             }
-            catch { }
+            catch (Exception ex) { LogService.Warning($"[ConfigManager] Failed to load config '{fileName}', using default: {ex.Message}"); }
             var def = factory();
             Save(fileName, def);
             return def;
@@ -42,7 +43,7 @@ namespace Kaleidoscope.Config
                 var txt = JsonConvert.SerializeObject(obj, Formatting.Indented);
                 File.WriteAllText(fp, txt);
             }
-            catch { }
+            catch (Exception ex) { LogService.Error($"[ConfigManager] Failed to save config '{fileName}': {ex.Message}", ex); }
         }
     }
 }

@@ -92,7 +92,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                         var s = JsonSerializer.Serialize(selected, new JsonSerializerOptions { WriteIndented = true });
                         ImGui.SetClipboardText(s);
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[LayoutsCategory] Export JSON failed: {ex.Message}"); }
                 }
 
                 ImGui.SameLine();
@@ -112,7 +112,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                             }
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[LayoutsCategory] Import JSON failed: {ex.Message}"); }
                 }
             }
         }

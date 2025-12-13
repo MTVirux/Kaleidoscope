@@ -371,9 +371,9 @@ namespace Kaleidoscope.Gui.MainWindow
                             _configService.Save();
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { LogService.Debug($"[MainWindow] Layout auto-save failed: {ex.Message}"); }
             }
-            catch { }
+            catch (Exception ex) { LogService.Debug($"[MainWindow] OnLayoutChanged failed: {ex.Message}"); }
         }
 
         private static string GetDisplayTitle()

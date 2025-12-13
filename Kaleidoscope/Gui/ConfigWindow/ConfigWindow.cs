@@ -57,7 +57,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
                             Config.ConfigWindowPos = ImGui.GetWindowPos();
                             Config.ConfigWindowSize = ImGui.GetWindowSize();
                         }
-                        catch { }
+                        catch (Exception ex) { LogService.Debug($"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
                     }
                     _configService.Save();
                     lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;

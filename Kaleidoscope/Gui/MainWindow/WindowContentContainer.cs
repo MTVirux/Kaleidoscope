@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Collections.Generic;
 using Kaleidoscope;
+using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 
@@ -63,12 +64,12 @@ namespace Kaleidoscope.Gui.MainWindow
             _layoutDirty = true;
             try
             {
-                try { ECommons.Logging.PluginLog.Information($"Layout marked dirty ({_tools.Count} tools)"); } catch { }
+                LogService.Debug($"Layout marked dirty ({_tools.Count} tools)");
                 OnLayoutChanged?.Invoke(ExportLayout());
             }
             catch (Exception ex)
             {
-                try { ECommons.Logging.PluginLog.Error($"Error while invoking OnLayoutChanged: {ex}"); } catch { }
+                LogService.Error("Error while invoking OnLayoutChanged", ex);
             }
         }
 
@@ -77,7 +78,7 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             if (!_layoutDirty) return false;
             _layoutDirty = false;
-            try { ECommons.Logging.PluginLog.Information("TryConsumeLayoutDirty: consumed dirty flag"); } catch { }
+            LogService.Debug("TryConsumeLayoutDirty: consumed dirty flag");
             return true;
         }
 
@@ -113,7 +114,7 @@ namespace Kaleidoscope.Gui.MainWindow
         public void AddTool(ToolComponent tool)
         {
             _tools.Add(new ToolEntry(tool));
-            try { ECommons.Logging.PluginLog.Information($"AddTool: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}"); } catch { }
+            LogService.Debug($"AddTool: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}");
             MarkLayoutDirty();
         }
 
@@ -135,26 +136,34 @@ namespace Kaleidoscope.Gui.MainWindow
                     BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
                 });
             }
-            try { ECommons.Logging.PluginLog.Information($"ExportLayout: exported {ret.Count} tools"); } catch { }
+            LogService.Debug($"ExportLayout: exported {ret.Count} tools");
             return ret;
         }
 
         public void ApplyLayout(List<ToolLayoutState>? layout)
         {
             if (layout == null) return;
-            try { ECommons.Logging.PluginLog.Information($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools"); } catch { }
+            LogService.Debug($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
             foreach (var entry in layout)
             {
-                // Try to match by Id first, then by Title, then by Type
-                var match = _tools.Find(x => x.Tool.Id == entry.Id)?.Tool
-                    ?? _tools.Find(x => x.Tool.Title == entry.Title)?.Tool
-                    ?? _tools.Find(x => x.Tool.GetType().FullName == entry.Type)?.Tool;
-                if (match != null)
+                try
                 {
-                    match.Position = entry.Position;
-                    match.Size = entry.Size;
-                    match.Visible = entry.Visible;
-                    try { match.BackgroundEnabled = entry.BackgroundEnabled; match.BackgroundColor = entry.BackgroundColor; } catch { }
+                    // Try to match by Id first, then by Title, then by Type
+                    var match = _tools.Find(x => x.Tool.Id == entry.Id)?.Tool
+                        ?? _tools.Find(x => x.Tool.Title == entry.Title)?.Tool
+                        ?? _tools.Find(x => x.Tool.GetType().FullName == entry.Type)?.Tool;
+                    if (match != null)
+                    {
+                        match.Position = entry.Position;
+                        match.Size = entry.Size;
+                        match.Visible = entry.Visible;
+                        match.BackgroundEnabled = entry.BackgroundEnabled;
+                        match.BackgroundColor = entry.BackgroundColor;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Error($"Failed to apply layout entry '{entry.Id}'", ex);
                 }
             }
         }
@@ -219,7 +228,10 @@ namespace Kaleidoscope.Gui.MainWindow
                         countH++;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"Grid drawing error: {ex.Message}");
+                }
 
                 // Right-click on the content region should open a context menu to add tools
                 if (editMode)
@@ -246,7 +258,10 @@ namespace Kaleidoscope.Gui.MainWindow
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug($"Tool click detection error: {ex.Message}");
+                        }
 
                         if (clickedTool >= 0)
                         {
@@ -290,11 +305,17 @@ namespace Kaleidoscope.Gui.MainWindow
                                                         MathF.Round(tool.Position.Y / subH) * subH
                                                     );
                                                 }
-                                                catch { }
+                                                catch (Exception ex)
+                                                {
+                                                    LogService.Debug($"Tool snap error: {ex.Message}");
+                                                }
                                                 AddTool(tool);
                                             }
                                         }
-                                        catch { }
+                                        catch (Exception ex)
+                                        {
+                                            LogService.Error($"Failed to create tool '{reg.Id}'", ex);
+                                        }
                                     }
                                 }
 
@@ -318,17 +339,30 @@ namespace Kaleidoscope.Gui.MainWindow
                                     {
                                         if (ImGui.MenuItem(n))
                                         {
-                                            try { OnLoadLayout?.Invoke(n); } catch { }
+                                            try
+                                            {
+                                                OnLoadLayout?.Invoke(n);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                LogService.Error($"Failed to load layout '{n}'", ex);
+                                            }
                                             ImGui.CloseCurrentPopup();
                                         }
                                     }
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    LogService.Error("Failed to get layout names", ex);
+                                }
 
                                 ImGui.EndMenu();
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            LogService.Error("Error in context menu", ex);
+                        }
 
                         ImGui.EndPopup();
                     }
@@ -343,7 +377,14 @@ namespace Kaleidoscope.Gui.MainWindow
                             {
                                 if (!string.IsNullOrWhiteSpace(_layoutNameBuffer))
                                 {
-                                    try { OnSaveLayout?.Invoke(_layoutNameBuffer, ExportLayout()); } catch { }
+                                    try
+                                    {
+                                        OnSaveLayout?.Invoke(_layoutNameBuffer, ExportLayout());
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Error($"Failed to save layout '{_layoutNameBuffer}'", ex);
+                                    }
                                     ImGui.CloseCurrentPopup();
                                     _saveLayoutPopupOpen = false;
                                 }
@@ -355,7 +396,10 @@ namespace Kaleidoscope.Gui.MainWindow
                                 _saveLayoutPopupOpen = false;
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            LogService.Error("Error in save layout popup", ex);
+                        }
                         ImGui.EndPopup();
                     }
                 }
@@ -384,7 +428,10 @@ namespace Kaleidoscope.Gui.MainWindow
                         dl.AddRectFilled(screenMin, screenMax, col);
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"Background draw error: {ex.Message}");
+                }
                 ImGui.BeginChild(id, t.Size, true);
                 // Title bar inside the child
                 ImGui.TextUnformatted(t.Title);
@@ -457,7 +504,10 @@ namespace Kaleidoscope.Gui.MainWindow
                                 snapped.Y = MathF.Max(minY2, MathF.Min(maxY2, snapped.Y));
                                 t.Position = snapped;
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                LogService.Debug($"Drag snap error: {ex.Message}");
+                            }
                             // mark layout changed on drag end so host can persist
                             MarkLayoutDirty();
                         }
@@ -513,7 +563,10 @@ namespace Kaleidoscope.Gui.MainWindow
                                 snappedSize.Y = MathF.Min(snappedSize.Y, MathF.Max(50f, maxH2));
                                 t.Size = snappedSize;
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                LogService.Debug($"Resize snap error: {ex.Message}");
+                            }
                             // mark layout changed on resize end so host can persist
                             MarkLayoutDirty();
                         }
@@ -554,7 +607,10 @@ namespace Kaleidoscope.Gui.MainWindow
                             }
                             if (found >= 0) _contextToolIndex = found;
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug($"Tool context find error: {ex.Message}");
+                        }
                     }
 
                     if (_contextToolIndex >= 0 && _contextToolIndex < _tools.Count)
@@ -574,14 +630,20 @@ namespace Kaleidoscope.Gui.MainWindow
                                 _tools.RemoveAt(_contextToolIndex);
                                 MarkLayoutDirty();
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                LogService.Error("Failed to remove component", ex);
+                            }
                             ImGui.CloseCurrentPopup();
                         }
                         ImGui.Separator();
                         if (ImGui.Button("Close")) ImGui.CloseCurrentPopup();
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogService.Error("Error in tool context menu", ex);
+                }
                 ImGui.EndPopup();
                 _contextToolIndex = -1;
             }

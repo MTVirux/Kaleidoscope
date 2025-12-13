@@ -28,7 +28,10 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                     var fileName = _samplerService.ExportCsv();
                     if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogService.Error("Failed to export CSV", ex);
+                }
             }
 
             if (hasDb)
@@ -51,7 +54,15 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                 ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
-                    try { _samplerService.ClearAllData(); } catch { }
+                    try
+                    {
+                        _samplerService.ClearAllData();
+                        LogService.Info("Cleared all GilTracker data");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Failed to clear data", ex);
+                    }
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.SameLine();
@@ -67,7 +78,15 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                 ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
-                    try { _samplerService.CleanUnassociatedCharacters(); } catch { }
+                    try
+                    {
+                        var count = _samplerService.CleanUnassociatedCharacters();
+                        LogService.Info($"Cleaned {count} unassociated character records");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Failed to sanitize data", ex);
+                    }
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.SameLine();

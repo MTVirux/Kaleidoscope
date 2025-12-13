@@ -1,4 +1,5 @@
 using Dalamud.Plugin;
+using Dalamud.Plugin.Services;
 using OtterGui.Log;
 using OtterGui.Services;
 
@@ -18,6 +19,10 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
         try
         {
             _services = Services.StaticServiceManager.CreateProvider(pluginInterface, Log, this);
+
+            // Initialize the static log service for components without DI access
+            var dalamudLog = _services.GetService<IPluginLog>();
+            Services.LogService.Initialize(dalamudLog);
 
             // Initialize required services to ensure they are constructed
             _services.GetService<Services.ConfigurationService>();

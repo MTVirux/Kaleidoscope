@@ -59,12 +59,27 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public void ClearAllData()
         {
-            try { _helper.ClearAllData(); } catch { }
+            try
+            {
+                _helper.ClearAllData();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to clear GilTracker data", ex);
+            }
         }
 
         public string? ExportCsv()
         {
-            try { return _helper.ExportCsv(); } catch { return null; }
+            try
+            {
+                return _helper.ExportCsv();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to export CSV", ex);
+                return null;
+            }
         }
 
         public int CleanUnassociatedCharacters()
@@ -73,7 +88,11 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 return _helper.CleanUnassociatedCharacterData();
             }
-            catch { return 0; }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to clean unassociated characters", ex);
+                return 0;
+            }
         }
 
 
@@ -209,7 +228,10 @@ namespace Kaleidoscope.Gui.MainWindow
                             }
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogService.Debug($"Tooltip error: {ex.Message}");
+                    }
                     // Debug: right-click the plot to open a popup listing all data points + timestamps
                     #if DEBUG
                     try
@@ -220,7 +242,10 @@ namespace Kaleidoscope.Gui.MainWindow
                             _pointsPopupOpen = true;
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogService.Debug($"Debug popup error: {ex.Message}");
+                    }
                     #endif
                 }
             }
@@ -253,7 +278,10 @@ namespace Kaleidoscope.Gui.MainWindow
                         ImGui.EndChild();
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"Debug points popup error: {ex.Message}");
+                }
 
                 if (ImGui.Button("Close"))
                 {
