@@ -8,6 +8,21 @@ namespace Kaleidoscope.Libs
 {
     public static unsafe class CharacterLib
     {
+        public static bool ValidateName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            var trimmed = name.Trim();
+            // Exactly one space
+            int spaceCount = 0;
+            foreach (var ch in trimmed)
+            {
+                if (ch == ' ') spaceCount++;
+                if (char.IsDigit(ch)) return false; // No digits allowed
+            }
+            if (spaceCount != 1) return false;
+            return true;
+        }
+
         public static string GetCharacterName(ulong contentId)
         {
             try

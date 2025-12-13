@@ -265,18 +265,21 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                 }
                                 if (!string.IsNullOrEmpty(sanitized))
                                 {
-                                    // Do not persist names that contain digits. These are often
-                                    // user-chosen names with numbers or invalid resolutions and
-                                    // should not be associated with a character id in the DB.
-                                    var containsDigit = sanitized.Any(char.IsDigit);
-                                    if (!containsDigit)
+                                    // Validate the sanitized name before persisting. Use the
+                                    // centralized CharacterLib.ValidateName so validation rules
+                                    // (no digits, exactly one space) are consistent.
+                                    try
                                     {
-                                        using var nameCmd = _connection.CreateCommand();
-                                        nameCmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name) VALUES($c, $n)";
-                                        nameCmd.Parameters.AddWithValue("$c", (long)cid);
-                                        nameCmd.Parameters.AddWithValue("$n", sanitized);
-                                        nameCmd.ExecuteNonQuery();
+                                        if (Kaleidoscope.Libs.CharacterLib.ValidateName(sanitized))
+                                        {
+                                            using var nameCmd = _connection.CreateCommand();
+                                            nameCmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name) VALUES($c, $n)";
+                                            nameCmd.Parameters.AddWithValue("$c", (long)cid);
+                                            nameCmd.Parameters.AddWithValue("$n", sanitized);
+                                            nameCmd.ExecuteNonQuery();
+                                        }
                                     }
+                                    catch { }
                                 }
                             }
                             catch { }

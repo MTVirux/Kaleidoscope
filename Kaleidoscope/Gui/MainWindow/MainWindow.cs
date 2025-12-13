@@ -226,6 +226,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     existing.Tools = tools ?? new List<ToolLayoutState>();
                     plugin.Config.ActiveLayoutName = name;
                     try { plugin.SaveConfig(); } catch { }
+                    try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
                     try { ECommons.Logging.PluginLog.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)"); } catch { }
                 }
                 catch { }
@@ -243,6 +244,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         _contentContainer.ApplyLayout(found.Tools);
                         plugin.Config.ActiveLayoutName = name;
                         try { plugin.SaveConfig(); } catch { }
+                        try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
                         try { ECommons.Logging.PluginLog.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)"); } catch { }
                     }
                 }
@@ -276,6 +278,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     existing.Tools = tools ?? new List<ToolLayoutState>();
                     plugin.Config.ActiveLayoutName = activeName;
                     try { plugin.SaveConfig(); } catch { }
+                    try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
                     try { ECommons.Logging.PluginLog.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)"); } catch { }
                 }
                 catch { }

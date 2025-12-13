@@ -63,9 +63,13 @@ namespace Kaleidoscope.Gui.MainWindow
             _layoutDirty = true;
             try
             {
+                try { ECommons.Logging.PluginLog.Information($"Layout marked dirty ({_tools.Count} tools)"); } catch { }
                 OnLayoutChanged?.Invoke(ExportLayout());
             }
-            catch { }
+            catch (Exception ex)
+            {
+                try { ECommons.Logging.PluginLog.Error($"Error while invoking OnLayoutChanged: {ex}"); } catch { }
+            }
         }
 
         // Attempt to consume the dirty flag. Returns true if it was set.
@@ -73,6 +77,7 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             if (!_layoutDirty) return false;
             _layoutDirty = false;
+            try { ECommons.Logging.PluginLog.Information("TryConsumeLayoutDirty: consumed dirty flag"); } catch { }
             return true;
         }
 
@@ -108,6 +113,7 @@ namespace Kaleidoscope.Gui.MainWindow
         public void AddTool(ToolComponent tool)
         {
             _tools.Add(new ToolEntry(tool));
+            try { ECommons.Logging.PluginLog.Information($"AddTool: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}"); } catch { }
             MarkLayoutDirty();
         }
 
@@ -129,12 +135,14 @@ namespace Kaleidoscope.Gui.MainWindow
                     BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
                 });
             }
+            try { ECommons.Logging.PluginLog.Information($"ExportLayout: exported {ret.Count} tools"); } catch { }
             return ret;
         }
 
         public void ApplyLayout(List<ToolLayoutState>? layout)
         {
             if (layout == null) return;
+            try { ECommons.Logging.PluginLog.Information($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools"); } catch { }
             foreach (var entry in layout)
             {
                 // Try to match by Id first, then by Title, then by Type

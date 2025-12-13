@@ -90,6 +90,19 @@ namespace Kaleidoscope
                 ConfigWindowSize = this.Config.ConfigWindowSize
             });
 
+            // Load persisted layouts from a dedicated per-file store so layout persistence
+            // is decoupled from Dalamud's single plugin config. This file is created
+            // and updated by the UI when layouts change.
+            try
+            {
+                var loaded = this.ConfigManager.LoadOrCreate("layouts.json", () => new System.Collections.Generic.List<ContentLayoutState>());
+                if (loaded != null)
+                {
+                    this.Config.Layouts = loaded;
+                }
+            }
+            catch { }
+
             // Copy per-file values into the runtime single config for compatibility with existing code
             try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
             try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
@@ -290,7 +303,15 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
         public void SaveConfig()
         {
-            try { this.pluginInterface.SavePluginConfig(this.Config); } catch { }
+            try
+            {
+                this.pluginInterface.SavePluginConfig(this.Config);
+                try { ECommons.Logging.PluginLog.Information($"Saved plugin config; layouts={this.Config.Layouts?.Count ?? 0} active='{this.Config.ActiveLayoutName}'"); } catch { }
+            }
+            catch (Exception ex)
+            {
+                try { ECommons.Logging.PluginLog.Error($"Error saving plugin config: {ex}"); } catch { }
+            }
             // Also persist per-category files by copying values from the runtime config into files
             try
             {
