@@ -12,6 +12,8 @@ namespace Kaleidoscope.Gui.MainWindow
         public class MainWindow : Window
     {
         private readonly GilTrackerComponent _moneyTracker;
+        private readonly WindowContentContainer _contentContainer;
+        private TitleBarButton? editModeButton;
             // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
             private System.Numerics.Vector2 _savedPos = new System.Numerics.Vector2(100, 100);
             private System.Numerics.Vector2 _savedSize = new System.Numerics.Vector2(800, 600);
@@ -121,6 +123,64 @@ namespace Kaleidoscope.Gui.MainWindow
 
             lockButton = lockTb;
             TitleBarButtons.Add(lockButton);
+            // Edit mode toggle
+            var editTb = new TitleBarButton
+            {
+                Icon = FontAwesomeIcon.Edit,
+                IconOffset = new System.Numerics.Vector2(2, 2),
+                ShowTooltip = () => ImGui.SetTooltip("Toggle HUD edit mode"),
+            };
+            editTb.Click = (m) =>
+            {
+                if (m == ImGuiMouseButton.Left)
+                {
+                    var newState = !plugin.Config.EditMode;
+                    // If turning off edit mode, persist current layout
+                    if (!newState)
+                    {
+                        try
+                        {
+                            var layout = plugin.Config.Layouts?.Find(x => x.Name == plugin.Config.ActiveLayoutName) ?? plugin.Config.Layouts?.FirstOrDefault();
+                            if (layout == null)
+                            {
+                                layout = new ContentLayoutState() { Name = plugin.Config.ActiveLayoutName ?? "Default" };
+                                plugin.Config.Layouts.Add(layout);
+                            }
+                            layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
+                            plugin.SaveConfig();
+                        }
+                        catch { }
+                    }
+                    try { plugin.Config.EditMode = newState; plugin.SaveConfig(); }
+                    catch { }
+                }
+            };
+            editModeButton = editTb;
+            TitleBarButtons.Add(editModeButton);
+
+            // Create content container and add default tools
+            _contentContainer = new WindowContentContainer(() => plugin.Config.ContentGridCellWidthPercent, () => plugin.Config.ContentGridCellHeightPercent, () => plugin.Config.GridSubdivisions);
+            // Wrap existing GilTracker into a tool wrapper
+            try
+            {
+                var gtTool = new Tools.GilTracker.GilTrackerTool(_moneyTracker);
+                _contentContainer.AddTool(gtTool);
+                var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
+                cpTool.Position = new System.Numerics.Vector2(420, 50);
+                _contentContainer.AddTool(cpTool);
+
+                // Apply saved layout if available
+                try
+                {
+                    var layout = plugin.Config.Layouts?.Find(x => x.Name == plugin.Config.ActiveLayoutName) ?? plugin.Config.Layouts?.FirstOrDefault();
+                    if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
+                    {
+                        _contentContainer.ApplyLayout(layout.Tools);
+                    }
+                }
+                catch { }
+            }
+            catch { }
         }
 
         // Expose an explicit exit fullscreen helper so TopBar can call it.
@@ -193,7 +253,12 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
-            // Main content drawing: the removed ContentContainer and TopBar are not used.
+            // Main content drawing: render the HUD content container
+            try
+            {
+                _contentContainer?.Draw(this.plugin.Config.EditMode);
+            }
+            catch { }
         }
 
         private static string GetDisplayTitle()

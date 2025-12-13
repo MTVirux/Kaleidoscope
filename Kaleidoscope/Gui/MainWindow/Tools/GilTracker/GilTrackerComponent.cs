@@ -225,7 +225,7 @@ namespace Kaleidoscope.Gui.MainWindow
             
 
 
-            ImGui.Separator();
+            //ImGui.Separator();
             // we don't show an else here — the previous block already shows a 'No data' message if graph empty
             if (!string.IsNullOrEmpty(_helper.LastStatusMessage))
             {
