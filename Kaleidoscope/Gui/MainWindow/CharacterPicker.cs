@@ -18,39 +18,76 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public void Draw()
         {
-            if (_helper.AvailableCharacters.Count > 0)
+            // Refresh and ensure we include any characters that have stored names
+            try
             {
-                var idx = _helper.AvailableCharacters.IndexOf(_helper.SelectedCharacterId);
-                if (idx < 0) idx = 0;
-                try
+                _helper.RefreshAvailableCharacters();
+                var stored = _helper.GetAllStoredCharacterNames();
+                if (stored != null && stored.Count > 0)
                 {
-                    var localCid = Svc.ClientState.LocalContentId;
-                    if (localCid != 0 && !_helper.AvailableCharacters.Contains(localCid))
+                    foreach (var e in stored)
                     {
-                        _helper.RefreshAvailableCharacters();
+                        if (!_helper.AvailableCharacters.Contains(e.cid)) _helper.AvailableCharacters.Add(e.cid);
                     }
                 }
-                catch { }
+                // Keep the list sorted for predictable ordering
+                try { _helper.AvailableCharacters.Sort(); } catch { }
+            }
+            catch { }
 
-                var names = _helper.AvailableCharacters.Select(id => _helper.GetCharacterDisplayName(id)).ToArray();
+            var count = _helper.AvailableCharacters.Count;
+            // Build display names, inserting an "All" option at index 0
+            var displayList = new List<string>();
+            displayList.Add("All");
+            if (count > 0)
+            {
+                displayList.AddRange(_helper.AvailableCharacters.Select(id => _helper.GetCharacterDisplayName(id)));
+            }
+            else
+            {
+                displayList.Add("No characters");
+            }
+
+            var names = displayList.ToArray();
+
+            var idx = 0;
+            if (count > 0)
+            {
+                // SelectedCharacterId maps to index+1 in the displayList because 0 == All
+                var selIndex = _helper.AvailableCharacters.IndexOf(_helper.SelectedCharacterId);
+                idx = selIndex < 0 ? 0 : selIndex + 1;
+            }
+
+            try
+            {
                 if (ImGui.Combo("Character", ref idx, names, names.Length))
                 {
-                    var id = _helper.AvailableCharacters[idx];
-                    _helper.LoadForCharacter(id);
-                }
-
-#if DEBUG
-                try
-                {
-                    if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    // If user selected "All" (idx == 0), load for character id 0 (clears selection)
+                    if (idx == 0)
+                        {
+                            // Load aggregated data across all characters
+                            _helper.LoadAllCharacters();
+                        }
+                    else if (count > 0)
                     {
-                        ImGui.OpenPopup("giltracker_names_popup");
-                        _namesPopupOpen = true;
+                        var id = _helper.AvailableCharacters[idx - 1];
+                        _helper.LoadForCharacter(id);
                     }
                 }
-                catch { }
-#endif
             }
+            catch { }
+
+#if DEBUG
+            try
+            {
+                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                {
+                    ImGui.OpenPopup("giltracker_names_popup");
+                    _namesPopupOpen = true;
+                }
+            }
+            catch { }
+#endif
 
 #if DEBUG
             if (ImGui.BeginPopupModal("giltracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))

@@ -26,6 +26,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
         private GeneralCategory? generalCategory;
         private DataCategory? dataCategory;
         private SamplerCategory? samplerCategory;
+        private LayoutsCategory? layoutsCategory;
         
 
         public ConfigWindow(Kaleidoscope.KaleidoscopePlugin plugin, Kaleidoscope.Configuration config, Action saveConfig,
@@ -82,6 +83,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
             this.generalCategory = new GeneralCategory(this.plugin, this.config, this.saveConfig);
             this.dataCategory = new DataCategory(this._hasDb, this._clearAllData, this._cleanUnassociatedCharacters, this._exportCsv);
             this.samplerCategory = new SamplerCategory(this.getSamplerEnabled, this.setSamplerEnabled, this.getSamplerIntervalMs, this.setSamplerIntervalMs, () => this.saveConfig());
+            this.layoutsCategory = new LayoutsCategory(this.plugin, this.config, this.saveConfig);
 
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
         }
@@ -120,6 +122,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
             if (ImGui.Selectable("General", _selectedTab == 0)) _selectedTab = 0;
             if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
             if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
+            if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
             ImGui.EndChild();
 
             ImGui.SameLine();
@@ -137,6 +140,10 @@ namespace Kaleidoscope.Gui.ConfigWindow
             else if (_selectedTab == 2)
             {
                 this.samplerCategory?.Draw();
+            }
+            else if (_selectedTab == 3)
+            {
+                this.layoutsCategory?.Draw();
             }
 
             ImGui.EndChild();

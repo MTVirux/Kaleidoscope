@@ -91,7 +91,7 @@ namespace Kaleidoscope.Gui.MainWindow
             if (min == float.MaxValue) min = 0;
             if (max == float.MinValue) max = 0;
 
-            ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}  Min: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}  Max: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
+            ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}\nMin: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}\nMax: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
 
             // Plot the samples
             if (_helper.Samples.Count > 0)

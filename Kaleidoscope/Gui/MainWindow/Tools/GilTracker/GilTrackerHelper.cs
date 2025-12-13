@@ -513,6 +513,50 @@ ORDER BY p.timestamp ASC";
             catch { }
         }
 
+        /// <summary>
+        /// Aggregate all stored points across all characters for the 'Gil' variable.
+        /// This populates the in-memory samples list with the most-recent up-to-_maxSamples
+        /// points across all characters, ordered chronologically.
+        /// </summary>
+        public void LoadAllCharacters()
+        {
+            try
+            {
+                lock (_fileLock)
+                {
+                    EnsureConnection();
+                    if (_connection == null) return;
+                    var arr = new List<(DateTime ts, long value)>();
+                    using var cmd = _connection.CreateCommand();
+                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+JOIN series s ON p.series_id = s.id
+WHERE s.variable = $v
+ORDER BY p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$v", "Gil");
+                    using var rdr = cmd.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        var ticks = rdr.GetFieldValue<long>(0);
+                        var val = rdr.GetFieldValue<long>(1);
+                        arr.Add((new DateTime(ticks, DateTimeKind.Utc), val));
+                    }
+
+                    _samples.Clear();
+                    var start = Math.Max(0, arr.Count - _maxSamples);
+                    for (var i = start; i < arr.Count; i++) _samples.Add((float)arr[i].value);
+                    LastValue = _samples.Count > 0 ? _samples[^1] : LastValue;
+                    if (arr.Count > 0)
+                    {
+                        FirstSampleTime = arr[start].ts;
+                        LastSampleTime = arr[arr.Count - 1].ts;
+                    }
+                    // Represent aggregated selection with character id 0
+                    SelectedCharacterId = 0;
+                }
+            }
+            catch { }
+        }
+
 
         public void ClearForSelectedCharacter()
         {
