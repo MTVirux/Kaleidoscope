@@ -2,6 +2,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
 using Kaleidoscope.Libs;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow
 {
@@ -9,20 +10,40 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly GilTrackerHelper _helper;
         private readonly CharacterPicker _characterPicker;
+        private readonly SamplerService? _samplerService;
+        private readonly FilenameService? _filenameService;
+
         // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
         public string? DbPath => _dbPath;
         private bool _pointsPopupOpen = false;
         private bool _namesPopupOpen = false;
         private DateTime _lastSampleTime = DateTime.MinValue;
-        private int _sampleIntervalMs = 1000; // sample every 1000 milliseconds (default 1s)
+        private int _sampleIntervalMs = 1000;
 
         private readonly string? _dbPath;
+        private bool _clearDbOpen = false;
+
+        // Legacy callback fields for backward compatibility during transition
         private Func<bool>? _getSamplerEnabled;
         private Action<bool>? _setSamplerEnabled;
         private Func<int>? _getSamplerInterval;
         private Action<int>? _setSamplerInterval;
-        private bool _clearDbOpen = false;
 
+        /// <summary>
+        /// DI-friendly constructor.
+        /// </summary>
+        public GilTrackerComponent(FilenameService filenameService, SamplerService samplerService)
+        {
+            _filenameService = filenameService;
+            _samplerService = samplerService;
+            _dbPath = filenameService.GilTrackerDbPath;
+            _helper = new GilTrackerHelper(_dbPath, 200, 100000f);
+            _characterPicker = new CharacterPicker(_helper);
+        }
+
+        /// <summary>
+        /// Legacy constructor for backward compatibility.
+        /// </summary>
         public GilTrackerComponent(string? dbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null)
         {
             _dbPath = dbPath;
@@ -62,8 +83,16 @@ namespace Kaleidoscope.Gui.MainWindow
             // Try to sample from the game's currency manager at most once per _sampleIntervalMs.
             try
             {
-                // _getSamplerInterval() now returns milliseconds from the UI/plugin wrapper
-                if (_getSamplerInterval != null) _sampleIntervalMs = Math.Max(1, _getSamplerInterval());
+                // Prefer injected SamplerService, fall back to legacy callbacks
+                if (_samplerService != null)
+                {
+                    _sampleIntervalMs = Math.Max(1, _samplerService.IntervalMs);
+                }
+                else if (_getSamplerInterval != null)
+                {
+                    _sampleIntervalMs = Math.Max(1, _getSamplerInterval());
+                }
+
                 var now = DateTime.UtcNow;
                 if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
                 {

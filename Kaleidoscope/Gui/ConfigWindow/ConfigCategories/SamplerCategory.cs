@@ -2,47 +2,37 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
 {
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
+    using Kaleidoscope.Services;
 
     public class SamplerCategory
     {
-        private readonly Func<bool>? _getSamplerEnabled;
-        private readonly Action<bool>? _setSamplerEnabled;
-        private readonly Func<int>? _getSamplerIntervalMs;
-        private readonly Action<int>? _setSamplerIntervalMs;
-        private readonly Action? _saveConfig;
+        private readonly SamplerService _samplerService;
+        private readonly ConfigurationService _configService;
 
-        public SamplerCategory(Func<bool>? getSamplerEnabled, Action<bool>? setSamplerEnabled, Func<int>? getSamplerIntervalMs, Action<int>? setSamplerIntervalMs, Action? saveConfig)
+        public SamplerCategory(SamplerService samplerService, ConfigurationService configService)
         {
-            this._getSamplerEnabled = getSamplerEnabled;
-            this._setSamplerEnabled = setSamplerEnabled;
-            this._getSamplerIntervalMs = getSamplerIntervalMs;
-            this._setSamplerIntervalMs = setSamplerIntervalMs;
-            this._saveConfig = saveConfig;
+            _samplerService = samplerService;
+            _configService = configService;
         }
 
         public void Draw()
         {
             ImGui.TextUnformatted("Sampler");
             ImGui.Separator();
-            if (this._getSamplerEnabled != null && this._setSamplerEnabled != null)
+
+            var enabled = _samplerService.Enabled;
+            if (ImGui.Checkbox("Enable sampler", ref enabled))
             {
-                var enabled = this._getSamplerEnabled();
-                if (ImGui.Checkbox("Enable sampler", ref enabled))
-                {
-                    this._setSamplerEnabled(enabled);
-                    try { this._saveConfig?.Invoke(); } catch { }
-                }
+                _samplerService.Enabled = enabled;
+                _configService.Save();
             }
 
-            if (this._getSamplerIntervalMs != null && this._setSamplerIntervalMs != null)
+            var interval = _samplerService.IntervalMs;
+            if (ImGui.InputInt("Sampler interval (ms)", ref interval))
             {
-                var interval = this._getSamplerIntervalMs();
-                if (ImGui.InputInt("Sampler interval (ms)", ref interval))
-                {
-                    if (interval < 1) interval = 1;
-                    this._setSamplerIntervalMs(interval);
-                    try { this._saveConfig?.Invoke(); } catch { }
-                }
+                if (interval < 1) interval = 1;
+                _samplerService.IntervalMs = interval;
+                _configService.Save();
             }
         }
     }

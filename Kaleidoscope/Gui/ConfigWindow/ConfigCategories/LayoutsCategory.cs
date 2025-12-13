@@ -3,21 +3,19 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using System.Text.Json;
+    using Kaleidoscope.Services;
 
     public class LayoutsCategory
     {
-        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
-        private readonly Kaleidoscope.Configuration config;
-        private readonly Action saveConfig;
+        private readonly ConfigurationService _configService;
 
+        private Configuration Config => _configService.Config;
         private int _selectedIndex = -1;
         private string _renameBuffer = string.Empty;
 
-        public LayoutsCategory(Kaleidoscope.KaleidoscopePlugin plugin, Kaleidoscope.Configuration config, Action saveConfig)
+        public LayoutsCategory(ConfigurationService configService)
         {
-            this.plugin = plugin;
-            this.config = config;
-            this.saveConfig = saveConfig;
+            _configService = configService;
         }
 
         public void Draw()
@@ -25,7 +23,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
             ImGui.TextUnformatted("Layouts");
             ImGui.Separator();
 
-            var layouts = this.config.Layouts ?? new List<ContentLayoutState>();
+            var layouts = Config.Layouts ?? new List<ContentLayoutState>();
             if (layouts.Count == 0)
             {
                 ImGui.TextUnformatted("No saved layouts.");
@@ -59,23 +57,23 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                     if (!string.IsNullOrWhiteSpace(_renameBuffer))
                     {
                         selected.Name = _renameBuffer;
-                        this.saveConfig();
+                        _configService.Save();
                     }
                 }
 
                 // 2nd line
                 if (ImGui.Button("Set Active"))
                 {
-                    this.config.ActiveLayoutName = selected.Name;
-                    try { this.plugin.ApplyLayout(selected.Name); } catch { }
-                    this.saveConfig();
+                    Config.ActiveLayoutName = selected.Name;
+                    // Note: Layout application is handled through LayoutService or MainWindow
+                    _configService.Save();
                 }
 
                 ImGui.SameLine();
                 if (ImGui.Button("Make Default"))
                 {
-                    this.config.ActiveLayoutName = selected.Name;
-                    this.saveConfig();
+                    Config.ActiveLayoutName = selected.Name;
+                    _configService.Save();
                 }
 
                 ImGui.SameLine();
@@ -83,7 +81,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                 {
                     layouts.RemoveAt(_selectedIndex);
                     _selectedIndex = -1;
-                    this.saveConfig();
+                    _configService.Save();
                 }
 
                 //Import/Export
@@ -108,9 +106,9 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                             var imported = JsonSerializer.Deserialize<ContentLayoutState>(s);
                             if (imported != null)
                             {
-                                this.config.Layouts ??= new List<ContentLayoutState>();
-                                this.config.Layouts.Add(imported);
-                                this.saveConfig();
+                                Config.Layouts ??= new List<ContentLayoutState>();
+                                Config.Layouts.Add(imported);
+                                _configService.Save();
                             }
                         }
                     }

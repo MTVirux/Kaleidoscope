@@ -7,10 +7,12 @@ namespace Kaleidoscope.Services
     using Kaleidoscope.Config;
     using Kaleidoscope.Interfaces;
     using Dalamud.Plugin;
+    using Dalamud.Plugin.Services;
 
     public class ConfigurationService : IConfigurationService
     {
-        private readonly IDalamudPluginInterface pluginInterface;
+        private readonly IDalamudPluginInterface _pluginInterface;
+        private readonly IPluginLog _log;
 
         public Configuration Config { get; private set; }
 
@@ -19,122 +21,156 @@ namespace Kaleidoscope.Services
         public SamplerConfig SamplerConfig { get; private set; }
         public WindowConfig WindowConfig { get; private set; }
 
-        public ConfigurationService(IDalamudPluginInterface pluginInterface)
+        public ConfigurationService(IDalamudPluginInterface pluginInterface, IPluginLog log)
         {
-            this.pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
+            _pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
+            _log = log ?? throw new ArgumentNullException(nameof(log));
 
-            var cfg = this.pluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
+            var cfg = _pluginInterface.GetPluginConfig() as Configuration;
             if (cfg == null)
             {
-                cfg = new Kaleidoscope.Configuration();
-                this.pluginInterface.SavePluginConfig(cfg);
+                cfg = new Configuration();
+                _pluginInterface.SavePluginConfig(cfg);
             }
-            this.Config = cfg;
+            Config = cfg;
 
-            // Normalize layouts
-            try
-            {
-                if (this.Config.Layouts != null && this.Config.Layouts.Count > 1)
-                {
-                    var deduped = this.Config.Layouts
-                        .GroupBy(l => (l.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
-                        .Select(g => g.First())
-                        .ToList();
-                    this.Config.Layouts = deduped;
-                }
+            NormalizeLayouts();
 
-                if (this.Config.Layouts == null)
-                {
-                    this.Config.Layouts = new List<ContentLayoutState>();
-                }
-
-                if (!string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && !this.Config.Layouts.Any(x => string.Equals(x.Name, this.Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    this.Config.ActiveLayoutName = null;
-                }
-                else if (string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && this.Config.Layouts.Count > 0)
-                {
-                    this.Config.ActiveLayoutName = this.Config.Layouts.First().Name;
-                }
-            }
-            catch { }
-
-            var saveDir = this.pluginInterface.GetPluginConfigDirectory();
-            this.ConfigManager = new Kaleidoscope.Config.ConfigManager(saveDir);
-            this.GeneralConfig = this.ConfigManager.LoadOrCreate("general.json", () => new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart });
-            this.SamplerConfig = this.ConfigManager.LoadOrCreate("sampler.json", () => new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 });
-            this.WindowConfig = this.ConfigManager.LoadOrCreate("windows.json", () => new Kaleidoscope.Config.WindowConfig {
-                PinMainWindow = this.Config.PinMainWindow,
-                PinConfigWindow = this.Config.PinConfigWindow,
-                MainWindowPos = this.Config.MainWindowPos,
-                MainWindowSize = this.Config.MainWindowSize,
-                ConfigWindowPos = this.Config.ConfigWindowPos,
-                ConfigWindowSize = this.Config.ConfigWindowSize
+            var saveDir = _pluginInterface.GetPluginConfigDirectory();
+            ConfigManager = new ConfigManager(saveDir);
+            GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
+            SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 });
+            WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig {
+                PinMainWindow = Config.PinMainWindow,
+                PinConfigWindow = Config.PinConfigWindow,
+                MainWindowPos = Config.MainWindowPos,
+                MainWindowSize = Config.MainWindowSize,
+                ConfigWindowPos = Config.ConfigWindowPos,
+                ConfigWindowSize = Config.ConfigWindowSize
             });
 
+            LoadLayouts();
+            SyncFromSubConfigs();
+
+            _log.Debug("ConfigurationService initialized");
+        }
+
+        private void NormalizeLayouts()
+        {
+            if (Config.Layouts != null && Config.Layouts.Count > 1)
+            {
+                var deduped = Config.Layouts
+                    .GroupBy(l => (l.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+                Config.Layouts = deduped;
+            }
+
+            Config.Layouts ??= new List<ContentLayoutState>();
+
+            if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && 
+                !Config.Layouts.Any(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Config.ActiveLayoutName = null;
+            }
+            else if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && Config.Layouts.Count > 0)
+            {
+                Config.ActiveLayoutName = Config.Layouts.First().Name;
+            }
+        }
+
+        private void LoadLayouts()
+        {
             try
             {
-                var loaded = this.ConfigManager.LoadOrCreate("layouts.json", () => new System.Collections.Generic.List<ContentLayoutState>());
+                var loaded = ConfigManager.LoadOrCreate("layouts.json", () => new List<ContentLayoutState>());
                 if (loaded != null)
                 {
-                    this.Config.Layouts = loaded;
+                    Config.Layouts = loaded;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _log.Error($"Failed to load layouts: {ex.Message}");
+            }
+        }
 
-            try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
-            try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
-            try { this.Config.ContentGridCellWidthPercent = this.GeneralConfig.ContentGridCellWidthPercent; } catch { }
-            try { this.Config.ContentGridCellHeightPercent = this.GeneralConfig.ContentGridCellHeightPercent; } catch { }
-            try { this.Config.EditMode = this.GeneralConfig.EditMode; } catch { }
-            try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
-            try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
-            try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
-            try { this.Config.MainWindowSize = this.WindowConfig.MainWindowSize; } catch { }
-            try { this.Config.ConfigWindowPos = this.WindowConfig.ConfigWindowPos; } catch { }
-            try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
+        private void SyncFromSubConfigs()
+        {
+            Config.ShowOnStart = GeneralConfig.ShowOnStart;
+            Config.ExclusiveFullscreen = GeneralConfig.ExclusiveFullscreen;
+            Config.ContentGridCellWidthPercent = GeneralConfig.ContentGridCellWidthPercent;
+            Config.ContentGridCellHeightPercent = GeneralConfig.ContentGridCellHeightPercent;
+            Config.EditMode = GeneralConfig.EditMode;
+            Config.PinMainWindow = WindowConfig.PinMainWindow;
+            Config.PinConfigWindow = WindowConfig.PinConfigWindow;
+            Config.MainWindowPos = WindowConfig.MainWindowPos;
+            Config.MainWindowSize = WindowConfig.MainWindowSize;
+            Config.ConfigWindowPos = WindowConfig.ConfigWindowPos;
+            Config.ConfigWindowSize = WindowConfig.ConfigWindowSize;
         }
 
         public void Save()
         {
             try
             {
-                this.pluginInterface.SavePluginConfig(this.Config);
-                try { ECommons.Logging.PluginLog.Information($"Saved plugin config; layouts={this.Config.Layouts?.Count ?? 0} active='{this.Config.ActiveLayoutName}'"); } catch { }
+                _pluginInterface.SavePluginConfig(Config);
+                _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} active='{Config.ActiveLayoutName}'");
             }
             catch (Exception ex)
             {
-                try { ECommons.Logging.PluginLog.Error($"Error saving plugin config: {ex}"); } catch { }
+                _log.Error($"Error saving plugin config: {ex}");
             }
 
+            SaveSubConfigs();
+        }
+
+        private void SaveSubConfigs()
+        {
             try
             {
-                var g = new Kaleidoscope.Config.GeneralConfig {
-                    ShowOnStart = this.Config.ShowOnStart,
-                    ExclusiveFullscreen = this.Config.ExclusiveFullscreen,
-                    ContentGridCellWidthPercent = this.Config.ContentGridCellWidthPercent,
-                    ContentGridCellHeightPercent = this.Config.ContentGridCellHeightPercent,
-                    EditMode = this.Config.EditMode
+                var g = new GeneralConfig {
+                    ShowOnStart = Config.ShowOnStart,
+                    ExclusiveFullscreen = Config.ExclusiveFullscreen,
+                    ContentGridCellWidthPercent = Config.ContentGridCellWidthPercent,
+                    ContentGridCellHeightPercent = Config.ContentGridCellHeightPercent,
+                    EditMode = Config.EditMode
                 };
-                this.ConfigManager.Save("general.json", g);
-                var s = new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 };
-                this.ConfigManager.Save("sampler.json", s);
-                var w = new Kaleidoscope.Config.WindowConfig {
-                    PinMainWindow = this.Config.PinMainWindow,
-                    PinConfigWindow = this.Config.PinConfigWindow,
-                    MainWindowPos = this.Config.MainWindowPos,
-                    MainWindowSize = this.Config.MainWindowSize,
-                    ConfigWindowPos = this.Config.ConfigWindowPos,
-                    ConfigWindowSize = this.Config.ConfigWindowSize
+                ConfigManager.Save("general.json", g);
+
+                var s = new SamplerConfig { 
+                    SamplerEnabled = SamplerConfig.SamplerEnabled, 
+                    SamplerIntervalMs = SamplerConfig.SamplerIntervalMs 
                 };
-                this.ConfigManager.Save("windows.json", w);
+                ConfigManager.Save("sampler.json", s);
+
+                var w = new WindowConfig {
+                    PinMainWindow = Config.PinMainWindow,
+                    PinConfigWindow = Config.PinConfigWindow,
+                    MainWindowPos = Config.MainWindowPos,
+                    MainWindowSize = Config.MainWindowSize,
+                    ConfigWindowPos = Config.ConfigWindowPos,
+                    ConfigWindowSize = Config.ConfigWindowSize
+                };
+                ConfigManager.Save("windows.json", w);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _log.Error($"Error saving sub-configs: {ex.Message}");
+            }
         }
 
         public void SaveLayouts()
         {
-            try { this.ConfigManager.Save("layouts.json", this.Config.Layouts); } catch { }
+            try
+            {
+                ConfigManager.Save("layouts.json", Config.Layouts);
+                _log.Debug($"Saved layouts: {Config.Layouts?.Count ?? 0}");
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Error saving layouts: {ex.Message}");
+            }
         }
     }
 }

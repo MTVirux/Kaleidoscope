@@ -2,35 +2,30 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
 {
     using Dalamud.Bindings.ImGui;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
+    using Kaleidoscope.Services;
 
     public class DataCategory
     {
-        private readonly Func<bool>? _hasDb;
-        private readonly Action? _clearAllData;
-        private readonly Func<int>? _cleanUnassociatedCharacters;
-        private readonly Func<string?>? _exportCsv;
+        private readonly SamplerService _samplerService;
 
         private bool _clearDbOpen = false;
         private bool _sanitizeDbOpen = false;
 
-        public DataCategory(Func<bool>? hasDb, Action? clearAllData, Func<int>? cleanUnassociatedCharacters, Func<string?>? exportCsv)
+        public DataCategory(SamplerService samplerService)
         {
-            this._hasDb = hasDb;
-            this._clearAllData = clearAllData;
-            this._cleanUnassociatedCharacters = cleanUnassociatedCharacters;
-            this._exportCsv = exportCsv;
+            _samplerService = samplerService;
         }
 
         public void Draw()
         {
             ImGui.TextUnformatted("Data Management");
             ImGui.Separator();
-            var hasDb = this._hasDb != null ? this._hasDb() : false;
+            var hasDb = _samplerService.HasDb;
             if (ImGui.Button("Export CSV") && hasDb)
             {
                 try
                 {
-                    var fileName = this._exportCsv != null ? this._exportCsv() : null;
+                    var fileName = _samplerService.ExportCsv();
                     if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
                 }
                 catch { }
@@ -56,7 +51,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                 ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
-                    try { this._clearAllData?.Invoke(); } catch { }
+                    try { _samplerService.ClearAllData(); } catch { }
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.SameLine();
@@ -72,7 +67,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                 ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
                 if (ImGui.Button("Yes"))
                 {
-                    try { this._cleanUnassociatedCharacters?.Invoke(); } catch { }
+                    try { _samplerService.CleanUnassociatedCharacters(); } catch { }
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.SameLine();

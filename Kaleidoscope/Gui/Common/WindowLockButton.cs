@@ -4,20 +4,22 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using OtterGui.Text;
+using Kaleidoscope.Services;
 
 public class WindowLockButton
 {
-    private readonly Kaleidoscope.KaleidoscopePlugin plugin;
+    private readonly ConfigurationService _configService;
     private readonly bool isConfigWindow;
     private FontAwesomeIcon currentIcon;
 
+    private Configuration Config => _configService.Config;
     public FontAwesomeIcon CurrentIcon => currentIcon;
 
-    public WindowLockButton(Kaleidoscope.KaleidoscopePlugin plugin, bool isConfigWindow = false)
+    public WindowLockButton(ConfigurationService configService, bool isConfigWindow = false)
     {
-        this.plugin = plugin;
+        _configService = configService;
         this.isConfigWindow = isConfigWindow;
-        var isPinned = isConfigWindow ? plugin.Config.PinConfigWindow : plugin.Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 
@@ -25,16 +27,16 @@ public class WindowLockButton
     {
         if (isConfigWindow)
         {
-            this.plugin.Config.PinConfigWindow = !this.plugin.Config.PinConfigWindow;
+            Config.PinConfigWindow = !Config.PinConfigWindow;
         }
         else
         {
-            this.plugin.Config.PinMainWindow = !this.plugin.Config.PinMainWindow;
+            Config.PinMainWindow = !Config.PinMainWindow;
         }
 
         UpdateState();
 
-        try { this.plugin.SaveConfig(); } catch { }
+        _configService.Save();
     }
 
     public void RenderInTitleBar()
@@ -56,7 +58,7 @@ public class WindowLockButton
 
     public void UpdateState()
     {
-        var isPinned = isConfigWindow ? this.plugin.Config.PinConfigWindow : this.plugin.Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 }

@@ -2,24 +2,20 @@ namespace Kaleidoscope.Gui.ConfigWindow
 {
     using Dalamud.Interface.Windowing;
     using Dalamud.Bindings.ImGui;
+    using Dalamud.Plugin.Services;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using OtterGui.Text;
     using Dalamud.Interface;
     using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
+    using Kaleidoscope.Services;
 
     public class ConfigWindow : Window, IDisposable
     {
-        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
-        private readonly Kaleidoscope.Configuration config;
-        private readonly Action saveConfig;
-        private readonly Func<bool>? getSamplerEnabled;
-        private readonly Action<bool>? setSamplerEnabled;
-        private readonly Func<int>? getSamplerIntervalMs;
-        private readonly Action<int>? setSamplerIntervalMs;
-        private readonly Func<bool>? _hasDb;
-        private readonly Action? _clearAllData;
-        private readonly Func<int>? _cleanUnassociatedCharacters;
-        private readonly Func<string?>? _exportCsv;
+        private readonly IPluginLog _log;
+        private readonly ConfigurationService _configService;
+        private readonly SamplerService _samplerService;
+
+        private Configuration Config => _configService.Config;
         private int _selectedTab = 0; // 0=General,1=Data,2=Sampler
 
         private TitleBarButton? lockButton;
@@ -29,27 +25,19 @@ namespace Kaleidoscope.Gui.ConfigWindow
         private LayoutsCategory? layoutsCategory;
         
 
-        public ConfigWindow(Kaleidoscope.KaleidoscopePlugin plugin, Kaleidoscope.Configuration config, Action saveConfig,
-            Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null,
-            Func<int>? getSamplerIntervalMs = null, Action<int>? setSamplerIntervalMs = null,
-            Func<bool>? hasDb = null, Action? clearAllData = null, Func<int>? cleanUnassociatedCharacters = null, Func<string?>? exportCsv = null)
+        public ConfigWindow(
+            IPluginLog log,
+            ConfigurationService configService,
+            SamplerService samplerService)
             : base("Kaleidoscope Configuration")
         {
-            this.plugin = plugin;
-            this.config = config ?? throw new ArgumentNullException(nameof(config));
-            this.saveConfig = saveConfig ?? throw new ArgumentNullException(nameof(saveConfig));
-            this.getSamplerEnabled = getSamplerEnabled;
-            this.setSamplerEnabled = setSamplerEnabled;
-            this.getSamplerIntervalMs = getSamplerIntervalMs;
-            this.setSamplerIntervalMs = setSamplerIntervalMs;
-            this._hasDb = hasDb;
-            this._clearAllData = clearAllData;
-            this._cleanUnassociatedCharacters = cleanUnassociatedCharacters;
-            this._exportCsv = exportCsv;
+            _log = log;
+            _configService = configService;
+            _samplerService = samplerService;
 
             var lockTb = new TitleBarButton
             {
-                Icon = plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+                Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
                 IconOffset = new System.Numerics.Vector2(3, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
             };
@@ -60,19 +48,19 @@ namespace Kaleidoscope.Gui.ConfigWindow
                 {
                     // Toggle pinned state. When enabling pin, capture the current window
                     // position and size so the config window remains where the user placed it.
-                    var newPinned = !plugin.Config.PinConfigWindow;
-                    plugin.Config.PinConfigWindow = newPinned;
+                    var newPinned = !Config.PinConfigWindow;
+                    Config.PinConfigWindow = newPinned;
                     if (newPinned)
                     {
                         try
                         {
-                            plugin.Config.ConfigWindowPos = ImGui.GetWindowPos();
-                            plugin.Config.ConfigWindowSize = ImGui.GetWindowSize();
+                            Config.ConfigWindowPos = ImGui.GetWindowPos();
+                            Config.ConfigWindowSize = ImGui.GetWindowSize();
                         }
                         catch { }
                     }
-                    try { plugin.SaveConfig(); } catch { }
-                    lockTb.Icon = plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                    _configService.Save();
+                    lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
                 }
             };
 
@@ -80,10 +68,10 @@ namespace Kaleidoscope.Gui.ConfigWindow
             TitleBarButtons.Add(lockButton);
 
             // Create category renderers
-            this.generalCategory = new GeneralCategory(this.plugin, this.config, this.saveConfig);
-            this.dataCategory = new DataCategory(this._hasDb, this._clearAllData, this._cleanUnassociatedCharacters, this._exportCsv);
-            this.samplerCategory = new SamplerCategory(this.getSamplerEnabled, this.setSamplerEnabled, this.getSamplerIntervalMs, this.setSamplerIntervalMs, () => this.saveConfig());
-            this.layoutsCategory = new LayoutsCategory(this.plugin, this.config, this.saveConfig);
+            this.generalCategory = new GeneralCategory(_configService);
+            this.dataCategory = new DataCategory(_samplerService);
+            this.samplerCategory = new SamplerCategory(_samplerService, _configService);
+            this.layoutsCategory = new LayoutsCategory(_configService);
 
             this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
         }
@@ -95,10 +83,10 @@ namespace Kaleidoscope.Gui.ConfigWindow
             // Ensure the config window is resizable in all states
             Flags &= ~ImGuiWindowFlags.NoResize;
 
-            if (this.plugin.Config.PinConfigWindow)
+            if (Config.PinConfigWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove;
-                ImGui.SetNextWindowPos(this.plugin.Config.ConfigWindowPos);
+                ImGui.SetNextWindowPos(Config.ConfigWindowPos);
             }
             else
             {
@@ -107,7 +95,7 @@ namespace Kaleidoscope.Gui.ConfigWindow
 
             if (this.lockButton != null)
             {
-                this.lockButton.Icon = this.plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                this.lockButton.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
             }
         }
 

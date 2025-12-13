@@ -3,6 +3,7 @@ namespace Kaleidoscope.Gui.Common;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services;
 
 /// <summary>
 /// Component for managing the window lock button functionality.
@@ -10,19 +11,20 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 /// </summary>
 public class WindowLockButtonComponent
 {
-    private readonly Kaleidoscope.KaleidoscopePlugin plugin;
+    private readonly ConfigurationService _configService;
     private readonly bool isConfigWindow;
     private FontAwesomeIcon currentIcon;
 
+    private Configuration Config => _configService.Config;
     public FontAwesomeIcon CurrentIcon => currentIcon;
 
-    public WindowLockButtonComponent(Kaleidoscope.KaleidoscopePlugin plugin, bool isConfigWindow = false)
+    public WindowLockButtonComponent(ConfigurationService configService, bool isConfigWindow = false)
     {
-        this.plugin = plugin;
+        _configService = configService;
         this.isConfigWindow = isConfigWindow;
 
         // Initialize icon based on current state
-        var isPinned = isConfigWindow ? plugin.Config.PinConfigWindow : plugin.Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 
@@ -32,28 +34,28 @@ public class WindowLockButtonComponent
         {
             if (isConfigWindow)
             {
-                this.plugin.Config.PinConfigWindow = !this.plugin.Config.PinConfigWindow;
-                this.currentIcon = this.plugin.Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                Config.PinConfigWindow = !Config.PinConfigWindow;
+                this.currentIcon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
 
-                if (this.plugin.Config.PinConfigWindow)
+                if (Config.PinConfigWindow)
                 {
-                    this.plugin.Config.ConfigWindowPos = ImGui.GetWindowPos();
-                    this.plugin.Config.ConfigWindowSize = ImGui.GetWindowSize();
+                    Config.ConfigWindowPos = ImGui.GetWindowPos();
+                    Config.ConfigWindowSize = ImGui.GetWindowSize();
                 }
             }
             else
             {
-                this.plugin.Config.PinMainWindow = !this.plugin.Config.PinMainWindow;
-                this.currentIcon = this.plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                Config.PinMainWindow = !Config.PinMainWindow;
+                this.currentIcon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
 
-                if (this.plugin.Config.PinMainWindow)
+                if (Config.PinMainWindow)
                 {
-                    this.plugin.Config.MainWindowPos = ImGui.GetWindowPos();
-                    this.plugin.Config.MainWindowSize = ImGui.GetWindowSize();
+                    Config.MainWindowPos = ImGui.GetWindowPos();
+                    Config.MainWindowSize = ImGui.GetWindowSize();
                 }
             }
 
-            try { ECommons.DalamudServices.Svc.PluginInterface.SavePluginConfig(this.plugin.Config); } catch { }
+            _configService.Save();
         }
     }
 
@@ -62,7 +64,7 @@ public class WindowLockButtonComponent
     /// </summary>
     public void UpdateState()
     {
-        var isPinned = isConfigWindow ? this.plugin.Config.PinConfigWindow : this.plugin.Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 }

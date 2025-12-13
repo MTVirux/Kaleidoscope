@@ -1,334 +1,43 @@
-namespace Kaleidoscope
+using Dalamud.Plugin;
+using OtterGui.Log;
+using OtterGui.Services;
+
+namespace Kaleidoscope;
+
+/// <summary>
+/// Main plugin entry point. Creates and manages the service container.
+/// </summary>
+public sealed class KaleidoscopePlugin : IDalamudPlugin
 {
-    using Dalamud.Interface.Windowing;
-    
-    using Microsoft.Data.Sqlite;
-    
-    using Dalamud.Plugin;
-    using Kaleidoscope.Services;
-    using Kaleidoscope.Interfaces;
-    
-    public sealed class KaleidoscopePlugin : IDalamudPlugin, IDisposable
+    public static readonly Logger Log = new();
+
+    private readonly ServiceManager _services;
+
+    public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
     {
-        public string Name => "Crystal Terror";
-
-        public Kaleidoscope.Configuration Config { get; private set; }
-        public Kaleidoscope.Config.ConfigManager ConfigManager { get; private set; }
-        public Kaleidoscope.Config.GeneralConfig GeneralConfig { get; private set; }
-        public Kaleidoscope.Config.SamplerConfig SamplerConfig { get; private set; }
-        public Kaleidoscope.Config.WindowConfig WindowConfig { get; private set; }
-        public Kaleidoscope.Interfaces.IConfigurationService ConfigService { get; private set; }
-
-        private readonly IDalamudPluginInterface pluginInterface;
-        private readonly WindowSystem windowSystem;
-        private readonly Kaleidoscope.Gui.MainWindow.MainWindow mainWindow;
-        private readonly Kaleidoscope.Gui.MainWindow.FullscreenWindow fullscreenWindow;
-        private readonly Kaleidoscope.Gui.MainWindow.GilTrackerComponent gilTrackerComponent;
-        private System.Threading.Timer? _samplerTimer;
-        private string? _dbPath;
-        private volatile bool _samplerEnabled = true;
-        private int _samplerIntervalSeconds = 1; // default to 1 second
-        private readonly Kaleidoscope.Gui.ConfigWindow.ConfigWindow configWindow;
-
-        public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
+        try
         {
-            this.pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
+            _services = Services.StaticServiceManager.CreateProvider(pluginInterface, Log, this);
 
-            // Initialize ECommons services (Svc) so UI components and services can access Dalamud services.
-            ECommons.DalamudServices.Svc.Init(pluginInterface);
+            // Initialize required services to ensure they are constructed
+            _services.GetService<Services.ConfigurationService>();
+            _services.GetService<Services.SamplerService>();
+            _services.GetService<Services.WindowService>();
+            _services.GetService<Services.CommandService>();
 
-            this.ConfigService = new Kaleidoscope.Services.ConfigurationService(pluginInterface);
-            this.Config = this.ConfigService.Config;
-            var saveDir = this.pluginInterface.GetPluginConfigDirectory();
-            this.ConfigManager = this.ConfigService.ConfigManager;
-            this.GeneralConfig = this.ConfigService.GeneralConfig;
-            this.SamplerConfig = this.ConfigService.SamplerConfig;
-            this.WindowConfig = this.ConfigService.WindowConfig;
-
-            this.windowSystem = new WindowSystem("Kaleidoscope");
-            _dbPath = System.IO.Path.Combine(saveDir, "giltracker.sqlite");
-            // Create and pass simple sampler controls to the UI (callbacks)
-            // Expose sampler interval to the UI in milliseconds; convert back to seconds for the internal timer.
-            // Create a shared GilTrackerComponent and provide it to both main and fullscreen windows
-            this.gilTrackerComponent = new Kaleidoscope.Gui.MainWindow.GilTrackerComponent(_dbPath,
-                () => _samplerEnabled,
-                enabled => _samplerEnabled = enabled,
-                () => _samplerIntervalSeconds * 1000,
-                ms => {
-                    if (ms <= 0) ms = 1;
-                    var sec = (ms + 999) / 1000; // convert ms to seconds, rounding up
-                    _samplerIntervalSeconds = sec;
-                    // Recreate the timer with the new interval if it's enabled
-                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-                }
-            );
-
-            this.mainWindow = new Kaleidoscope.Gui.MainWindow.MainWindow(this, this.gilTrackerComponent, _dbPath,
-                () => _samplerEnabled,
-                enabled => _samplerEnabled = enabled,
-                () => _samplerIntervalSeconds * 1000,
-                ms => {
-                    if (ms <= 0) ms = 1;
-                    var sec = (ms + 999) / 1000; // convert ms to seconds, rounding up
-                    _samplerIntervalSeconds = sec;
-                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-                }
-            );
-
-            this.fullscreenWindow = new Kaleidoscope.Gui.MainWindow.FullscreenWindow(this, this.gilTrackerComponent);
-            // Start a basic sampler that uses the same storage to record gil periodically while the plugin runs.
-                _samplerTimer = new System.Threading.Timer(_ =>
-            {
-                try
-                {
-                    if (!_samplerEnabled) return;
-                    var now = DateTime.UtcNow;
-                    var cid = Kaleidoscope.Services.GameStateService.PlayerContentId;
-                    uint gil = 0;
-                    unsafe
-                    {
-                        var im = Kaleidoscope.Services.GameStateService.InventoryManagerInstance();
-                        if (im != null) gil = im->GetGil();
-                        var cm = Kaleidoscope.Services.GameStateService.CurrencyManagerInstance();
-                        if (gil == 0 && cm != null)
-                        {
-                            try { gil = cm->GetItemCount(1); } catch { gil = 0; }
-                        }
-                    }
-                    try
-                    {
-                        if (!string.IsNullOrEmpty(_dbPath))
-                        {
-                            var dir = System.IO.Path.GetDirectoryName(_dbPath)!;
-                            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
-                            var csb = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = _dbPath, Mode = SqliteOpenMode.ReadWriteCreate };
-                            using var conn = new Microsoft.Data.Sqlite.SqliteConnection(csb.ToString());
-                            conn.Open();
-                            using var initCmd = conn.CreateCommand();
-                            initCmd.CommandText = @"CREATE TABLE IF NOT EXISTS series (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    variable TEXT NOT NULL,
-    character_id INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS points (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    series_id INTEGER NOT NULL,
-    timestamp INTEGER NOT NULL,
-    value INTEGER NOT NULL,
-    FOREIGN KEY(series_id) REFERENCES series(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
-CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
-";
-                            initCmd.ExecuteNonQuery();
-                            using var cmd = conn.CreateCommand();
-                            cmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
-                            cmd.Parameters.AddWithValue("$v", "Gil");
-                            cmd.Parameters.AddWithValue("$c", (long)cid);
-                            var r = cmd.ExecuteScalar();
-                            long seriesId;
-                            if (r != null && r != DBNull.Value) seriesId = (long)r;
-                            else
-                            {
-                                cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
-                                seriesId = (long)cmd.ExecuteScalar();
-                            }
-                            // Avoid inserting duplicate consecutive points: check last saved value for this series.
-                            cmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
-                            cmd.Parameters.Clear();
-                            cmd.Parameters.AddWithValue("$s", seriesId);
-                            var lastValObj = cmd.ExecuteScalar();
-                            var shouldInsert = true;
-                            if (lastValObj != null && lastValObj != DBNull.Value)
-                            {
-                                try
-                                {
-                                    var lastVal = (long)lastValObj;
-                                    if (lastVal == (long)gil) shouldInsert = false;
-                                }
-                                catch { }
-                            }
-                            if (shouldInsert)
-                            {
-                                cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
-                                cmd.Parameters.Clear();
-                                cmd.Parameters.AddWithValue("$s", seriesId);
-                                cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
-                                cmd.Parameters.AddWithValue("$v", (long)gil);
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-                    }
-                    catch { }
-                }
-                catch { }
-            }, null, TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-            this.configWindow = new Kaleidoscope.Gui.ConfigWindow.ConfigWindow(
-                this,
-                this.Config,
-                () => this.SaveConfig(),
-                () => _samplerEnabled,
-                enabled => _samplerEnabled = enabled,
-                () => _samplerIntervalSeconds * 1000,
-                ms => {
-                    if (ms <= 0) ms = 1;
-                    var sec = (ms + 999) / 1000;
-                    _samplerIntervalSeconds = sec;
-                    _samplerTimer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_samplerIntervalSeconds));
-                },
-                () => this.mainWindow.HasDb,
-                () => { try { this.mainWindow.ClearAllData(); } catch { } },
-                () => { try { return this.mainWindow.CleanUnassociatedCharacters(); } catch { return 0; } },
-                () => { try { return this.mainWindow.ExportCsv(); } catch { return null; } }
-            );
-
-            this.windowSystem.AddWindow(this.mainWindow);
-            this.windowSystem.AddWindow(this.fullscreenWindow);
-            this.windowSystem.AddWindow(this.configWindow);
-
-            // Open UI by default when the plugin loads. Respect exclusive-fullscreen setting.
-            if (this.Config.ShowOnStart)
-            {
-                if (this.Config.ExclusiveFullscreen)
-                {
-                    this.fullscreenWindow.IsOpen = true;
-                    this.mainWindow.IsOpen = false;
-                }
-                else
-                {
-                    this.mainWindow.IsOpen = true;
-                    this.fullscreenWindow.IsOpen = false;
-                }
-            }
-            else
-            {
-                this.mainWindow.IsOpen = false;
-                this.fullscreenWindow.IsOpen = false;
-            }
-
-            // Register chat/command handlers to open the main UI
-            try
-            {
-                ECommons.DalamudServices.Svc.Commands.AddHandler("/kld", new Dalamud.Game.Command.CommandInfo((s, a) => this.OpenMainUi()) { HelpMessage = "Open Kaleidoscope UI", ShowInHelp = true });
-                ECommons.DalamudServices.Svc.Commands.AddHandler("/kaleidoscope", new Dalamud.Game.Command.CommandInfo((s, a) => this.OpenMainUi()) { HelpMessage = "Open Kaleidoscope UI", ShowInHelp = true });
-            }
-            catch { }
-            this.pluginInterface.UiBuilder.Draw += this.DrawUi;
-            this.pluginInterface.UiBuilder.OpenConfigUi += this.OpenConfigUi;
-            this.pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
+            Log.Information("Kaleidoscope loaded successfully.");
         }
-
-        // Allow config/UI code to request that the main window apply a layout by name.
-        public void ApplyLayout(string name)
+        catch (Exception ex)
         {
-            try
-            {
-                this.mainWindow?.ApplyLayoutByName(name);
-            }
-            catch { }
+            Log.Error($"Failed to initialize Kaleidoscope: {ex}");
+            Dispose();
+            throw;
         }
+    }
 
-        public void SaveConfig()
-        {
-            try
-            {
-                this.pluginInterface.SavePluginConfig(this.Config);
-                try { ECommons.Logging.PluginLog.Information($"Saved plugin config; layouts={this.Config.Layouts?.Count ?? 0} active='{this.Config.ActiveLayoutName}'"); } catch { }
-            }
-            catch (Exception ex)
-            {
-                try { ECommons.Logging.PluginLog.Error($"Error saving plugin config: {ex}"); } catch { }
-            }
-            // Also persist per-category files by copying values from the runtime config into files
-            try
-            {
-                // General
-                var g = new Kaleidoscope.Config.GeneralConfig {
-                    ShowOnStart = this.Config.ShowOnStart,
-                    ExclusiveFullscreen = this.Config.ExclusiveFullscreen,
-                    ContentGridCellWidthPercent = this.Config.ContentGridCellWidthPercent,
-                    ContentGridCellHeightPercent = this.Config.ContentGridCellHeightPercent,
-                    EditMode = this.Config.EditMode
-                };
-                this.ConfigManager.Save("general.json", g);
-                // Sampler
-                var s = new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = this._samplerEnabled, SamplerIntervalMs = this._samplerIntervalSeconds * 1000 };
-                this.ConfigManager.Save("sampler.json", s);
-                // Windows
-                var w = new Kaleidoscope.Config.WindowConfig {
-                    PinMainWindow = this.Config.PinMainWindow,
-                    PinConfigWindow = this.Config.PinConfigWindow,
-                    MainWindowPos = this.Config.MainWindowPos,
-                    MainWindowSize = this.Config.MainWindowSize,
-                    ConfigWindowPos = this.Config.ConfigWindowPos,
-                    ConfigWindowSize = this.Config.ConfigWindowSize
-                };
-                this.ConfigManager.Save("windows.json", w);
-            }
-            catch { }
-        }
-
-        public void Dispose()
-        {
-            try
-            {
-                ECommons.DalamudServices.Svc.Commands.RemoveHandler("/kld");
-                ECommons.DalamudServices.Svc.Commands.RemoveHandler("/kaleidoscope");
-            }
-            catch { }
-            this.pluginInterface.UiBuilder.Draw -= this.DrawUi;
-            this.pluginInterface.UiBuilder.OpenConfigUi -= this.OpenConfigUi;
-            this.pluginInterface.UiBuilder.OpenMainUi -= this.OpenMainUi;
-            this.windowSystem.RemoveAllWindows();
-            if (this.mainWindow is IDisposable mw)
-                mw.Dispose();
-
-            if (this.fullscreenWindow is IDisposable fw)
-                fw.Dispose();
-
-            if (this.configWindow is IDisposable cw)
-                cw.Dispose();
-            _samplerTimer?.Dispose();
-        }
-
-        // Called by MainWindow to request showing the fullscreen window. This hides the main window.
-        public void RequestShowFullscreen()
-        {
-            try
-            {
-                // Hide main and show fullscreen
-                this.mainWindow.IsOpen = false;
-                this.fullscreenWindow.IsOpen = true;
-            }
-            catch { }
-        }
-
-        // Called by TopBar/FullscreenWindow to request exiting fullscreen. Behavior differs when
-        // exclusive-fullscreen is enabled (close instead of returning to main window).
-        public void RequestExitFullscreen()
-        {
-            try
-            {
-                // Close fullscreen. If exclusive fullscreen is enabled, do not reopen the main window.
-                this.fullscreenWindow.IsOpen = false;
-                if (this.Config.ExclusiveFullscreen)
-                {
-                }
-                else
-                {
-                    this.mainWindow.IsOpen = true;
-                    try { this.mainWindow.ExitFullscreen(); } catch { }
-                }
-            }
-            catch { }
-        }
-
-        private void DrawUi() => this.windowSystem.Draw();
-
-        public void OpenConfigUi() => this.configWindow.IsOpen = true;
-
-        private void OpenMainUi() => this.mainWindow.IsOpen = true;
+    public void Dispose()
+    {
+        _services?.Dispose();
+        Log.Information("Kaleidoscope disposed.");
     }
 }

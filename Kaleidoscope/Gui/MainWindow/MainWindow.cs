@@ -4,341 +4,324 @@ namespace Kaleidoscope.Gui.MainWindow
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
-    using ECommons.Logging;
+    using Dalamud.Plugin.Services;
     
     using OtterGui.Text;
     using System.Linq;
     using Dalamud.Interface;
+    using Kaleidoscope.Services;
 
-        public class MainWindow : Window
+    public class MainWindow : Window
     {
+        private readonly IPluginLog _log;
+        private readonly ConfigurationService _configService;
+        private readonly SamplerService _samplerService;
+        private readonly FilenameService _filenameService;
         private readonly GilTrackerComponent _moneyTracker;
-        private readonly WindowContentContainer _contentContainer;
+        private WindowContentContainer? _contentContainer;
         private TitleBarButton? editModeButton;
-            // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
-            private System.Numerics.Vector2 _savedPos = new System.Numerics.Vector2(100, 100);
-            private System.Numerics.Vector2 _savedSize = new System.Numerics.Vector2(800, 600);
+        // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
+        private Vector2 _savedPos = new Vector2(100, 100);
+        private Vector2 _savedSize = new Vector2(800, 600);
         private bool _sanitizeDbOpen = false;
+
+        // Reference to WindowService for window coordination (set after construction due to circular dependency)
+        private WindowService? _windowService;
+        public void SetWindowService(WindowService ws) => _windowService = ws;
 
         public bool HasDb => _moneyTracker?.HasDb ?? false;
 
         public void ClearAllData()
         {
-            try { _moneyTracker.ClearAllData(); } catch { }
+            try { _moneyTracker.ClearAllData(); }
+            catch (Exception ex) { _log.Error($"ClearAllData failed: {ex.Message}"); }
         }
 
         public int CleanUnassociatedCharacters()
         {
-            try { return _moneyTracker.CleanUnassociatedCharacters(); } catch { return 0; }
+            try { return _moneyTracker.CleanUnassociatedCharacters(); }
+            catch (Exception ex) { _log.Error($"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
         }
 
         public string? ExportCsv()
         {
-            try { return _moneyTracker.ExportCsv(); } catch { return null; }
+            try { return _moneyTracker.ExportCsv(); }
+            catch (Exception ex) { _log.Error($"ExportCsv failed: {ex.Message}"); return null; }
         }
 
-        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
         private TitleBarButton? lockButton;
         private TitleBarButton? fullscreenButton;
 
-        public MainWindow(Kaleidoscope.KaleidoscopePlugin plugin, GilTrackerComponent sharedMoneyTracker, string? gilTrackerDbPath = null, Func<bool>? getSamplerEnabled = null, Action<bool>? setSamplerEnabled = null, Func<int>? getSamplerInterval = null, Action<int>? setSamplerInterval = null) : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        public MainWindow(
+            IPluginLog log,
+            ConfigurationService configService,
+            SamplerService samplerService,
+            FilenameService filenameService,
+            GilTrackerComponent gilTrackerComponent) 
+            : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
-            this.plugin = plugin;
-            // Do not set `Size` here to avoid forcing a window size each frame.
-            // The saved size is applied only when the user pins the window (saved on pin action).
-            _moneyTracker = sharedMoneyTracker ?? new GilTrackerComponent(gilTrackerDbPath, getSamplerEnabled, setSamplerEnabled, getSamplerInterval, setSamplerInterval);
+            _log = log;
+            _configService = configService;
+            _samplerService = samplerService;
+            _filenameService = filenameService;
+            _moneyTracker = gilTrackerComponent;
 
-            // Enforce a sensible minimum size for the main window
-            this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 120) };
+            SizeConstraints = new WindowSizeConstraints() { MinimumSize = new Vector2(300, 120) };
 
-            // Create and add title bar buttons
+            InitializeTitleBarButtons();
+            InitializeContentContainer();
+
+            _log.Debug("MainWindow initialized");
+        }
+
+        private Configuration Config => _configService.Config;
+
+        private void InitializeTitleBarButtons()
+        {
+            // Settings button
             TitleBarButtons.Add(new TitleBarButton
             {
-                Click = (m) => { if (m == ImGuiMouseButton.Left) plugin.OpenConfigUi(); },
+                Click = (m) => { if (m == ImGuiMouseButton.Left) _windowService?.OpenConfigWindow(); },
                 Icon = FontAwesomeIcon.Cog,
-                IconOffset = new System.Numerics.Vector2(2, 2),
+                IconOffset = new Vector2(2, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Open settings"),
             });
 
             // Fullscreen toggle button
-            var fsTb = new TitleBarButton
+            fullscreenButton = new TitleBarButton
             {
                 Icon = FontAwesomeIcon.ArrowsUpDownLeftRight,
-                IconOffset = new System.Numerics.Vector2(2, 2),
+                IconOffset = new Vector2(2, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Toggle fullscreen"),
             };
-            fsTb.Click = (m) =>
+            fullscreenButton.Click = (m) =>
             {
                 if (m != ImGuiMouseButton.Left) return;
-
-                // Enter fullscreen: save current window pos/size and ask the plugin to show the fullscreen window.
                 try
                 {
                     _savedPos = ImGui.GetWindowPos();
                     _savedSize = ImGui.GetWindowSize();
-                    try { this.plugin.RequestShowFullscreen(); } catch { }
+                    _windowService?.RequestShowFullscreen();
                 }
-                catch { }
+                catch (Exception ex) { _log.Error($"Fullscreen toggle failed: {ex.Message}"); }
             };
-            fullscreenButton = fsTb;
             TitleBarButtons.Add(fullscreenButton);
 
-            // TopBar removed: config and exit requests handled by titlebar buttons and plugin commands.
-
-            var lockTb = new TitleBarButton
+            // Lock button
+            lockButton = new TitleBarButton
             {
-                Icon = plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
-                IconOffset = new System.Numerics.Vector2(3, 2),
+                Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+                IconOffset = new Vector2(3, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
             };
-
-            lockTb.Click = (m) =>
+            lockButton.Click = (m) =>
             {
                 if (m == ImGuiMouseButton.Left)
                 {
-                    // Toggle pinned state. When enabling pin, capture the current window
-                    // position and size so the window remains where the user placed it.
-                    var newPinned = !plugin.Config.PinMainWindow;
-                    plugin.Config.PinMainWindow = newPinned;
+                    var newPinned = !Config.PinMainWindow;
+                    Config.PinMainWindow = newPinned;
                     if (newPinned)
                     {
-                        try
-                        {
-                            plugin.Config.MainWindowPos = ImGui.GetWindowPos();
-                            plugin.Config.MainWindowSize = ImGui.GetWindowSize();
-                        }
-                        catch { }
+                        Config.MainWindowPos = ImGui.GetWindowPos();
+                        Config.MainWindowSize = ImGui.GetWindowSize();
                     }
-                    try { plugin.SaveConfig(); } catch { }
-                    lockTb.Icon = plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                    _configService.Save();
+                    lockButton!.Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
                 }
             };
-
-            lockButton = lockTb;
             TitleBarButtons.Add(lockButton);
+
             // Edit mode toggle
-            var editTb = new TitleBarButton
+            editModeButton = new TitleBarButton
             {
                 Icon = FontAwesomeIcon.Edit,
-                IconOffset = new System.Numerics.Vector2(2, 2),
+                IconOffset = new Vector2(2, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Toggle HUD edit mode"),
             };
-            editTb.Click = (m) =>
+            editModeButton.Click = (m) =>
             {
                 if (m == ImGuiMouseButton.Left)
                 {
-                    var newState = !plugin.Config.EditMode;
-                    // If turning off edit mode, persist current layout
+                    var newState = !Config.EditMode;
                     if (!newState)
                     {
-                        try
-                        {
-                            var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
-                            var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName) ? plugin.Config.ActiveLayoutName : null;
-                            ContentLayoutState? layout = null;
-                            if (activeName != null)
-                                layout = layouts.Find(x => x.Name == activeName);
-                            layout ??= layouts.FirstOrDefault();
-
-                            if (layout == null)
-                            {
-                                // No saved layouts exist yet; create a new one with a sensible name.
-                                layout = new ContentLayoutState() { Name = activeName ?? "Default" };
-                                layouts.Add(layout);
-                            }
-                            layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
-                            plugin.SaveConfig();
-                        }
-                        catch { }
+                        // Turning off edit mode - persist layout
+                        PersistCurrentLayout();
                     }
                     else
                     {
-                        // When enabling edit mode, capture the current window position/size
-                        // and force the window to be pinned so it doesn't move/resize while
-                        // the user edits HUD layout.
-                        try
-                        {
-                            plugin.Config.PinMainWindow = true;
-                            try { plugin.Config.MainWindowPos = ImGui.GetWindowPos(); } catch { }
-                            try { plugin.Config.MainWindowSize = ImGui.GetWindowSize(); } catch { }
-                            try { plugin.SaveConfig(); } catch { }
-                        }
-                        catch { }
+                        // Turning on edit mode - pin window
+                        Config.PinMainWindow = true;
+                        Config.MainWindowPos = ImGui.GetWindowPos();
+                        Config.MainWindowSize = ImGui.GetWindowSize();
                     }
-                    try { plugin.Config.EditMode = newState; plugin.SaveConfig(); }
-                    catch { }
+                    Config.EditMode = newState;
+                    _configService.Save();
                 }
             };
-            editModeButton = editTb;
             TitleBarButtons.Add(editModeButton);
+        }
 
-            // Create content container and add default tools
-            _contentContainer = new WindowContentContainer(() => plugin.Config.ContentGridCellWidthPercent, () => plugin.Config.ContentGridCellHeightPercent, () => plugin.Config.GridSubdivisions);
-            // Register available tools into the content container's tool registry so the
-            // context "Add tool" menu can enumerate them. Registration is centralized
-            // in `WindowToolRegistrar` so both main and fullscreen windows expose
-            // the same set of available tools.
-            try { WindowToolRegistrar.RegisterTools(_contentContainer, gilTrackerDbPath); } catch { }
-            // Add a default GilTracker instance (each tool has independent state)
-            try
+        private void InitializeContentContainer()
+        {
+            var dbPath = _filenameService.GilTrackerDbPath;
+
+            // Create content container
+            _contentContainer = new WindowContentContainer(
+                () => Config.ContentGridCellWidthPercent,
+                () => Config.ContentGridCellHeightPercent,
+                () => Config.GridSubdivisions);
+
+            // Register available tools
+            WindowToolRegistrar.RegisterTools(_contentContainer, dbPath);
+
+            // Add default GilTracker tool
+            var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), dbPath);
+            if (defaultGt != null) _contentContainer.AddTool(defaultGt);
+
+            // Apply saved layout or add defaults
+            ApplyInitialLayout();
+
+            // Wire layout persistence callbacks
+            WireLayoutCallbacks();
+        }
+
+        private void ApplyInitialLayout()
+        {
+            var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
+            ContentLayoutState? layout = null;
+            
+            if (activeName != null)
+                layout = layouts.Find(x => x.Name == activeName);
+            layout ??= layouts.FirstOrDefault();
+
+            if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
             {
-                var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), gilTrackerDbPath);
-                if (defaultGt != null) _contentContainer.AddTool(defaultGt);
-
-                // Decide whether to add default-only tools (CharacterPicker).
-                // If any saved layouts exist, prefer applying them and do not auto-add default tools
-                // so removed tools aren't reintroduced.
-                var layouts = plugin.Config.Layouts ?? new List<ContentLayoutState>();
-                var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName) ? plugin.Config.ActiveLayoutName : null;
-                ContentLayoutState? layout = null;
-                if (activeName != null)
-                    layout = layouts.Find(x => x.Name == activeName);
-                layout ??= layouts.FirstOrDefault();
-
-                if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
-                {
-                    _contentContainer.ApplyLayout(layout.Tools);
-                    if (string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)) plugin.Config.ActiveLayoutName = layout.Name;
-                }
-                else
-                {
-                    // No saved layout present: add the Character Picker as a default tool on first run.
-                    var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
-                    cpTool.Position = new System.Numerics.Vector2(420, 50);
-                    _contentContainer.AddTool(cpTool);
-                }
+                _contentContainer.ApplyLayout(layout.Tools);
+                if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName)) 
+                    Config.ActiveLayoutName = layout.Name;
             }
-            catch { }
+            else
+            {
+                // No saved layout: add Character Picker as default
+                var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
+                cpTool.Position = new Vector2(420, 50);
+                _contentContainer.AddTool(cpTool);
+            }
+        }
 
-            // Wire layout persistence callbacks so the content container can save/load named layouts
+        private void WireLayoutCallbacks()
+        {
             _contentContainer.OnSaveLayout = (name, tools) =>
             {
-                try
+                if (string.IsNullOrWhiteSpace(name)) return;
+                
+                var layouts = Config.Layouts ??= new List<ContentLayoutState>();
+                var existing = layouts.Find(x => x.Name == name);
+                if (existing == null)
                 {
-                    if (string.IsNullOrWhiteSpace(name)) return;
-                    var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
-                    var existing = layouts.Find(x => x.Name == name);
-                    if (existing == null)
-                    {
-                        existing = new ContentLayoutState { Name = name };
-                        layouts.Add(existing);
-                    }
-                    existing.Tools = tools ?? new List<ToolLayoutState>();
-                    plugin.Config.ActiveLayoutName = name;
-                    try { plugin.SaveConfig(); } catch { }
-                    try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                    try { ECommons.Logging.PluginLog.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)"); } catch { }
+                    existing = new ContentLayoutState { Name = name };
+                    layouts.Add(existing);
                 }
-                catch { }
+                existing.Tools = tools ?? new List<ToolLayoutState>();
+                Config.ActiveLayoutName = name;
+                _configService.Save();
+                _configService.SaveLayouts();
+                _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)");
             };
 
             _contentContainer.OnLoadLayout = (name) =>
             {
-                try
+                if (string.IsNullOrWhiteSpace(name)) return;
+                
+                var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+                var found = layouts.Find(x => x.Name == name);
+                if (found != null)
                 {
-                    if (string.IsNullOrWhiteSpace(name)) return;
-                    var layouts = plugin.Config.Layouts ?? new List<ContentLayoutState>();
-                    var found = layouts.Find(x => x.Name == name);
-                    if (found != null)
-                    {
-                        _contentContainer.ApplyLayout(found.Tools);
-                        plugin.Config.ActiveLayoutName = name;
-                        try { plugin.SaveConfig(); } catch { }
-                        try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                        try { ECommons.Logging.PluginLog.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)"); } catch { }
-                    }
+                    _contentContainer.ApplyLayout(found.Tools);
+                    Config.ActiveLayoutName = name;
+                    _configService.Save();
+                    _configService.SaveLayouts();
+                    _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)");
                 }
-                catch { }
             };
 
             _contentContainer.GetAvailableLayoutNames = () =>
             {
-                try
-                {
-                    return (plugin.Config.Layouts ?? new List<ContentLayoutState>()).Select(x => x.Name).ToList();
-                }
-                catch { return new List<string>(); }
+                return (Config.Layouts ?? new List<ContentLayoutState>()).Select(x => x.Name).ToList();
             };
 
-            // Immediate persistence on any layout change (drag/resize/add/remove)
             _contentContainer.OnLayoutChanged = (tools) =>
             {
-                try
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
+                    ? Config.ActiveLayoutName
+                    : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                var layouts = Config.Layouts ??= new List<ContentLayoutState>();
+                var existing = layouts.Find(x => x.Name == activeName);
+                if (existing == null)
                 {
-                    var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)
-                        ? plugin.Config.ActiveLayoutName
-                        : (plugin.Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
-                    var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
-                    var existing = layouts.Find(x => x.Name == activeName);
-                    if (existing == null)
-                    {
-                        existing = new ContentLayoutState { Name = activeName };
-                        layouts.Add(existing);
-                    }
-                    existing.Tools = tools ?? new List<ToolLayoutState>();
-                    plugin.Config.ActiveLayoutName = activeName;
-                    try { plugin.SaveConfig(); } catch { }
-                    try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                    try { ECommons.Logging.PluginLog.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)"); } catch { }
+                    existing = new ContentLayoutState { Name = activeName };
+                    layouts.Add(existing);
                 }
-                catch { }
+                existing.Tools = tools ?? new List<ToolLayoutState>();
+                Config.ActiveLayoutName = activeName;
+                _configService.Save();
+                _configService.SaveLayouts();
+                _log.Debug($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)");
             };
+        }
+
+        private void PersistCurrentLayout()
+        {
+            var layouts = Config.Layouts ??= new List<ContentLayoutState>();
+            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
+            ContentLayoutState? layout = null;
+            
+            if (activeName != null)
+                layout = layouts.Find(x => x.Name == activeName);
+            layout ??= layouts.FirstOrDefault();
+
+            if (layout == null)
+            {
+                layout = new ContentLayoutState() { Name = activeName ?? "Default" };
+                layouts.Add(layout);
+            }
+            layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
+            _configService.Save();
         }
 
         // Expose an explicit exit fullscreen helper so TopBar can call it.
         public void ExitFullscreen()
         {
-            // Restore saved pos/size when returning from fullscreen.
-            try
+            ImGui.SetNextWindowPos(_savedPos);
+            ImGui.SetNextWindowSize(_savedSize);
+            
+            if (Config.PinMainWindow)
             {
-                ImGui.SetNextWindowPos(_savedPos);
-                ImGui.SetNextWindowSize(_savedSize);
-                try
-                {
-                    if (this.plugin.Config.PinMainWindow)
-                    {
-                        this.plugin.Config.MainWindowPos = _savedPos;
-                        this.plugin.Config.MainWindowSize = _savedSize;
-                        this.plugin.SaveConfig();
-                    }
-                }
-                catch { }
+                Config.MainWindowPos = _savedPos;
+                Config.MainWindowSize = _savedSize;
+                _configService.Save();
             }
-            catch { }
-
-            // TopBar removed: nothing to force-hide.
         }
 
-        // Called by host to apply a layout stored in plugin.Config by name.
+        // Called by host to apply a layout stored in Config by name.
         public void ApplyLayoutByName(string name)
         {
-            try
+            var layout = Config.Layouts?.Find(x => x.Name == name) ?? Config.Layouts?.FirstOrDefault();
+            if (layout != null && _contentContainer != null)
             {
-                var layout = plugin.Config.Layouts?.Find(x => x.Name == name) ?? plugin.Config.Layouts?.FirstOrDefault();
-                if (layout != null && _contentContainer != null)
-                {
-                    _contentContainer.ApplyLayout(layout.Tools);
-                }
+                _contentContainer.ApplyLayout(layout.Tools);
             }
-            catch { }
         }
 
         public override void PreDraw()
         {
-            // When pinned, lock position and size; when unpinned, allow moving and resizing.
-            // NOTE: do not force `PinMainWindow` here each frame. Pinning is captured
-            // when edit mode is enabled (see the edit button handler). Respect the
-            // user's manual unlock action while edit mode is active to avoid
-            // unexpected jumps when toggling the lock button.
-            if (this.plugin.Config.PinMainWindow)
+            if (Config.PinMainWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
-                try
-                {
-                    ImGui.SetNextWindowPos(this.plugin.Config.MainWindowPos);
-                    ImGui.SetNextWindowSize(this.plugin.Config.MainWindowSize);
-                }
-                catch { }
+                ImGui.SetNextWindowPos(Config.MainWindowPos);
+                ImGui.SetNextWindowSize(Config.MainWindowSize);
             }
             else
             {
@@ -346,28 +329,18 @@ namespace Kaleidoscope.Gui.MainWindow
                 Flags &= ~ImGuiWindowFlags.NoResize;
             }
 
-            // Ensure titlebar is visible and normal behavior when not in the separate fullscreen window.
             Flags &= ~ImGuiWindowFlags.NoTitleBar;
 
-            // Ensure titlebar button icon reflects current configuration every frame
-            if (this.lockButton != null)
+            if (lockButton != null)
             {
-                this.lockButton.Icon = this.plugin.Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                lockButton.Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
             }
 
-            // If exclusive fullscreen is enabled, immediately switch to fullscreen
-            // when the main window is shown so the plugin opens in fullscreen mode
-            // and does not remain in the main window.
-            if (this.plugin.Config.ExclusiveFullscreen)
+            // If exclusive fullscreen is enabled, switch to fullscreen immediately
+            if (Config.ExclusiveFullscreen)
             {
-                try
-                {
-                    // Prevent further PreDraw calls for this window by closing it
-                    // before requesting the fullscreen window to open.
-                    this.IsOpen = false;
-                    this.plugin.RequestShowFullscreen();
-                }
-                catch { }
+                IsOpen = false;
+                _windowService?.RequestShowFullscreen();
             }
         }
 
@@ -376,17 +349,17 @@ namespace Kaleidoscope.Gui.MainWindow
             // Main content drawing: render the HUD content container
             try
             {
-                _contentContainer?.Draw(this.plugin.Config.EditMode);
+                _contentContainer?.Draw(Config.EditMode);
                 // If the container reports layout changes, persist them into the active layout
                     try
                     {
                         if (_contentContainer != null && _contentContainer.TryConsumeLayoutDirty())
                         {
-                            try { ECommons.Logging.PluginLog.Information("Detected layout dirty, persisting active layout"); } catch { }
-                            var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)
-                                ? plugin.Config.ActiveLayoutName
-                                : (plugin.Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
-                            var layouts = plugin.Config.Layouts ??= new List<ContentLayoutState>();
+                            _log.Information("Detected layout dirty, persisting active layout");
+                            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
+                                ? Config.ActiveLayoutName
+                                : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                            var layouts = Config.Layouts ??= new List<ContentLayoutState>();
                             var existing = layouts.Find(x => x.Name == activeName);
                             if (existing == null)
                             {
@@ -394,8 +367,8 @@ namespace Kaleidoscope.Gui.MainWindow
                                 layouts.Add(existing);
                             }
                             existing.Tools = _contentContainer.ExportLayout();
-                            plugin.Config.ActiveLayoutName = activeName;
-                            try { plugin.SaveConfig(); } catch { }
+                            Config.ActiveLayoutName = activeName;
+                            _configService.Save();
                         }
                     }
                     catch { }

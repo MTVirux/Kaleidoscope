@@ -3,25 +3,34 @@ namespace Kaleidoscope.Gui.MainWindow
     using Dalamud.Interface.Windowing;
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using Dalamud.Bindings.ImGui;
-    
+    using Dalamud.Plugin.Services;
+    using Kaleidoscope.Services;
+
 
     public class FullscreenWindow : Window
     {
-        
+        private readonly IPluginLog _log;
+        private readonly ConfigurationService _configService;
         private readonly GilTrackerComponent _moneyTracker;
         private readonly WindowContentContainer _contentContainer;
-        private readonly Kaleidoscope.KaleidoscopePlugin plugin;
 
-        public FullscreenWindow(Kaleidoscope.KaleidoscopePlugin plugin, GilTrackerComponent sharedMoneyTracker) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        private Configuration Config => _configService.Config;
+
+        public FullscreenWindow(
+            IPluginLog log,
+            ConfigurationService configService,
+            SamplerService samplerService,
+            FilenameService filenameService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
         {
-            this.plugin = plugin;
-            // Use the shared gil tracker from the main plugin instance
-            _moneyTracker = sharedMoneyTracker;
+            _log = log;
+            _configService = configService;
+            // Use the shared gil tracker from the sampler service
+            _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
 
             // Create a content container similar to the main window so HUD tools
             // can be reused in fullscreen mode. Keep registrations minimal — the
             // gil tracker reuses the shared tracker instance.
-            _contentContainer = new WindowContentContainer(() => plugin.Config.ContentGridCellWidthPercent, () => plugin.Config.ContentGridCellHeightPercent, () => plugin.Config.GridSubdivisions);
+            _contentContainer = new WindowContentContainer(() => Config.ContentGridCellWidthPercent, () => Config.ContentGridCellHeightPercent, () => Config.GridSubdivisions);
 
             try
             {
@@ -37,11 +46,11 @@ namespace Kaleidoscope.Gui.MainWindow
                     if (defaultGt != null) _contentContainer.AddTool(defaultGt);
                 }
                 catch { }
-                // Attempt to apply a saved layout if present (use plugin.Config.Layouts like main window)
+                // Attempt to apply a saved layout if present (use Config.Layouts like main window)
                 try
                 {
-                    var layouts = plugin.Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                    var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName) ? plugin.Config.ActiveLayoutName : null;
+                    var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                    var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
                     Kaleidoscope.ContentLayoutState? layout = null;
                     if (activeName != null)
                         layout = layouts.Find(x => x.Name == activeName);
@@ -60,7 +69,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     try
                     {
                         if (string.IsNullOrWhiteSpace(name)) return;
-                        var layouts = plugin.Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
                         var existing = layouts.Find(x => x.Name == name);
                         if (existing == null)
                         {
@@ -68,10 +77,9 @@ namespace Kaleidoscope.Gui.MainWindow
                             layouts.Add(existing);
                         }
                         existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        plugin.Config.ActiveLayoutName = name;
-                        try { plugin.SaveConfig(); } catch { }
-                        try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                        try { ECommons.Logging.PluginLog.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]"); } catch { }
+                        Config.ActiveLayoutName = name;
+                        _configService.Save();
+                        _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
                     catch { }
                 };
@@ -81,15 +89,14 @@ namespace Kaleidoscope.Gui.MainWindow
                     try
                     {
                         if (string.IsNullOrWhiteSpace(name)) return;
-                        var layouts = plugin.Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                        var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
                         var found = layouts.Find(x => x.Name == name);
                         if (found != null)
                         {
                             _contentContainer.ApplyLayout(found.Tools);
-                            plugin.Config.ActiveLayoutName = name;
-                            try { plugin.SaveConfig(); } catch { }
-                            try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                            try { ECommons.Logging.PluginLog.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]"); } catch { }
+                            Config.ActiveLayoutName = name;
+                            _configService.Save();
+                            _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]");
                         }
                     }
                     catch { }
@@ -99,7 +106,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     try
                     {
-                        return (plugin.Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>()).Select(x => x.Name).ToList();
+                        return (Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>()).Select(x => x.Name).ToList();
                     }
                     catch { return new System.Collections.Generic.List<string>(); }
                 };
@@ -108,10 +115,10 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     try
                     {
-                        var activeName = !string.IsNullOrWhiteSpace(plugin.Config.ActiveLayoutName)
-                            ? plugin.Config.ActiveLayoutName
-                            : (plugin.Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
-                        var layouts = plugin.Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
+                            ? Config.ActiveLayoutName
+                            : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
                         var existing = layouts.Find(x => x.Name == activeName);
                         if (existing == null)
                         {
@@ -119,10 +126,9 @@ namespace Kaleidoscope.Gui.MainWindow
                             layouts.Add(existing);
                         }
                         existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        plugin.Config.ActiveLayoutName = activeName;
-                        try { plugin.SaveConfig(); } catch { }
-                        try { plugin.ConfigManager.Save("layouts.json", plugin.Config.Layouts); } catch { }
-                        try { ECommons.Logging.PluginLog.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]"); } catch { }
+                        Config.ActiveLayoutName = activeName;
+                        _configService.Save();
+                        _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
                     catch { }
                 };
@@ -164,7 +170,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 catch
                 {
                     // Fall back to config value if IO access fails for any reason
-                    _contentContainer?.Draw(this.plugin.Config.EditMode);
+                    _contentContainer?.Draw(Config.EditMode);
                 }
             }
             catch { }
