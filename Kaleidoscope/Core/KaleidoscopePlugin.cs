@@ -5,7 +5,9 @@ namespace Kaleidoscope
     using Microsoft.Data.Sqlite;
     
     using Dalamud.Plugin;
-
+    using Kaleidoscope.Services;
+    using Kaleidoscope.Interfaces;
+    
     public sealed class KaleidoscopePlugin : IDalamudPlugin, IDisposable
     {
         public string Name => "Crystal Terror";
@@ -15,6 +17,7 @@ namespace Kaleidoscope
         public Kaleidoscope.Config.GeneralConfig GeneralConfig { get; private set; }
         public Kaleidoscope.Config.SamplerConfig SamplerConfig { get; private set; }
         public Kaleidoscope.Config.WindowConfig WindowConfig { get; private set; }
+        public Kaleidoscope.Interfaces.IConfigurationService ConfigService { get; private set; }
 
         private readonly IDalamudPluginInterface pluginInterface;
         private readonly WindowSystem windowSystem;
@@ -34,87 +37,13 @@ namespace Kaleidoscope
             // Initialize ECommons services (Svc) so UI components and services can access Dalamud services.
             ECommons.DalamudServices.Svc.Init(pluginInterface);
 
-            var cfg = this.pluginInterface.GetPluginConfig() as Kaleidoscope.Configuration;
-            if (cfg == null)
-            {
-                cfg = new Kaleidoscope.Configuration();
-                this.pluginInterface.SavePluginConfig(cfg);
-            }
-            this.Config = cfg;
-
-            // Normalize layouts: remove duplicate names and ensure ActiveLayoutName is valid.
-            try
-            {
-                if (this.Config.Layouts != null && this.Config.Layouts.Count > 1)
-                {
-                    var deduped = this.Config.Layouts
-                        .GroupBy(l => (l.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
-                        .Select(g => g.First())
-                        .ToList();
-                    this.Config.Layouts = deduped;
-                }
-
-                // Ensure we at least have an instance of the list. Do NOT create a "Default" layout automatically
-                // if other layouts are present or ActiveLayoutName is empty. Layouts will be created when the user
-                // explicitly saves one. If layouts are present, ensure ActiveLayoutName references a valid one.
-                if (this.Config.Layouts == null)
-                {
-                    this.Config.Layouts = new List<ContentLayoutState>();
-                }
-
-                if (!string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && !this.Config.Layouts.Any(x => string.Equals(x.Name, this.Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    // ActiveLayoutName was set but doesn't match any existing layout; clear it so we don't create a phantom default.
-                    this.Config.ActiveLayoutName = null;
-                }
-                else if (string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && this.Config.Layouts.Count > 0)
-                {
-                    // No active layout configured, but we have saved layouts — pick the first as active.
-                    this.Config.ActiveLayoutName = this.Config.Layouts.First().Name;
-                }
-            }
-            catch { }
-
-            // Create per-category config manager and load per-category files. Keep the single plugin config as compatibility
-            // and copy values to/from per-category objects so runtime code continues to read from `this.Config`.
+            this.ConfigService = new Kaleidoscope.Services.ConfigurationService(pluginInterface);
+            this.Config = this.ConfigService.Config;
             var saveDir = this.pluginInterface.GetPluginConfigDirectory();
-            this.ConfigManager = new Kaleidoscope.Config.ConfigManager(saveDir);
-            this.GeneralConfig = this.ConfigManager.LoadOrCreate("general.json", () => new Kaleidoscope.Config.GeneralConfig { ShowOnStart = this.Config.ShowOnStart });
-            this.SamplerConfig = this.ConfigManager.LoadOrCreate("sampler.json", () => new Kaleidoscope.Config.SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = 1000 });
-            this.WindowConfig = this.ConfigManager.LoadOrCreate("windows.json", () => new Kaleidoscope.Config.WindowConfig {
-                PinMainWindow = this.Config.PinMainWindow,
-                PinConfigWindow = this.Config.PinConfigWindow,
-                MainWindowPos = this.Config.MainWindowPos,
-                MainWindowSize = this.Config.MainWindowSize,
-                ConfigWindowPos = this.Config.ConfigWindowPos,
-                ConfigWindowSize = this.Config.ConfigWindowSize
-            });
-
-            // Load persisted layouts from a dedicated per-file store so layout persistence
-            // is decoupled from Dalamud's single plugin config. This file is created
-            // and updated by the UI when layouts change.
-            try
-            {
-                var loaded = this.ConfigManager.LoadOrCreate("layouts.json", () => new System.Collections.Generic.List<ContentLayoutState>());
-                if (loaded != null)
-                {
-                    this.Config.Layouts = loaded;
-                }
-            }
-            catch { }
-
-            // Copy per-file values into the runtime single config for compatibility with existing code
-            try { this.Config.ShowOnStart = this.GeneralConfig.ShowOnStart; } catch { }
-            try { this.Config.ExclusiveFullscreen = this.GeneralConfig.ExclusiveFullscreen; } catch { }
-            try { this.Config.ContentGridCellWidthPercent = this.GeneralConfig.ContentGridCellWidthPercent; } catch { }
-            try { this.Config.ContentGridCellHeightPercent = this.GeneralConfig.ContentGridCellHeightPercent; } catch { }
-            try { this.Config.EditMode = this.GeneralConfig.EditMode; } catch { }
-            try { this.Config.PinMainWindow = this.WindowConfig.PinMainWindow; } catch { }
-            try { this.Config.PinConfigWindow = this.WindowConfig.PinConfigWindow; } catch { }
-            try { this.Config.MainWindowPos = this.WindowConfig.MainWindowPos; } catch { }
-            try { this.Config.MainWindowSize = this.WindowConfig.MainWindowSize; } catch { }
-            try { this.Config.ConfigWindowPos = this.WindowConfig.ConfigWindowPos; } catch { }
-            try { this.Config.ConfigWindowSize = this.WindowConfig.ConfigWindowSize; } catch { }
+            this.ConfigManager = this.ConfigService.ConfigManager;
+            this.GeneralConfig = this.ConfigService.GeneralConfig;
+            this.SamplerConfig = this.ConfigService.SamplerConfig;
+            this.WindowConfig = this.ConfigService.WindowConfig;
 
             this.windowSystem = new WindowSystem("Kaleidoscope");
             _dbPath = System.IO.Path.Combine(saveDir, "giltracker.sqlite");
