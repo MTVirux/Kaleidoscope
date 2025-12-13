@@ -18,14 +18,6 @@ namespace Kaleidoscope.Gui.MainWindow
             // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
             private System.Numerics.Vector2 _savedPos = new System.Numerics.Vector2(100, 100);
             private System.Numerics.Vector2 _savedSize = new System.Numerics.Vector2(800, 600);
-            // Draggable container state
-            private readonly System.Numerics.Vector2[] _containerPos = new System.Numerics.Vector2[4];
-            private readonly System.Numerics.Vector2[] _containerSize = new System.Numerics.Vector2[4];
-            private bool[] _containerDragging = new bool[4];
-            private bool[] _containerResizing = new bool[4];
-            private const float ResizeHandleSize = 12f;
-            private bool _containersInitialized = false;
-            private const float SnapDistance = 8f;
         private bool _sanitizeDbOpen = false;
 
         public bool HasDb => _moneyTracker?.HasDb ?? false;
@@ -183,25 +175,15 @@ namespace Kaleidoscope.Gui.MainWindow
             // Create content container and add default tools
             _contentContainer = new WindowContentContainer(() => plugin.Config.ContentGridCellWidthPercent, () => plugin.Config.ContentGridCellHeightPercent, () => plugin.Config.GridSubdivisions);
             // Register available tools into the content container's tool registry so the
-            // context "Add tool" menu can enumerate them.
-            _contentContainer.RegisterTool("CharacterPicker", "Character Picker", pos =>
-            {
-                var cp = new Tools.CharacterPicker.CharacterPickerTool();
-                cp.Position = pos;
-                return cp;
-            }, "Pick characters to inspect");
-
-            _contentContainer.RegisterTool("GilTracker", "Gil Tracker", pos =>
-            {
-                var gtTool2 = new Tools.GilTracker.GilTrackerTool(_moneyTracker);
-                gtTool2.Position = pos;
-                return gtTool2;
-            }, "Track gil and history (reuses shared tracker)");
-            // Wrap existing GilTracker into a tool wrapper
+            // context "Add tool" menu can enumerate them. Registration is centralized
+            // in `WindowToolRegistrar` so both main and fullscreen windows expose
+            // the same set of available tools.
+            try { WindowToolRegistrar.RegisterTools(_contentContainer, gilTrackerDbPath); } catch { }
+            // Add a default GilTracker instance (each tool has independent state)
             try
             {
-                var gtTool = new Tools.GilTracker.GilTrackerTool(_moneyTracker);
-                _contentContainer.AddTool(gtTool);
+                var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), gilTrackerDbPath);
+                if (defaultGt != null) _contentContainer.AddTool(defaultGt);
 
                 // Decide whether to add default-only tools (CharacterPicker).
                 // If any saved layouts exist, prefer applying them and do not auto-add default tools
@@ -341,24 +323,10 @@ namespace Kaleidoscope.Gui.MainWindow
         public override void PreDraw()
         {
             // When pinned, lock position and size; when unpinned, allow moving and resizing.
-            // Force pin (lock) when edit mode is active so layout editing cannot be interrupted
-            // by moving/resizing the main window.
-            try
-            {
-                if (this.plugin.Config.EditMode && !this.plugin.Config.PinMainWindow)
-                {
-                    this.plugin.Config.PinMainWindow = true;
-                    try
-                    {
-                        this.plugin.Config.MainWindowPos = ImGui.GetWindowPos();
-                        this.plugin.Config.MainWindowSize = ImGui.GetWindowSize();
-                    }
-                    catch { }
-                    try { this.plugin.SaveConfig(); } catch { }
-                }
-            }
-            catch { }
-
+            // NOTE: do not force `PinMainWindow` here each frame. Pinning is captured
+            // when edit mode is enabled (see the edit button handler). Respect the
+            // user's manual unlock action while edit mode is active to avoid
+            // unexpected jumps when toggling the lock button.
             if (this.plugin.Config.PinMainWindow)
             {
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
