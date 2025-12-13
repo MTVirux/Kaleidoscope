@@ -141,7 +141,7 @@ namespace Kaleidoscope
                 {
                     if (!_samplerEnabled) return;
                     var now = DateTime.UtcNow;
-                    var cid = ECommons.DalamudServices.Svc.ClientState.LocalContentId;
+                    var cid = ECommons.DalamudServices.Svc.PlayerState.ContentId;
                     uint gil = 0;
                     unsafe
                     {

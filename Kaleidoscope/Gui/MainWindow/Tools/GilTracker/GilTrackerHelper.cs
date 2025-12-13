@@ -160,7 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             // but only update the in-memory samples/LastValue when the currently
             // selected character matches the sampled character (or when viewing
             // the aggregated "All" view).
-            var cid = sampleCharacterId ?? Svc.ClientState.LocalContentId;
+            var cid = sampleCharacterId ?? Svc.PlayerState.ContentId;
             if (cid == 0) return;
 
             try
@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                 }
                                 if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    try { var lp = Svc.ClientState.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
+                                    try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
                                 }
                                 if (!string.IsNullOrEmpty(sanitized))
                                 {
@@ -298,7 +298,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         // active character actually changed since the last seen value.
                         try
                         {
-                            var localCid = Svc.ClientState.LocalContentId;
+                            var localCid = Svc.PlayerState.ContentId;
                             if (localCid != 0 && cid == localCid && localCid != _lastSeenLocalCid)
                             {
                                 SelectedCharacterId = cid;
@@ -323,7 +323,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 {
                     EnsureConnection();
                     if (_connection == null) return;
-                    var cid = Svc.ClientState.LocalContentId;
+                    var cid = Svc.PlayerState.ContentId;
                     // If we don't have a valid character/content id, do not attempt to load saved data
                     if (cid == 0) return;
                     var arr = new List<(DateTime ts, long value)>();
@@ -384,7 +384,7 @@ ORDER BY p.timestamp ASC";
                         // since the last seen local CID. Do not automatically pick the
                         // first stored character to avoid forcing a selection when the
                         // user hasn't changed characters.
-                        var localCid = Svc.ClientState.LocalContentId;
+                        var localCid = Svc.PlayerState.ContentId;
                         if (localCid != 0 && AvailableCharacters.Contains(localCid) && localCid != _lastSeenLocalCid)
                         {
                             SelectedCharacterId = localCid;
@@ -454,7 +454,7 @@ ORDER BY p.timestamp ASC";
                         }
                         if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                         {
-                            try { var lp = Svc.ClientState.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
+                            try { var lp = Svc.Objects.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
                         }
                         if (!string.IsNullOrEmpty(sanitized)) return sanitized;
                     }
@@ -664,7 +664,7 @@ ORDER BY s.character_id, p.timestamp ASC";
                 {
                     EnsureConnection();
                     if (_connection == null) return;
-                    var cid = SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId;
+                    var cid = SelectedCharacterId == 0 ? Svc.PlayerState.ContentId : SelectedCharacterId;
                     // If the resolved character/content id is invalid, nothing to clear
                     if (cid == 0) return;
                     using var cmd = _connection.CreateCommand();
@@ -815,7 +815,7 @@ ORDER BY p.timestamp ASC";
                 // Resolve selected character -> if SelectedCharacterId == 0 and no explicit id provided, fallback to local player
                 if (cid == 0 && SelectedCharacterId == 0)
                 {
-                    cid = Svc.ClientState.LocalContentId;
+                    cid = Svc.PlayerState.ContentId;
                 }
                 // Do not export when we don't have a valid character/content id
                 if (cid == 0) return null;
@@ -886,7 +886,7 @@ ORDER BY p.timestamp ASC";
                     // Single-character retrieval
                     if (cid == 0 && SelectedCharacterId == 0)
                     {
-                        cid = Svc.ClientState.LocalContentId;
+                        cid = Svc.PlayerState.ContentId;
                     }
                     if (cid == 0) return res;
                     cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p

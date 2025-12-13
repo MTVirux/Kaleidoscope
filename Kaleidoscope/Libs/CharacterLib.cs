@@ -13,10 +13,10 @@ namespace Kaleidoscope.Libs
             try
             {
                 if (contentId == 0) return null;
-                var localCid = Svc.ClientState.LocalContentId;
+                var localCid = Svc.PlayerState.ContentId;
                 if (contentId == localCid)
                 {
-                    var name = Svc.ClientState.LocalPlayer?.Name.ToString();
+                    var name = Svc.Objects.LocalPlayer?.Name.ToString();
                     if (!string.IsNullOrEmpty(name)) return name;
                     return null;
                 }
