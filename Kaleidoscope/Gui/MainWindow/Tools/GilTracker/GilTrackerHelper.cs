@@ -686,31 +686,62 @@ ORDER BY p.timestamp ASC";
             {
                 EnsureConnection();
                 if (_connection == null) return null;
-                var cid = characterId == null || characterId == 0 ? SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId : (ulong)characterId;
+                var cid = characterId == null || characterId == 0 ? SelectedCharacterId : (ulong)characterId;
+                using var cmd = _connection.CreateCommand();
+                // If cid == 0 treat as "All" and export across all characters
+                if (cid == 0)
+                {
+                    cmd.CommandText = @"SELECT p.timestamp, p.value, s.character_id FROM points p
+JOIN series s ON p.series_id = s.id
+WHERE s.variable = $v
+ORDER BY p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$v", "Gil");
+                    using var rdrAll = cmd.ExecuteReader();
+                    var sbAll = new StringBuilder();
+                    sbAll.AppendLine("timestamp_utc,value,character_id");
+                    while (rdrAll.Read())
+                    {
+                        var ticks = rdrAll.GetFieldValue<long>(0);
+                        var val = rdrAll.GetFieldValue<long>(1);
+                        var cidOut = rdrAll.GetFieldValue<long>(2);
+                        sbAll.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{val},{cidOut}");
+                    }
+                    var saveDirAll = ECommons.DalamudServices.Svc.PluginInterface.GetPluginConfigDirectory();
+                    var fileNameAll = Path.Combine(saveDirAll, $"giltracker-gil-all-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv");
+                    File.WriteAllText(fileNameAll, sbAll.ToString());
+                    SetStatus($"Exported to {fileNameAll}");
+                    return fileNameAll;
+                }
+
+                // Single-character export
+                // Resolve selected character -> if SelectedCharacterId == 0 and no explicit id provided, fallback to local player
+                if (cid == 0 && SelectedCharacterId == 0)
+                {
+                    cid = Svc.ClientState.LocalContentId;
+                }
                 // Do not export when we don't have a valid character/content id
                 if (cid == 0) return null;
-                using var cmd = _connection.CreateCommand();
                 cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
 JOIN series s ON p.series_id = s.id
 WHERE s.variable = $v AND s.character_id = $c
 ORDER BY p.timestamp ASC";
                 cmd.Parameters.AddWithValue("$v", "Gil");
                 cmd.Parameters.AddWithValue("$c", (long)cid);
-                using var rdr = cmd.ExecuteReader();
-                var sb = new StringBuilder();
-                sb.AppendLine("timestamp_utc,value");
-                while (rdr.Read())
+                using var rdrSingle = cmd.ExecuteReader();
+                var sbSingle = new StringBuilder();
+                sbSingle.AppendLine("timestamp_utc,value");
+                while (rdrSingle.Read())
                 {
-                    var ticks = rdr.GetFieldValue<long>(0);
-                    var val = rdr.GetFieldValue<long>(1);
-                    sb.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{val}");
+                    var ticks = rdrSingle.GetFieldValue<long>(0);
+                    var val = rdrSingle.GetFieldValue<long>(1);
+                    sbSingle.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{val}");
                 }
                 var saveDir = ECommons.DalamudServices.Svc.PluginInterface.GetPluginConfigDirectory();
                 // Try to include character name in the filename if available to make exported files easier to identify.
                 var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
                 var safeName = string.IsNullOrEmpty(name) ? cid.ToString() : string.Concat(name.Where(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-')).Replace(' ', '_');
                 var fileName = Path.Combine(saveDir, $"giltracker-gil-{safeName}-{cid}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv");
-                File.WriteAllText(fileName, sb.ToString());
+                File.WriteAllText(fileName, sbSingle.ToString());
                 SetStatus($"Exported to {fileName}");
                 return fileName;
             }
@@ -734,20 +765,43 @@ ORDER BY p.timestamp ASC";
                 {
                     EnsureConnection();
                     if (_connection == null) return res;
-                    var cid = characterId == null || characterId == 0 ? (SelectedCharacterId == 0 ? Svc.ClientState.LocalContentId : SelectedCharacterId) : (ulong)characterId;
-                    if (cid == 0) return res;
+                    var cid = characterId == null || characterId == 0 ? SelectedCharacterId : (ulong)characterId;
                     using var cmd = _connection.CreateCommand();
+                    // If cid == 0 treat as "All" and return all points across characters
+                    if (cid == 0)
+                    {
+                        cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+JOIN series s ON p.series_id = s.id
+WHERE s.variable = $v
+ORDER BY p.timestamp ASC";
+                        cmd.Parameters.AddWithValue("$v", "Gil");
+                        using var rdr = cmd.ExecuteReader();
+                        while (rdr.Read())
+                        {
+                            var ticks = rdr.GetFieldValue<long>(0);
+                            var val = rdr.GetFieldValue<long>(1);
+                            res.Add((new DateTime(ticks, DateTimeKind.Utc), val));
+                        }
+                        return res;
+                    }
+
+                    // Single-character retrieval
+                    if (cid == 0 && SelectedCharacterId == 0)
+                    {
+                        cid = Svc.ClientState.LocalContentId;
+                    }
+                    if (cid == 0) return res;
                     cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
 JOIN series s ON p.series_id = s.id
 WHERE s.variable = $v AND s.character_id = $c
 ORDER BY p.timestamp ASC";
                     cmd.Parameters.AddWithValue("$v", "Gil");
                     cmd.Parameters.AddWithValue("$c", (long)cid);
-                    using var rdr = cmd.ExecuteReader();
-                    while (rdr.Read())
+                    using var rdr2 = cmd.ExecuteReader();
+                    while (rdr2.Read())
                     {
-                        var ticks = rdr.GetFieldValue<long>(0);
-                        var val = rdr.GetFieldValue<long>(1);
+                        var ticks = rdr2.GetFieldValue<long>(0);
+                        var val = rdr2.GetFieldValue<long>(1);
                         res.Add((new DateTime(ticks, DateTimeKind.Utc), val));
                     }
                 }
