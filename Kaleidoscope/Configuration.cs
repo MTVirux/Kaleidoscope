@@ -35,9 +35,10 @@ namespace Kaleidoscope
         public bool EditMode { get; set; } = false;
 
         // Layout persistence: allow multiple named layouts each containing a set of components.
-        public List<ContentLayoutState> Layouts { get; set; } = new List<ContentLayoutState>() { new ContentLayoutState() { Name = "Default" } };
-        // Name of the currently active layout. If missing, the first layout will be used.
-        public string ActiveLayoutName { get; set; } = "Default";
+        // Start empty: do not create a "Default" layout automatically on first run.
+        public List<ContentLayoutState> Layouts { get; set; } = new List<ContentLayoutState>();
+        // Name of the currently active layout. If empty, the first layout will be used when present.
+        public string ActiveLayoutName { get; set; } = string.Empty;
     }
 
     public class ContentLayoutState
@@ -65,5 +66,9 @@ namespace Kaleidoscope
         public Vector2 Position { get; set; } = new Vector2(50, 50);
         public Vector2 Size { get; set; } = new Vector2(300, 200);
         public bool Visible { get; set; } = true;
+        // Optional background persistence for tools
+        public bool BackgroundEnabled { get; set; } = false;
+        // Default to Dalamud red (approx. #D23A3A)
+        public Vector4 BackgroundColor { get; set; } = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
     }
 }
