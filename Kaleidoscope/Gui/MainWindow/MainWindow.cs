@@ -160,6 +160,21 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // Create content container and add default tools
             _contentContainer = new WindowContentContainer(() => plugin.Config.ContentGridCellWidthPercent, () => plugin.Config.ContentGridCellHeightPercent, () => plugin.Config.GridSubdivisions);
+            // Register available tools into the content container's tool registry so the
+            // context "Add tool" menu can enumerate them.
+            _contentContainer.RegisterTool("CharacterPicker", "Character Picker", pos =>
+            {
+                var cp = new Tools.CharacterPicker.CharacterPickerTool();
+                cp.Position = pos;
+                return cp;
+            }, "Pick characters to inspect");
+
+            _contentContainer.RegisterTool("GilTracker", "Gil Tracker", pos =>
+            {
+                var gtTool2 = new Tools.GilTracker.GilTrackerTool(_moneyTracker);
+                gtTool2.Position = pos;
+                return gtTool2;
+            }, "Track gil and history (reuses shared tracker)");
             // Wrap existing GilTracker into a tool wrapper
             try
             {
