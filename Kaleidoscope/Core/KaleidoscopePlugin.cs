@@ -42,6 +42,39 @@ namespace Kaleidoscope
             }
             this.Config = cfg;
 
+            // Normalize layouts: remove duplicate names and ensure ActiveLayoutName is valid.
+            try
+            {
+                if (this.Config.Layouts != null && this.Config.Layouts.Count > 1)
+                {
+                    var deduped = this.Config.Layouts
+                        .GroupBy(l => (l.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.First())
+                        .ToList();
+                    this.Config.Layouts = deduped;
+                }
+
+                // Ensure we at least have an instance of the list. Do NOT create a "Default" layout automatically
+                // if other layouts are present or ActiveLayoutName is empty. Layouts will be created when the user
+                // explicitly saves one. If layouts are present, ensure ActiveLayoutName references a valid one.
+                if (this.Config.Layouts == null)
+                {
+                    this.Config.Layouts = new List<ContentLayoutState>();
+                }
+
+                if (!string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && !this.Config.Layouts.Any(x => string.Equals(x.Name, this.Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // ActiveLayoutName was set but doesn't match any existing layout; clear it so we don't create a phantom default.
+                    this.Config.ActiveLayoutName = null;
+                }
+                else if (string.IsNullOrWhiteSpace(this.Config.ActiveLayoutName) && this.Config.Layouts.Count > 0)
+                {
+                    // No active layout configured, but we have saved layouts — pick the first as active.
+                    this.Config.ActiveLayoutName = this.Config.Layouts.First().Name;
+                }
+            }
+            catch { }
+
             // Create per-category config manager and load per-category files. Keep the single plugin config as compatibility
             // and copy values to/from per-category objects so runtime code continues to read from `this.Config`.
             var saveDir = this.pluginInterface.GetPluginConfigDirectory();
@@ -243,6 +276,16 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             this.pluginInterface.UiBuilder.Draw += this.DrawUi;
             this.pluginInterface.UiBuilder.OpenConfigUi += this.OpenConfigUi;
             this.pluginInterface.UiBuilder.OpenMainUi += this.OpenMainUi;
+        }
+
+        // Allow config/UI code to request that the main window apply a layout by name.
+        public void ApplyLayout(string name)
+        {
+            try
+            {
+                this.mainWindow?.ApplyLayoutByName(name);
+            }
+            catch { }
         }
 
         public void SaveConfig()
