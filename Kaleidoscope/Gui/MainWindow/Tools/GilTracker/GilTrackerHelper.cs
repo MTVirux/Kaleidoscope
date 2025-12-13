@@ -147,27 +147,69 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
             catch { }
         }
 
-        public void PushSample(float v)
+        public void PushSample(float v, ulong? sampleCharacterId = null)
         {
-            // Avoid storing duplicate consecutive samples for the same character.
-            // Also avoid storing if the new value equals the last known value (e.g. when samples list is empty).
-            if (Math.Abs(LastValue - v) < 0.0001f)
+            // Persist sample for the runtime/local character (or provided id),
+            // but only update the in-memory samples/LastValue when the currently
+            // selected character matches the sampled character (or when viewing
+            // the aggregated "All" view).
+            var cid = sampleCharacterId ?? Svc.ClientState.LocalContentId;
+            if (cid == 0) return;
+
+            try
             {
-                SetStatus("Duplicate sample; skipped (matches last value).");
-                return;
+                // Check the last persisted value for this character to avoid duplicate writes.
+                long? lastPersisted = null;
+                try
+                {
+                    lock (_fileLock)
+                    {
+                        EnsureConnection();
+                        if (_connection != null)
+                        {
+                            using var lastCmd = _connection.CreateCommand();
+                            lastCmd.CommandText = "SELECT p.value FROM points p JOIN series s ON p.series_id=s.id WHERE s.variable=$v AND s.character_id=$c ORDER BY p.timestamp DESC LIMIT 1";
+                            lastCmd.Parameters.AddWithValue("$v", "Gil");
+                            lastCmd.Parameters.AddWithValue("$c", (long)cid);
+                            var r = lastCmd.ExecuteScalar();
+                            if (r != null && r != DBNull.Value) lastPersisted = (long)r;
+                        }
+                    }
+                }
+                catch { lastPersisted = null; }
+
+                if (lastPersisted.HasValue && Math.Abs((double)lastPersisted.Value - v) < 0.0001) 
+                {
+                    // Nothing new to persist for this character
+                    SetStatus("Duplicate sample; skipped.");
+                }
+                else
+                {
+                    // Persist the sample (this will also update DB-internal state and available characters)
+                    TrySaveFor(cid, (long)Math.Round(v));
+                }
+
+                // Update in-memory display only when selection matches the sampled character
+                if (SelectedCharacterId == cid)
+                {
+                    // Avoid storing duplicate consecutive samples in-memory
+                    if (!(_samples.Count > 0 && Math.Abs(_samples[^1] - v) < 0.0001f))
+                    {
+                        _samples.Add(v);
+                        if (_samples.Count > _maxSamples) _samples.RemoveAt(0);
+                        LastValue = v;
+                    }
+                }
+                else if (SelectedCharacterId == 0)
+                {
+                    // If viewing aggregate, reload combined series to include this sample
+                    try { LoadAllCharacters(); } catch { }
+                }
             }
-            if (_samples.Count > 0 && Math.Abs(_samples[^1] - v) < 0.0001f)
-            {
-                SetStatus("Duplicate sample; skipped.");
-                return;
-            }
-            _samples.Add(v);
-            if (_samples.Count > _maxSamples) _samples.RemoveAt(0);
-            LastValue = v;
-            TrySave();
+            catch { }
         }
 
-        private void TrySave()
+        private void TrySaveFor(ulong cid, long value)
         {
             if (string.IsNullOrEmpty(_dbPath)) return;
             try
@@ -175,7 +217,6 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 lock (_fileLock)
                 {
                     EnsureConnection();
-                    var cid = Svc.ClientState.LocalContentId;
                     // Ignore saving when we don't have a valid character/content id (0)
                     if (cid == 0) return;
                     if (_connection == null) return;
@@ -202,7 +243,6 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                         var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
                         if (!string.IsNullOrEmpty(name))
                         {
-                            // Strip any "You (Name)" wrapper so we persist only the character name.
                             try
                             {
                                 var sanitized = name;
@@ -212,17 +252,10 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                                 {
                                     sanitized = sanitized.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
                                 }
-                                // If the sanitized result is still just "You", try to get the local player name directly.
                                 if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    try
-                                    {
-                                        var lp = Svc.ClientState.LocalPlayer?.Name.ToString();
-                                        if (!string.IsNullOrEmpty(lp)) sanitized = lp;
-                                    }
-                                    catch { }
+                                    try { var lp = Svc.ClientState.LocalPlayer?.Name.ToString(); if (!string.IsNullOrEmpty(lp)) sanitized = lp; } catch { }
                                 }
-
                                 if (!string.IsNullOrEmpty(sanitized))
                                 {
                                     using var nameCmd = _connection.CreateCommand();
@@ -241,7 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                     cmd.Parameters.Clear();
                     cmd.Parameters.AddWithValue("$s", seriesId);
                     cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToUniversalTime().Ticks);
-                    cmd.Parameters.AddWithValue("$v", (long)LastValue);
+                    cmd.Parameters.AddWithValue("$v", value);
                     cmd.ExecuteNonQuery();
 
                     // If we created a new series for this cid, add it to the in-memory list
@@ -526,31 +559,89 @@ ORDER BY p.timestamp ASC";
                 {
                     EnsureConnection();
                     if (_connection == null) return;
-                    var arr = new List<(DateTime ts, long value)>();
+                    // Load all points grouped by character, then build a timeline where each
+                    // timestamp reflects the sum of the latest-known gil for every character
+                    // at that moment. This produces an 'aggregate over time' series instead
+                    // of simply concatenating all points.
+                    var charPoints = new Dictionary<ulong, List<(DateTime ts, long value)>>();
                     using var cmd = _connection.CreateCommand();
-                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+                    cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
 JOIN series s ON p.series_id = s.id
 WHERE s.variable = $v
-ORDER BY p.timestamp ASC";
+ORDER BY s.character_id, p.timestamp ASC";
                     cmd.Parameters.AddWithValue("$v", "Gil");
                     using var rdr = cmd.ExecuteReader();
                     while (rdr.Read())
                     {
-                        var ticks = rdr.GetFieldValue<long>(0);
-                        var val = rdr.GetFieldValue<long>(1);
-                        arr.Add((new DateTime(ticks, DateTimeKind.Utc), val));
+                        var cidLong = rdr.GetFieldValue<long>(0);
+                        var ticks = rdr.GetFieldValue<long>(1);
+                        var val = rdr.GetFieldValue<long>(2);
+                        if (cidLong == 0) continue;
+                        var cid = (ulong)cidLong;
+                        if (!charPoints.TryGetValue(cid, out var list))
+                        {
+                            list = new List<(DateTime ts, long value)>();
+                            charPoints[cid] = list;
+                        }
+                        list.Add((new DateTime(ticks, DateTimeKind.Utc), val));
                     }
 
-                    _samples.Clear();
-                    var start = Math.Max(0, arr.Count - _maxSamples);
-                    for (var i = start; i < arr.Count; i++) _samples.Add((float)arr[i].value);
-                    LastValue = _samples.Count > 0 ? _samples[^1] : LastValue;
-                    if (arr.Count > 0)
+                    // If there are no characters/points, clear samples and return
+                    if (charPoints.Count == 0)
                     {
-                        FirstSampleTime = arr[start].ts;
-                        LastSampleTime = arr[arr.Count - 1].ts;
+                        _samples.Clear();
+                        LastValue = 0f;
+                        SelectedCharacterId = 0;
+                        return;
                     }
-                    // Represent aggregated selection with character id 0
+
+                    // Collect all unique timestamps in chronological order
+                    var allTimestamps = new SortedSet<DateTime>();
+                    foreach (var kv in charPoints)
+                        foreach (var p in kv.Value)
+                            allTimestamps.Add(p.ts);
+
+                    // Maintain per-character indices and current/latest values
+                    var indices = new Dictionary<ulong, int>();
+                    var currentValues = new Dictionary<ulong, long>();
+                    foreach (var cid in charPoints.Keys)
+                    {
+                        indices[cid] = 0;
+                        currentValues[cid] = 0L;
+                    }
+
+                    var combined = new List<(DateTime ts, long sum)>();
+                    foreach (var ts in allTimestamps)
+                    {
+                        // Advance each character's pointer up to this timestamp
+                        foreach (var kv in charPoints)
+                        {
+                            var cid = kv.Key;
+                            var list = kv.Value;
+                            var idx = indices[cid];
+                            while (idx < list.Count && list[idx].ts <= ts)
+                            {
+                                currentValues[cid] = list[idx].value;
+                                idx++;
+                            }
+                            indices[cid] = idx;
+                        }
+
+                        long sum = 0L;
+                        foreach (var v in currentValues.Values) sum += v;
+                        combined.Add((ts, sum));
+                    }
+
+                    // Trim to _maxSamples most-recent combined points
+                    _samples.Clear();
+                    var start = Math.Max(0, combined.Count - _maxSamples);
+                    for (var i = start; i < combined.Count; i++) _samples.Add((float)combined[i].sum);
+                    LastValue = _samples.Count > 0 ? _samples[^1] : LastValue;
+                    if (combined.Count > 0)
+                    {
+                        FirstSampleTime = combined[start].ts;
+                        LastSampleTime = combined[combined.Count - 1].ts;
+                    }
                     SelectedCharacterId = 0;
                 }
             }
