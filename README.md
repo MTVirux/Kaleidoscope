@@ -1,6 +1,6 @@
 # Kaleidoscope
 
-Kaleidoscope is a Dalamud plugin for Final Fantasy XIV that provides an overlay for tracking crystals, shards, clusters and gil-related information. This repository contains the plugin source, configuration, and helper services used while developing and packaging the plugin.
+Kaleidoscope is a Dalamud plugin for Final Fantasy XIV that provides an overlay for tracking game information across multiple characters. This repository contains the plugin source, configuration, and helper services used while developing and packaging the plugin.
 
 **Quick Links**
 
@@ -10,8 +10,7 @@ Kaleidoscope is a Dalamud plugin for Final Fantasy XIV that provides an overlay 
 
 **What this repo contains**
 
-- The main plugin code in `Kaleidoscope/` (editable).
-- Shared libraries and submodules (read-only): `CriticalCommonLib/`, `OtterGui/`, `ECommons/`, `FFXIVClientStructs/`.
+- The main plugin code in `Kaleidoscope/`
 - Build and publish helper scripts in `scripts/`.
 
 **Getting started (development)**
