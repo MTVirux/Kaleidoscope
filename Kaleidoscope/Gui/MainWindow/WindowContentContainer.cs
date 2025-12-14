@@ -332,12 +332,15 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             var dl = ImGui.GetWindowDrawList();
 
-            // Compute content origin and available region once
+            // Compute content origin and available region once using the
+            // window content region APIs so we cover the full client area.
             var windowPos = ImGui.GetWindowPos();
-            var contentOrigin = windowPos + new Vector2(0, ImGui.GetFrameHeight());
-            var availRegion = ImGui.GetContentRegionAvail();
-            var contentMin = contentOrigin;
-            var contentMax = contentOrigin + availRegion;
+            var contentMinRel = ImGui.GetWindowContentRegionMin();
+            var contentMaxRel = ImGui.GetWindowContentRegionMax();
+            var contentMin = windowPos + contentMinRel;
+            var contentMax = windowPos + contentMaxRel;
+            var contentOrigin = contentMin;
+            var availRegion = contentMax - contentMin;
 
             // Compute grid cell size once
             var cellW = MathF.Max(8f, availRegion.X * MathF.Max(0.01f, _getCellWidthPercent() / 100f));
@@ -750,7 +753,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         try
                         {
                             var wp = ImGui.GetWindowPos();
-                            var co = wp + new Vector2(0, ImGui.GetFrameHeight());
+                            var co = wp + ImGui.GetWindowContentRegionMin();
                             var absClick = co + _lastContextClickRel;
                             var found = -1;
                             for (var ti = 0; ti < _tools.Count; ti++)
