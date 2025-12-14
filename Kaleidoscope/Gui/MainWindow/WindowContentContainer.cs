@@ -18,6 +18,14 @@ namespace Kaleidoscope.Gui.MainWindow
         private Vector2 _lastContextClickRel;
         // Index of the tool that was right-clicked to open the tool-specific context menu
         private int _contextToolIndex = -1;
+        // Index of the tool whose settings modal is currently open (-1 = none)
+        private int _settingsToolIndex = -1;
+        // Whether the settings modal is currently open (used as ref for ImGui modal)
+        private bool _settingsPopupOpen = false;
+        // Position for the settings popup so it doesn't follow the mouse each frame
+        private System.Numerics.Vector2 _settingsPopupPos = new System.Numerics.Vector2(0, 0);
+        private bool _settingsPopupPosSet = false;
+        private bool _settingsPopupFocusSet = false;
 
         private class ToolRegistration
         {
@@ -786,6 +794,33 @@ namespace Kaleidoscope.Gui.MainWindow
                         var col = t.BackgroundColor;
                         if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
                         ImGui.Separator();
+                        // Tool-specific settings (if supported by the tool)
+                        try
+                        {
+                            if (t.HasSettings)
+                            {
+                                if (ImGui.MenuItem("Settings..."))
+                                {
+                                    // Close the context menu before opening the modal so it can take focus
+                                    ImGui.CloseCurrentPopup();
+                                    _settingsToolIndex = _contextToolIndex;
+                                    _settingsPopupOpen = true;
+                                    // Capture the mouse position once so the popup doesn't chase the pointer
+                                    _settingsPopupPos = ImGui.GetMousePos();
+                                    _settingsPopupPosSet = true;
+                                    _settingsPopupFocusSet = false;
+                                    ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
+                                    ImGui.SetNextWindowFocus();
+                                    LogService.Debug($"Opening settings popup for tool index {_settingsToolIndex}");
+                                    ImGui.OpenPopup("tool_settings_popup");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug($"Tool settings menu error: {ex.Message}");
+                        }
+                        ImGui.Separator();
                         if (ImGui.MenuItem("Remove component"))
                         {
                             try
@@ -809,6 +844,110 @@ namespace Kaleidoscope.Gui.MainWindow
                 }
                 ImGui.EndPopup();
                 _contextToolIndex = -1;
+            }
+
+            // Tool settings modal (renders when a tool has opened its settings)
+            if (_settingsToolIndex >= 0 && _settingsToolIndex < _tools.Count)
+            {
+                var popupName = "tool_settings_popup";
+                var toolForSettings = _tools[_settingsToolIndex].Tool;
+                LogService.Debug($"BeginPopupModal check: IsPopupOpen={ImGui.IsPopupOpen(popupName)}, _settingsPopupOpen={_settingsPopupOpen}, toolIndex={_settingsToolIndex}");
+                // If we captured a desired position when opening, apply it once before the modal appears.
+                if (_settingsPopupPosSet)
+                {
+                    ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
+                    if (!_settingsPopupFocusSet)
+                    {
+                        ImGui.SetNextWindowFocus();
+                        _settingsPopupFocusSet = true;
+                    }
+                }
+                if (ImGui.BeginPopupModal(popupName, ref _settingsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+                {
+                    try
+                    {
+                        ImGui.TextUnformatted(toolForSettings.Title ?? "Tool settings");
+                        ImGui.Separator();
+                        // Let the tool render its custom settings UI
+                        try
+                        {
+                            toolForSettings.DrawSettings();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Error("Error while drawing tool settings", ex);
+                        }
+                        ImGui.Separator();
+                        if (ImGui.Button("OK"))
+                        {
+                            ImGui.CloseCurrentPopup();
+                            _settingsPopupOpen = false;
+                            _settingsPopupPosSet = false;
+                            _settingsPopupFocusSet = false;
+                        }
+                        ImGui.SameLine();
+                        if (ImGui.Button("Cancel"))
+                        {
+                            ImGui.CloseCurrentPopup();
+                            _settingsPopupOpen = false;
+                            _settingsPopupPosSet = false;
+                            _settingsPopupFocusSet = false;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Error in tool settings modal", ex);
+                    }
+                    ImGui.EndPopup();
+                    if (!_settingsPopupOpen) _settingsToolIndex = -1;
+                }
+                else
+                {
+                    // Fallback: if modal didn't open for some reason, render a small floating window
+                    try
+                    {
+                        if (_settingsPopupOpen)
+                        {
+                            var fbName = $"tool_settings_fallback_{_settingsToolIndex}";
+                            // Use the captured position for the fallback as well so it doesn't follow the mouse
+                            if (_settingsPopupPosSet) ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
+                            if (ImGui.Begin(fbName, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoDecoration))
+                            {
+                                ImGui.TextUnformatted(toolForSettings.Title ?? "Tool settings (fallback)");
+                                ImGui.Separator();
+                                try
+                                {
+                                    toolForSettings.DrawSettings();
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Error("Error while drawing tool settings (fallback)", ex);
+                                }
+                                ImGui.Separator();
+                                if (ImGui.Button("OK"))
+                                {
+                                    _settingsPopupOpen = false;
+                                    _settingsToolIndex = -1;
+                                    _settingsPopupPosSet = false;
+                                    _settingsPopupFocusSet = false;
+                                }
+                                ImGui.SameLine();
+                                if (ImGui.Button("Cancel"))
+                                {
+                                    _settingsPopupOpen = false;
+                                    _settingsToolIndex = -1;
+                                    _settingsPopupPosSet = false;
+                                    _settingsPopupFocusSet = false;
+                                }
+                                ImGui.End();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Error in tool settings fallback", ex);
+                    }
+                }
             }
         }
     }

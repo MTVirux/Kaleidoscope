@@ -1,4 +1,6 @@
 using System.Numerics;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Dalamud.Bindings.ImGui;
 namespace Kaleidoscope.Gui.MainWindow
 {
     public abstract class ToolComponent
@@ -18,5 +20,35 @@ namespace Kaleidoscope.Gui.MainWindow
 
         // Called when the tool should render its UI into the provided ImGui child
         public abstract void DrawContent();
+
+        // Optional: override to expose a settings UI for the tool. When
+        // `HasSettings` is true the container will show a "Settings..."
+        // context menu item which opens a modal that calls `DrawSettings`.
+        public virtual bool HasSettings => false;
+
+        // Draw the tool-specific settings UI. Override when `HasSettings`
+        // returns true. The default implementation does nothing.
+        public virtual void DrawSettings() { }
+
+        // Helper for tools to show a tooltip for the last item if hovered.
+        // `description` should explain the setting; `defaultText` shows the default value.
+        protected void ShowSettingTooltip(string description, string defaultText)
+        {
+            try
+            {
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.BeginTooltip();
+                    if (!string.IsNullOrEmpty(description)) ImGui.TextUnformatted(description);
+                    if (!string.IsNullOrEmpty(defaultText))
+                    {
+                        ImGui.Separator();
+                        ImGui.TextUnformatted($"Default: {defaultText}");
+                    }
+                    ImGui.EndTooltip();
+                }
+            }
+            catch { }
+        }
     }
 }
