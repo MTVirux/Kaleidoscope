@@ -51,8 +51,6 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker
 
                 // Show tooltip for Max value
                 ShowSettingTooltip($"Maximum Y value displayed on the graph. Values above this will be clamped.", ConfigStatic.GilTrackerMaxGil.ToString("N0"));
-
-                ImGui.TextDisabled($"Default max: {ConfigStatic.GilTrackerMaxGil:N0}");
             }
             catch (Exception ex)
             {

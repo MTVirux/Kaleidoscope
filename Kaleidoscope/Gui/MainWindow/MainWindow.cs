@@ -17,6 +17,7 @@ namespace Kaleidoscope.Gui.MainWindow
         private readonly ConfigurationService _configService;
         private readonly SamplerService _samplerService;
         private readonly FilenameService _filenameService;
+        private readonly StateService _stateService;
         private readonly GilTrackerComponent _moneyTracker;
         private WindowContentContainer? _contentContainer;
         private TitleBarButton? editModeButton;
@@ -56,6 +57,7 @@ namespace Kaleidoscope.Gui.MainWindow
             ConfigurationService configService,
             SamplerService samplerService,
             FilenameService filenameService,
+            StateService stateService,
             GilTrackerComponent gilTrackerComponent) 
             : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
@@ -63,6 +65,7 @@ namespace Kaleidoscope.Gui.MainWindow
             _configService = configService;
             _samplerService = samplerService;
             _filenameService = filenameService;
+            _stateService = stateService;
             _moneyTracker = gilTrackerComponent;
 
             SizeConstraints = new WindowSizeConstraints() { MinimumSize = ConfigStatic.MinimumWindowSize };
@@ -100,6 +103,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     _savedPos = ImGui.GetWindowPos();
                     _savedSize = ImGui.GetWindowSize();
+                    _stateService.EnterFullscreen();
                     _windowService?.RequestShowFullscreen();
                 }
                 catch (Exception ex) { _log.Error($"Fullscreen toggle failed: {ex.Message}"); }
@@ -109,7 +113,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Lock button
             lockButton = new TitleBarButton
             {
-                Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+                Icon = _stateService.IsLocked ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
                 IconOffset = new Vector2(3, 2),
                 ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
             };
@@ -117,15 +121,14 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 if (m == ImGuiMouseButton.Left)
                 {
-                    var newPinned = !Config.PinMainWindow;
-                    Config.PinMainWindow = newPinned;
-                    if (newPinned)
+                    if (!_stateService.IsLocked)
                     {
+                        // About to lock - save current position/size
                         Config.MainWindowPos = ImGui.GetWindowPos();
                         Config.MainWindowSize = ImGui.GetWindowSize();
                     }
-                    _configService.Save();
-                    lockButton!.Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                    _stateService.ToggleLocked();
+                    lockButton!.Icon = _stateService.IsLocked ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
                 }
             };
             TitleBarButtons.Add(lockButton);
@@ -141,21 +144,18 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 if (m == ImGuiMouseButton.Left)
                 {
-                    var newState = !Config.EditMode;
-                    if (!newState)
+                    if (_stateService.IsEditMode)
                     {
                         // Turning off edit mode - persist layout
                         PersistCurrentLayout();
                     }
                     else
                     {
-                        // Turning on edit mode - pin window
-                        Config.PinMainWindow = true;
+                        // Turning on edit mode - save window position before locking
                         Config.MainWindowPos = ImGui.GetWindowPos();
                         Config.MainWindowSize = ImGui.GetWindowSize();
                     }
-                    Config.EditMode = newState;
-                    _configService.Save();
+                    _stateService.ToggleEditMode();
                 }
             };
             TitleBarButtons.Add(editModeButton);
@@ -192,6 +192,9 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // Wire layout persistence callbacks
             WireLayoutCallbacks();
+
+            // Wire interaction state callbacks to StateService
+            WireInteractionCallbacks();
         }
 
         private void ApplyInitialLayout()
@@ -275,6 +278,22 @@ namespace Kaleidoscope.Gui.MainWindow
             };
         }
 
+        private void WireInteractionCallbacks()
+        {
+            if (_contentContainer == null) return;
+
+            // Wire drag/resize state changes from content container to StateService
+            _contentContainer.OnDraggingChanged = (dragging) =>
+            {
+                _stateService.IsDragging = dragging;
+            };
+
+            _contentContainer.OnResizingChanged = (resizing) =>
+            {
+                _stateService.IsResizing = resizing;
+            };
+        }
+
         private void PersistCurrentLayout()
         {
             var layouts = Config.Layouts ??= new List<ContentLayoutState>();
@@ -300,7 +319,7 @@ namespace Kaleidoscope.Gui.MainWindow
             ImGui.SetNextWindowPos(_savedPos);
             ImGui.SetNextWindowSize(_savedSize);
             
-            if (Config.PinMainWindow)
+            if (_stateService.IsLocked)
             {
                 Config.MainWindowPos = _savedPos;
                 Config.MainWindowSize = _savedSize;
@@ -320,7 +339,7 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void PreDraw()
         {
-            if (Config.PinMainWindow)
+            if (_stateService.IsLocked)
             {
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
                 ImGui.SetNextWindowPos(Config.MainWindowPos);
@@ -336,13 +355,14 @@ namespace Kaleidoscope.Gui.MainWindow
 
             if (lockButton != null)
             {
-                lockButton.Icon = Config.PinMainWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                lockButton.Icon = _stateService.IsLocked ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
             }
 
             // If exclusive fullscreen is enabled, switch to fullscreen immediately
             if (Config.ExclusiveFullscreen)
             {
                 IsOpen = false;
+                _stateService.EnterFullscreen();
                 _windowService?.RequestShowFullscreen();
             }
         }
@@ -352,7 +372,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Main content drawing: render the HUD content container
             try
             {
-                _contentContainer?.Draw(Config.EditMode);
+                _contentContainer?.Draw(_stateService.IsEditMode);
                 // If the container reports layout changes, persist them into the active layout
                     try
                     {

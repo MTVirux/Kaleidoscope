@@ -9,17 +9,19 @@ using Kaleidoscope.Services;
 public class WindowLockButton
 {
     private readonly ConfigurationService _configService;
+    private readonly StateService? _stateService;
     private readonly bool isConfigWindow;
     private FontAwesomeIcon currentIcon;
 
     private Configuration Config => _configService.Config;
     public FontAwesomeIcon CurrentIcon => currentIcon;
 
-    public WindowLockButton(ConfigurationService configService, bool isConfigWindow = false)
+    public WindowLockButton(ConfigurationService configService, StateService? stateService = null, bool isConfigWindow = false)
     {
         _configService = configService;
+        _stateService = stateService;
         this.isConfigWindow = isConfigWindow;
-        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : (_stateService?.IsLocked ?? Config.PinMainWindow);
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 
@@ -28,15 +30,28 @@ public class WindowLockButton
         if (isConfigWindow)
         {
             Config.PinConfigWindow = !Config.PinConfigWindow;
+            _configService.Save();
         }
         else
         {
-            Config.PinMainWindow = !Config.PinMainWindow;
+            // Use StateService if available, otherwise fall back to Config
+            if (_stateService != null)
+            {
+                if (!_stateService.IsLocked)
+                {
+                    Config.MainWindowPos = ImGui.GetWindowPos();
+                    Config.MainWindowSize = ImGui.GetWindowSize();
+                }
+                _stateService.ToggleLocked();
+            }
+            else
+            {
+                Config.PinMainWindow = !Config.PinMainWindow;
+                _configService.Save();
+            }
         }
 
         UpdateState();
-
-        _configService.Save();
     }
 
     public void RenderInTitleBar()
@@ -58,7 +73,7 @@ public class WindowLockButton
 
     public void UpdateState()
     {
-        var isPinned = isConfigWindow ? Config.PinConfigWindow : Config.PinMainWindow;
+        var isPinned = isConfigWindow ? Config.PinConfigWindow : (_stateService?.IsLocked ?? Config.PinMainWindow);
         this.currentIcon = isPinned ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
     }
 }

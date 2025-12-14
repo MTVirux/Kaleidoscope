@@ -10,54 +10,73 @@ namespace Kaleidoscope.Gui.Widgets
     /// </summary>
     public class SampleGraphWidget
     {
+    /// <summary>
+    /// Configuration options for the graph.
+    /// </summary>
+    public class GraphConfig
+    {
         /// <summary>
-        /// Configuration options for the graph.
+        /// The minimum value for the Y-axis. Default is 0.
         /// </summary>
-        public class GraphConfig
-        {
-            /// <summary>
-            /// The minimum value for the Y-axis. Default is 0.
-            /// </summary>
-            public float MinValue { get; set; } = 0f;
-
-            /// <summary>
-            /// The maximum value for the Y-axis. Default is 100 million.
-            /// </summary>
-            public float MaxValue { get; set; } = 100_000_000f;
-
-            /// <summary>
-            /// The ID suffix for the ImGui child and plot elements.
-            /// </summary>
-            public string PlotId { get; set; } = "sampleplot";
-
-            /// <summary>
-            /// Text to display when there is no data.
-            /// </summary>
-            public string NoDataText { get; set; } = "No data yet.";
-
-            /// <summary>
-            /// Epsilon for floating point comparisons.
-            /// </summary>
-            public float FloatEpsilon { get; set; } = 0.0001f;
-        }
-
-        private readonly GraphConfig _config;
+        public float MinValue { get; set; } = 0f;
 
         /// <summary>
-        /// Creates a new SampleGraphWidget with default configuration.
+        /// The maximum value for the Y-axis. Default is 100 million.
         /// </summary>
-        public SampleGraphWidget() : this(new GraphConfig()) { }
+        public float MaxValue { get; set; } = 100_000_000f;
 
         /// <summary>
-        /// Creates a new SampleGraphWidget with custom configuration.
+        /// The ID suffix for the ImGui child and plot elements.
         /// </summary>
-        /// <param name="config">The graph configuration.</param>
-        public SampleGraphWidget(GraphConfig config)
-        {
-            _config = config ?? new GraphConfig();
-        }
+        public string PlotId { get; set; } = "sampleplot";
 
         /// <summary>
+        /// Text to display when there is no data.
+        /// </summary>
+        public string NoDataText { get; set; } = "No data yet.";
+
+        /// <summary>
+        /// Epsilon for floating point comparisons.
+        /// </summary>
+        public float FloatEpsilon { get; set; } = 0.0001f;
+    }
+
+    private readonly GraphConfig _config;
+
+    /// <summary>
+    /// Creates a new SampleGraphWidget with default configuration.
+    /// </summary>
+    public SampleGraphWidget() : this(new GraphConfig()) { }
+
+    /// <summary>
+    /// Creates a new SampleGraphWidget with custom configuration.
+    /// </summary>
+    /// <param name="config">The graph configuration.</param>
+    public SampleGraphWidget(GraphConfig config)
+    {
+        _config = config ?? new GraphConfig();
+    }
+
+    /// <summary>
+    /// Updates the Y-axis bounds without recreating the widget.
+    /// </summary>
+    /// <param name="minValue">New minimum value.</param>
+    /// <param name="maxValue">New maximum value.</param>
+    public void UpdateBounds(float minValue, float maxValue)
+    {
+        _config.MinValue = minValue;
+        _config.MaxValue = maxValue;
+    }
+
+    /// <summary>
+    /// Gets the current minimum Y-axis value.
+    /// </summary>
+    public float MinValue => _config.MinValue;
+
+    /// <summary>
+    /// Gets the current maximum Y-axis value.
+    /// </summary>
+    public float MaxValue => _config.MaxValue;        /// <summary>
         /// Draws the graph with the provided samples.
         /// </summary>
         /// <param name="samples">The sample data to plot.</param>

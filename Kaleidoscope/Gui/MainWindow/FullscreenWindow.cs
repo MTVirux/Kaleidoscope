@@ -13,6 +13,7 @@ namespace Kaleidoscope.Gui.MainWindow
         private readonly ConfigurationService _configService;
         private readonly FilenameService _filenameService;
         private readonly SamplerService _samplerService;
+        private readonly StateService _stateService;
         private readonly GilTrackerComponent _moneyTracker;
         private readonly WindowContentContainer _contentContainer;
 
@@ -22,12 +23,14 @@ namespace Kaleidoscope.Gui.MainWindow
             IPluginLog log,
             ConfigurationService configService,
             SamplerService samplerService,
-            FilenameService filenameService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+            FilenameService filenameService,
+            StateService stateService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
         {
             _log = log;
             _configService = configService;
             _filenameService = filenameService;
             _samplerService = samplerService;
+            _stateService = stateService;
             // Use the shared gil tracker from the sampler service
             _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
 
@@ -135,6 +138,19 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                     catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLayoutChanged failed: {ex.Message}"); }
                 };
+
+                // Wire interaction state callbacks to StateService
+                _contentContainer.OnDraggingChanged = (dragging) =>
+                {
+                    try { _stateService.IsDragging = dragging; }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnDraggingChanged failed: {ex.Message}"); }
+                };
+
+                _contentContainer.OnResizingChanged = (resizing) =>
+                {
+                    try { _stateService.IsResizing = resizing; }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnResizingChanged failed: {ex.Message}"); }
+                };
             }
             catch (Exception ex) { LogService.Error("[FullscreenWindow] Content container initialization failed", ex); }
         }
@@ -168,13 +184,13 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     var io = ImGui.GetIO();
                     var fsEdit = io.KeyCtrl && io.KeyShift;
-                    _contentContainer?.Draw(fsEdit);
+                    _contentContainer?.Draw(fsEdit || _stateService.IsEditMode);
                 }
                 catch (Exception ex)
                 {
-                    // Fall back to config value if IO access fails for any reason
+                    // Fall back to StateService value if IO access fails for any reason
                     LogService.Debug($"[FullscreenWindow] Draw IO check failed: {ex.Message}");
-                    _contentContainer?.Draw(Config.EditMode);
+                    _contentContainer?.Draw(_stateService.IsEditMode);
                 }
             }
             catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }

@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.MainWindow
     {
         private readonly GilTrackerHelper _helper;
         private readonly CharacterPickerWidget _characterPicker;
-        private SampleGraphWidget _graphWidget;
+        private readonly SampleGraphWidget _graphWidget;
         private readonly SamplerService _samplerService;
 
         // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
@@ -35,7 +35,7 @@ namespace Kaleidoscope.Gui.MainWindow
             set
             {
                 _graphMinValue = value;
-                UpdateGraphWidget();
+                _graphWidget.UpdateBounds(_graphMinValue, _graphMaxValue);
             }
         }
 
@@ -45,7 +45,7 @@ namespace Kaleidoscope.Gui.MainWindow
             set
             {
                 _graphMaxValue = value;
-                UpdateGraphWidget();
+                _graphWidget.UpdateBounds(_graphMinValue, _graphMaxValue);
             }
         }
 
@@ -56,7 +56,7 @@ namespace Kaleidoscope.Gui.MainWindow
             // Share the database service from SamplerService to avoid duplicate connections
             _helper = new GilTrackerHelper(samplerService.DbService, ConfigStatic.GilTrackerMaxSamples, ConfigStatic.GilTrackerStartingValue);
             _characterPicker = new CharacterPickerWidget(_helper);
-            // initialize graph widget using current graph bounds
+            // Initialize graph widget using current graph bounds
             _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
             {
                 MinValue = _graphMinValue,
@@ -65,25 +65,6 @@ namespace Kaleidoscope.Gui.MainWindow
                 NoDataText = "No data yet.",
                 FloatEpsilon = ConfigStatic.FloatEpsilon
             });
-        }
-
-        private void UpdateGraphWidget()
-        {
-            try
-            {
-                _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
-                {
-                    MinValue = _graphMinValue,
-                    MaxValue = _graphMaxValue,
-                    PlotId = "gilplot",
-                    NoDataText = "No data yet.",
-                    FloatEpsilon = ConfigStatic.FloatEpsilon
-                });
-            }
-            catch (Exception ex)
-            {
-                LogService.Debug($"Failed to update graph widget: {ex.Message}");
-            }
         }
 
         public bool HasDb => !string.IsNullOrEmpty(_dbPath);

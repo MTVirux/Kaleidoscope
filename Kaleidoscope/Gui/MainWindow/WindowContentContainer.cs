@@ -22,10 +22,6 @@ namespace Kaleidoscope.Gui.MainWindow
         private int _settingsToolIndex = -1;
         // Whether the settings modal is currently open (used as ref for ImGui modal)
         private bool _settingsPopupOpen = false;
-        // Position for the settings popup so it doesn't follow the mouse each frame
-        private System.Numerics.Vector2 _settingsPopupPos = new System.Numerics.Vector2(0, 0);
-        private bool _settingsPopupPosSet = false;
-        private bool _settingsPopupFocusSet = false;
 
         private class ToolRegistration
         {
@@ -65,6 +61,48 @@ namespace Kaleidoscope.Gui.MainWindow
 
         // Callback invoked when the layout changes. Host should persist the provided tool layout.
         public Action<List<ToolLayoutState>>? OnLayoutChanged;
+
+        // Callbacks for interaction state changes (dragging/resizing)
+        // Host can use these to update the StateService
+        public Action<bool>? OnDraggingChanged;
+        public Action<bool>? OnResizingChanged;
+
+        // Track global interaction state for this container
+        private bool _anyDragging = false;
+        private bool _anyResizing = false;
+
+        /// <summary>
+        /// Returns true if any tool is currently being dragged.
+        /// </summary>
+        public bool IsDragging => _anyDragging;
+
+        /// <summary>
+        /// Returns true if any tool is currently being resized.
+        /// </summary>
+        public bool IsResizing => _anyResizing;
+
+        /// <summary>
+        /// Returns true if any interaction (drag or resize) is in progress.
+        /// </summary>
+        public bool IsInteracting => _anyDragging || _anyResizing;
+
+        // Update the global dragging state and notify if changed
+        private void SetDraggingState(bool dragging)
+        {
+            if (_anyDragging == dragging) return;
+            _anyDragging = dragging;
+            try { OnDraggingChanged?.Invoke(dragging); }
+            catch (Exception ex) { LogService.Debug($"OnDraggingChanged error: {ex.Message}"); }
+        }
+
+        // Update the global resizing state and notify if changed
+        private void SetResizingState(bool resizing)
+        {
+            if (_anyResizing == resizing) return;
+            _anyResizing = resizing;
+            try { OnResizingChanged?.Invoke(resizing); }
+            catch (Exception ex) { LogService.Debug($"OnResizingChanged error: {ex.Message}"); }
+        }
 
         // Mark the layout as dirty (changed) so hosts can persist it.
         private void MarkLayoutDirty()
@@ -748,6 +786,18 @@ namespace Kaleidoscope.Gui.MainWindow
 
                 ImGui.PopID();
             }
+
+            // Update global interaction state by checking all tools
+            var anyToolDragging = false;
+            var anyToolResizing = false;
+            foreach (var te in _tools)
+            {
+                if (te.Dragging) anyToolDragging = true;
+                if (te.Resizing) anyToolResizing = true;
+            }
+            SetDraggingState(anyToolDragging);
+            SetResizingState(anyToolResizing);
+
             // Tool-specific context popup (opened when right-clicking a tool in edit mode)
             if (ImGui.BeginPopup("tool_context_menu"))
             {
@@ -794,32 +844,16 @@ namespace Kaleidoscope.Gui.MainWindow
                         var col = t.BackgroundColor;
                         if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
                         ImGui.Separator();
+
                         // Tool-specific settings (if supported by the tool)
-                        try
+                        if (t.HasSettings && ImGui.MenuItem("Settings..."))
                         {
-                            if (t.HasSettings)
-                            {
-                                if (ImGui.MenuItem("Settings..."))
-                                {
-                                    // Close the context menu before opening the modal so it can take focus
-                                    ImGui.CloseCurrentPopup();
-                                    _settingsToolIndex = _contextToolIndex;
-                                    _settingsPopupOpen = true;
-                                    // Capture the mouse position once so the popup doesn't chase the pointer
-                                    _settingsPopupPos = ImGui.GetMousePos();
-                                    _settingsPopupPosSet = true;
-                                    _settingsPopupFocusSet = false;
-                                    ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
-                                    ImGui.SetNextWindowFocus();
-                                    LogService.Debug($"Opening settings popup for tool index {_settingsToolIndex}");
-                                    ImGui.OpenPopup("tool_settings_popup");
-                                }
-                            }
+                            // Close context menu and open settings modal
+                            ImGui.CloseCurrentPopup();
+                            _settingsToolIndex = _contextToolIndex;
+                            _settingsPopupOpen = true;
                         }
-                        catch (Exception ex)
-                        {
-                            LogService.Debug($"Tool settings menu error: {ex.Message}");
-                        }
+
                         ImGui.Separator();
                         if (ImGui.MenuItem("Remove component"))
                         {
@@ -847,108 +881,75 @@ namespace Kaleidoscope.Gui.MainWindow
             }
 
             // Tool settings modal (renders when a tool has opened its settings)
-            if (_settingsToolIndex >= 0 && _settingsToolIndex < _tools.Count)
+            DrawToolSettingsModal();
+        }
+
+        /// <summary>
+        /// Draws the tool settings modal if one is currently open.
+        /// </summary>
+        private void DrawToolSettingsModal()
+        {
+        if (_settingsToolIndex < 0 || _settingsToolIndex >= _tools.Count)
+            return;
+
+        const string popupName = "tool_settings_popup";
+        var toolForSettings = _tools[_settingsToolIndex].Tool;
+
+        // The popup must be opened each frame until it appears
+        if (_settingsPopupOpen && !ImGui.IsPopupOpen(popupName))
+        {
+            ImGui.OpenPopup(popupName);
+        }
+
+        if (!ImGui.BeginPopupModal(popupName, ref _settingsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            // Modal not showing - if user closed it, reset state
+            if (!_settingsPopupOpen)
             {
-                var popupName = "tool_settings_popup";
-                var toolForSettings = _tools[_settingsToolIndex].Tool;
-                LogService.Debug($"BeginPopupModal check: IsPopupOpen={ImGui.IsPopupOpen(popupName)}, _settingsPopupOpen={_settingsPopupOpen}, toolIndex={_settingsToolIndex}");
-                // If we captured a desired position when opening, apply it once before the modal appears.
-                if (_settingsPopupPosSet)
-                {
-                    ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
-                    if (!_settingsPopupFocusSet)
-                    {
-                        ImGui.SetNextWindowFocus();
-                        _settingsPopupFocusSet = true;
-                    }
-                }
-                if (ImGui.BeginPopupModal(popupName, ref _settingsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
-                {
-                    try
-                    {
-                        ImGui.TextUnformatted(toolForSettings.Title ?? "Tool settings");
-                        ImGui.Separator();
-                        // Let the tool render its custom settings UI
-                        try
-                        {
-                            toolForSettings.DrawSettings();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogService.Error("Error while drawing tool settings", ex);
-                        }
-                        ImGui.Separator();
-                        if (ImGui.Button("OK"))
-                        {
-                            ImGui.CloseCurrentPopup();
-                            _settingsPopupOpen = false;
-                            _settingsPopupPosSet = false;
-                            _settingsPopupFocusSet = false;
-                        }
-                        ImGui.SameLine();
-                        if (ImGui.Button("Cancel"))
-                        {
-                            ImGui.CloseCurrentPopup();
-                            _settingsPopupOpen = false;
-                            _settingsPopupPosSet = false;
-                            _settingsPopupFocusSet = false;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Error("Error in tool settings modal", ex);
-                    }
-                    ImGui.EndPopup();
-                    if (!_settingsPopupOpen) _settingsToolIndex = -1;
-                }
-                else
-                {
-                    // Fallback: if modal didn't open for some reason, render a small floating window
-                    try
-                    {
-                        if (_settingsPopupOpen)
-                        {
-                            var fbName = $"tool_settings_fallback_{_settingsToolIndex}";
-                            // Use the captured position for the fallback as well so it doesn't follow the mouse
-                            if (_settingsPopupPosSet) ImGui.SetNextWindowPos(_settingsPopupPos, ImGuiCond.Always);
-                            if (ImGui.Begin(fbName, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoDecoration))
-                            {
-                                ImGui.TextUnformatted(toolForSettings.Title ?? "Tool settings (fallback)");
-                                ImGui.Separator();
-                                try
-                                {
-                                    toolForSettings.DrawSettings();
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogService.Error("Error while drawing tool settings (fallback)", ex);
-                                }
-                                ImGui.Separator();
-                                if (ImGui.Button("OK"))
-                                {
-                                    _settingsPopupOpen = false;
-                                    _settingsToolIndex = -1;
-                                    _settingsPopupPosSet = false;
-                                    _settingsPopupFocusSet = false;
-                                }
-                                ImGui.SameLine();
-                                if (ImGui.Button("Cancel"))
-                                {
-                                    _settingsPopupOpen = false;
-                                    _settingsToolIndex = -1;
-                                    _settingsPopupPosSet = false;
-                                    _settingsPopupFocusSet = false;
-                                }
-                                ImGui.End();
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Error("Error in tool settings fallback", ex);
-                    }
-                }
+                _settingsToolIndex = -1;
+            }
+            return;
+        }
+
+        try
+        {
+            ImGui.TextUnformatted(toolForSettings.Title ?? "Tool Settings");
+            ImGui.Separator();
+
+            try
+            {
+                toolForSettings.DrawSettings();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Error while drawing tool settings", ex);
+                ImGui.TextColored(new Vector4(1f, 0.3f, 0.3f, 1f), "Error rendering settings");
+            }
+
+            ImGui.Separator();
+            if (ImGui.Button("OK", new Vector2(80, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+                _settingsPopupOpen = false;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(80, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+                _settingsPopupOpen = false;
             }
         }
+        catch (Exception ex)
+        {
+            LogService.Error("Error in tool settings modal", ex);
+        }
+
+        ImGui.EndPopup();
+
+        if (!_settingsPopupOpen)
+        {
+            _settingsToolIndex = -1;
+        }
+    }
     }
 }

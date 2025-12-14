@@ -15,6 +15,7 @@ public class WindowService : IDisposable
     private readonly IPluginLog _log;
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly ConfigurationService _configService;
+    private readonly StateService _stateService;
     private readonly WindowSystem _windowSystem;
     private readonly MainWindow _mainWindow;
     private readonly FullscreenWindow _fullscreenWindow;
@@ -25,6 +26,7 @@ public class WindowService : IDisposable
         IDalamudPluginInterface pluginInterface,
         IUiBuilder uiBuilder,
         ConfigurationService configService,
+        StateService stateService,
         MainWindow mainWindow,
         FullscreenWindow fullscreenWindow,
         ConfigWindow configWindow)
@@ -32,6 +34,7 @@ public class WindowService : IDisposable
         _log = log;
         _pluginInterface = pluginInterface;
         _configService = configService;
+        _stateService = stateService;
         _mainWindow = mainWindow;
         _fullscreenWindow = fullscreenWindow;
         _configWindow = configWindow;
@@ -83,17 +86,20 @@ public class WindowService : IDisposable
             {
                 _fullscreenWindow.IsOpen = true;
                 _mainWindow.IsOpen = false;
+                _stateService.IsFullscreen = true;
             }
             else
             {
                 _mainWindow.IsOpen = true;
                 _fullscreenWindow.IsOpen = false;
+                _stateService.IsFullscreen = false;
             }
         }
         else
         {
             _mainWindow.IsOpen = false;
             _fullscreenWindow.IsOpen = false;
+            _stateService.IsFullscreen = false;
         }
     }
 
@@ -107,11 +113,13 @@ public class WindowService : IDisposable
     {
         _mainWindow.IsOpen = false;
         _fullscreenWindow.IsOpen = true;
+        _stateService.EnterFullscreen();
     }
 
     public void RequestExitFullscreen()
     {
         _fullscreenWindow.IsOpen = false;
+        _stateService.ExitFullscreen();
 
         if (!_configService.Config.ExclusiveFullscreen)
         {
