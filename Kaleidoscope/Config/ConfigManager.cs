@@ -3,16 +3,16 @@ using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Config;
 
+/// <summary>
+/// Manages JSON configuration files in the plugin config directory.
+/// </summary>
 public class ConfigManager
 {
     private readonly string _folder;
 
     public ConfigManager(string pluginConfigDirectory)
     {
-        if (string.IsNullOrEmpty(pluginConfigDirectory))
-            throw new ArgumentNullException(nameof(pluginConfigDirectory));
-
-        _folder = pluginConfigDirectory;
+        _folder = pluginConfigDirectory ?? throw new ArgumentNullException(nameof(pluginConfigDirectory));
         if (!Directory.Exists(_folder))
             Directory.CreateDirectory(_folder);
     }
@@ -33,7 +33,7 @@ public class ConfigManager
         }
         catch (Exception ex)
         {
-            LogService.Warning($"[ConfigManager] Failed to load config '{fileName}', using default: {ex.Message}");
+            LogService.Warning($"Failed to load config '{fileName}', using default: {ex.Message}");
         }
 
         var defaultValue = factory();
@@ -51,7 +51,7 @@ public class ConfigManager
         }
         catch (Exception ex)
         {
-            LogService.Error($"[ConfigManager] Failed to save config '{fileName}': {ex.Message}", ex);
+            LogService.Error($"Failed to save config '{fileName}': {ex.Message}", ex);
         }
     }
 }
