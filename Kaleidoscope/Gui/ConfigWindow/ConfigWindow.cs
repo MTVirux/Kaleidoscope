@@ -8,151 +8,154 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow;
 
-public class ConfigWindow : Window, IDisposable
+/// <summary>
+/// Configuration window for plugin settings.
+/// </summary>
+/// <remarks>
+/// Provides a sidebar-based navigation between General, Data, Sampler, and Layouts configuration categories.
+/// </remarks>
+public sealed class ConfigWindow : Window, IDisposable
 {
-        private readonly IPluginLog _log;
-        private readonly ConfigurationService _configService;
-        private readonly SamplerService _samplerService;
+    private readonly IPluginLog _log;
+    private readonly ConfigurationService _configService;
+    private readonly SamplerService _samplerService;
 
-        private Configuration Config => _configService.Config;
-        private int _selectedTab = 0; // 0=General,1=Data,2=Sampler,3=Layouts
+    private Configuration Config => _configService.Config;
+    private int _selectedTab;
 
-        private TitleBarButton? lockButton;
-        private GeneralCategory? generalCategory;
-        private DataCategory? dataCategory;
-        private SamplerCategory? samplerCategory;
-        private LayoutsCategory? layoutsCategory;
-        
-        /// <summary>
-        /// Tab indices for programmatic navigation.
-        /// </summary>
-        public static class TabIndex
+    private TitleBarButton? _lockButton;
+    private GeneralCategory? _generalCategory;
+    private DataCategory? _dataCategory;
+    private SamplerCategory? _samplerCategory;
+    private LayoutsCategory? _layoutsCategory;
+
+    /// <summary>
+    /// Tab indices for programmatic navigation.
+    /// </summary>
+    public static class TabIndex
+    {
+        public const int General = 0;
+        public const int Data = 1;
+        public const int Sampler = 2;
+        public const int Layouts = 3;
+    }
+
+    /// <summary>
+    /// Opens the config window to a specific tab.
+    /// </summary>
+    public void OpenToTab(int tabIndex)
+    {
+        _selectedTab = tabIndex;
+        IsOpen = true;
+    }
+
+    public ConfigWindow(
+        IPluginLog log,
+        ConfigurationService configService,
+        SamplerService samplerService)
+        : base("Kaleidoscope Configuration")
+    {
+        _log = log;
+        _configService = configService;
+        _samplerService = samplerService;
+
+        var lockTb = new TitleBarButton
         {
-            public const int General = 0;
-            public const int Data = 1;
-            public const int Sampler = 2;
-            public const int Layouts = 3;
-        }
+            Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
+            IconOffset = new System.Numerics.Vector2(3, 2),
+            ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
+        };
 
-        /// <summary>
-        /// Opens the config window to a specific tab.
-        /// </summary>
-        public void OpenToTab(int tabIndex)
+        lockTb.Click = (m) =>
         {
-            _selectedTab = tabIndex;
-            IsOpen = true;
-        }
-        
-
-        public ConfigWindow(
-            IPluginLog log,
-            ConfigurationService configService,
-            SamplerService samplerService)
-            : base("Kaleidoscope Configuration")
-        {
-            _log = log;
-            _configService = configService;
-            _samplerService = samplerService;
-
-            var lockTb = new TitleBarButton
+            if (m == ImGuiMouseButton.Left)
             {
-                Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
-                IconOffset = new System.Numerics.Vector2(3, 2),
-                ShowTooltip = () => ImGui.SetTooltip("Lock window position and size"),
-            };
-
-            lockTb.Click = (m) =>
-            {
-                if (m == ImGuiMouseButton.Left)
+                // Toggle pinned state. When enabling pin, capture the current window
+                // position and size so the config window remains where the user placed it.
+                var newPinned = !Config.PinConfigWindow;
+                Config.PinConfigWindow = newPinned;
+                if (newPinned)
                 {
-                    // Toggle pinned state. When enabling pin, capture the current window
-                    // position and size so the config window remains where the user placed it.
-                    var newPinned = !Config.PinConfigWindow;
-                    Config.PinConfigWindow = newPinned;
-                    if (newPinned)
+                    try
                     {
-                        try
-                        {
-                            Config.ConfigWindowPos = ImGui.GetWindowPos();
-                            Config.ConfigWindowSize = ImGui.GetWindowSize();
-                        }
-                        catch (Exception ex) { LogService.Debug($"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
+                        Config.ConfigWindowPos = ImGui.GetWindowPos();
+                        Config.ConfigWindowSize = ImGui.GetWindowSize();
                     }
-                    _configService.Save();
-                    lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
+                    catch (Exception ex) { LogService.Debug($"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
                 }
-            };
-
-            lockButton = lockTb;
-            TitleBarButtons.Add(lockButton);
-
-            // Create category renderers
-            this.generalCategory = new GeneralCategory(_configService);
-            this.dataCategory = new DataCategory(_samplerService);
-            this.samplerCategory = new SamplerCategory(_samplerService, _configService);
-            this.layoutsCategory = new LayoutsCategory(_configService);
-
-            this.SizeConstraints = new WindowSizeConstraints() { MinimumSize = new System.Numerics.Vector2(300, 200) };
-        }
-
-        public void Dispose() { }
-
-        public override void PreDraw()
-        {
-            // Ensure the config window is resizable in all states
-            Flags &= ~ImGuiWindowFlags.NoResize;
-
-            if (Config.PinConfigWindow)
-            {
-                Flags |= ImGuiWindowFlags.NoMove;
-                ImGui.SetNextWindowPos(Config.ConfigWindowPos);
+                _configService.Save();
+                lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
             }
-            else
-            {
-                Flags &= ~ImGuiWindowFlags.NoMove;
-            }
+        };
 
-            if (this.lockButton != null)
-            {
-                this.lockButton.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
-            }
+        _lockButton = lockTb;
+        TitleBarButtons.Add(_lockButton);
+
+        // Create category renderers
+        _generalCategory = new GeneralCategory(_configService);
+        _dataCategory = new DataCategory(_samplerService);
+        _samplerCategory = new SamplerCategory(_samplerService, _configService);
+        _layoutsCategory = new LayoutsCategory(_configService);
+
+        SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
+    }
+
+    public void Dispose() { }
+
+    public override void PreDraw()
+    {
+        // Ensure the config window is resizable in all states
+        Flags &= ~ImGuiWindowFlags.NoResize;
+
+        if (Config.PinConfigWindow)
+        {
+            Flags |= ImGuiWindowFlags.NoMove;
+            ImGui.SetNextWindowPos(Config.ConfigWindowPos);
+        }
+        else
+        {
+            Flags &= ~ImGuiWindowFlags.NoMove;
         }
 
-        public override void Draw()
+        if (_lockButton != null)
         {
-            // Sidebar layout: left navigation, right content
-            var sidebarWidth = 160f;
-            var fullSize = ImGui.GetContentRegionAvail();
-
-            // Sidebar
-            ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
-            if (ImGui.Selectable("General", _selectedTab == 0)) _selectedTab = 0;
-            if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
-            if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
-            if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
-            ImGui.EndChild();
-
-            ImGui.SameLine();
-
-            // Content area
-            ImGui.BeginChild("##config_content", new System.Numerics.Vector2(fullSize.X - sidebarWidth, 0), false);
-            if (_selectedTab == 0)
-        {
-            generalCategory?.Draw();
+            _lockButton.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
         }
-        else if (_selectedTab == 1)
-        {
-            dataCategory?.Draw();
-        }
-        else if (_selectedTab == 2)
-        {
-            samplerCategory?.Draw();
-        }
-        else if (_selectedTab == 3)
-        {
-            layoutsCategory?.Draw();
-        }
+    }
 
+    public override void Draw()
+    {
+        // Sidebar layout: left navigation, right content
+        var sidebarWidth = 160f;
+        var fullSize = ImGui.GetContentRegionAvail();
+
+        // Sidebar
+        ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
+        if (ImGui.Selectable("General", _selectedTab == 0)) _selectedTab = 0;
+        if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
+        if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
+        if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+
+        // Content area
+        ImGui.BeginChild("##config_content", new System.Numerics.Vector2(fullSize.X - sidebarWidth, 0), false);
+        switch (_selectedTab)
+        {
+            case TabIndex.General:
+                _generalCategory?.Draw();
+                break;
+            case TabIndex.Data:
+                _dataCategory?.Draw();
+                break;
+            case TabIndex.Sampler:
+                _samplerCategory?.Draw();
+                break;
+            case TabIndex.Layouts:
+                _layoutsCategory?.Draw();
+                break;
+        }
         ImGui.EndChild();
     }
 }

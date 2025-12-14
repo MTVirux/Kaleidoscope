@@ -1,12 +1,17 @@
 using Dalamud.Game.Command;
 using Dalamud.Plugin.Services;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Handles plugin chat commands.
 /// </summary>
-public sealed class CommandService : IDisposable
+/// <remarks>
+/// Follows the Glamourer pattern for command handling with separate handlers for
+/// main and config commands.
+/// </remarks>
+public sealed class CommandService : IDisposable, IService
 {
     private const string CommandMain = "/kld";
     private const string CommandFull = "/kaleidoscope";

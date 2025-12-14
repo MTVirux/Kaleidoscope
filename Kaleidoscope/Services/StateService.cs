@@ -1,13 +1,20 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Interfaces;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Tracks UI mode states: fullscreen, edit, locked, and drag states.
 /// </summary>
-public class StateService : IStateService
+/// <remarks>
+/// This service is the central source of truth for all UI state in the plugin.
+/// It follows the Glamourer/InventoryTools pattern of using event-based state changes.
+/// </remarks>
+public sealed class StateService : IStateService, IService
 {
+    // Static accessor for legacy code that cannot use DI (e.g., static methods)
+    // This should be used sparingly - prefer constructor injection
     private static StateService? _instance;
 
     private readonly IPluginLog _log;
@@ -15,6 +22,11 @@ public class StateService : IStateService
 
     private bool _isFullscreen;
     private bool _isEditMode;
+    private bool _isLocked;
+    private bool _isDragging;
+    private bool _isResizing;
+    private bool _isMainWindowMoving;
+    private bool _isMainWindowResizing;
 
     /// <summary>
     /// Indicates whether the plugin was compiled in Debug configuration.
@@ -28,13 +40,9 @@ public class StateService : IStateService
 
     /// <summary>
     /// Static accessor for edit mode state. Returns false if service not initialized.
+    /// Prefer using the instance property via DI when possible.
     /// </summary>
     public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
-    private bool _isLocked;
-    private bool _isDragging;
-    private bool _isResizing;
-    private bool _isMainWindowMoving;
-    private bool _isMainWindowResizing;
 
     public StateService(IPluginLog log, ConfigurationService configService)
     {

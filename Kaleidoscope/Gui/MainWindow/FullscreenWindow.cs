@@ -10,228 +10,267 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// <summary>
 /// Fullscreen overlay window for HUD display.
 /// </summary>
-public class FullscreenWindow : Window
+/// <remarks>
+/// Provides a fullscreen overlay mode where tools can be displayed without
+/// window decorations. Supports CTRL+SHIFT to toggle edit mode.
+/// </remarks>
+public sealed class FullscreenWindow : Window
 {
-        private readonly IPluginLog _log;
-        private readonly ConfigurationService _configService;
-        private readonly FilenameService _filenameService;
-        private readonly SamplerService _samplerService;
-        private readonly StateService _stateService;
-        private readonly GilTrackerComponent _moneyTracker;
-        private readonly WindowContentContainer _contentContainer;
+    private readonly IPluginLog _log;
+    private readonly ConfigurationService _configService;
+    private readonly FilenameService _filenameService;
+    private readonly SamplerService _samplerService;
+    private readonly StateService _stateService;
+    private readonly GilTrackerComponent _moneyTracker;
+    private readonly WindowContentContainer _contentContainer;
 
-        // Reference to WindowService for window coordination (set after construction due to circular dependency)
-        private WindowService? _windowService;
-        public void SetWindowService(WindowService ws)
+    // Reference to WindowService for window coordination (set after construction due to circular dependency)
+    private WindowService? _windowService;
+
+    private Configuration Config => _configService.Config;
+
+    public void SetWindowService(WindowService ws)
+    {
+        _windowService = ws;
+        // Wire OnManageLayouts callback now that we have WindowService
+        _contentContainer.OnManageLayouts = () => _windowService?.OpenLayoutsConfig();
+    }
+
+    public FullscreenWindow(
+        IPluginLog log,
+        ConfigurationService configService,
+        SamplerService samplerService,
+        FilenameService filenameService,
+        StateService stateService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+    {
+        _log = log;
+        _configService = configService;
+        _filenameService = filenameService;
+        _samplerService = samplerService;
+        _stateService = stateService;
+        // Use the shared gil tracker from the sampler service
+        _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
+
+        // Create a content container similar to the main window so HUD tools
+        // can be reused in fullscreen mode. Keep registrations minimal — the
+        // gil tracker reuses the shared tracker instance.
+        _contentContainer = new WindowContentContainer(
+            () => Config.ContentGridCellWidthPercent,
+            () => Config.ContentGridCellHeightPercent,
+            () => Config.GridSubdivisions);
+
+        InitializeContentContainer();
+    }
+
+    private void InitializeContentContainer()
+    {
+        try
         {
-            _windowService = ws;
-            // Wire OnManageLayouts callback now that we have WindowService
-            _contentContainer.OnManageLayouts = () => _windowService?.OpenLayoutsConfig();
+            // Register the same toolset as the main window. Registrar will
+            // construct concrete tool instances; each instance is independent.
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
+
+            AddDefaultTools();
+            ApplyInitialLayout();
+            WireLayoutCallbacks();
+            WireInteractionCallbacks();
         }
-
-        private Configuration Config => _configService.Config;
-
-        public FullscreenWindow(
-            IPluginLog log,
-            ConfigurationService configService,
-            SamplerService samplerService,
-            FilenameService filenameService,
-            StateService stateService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        catch (Exception ex)
         {
-            _log = log;
-            _configService = configService;
-            _filenameService = filenameService;
-            _samplerService = samplerService;
-            _stateService = stateService;
-            // Use the shared gil tracker from the sampler service
-            _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
+            LogService.Error("[FullscreenWindow] Content container initialization failed", ex);
+        }
+    }
 
-            // Create a content container similar to the main window so HUD tools
-            // can be reused in fullscreen mode. Keep registrations minimal — the
-            // gil tracker reuses the shared tracker instance.
-            _contentContainer = new WindowContentContainer(() => Config.ContentGridCellWidthPercent, () => Config.ContentGridCellHeightPercent, () => Config.GridSubdivisions);
+    private void AddDefaultTools()
+    {
+        try
+        {
+            var gettingStarted = WindowToolRegistrar.CreateToolInstance(
+                "GettingStarted",
+                new System.Numerics.Vector2(20, 50),
+                _filenameService,
+                _samplerService);
+            if (gettingStarted != null)
+                _contentContainer.AddTool(gettingStarted);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[FullscreenWindow] GettingStarted creation failed: {ex.Message}");
+        }
+    }
 
-            try
+    private void ApplyInitialLayout()
+    {
+        try
+        {
+            var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+            var fullscreenLayouts = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).ToList();
+            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
+                ? Config.ActiveFullscreenLayoutName
+                : null;
+
+            Kaleidoscope.ContentLayoutState? layout = null;
+            if (activeName != null)
+                layout = fullscreenLayouts.Find(x => x.Name == activeName);
+            layout ??= fullscreenLayouts.FirstOrDefault();
+
+            if (layout != null)
             {
-                // Register the same toolset as the main window. Registrar will
-                // construct concrete tool instances; each instance is independent.
-                WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
+                _contentContainer.SetGridSettingsFromLayout(layout);
 
-                // Add the Getting Started tool by default for new layouts
-                try
-                {
-                    var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new System.Numerics.Vector2(20, 50), _filenameService, _samplerService);
-                    if (gettingStarted != null) _contentContainer.AddTool(gettingStarted);
-                }
-                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GettingStarted creation failed: {ex.Message}"); }
-                // Attempt to apply a saved layout if present (use Config.Layouts like main window)
-                try
-                {
-                    var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                    // Filter to only fullscreen layouts for the fullscreen window
-                    var fullscreenLayouts = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).ToList();
-                    var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) ? Config.ActiveFullscreenLayoutName : null;
-                    Kaleidoscope.ContentLayoutState? layout = null;
-                    if (activeName != null)
-                        layout = fullscreenLayouts.Find(x => x.Name == activeName);
-                    layout ??= fullscreenLayouts.FirstOrDefault();
+                if (layout.Tools != null && layout.Tools.Count > 0)
+                    _contentContainer.ApplyLayout(layout.Tools);
 
-                    if (layout != null)
-                    {
-                        // Apply grid settings first
-                        _contentContainer.SetGridSettingsFromLayout(layout);
-                        
-                        if (layout.Tools != null && layout.Tools.Count > 0)
-                        {
-                            _contentContainer.ApplyLayout(layout.Tools);
-                        }
-                        
-                        if (string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
-                            Config.ActiveFullscreenLayoutName = layout.Name;
-                    }
-                }
-                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Layout apply failed: {ex.Message}"); }
-
-                // Wire layout persistence callbacks for fullscreen window as well
-                _contentContainer.OnSaveLayout = (name, tools) =>
-                {
-                    try
-                    {
-                        if (string.IsNullOrWhiteSpace(name)) return;
-                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var existing = layouts.Find(x => x.Name == name);
-                        if (existing == null)
-                        {
-                            existing = new Kaleidoscope.ContentLayoutState { Name = name, Type = Kaleidoscope.LayoutType.Fullscreen };
-                            layouts.Add(existing);
-                        }
-                        existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        Config.ActiveFullscreenLayoutName = name;
-                        _configService.Save();
-                        _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]");
-                    }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnSaveLayout failed: {ex.Message}"); }
-                };
-
-                _contentContainer.OnLoadLayout = (name) =>
-                {
-                    try
-                    {
-                        if (string.IsNullOrWhiteSpace(name)) return;
-                        var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var found = layouts.Find(x => x.Name == name && x.Type == Kaleidoscope.LayoutType.Fullscreen);
-                        if (found != null)
-                        {
-                            // Apply grid settings first
-                            _contentContainer.SetGridSettingsFromLayout(found);
-                            // Then apply tool layout
-                            _contentContainer.ApplyLayout(found.Tools);
-                            Config.ActiveFullscreenLayoutName = name;
-                            _configService.Save();
-                            _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]");
-                        }
-                    }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLoadLayout failed: {ex.Message}"); }
-                };
-
-                _contentContainer.GetAvailableLayoutNames = () =>
-                {
-                    try
-                    {
-                        return (Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>())
-                            .Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen)
-                            .Select(x => x.Name)
-                            .ToList();
-                    }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GetAvailableLayoutNames failed: {ex.Message}"); return new System.Collections.Generic.List<string>(); }
-                };
-
-                _contentContainer.OnLayoutChanged = (tools) =>
-                {
-                    try
-                    {
-                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
-                            ? Config.ActiveFullscreenLayoutName
-                            : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
-                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
-                        if (existing == null)
-                        {
-                            existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
-                            layouts.Add(existing);
-                        }
-                        existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        Config.ActiveFullscreenLayoutName = activeName;
-                        _configService.Save();
-                        _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
-                    }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLayoutChanged failed: {ex.Message}"); }
-                };
-
-                // Wire grid settings change callback
-                _contentContainer.OnGridSettingsChanged = (gridSettings) =>
-                {
-                    try
-                    {
-                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
-                            ? Config.ActiveFullscreenLayoutName
-                            : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
-                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
-                        if (existing == null)
-                        {
-                            existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
-                            layouts.Add(existing);
-                        }
-                        gridSettings.ApplyToLayoutState(existing);
-                        Config.ActiveFullscreenLayoutName = activeName;
-                        _configService.Save();
-                        _log.Debug($"Saved grid settings for layout '{activeName}' [fullscreen]");
-                    }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnGridSettingsChanged failed: {ex.Message}"); }
-                };
-
-                // Wire interaction state callbacks to StateService
-                _contentContainer.OnDraggingChanged = (dragging) =>
-                {
-                    try { _stateService.IsDragging = dragging; }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnDraggingChanged failed: {ex.Message}"); }
-                };
-
-                _contentContainer.OnResizingChanged = (resizing) =>
-                {
-                    try { _stateService.IsResizing = resizing; }
-                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnResizingChanged failed: {ex.Message}"); }
-                };
+                if (string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
+                    Config.ActiveFullscreenLayoutName = layout.Name;
             }
-            catch (Exception ex) { LogService.Error("[FullscreenWindow] Content container initialization failed", ex); }
         }
-
-        public override void PreDraw()
+        catch (Exception ex)
         {
-            // Force fullscreen positioning and disable move/resize/title
-            Flags |= ImGuiWindowFlags.NoMove;
-            Flags |= ImGuiWindowFlags.NoResize;
-            Flags |= ImGuiWindowFlags.NoTitleBar;
-            Flags |= ImGuiWindowFlags.NoBringToFrontOnFocus;
+            LogService.Debug($"[FullscreenWindow] Layout apply failed: {ex.Message}");
+        }
+    }
+
+    private void WireLayoutCallbacks()
+    {
+        _contentContainer.OnSaveLayout = (name, tools) =>
+        {
             try
             {
-                var io = ImGui.GetIO();
-                ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
-                ImGui.SetNextWindowSize(io.DisplaySize);
+                if (string.IsNullOrWhiteSpace(name)) return;
+                var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                var existing = layouts.Find(x => x.Name == name);
+                if (existing == null)
+                {
+                    existing = new Kaleidoscope.ContentLayoutState { Name = name, Type = Kaleidoscope.LayoutType.Fullscreen };
+                    layouts.Add(existing);
+                }
+                existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
+                Config.ActiveFullscreenLayoutName = name;
+                _configService.Save();
+                _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]");
             }
-            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] PreDraw size setup failed: {ex.Message}"); }
-        }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnSaveLayout failed: {ex.Message}"); }
+        };
 
-        public override void Draw()
+        _contentContainer.OnLoadLayout = (name) =>
         {
             try
             {
-                // Draw the content container occupying the fullscreen window.
-                // The container computes its drawing area from the current ImGui window
-                // so simply calling Draw will render tools laid out as in the main window.
-                // In fullscreen, default to non-edit mode. Only enable edit mode
-                // while the user is actively holding CTRL+SHIFT.
+                if (string.IsNullOrWhiteSpace(name)) return;
+                var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                var found = layouts.Find(x => x.Name == name && x.Type == Kaleidoscope.LayoutType.Fullscreen);
+                if (found != null)
+                {
+                    _contentContainer.SetGridSettingsFromLayout(found);
+                    _contentContainer.ApplyLayout(found.Tools);
+                    Config.ActiveFullscreenLayoutName = name;
+                    _configService.Save();
+                    _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]");
+                }
+            }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLoadLayout failed: {ex.Message}"); }
+        };
+
+        _contentContainer.GetAvailableLayoutNames = () =>
+        {
+            try
+            {
+                return (Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>())
+                    .Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen)
+                    .Select(x => x.Name)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[FullscreenWindow] GetAvailableLayoutNames failed: {ex.Message}");
+                return new System.Collections.Generic.List<string>();
+            }
+        };
+
+        _contentContainer.OnLayoutChanged = (tools) =>
+        {
+            try
+            {
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
+                    ? Config.ActiveFullscreenLayoutName
+                    : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
+                var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
+                if (existing == null)
+                {
+                    existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
+                    layouts.Add(existing);
+                }
+                existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
+                Config.ActiveFullscreenLayoutName = activeName;
+                _configService.Save();
+                _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
+            }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLayoutChanged failed: {ex.Message}"); }
+        };
+
+        _contentContainer.OnGridSettingsChanged = (gridSettings) =>
+        {
+            try
+            {
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
+                    ? Config.ActiveFullscreenLayoutName
+                    : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
+                var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
+                if (existing == null)
+                {
+                    existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
+                    layouts.Add(existing);
+                }
+                gridSettings.ApplyToLayoutState(existing);
+                Config.ActiveFullscreenLayoutName = activeName;
+                _configService.Save();
+                _log.Debug($"Saved grid settings for layout '{activeName}' [fullscreen]");
+            }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnGridSettingsChanged failed: {ex.Message}"); }
+        };
+    }
+
+    private void WireInteractionCallbacks()
+    {
+        _contentContainer.OnDraggingChanged = (dragging) =>
+        {
+            try { _stateService.IsDragging = dragging; }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnDraggingChanged failed: {ex.Message}"); }
+        };
+
+        _contentContainer.OnResizingChanged = (resizing) =>
+        {
+            try { _stateService.IsResizing = resizing; }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnResizingChanged failed: {ex.Message}"); }
+        };
+    }
+
+    public override void PreDraw()
+    {
+        // Force fullscreen positioning and disable move/resize/title
+        Flags |= ImGuiWindowFlags.NoMove;
+        Flags |= ImGuiWindowFlags.NoResize;
+        Flags |= ImGuiWindowFlags.NoTitleBar;
+        Flags |= ImGuiWindowFlags.NoBringToFrontOnFocus;
+        try
+        {
+            var io = ImGui.GetIO();
+            ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
+            ImGui.SetNextWindowSize(io.DisplaySize);
+        }
+        catch (Exception ex) { LogService.Debug($"[FullscreenWindow] PreDraw size setup failed: {ex.Message}"); }
+    }
+
+    public override void Draw()
+    {
+        try
+        {
+            // Draw the content container occupying the fullscreen window.
+            // In fullscreen, default to non-edit mode. Only enable edit mode
+            // while the user is actively holding CTRL+SHIFT.
             try
             {
                 var io = ImGui.GetIO();

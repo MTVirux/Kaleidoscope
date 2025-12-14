@@ -44,40 +44,40 @@ public class WindowContentContainer
         public Func<Vector2, ToolComponent?> Factory = (_) => null;
     }
 
-    private readonly List<ToolRegistration> _toolRegistry = new List<ToolRegistration>();
-    
+    private readonly List<ToolRegistration> _toolRegistry = new();
+
     private class ToolEntry
     {
-            public ToolComponent Tool;
-            public Vector2 OrigPos;
-            public Vector2 OrigSize;
-            public bool Dragging;
-            public bool Resizing;
-            public Vector2 DragMouseStart;
-            public Vector2 ResizeMouseStart;
-            public ToolEntry(ToolComponent t)
-            {
-                Tool = t;
-                OrigPos = t.Position;
-                OrigSize = t.Size;
-            }
-        }
-
-        private class MenuNode
+        public ToolComponent Tool;
+        public Vector2 OrigPos;
+        public Vector2 OrigSize;
+        public bool Dragging;
+        public bool Resizing;
+        public Vector2 DragMouseStart;
+        public Vector2 ResizeMouseStart;
+        public ToolEntry(ToolComponent t)
         {
-            public Dictionary<string, MenuNode> Children = new Dictionary<string, MenuNode>();
-            public List<ToolRegistration> Items = new List<ToolRegistration>();
+            Tool = t;
+            OrigPos = t.Position;
+            OrigSize = t.Size;
         }
+    }
 
-        private readonly List<ToolEntry> _tools = new List<ToolEntry>();
-        
-        // Layout callbacks (host can set these to persist/load named layouts)
-        public Action<string, List<ToolLayoutState>>? OnSaveLayout;
-        public Action<string>? OnLoadLayout;
-        public Func<List<string>>? GetAvailableLayoutNames;
-        private bool _saveLayoutPopupOpen = false;
-        private string _layoutNameBuffer = string.Empty;
-        private bool _newLayoutPopupOpen = false;
+    private class MenuNode
+    {
+        public Dictionary<string, MenuNode> Children = new Dictionary<string, MenuNode>();
+        public List<ToolRegistration> Items = new List<ToolRegistration>();
+    }
+
+    private readonly List<ToolEntry> _tools = new List<ToolEntry>();
+
+    // Layout callbacks (host can set these to persist/load named layouts)
+    public Action<string, List<ToolLayoutState>>? OnSaveLayout;
+    public Action<string>? OnLoadLayout;
+    public Func<List<string>>? GetAvailableLayoutNames;
+    private bool _saveLayoutPopupOpen = false;
+    private string _layoutNameBuffer = string.Empty;
+    private bool _newLayoutPopupOpen = false;
         private string _newLayoutNameBuffer = string.Empty;
         private bool _layoutDirty = false;
         

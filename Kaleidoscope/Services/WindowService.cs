@@ -4,13 +4,18 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.ConfigWindow;
 using Kaleidoscope.Gui.MainWindow;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Manages the plugin's window system and lifecycle.
 /// </summary>
-public sealed class WindowService : IDisposable
+/// <remarks>
+/// This follows the Glamourer pattern for window management, using Dalamud's
+/// WindowSystem with event-based drawing and state management.
+/// </remarks>
+public sealed class WindowService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly IDalamudPluginInterface _pluginInterface;
@@ -131,8 +136,8 @@ public sealed class WindowService : IDisposable
         DetachEvents(_pluginInterface.UiBuilder);
         _windowSystem.RemoveAllWindows();
 
-        (_mainWindow as IDisposable)?.Dispose();
-        (_fullscreenWindow as IDisposable)?.Dispose();
-        (_configWindow as IDisposable)?.Dispose();
+        // Note: Windows derive from Dalamud.Interface.Windowing.Window which is not IDisposable.
+        // ConfigWindow implements IDisposable explicitly so we call it.
+        _configWindow?.Dispose();
     }
 }

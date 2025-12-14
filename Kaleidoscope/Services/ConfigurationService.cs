@@ -2,13 +2,20 @@ using Kaleidoscope.Config;
 using Kaleidoscope.Interfaces;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Manages plugin configuration including layouts, window state, and settings.
 /// </summary>
-public class ConfigurationService : IConfigurationService
+/// <remarks>
+/// This follows a hybrid approach: the main Configuration uses Dalamud's standard
+/// IPluginConfiguration, while sub-configs use JSON files for modularity.
+/// Consider migrating to OtterGui's ISavable pattern for better consistency with
+/// Glamourer and other Ottermandias plugins.
+/// </remarks>
+public sealed class ConfigurationService : IConfigurationService, IService
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly IPluginLog _log;

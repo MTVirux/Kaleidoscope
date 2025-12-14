@@ -8,7 +8,12 @@ namespace Kaleidoscope.Services;
 /// Provides thread-safe access to the SQLite database for storing time-series data
 /// such as gil tracking, inventory snapshots, currency tracking, and other plugin data.
 /// </summary>
-public class KaleidoscopeDbService : IDisposable
+/// <remarks>
+/// This service is intentionally not marked with IService because it is created
+/// manually by SamplerService to share the database connection. If you need to use
+/// this service directly, inject SamplerService and access its DbService property.
+/// </remarks>
+public sealed class KaleidoscopeDbService : IDisposable
 {
     private readonly object _lock = new();
     private readonly string? _dbPath;

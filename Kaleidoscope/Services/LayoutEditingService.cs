@@ -1,13 +1,14 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow;
 using Newtonsoft.Json;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Pending action blocked due to unsaved layout changes.
 /// </summary>
-public class PendingLayoutAction
+public sealed class PendingLayoutAction
 {
     public string Description { get; set; } = string.Empty;
     public Action? ContinueAction { get; set; }
@@ -18,7 +19,11 @@ public class PendingLayoutAction
 /// Manages layout editing with explicit save semantics (like a file editor).
 /// Changes are applied immediately but only persisted on explicit Save.
 /// </summary>
-public class LayoutEditingService
+/// <remarks>
+/// This follows the "dirty flag" pattern common in document editors. The working
+/// layout is kept in memory and a snapshot is persisted to disk for crash recovery.
+/// </remarks>
+public sealed class LayoutEditingService : IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;

@@ -1,11 +1,16 @@
 using Dalamud.Plugin.Services;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Background service that periodically samples game data (e.g., gil) and persists it via KaleidoscopeDbService.
 /// </summary>
-public class SamplerService : IDisposable
+/// <remarks>
+/// This follows the InventoryTools pattern for background services that need to
+/// periodically poll game state and persist data.
+/// </remarks>
+public sealed class SamplerService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly FilenameService _filenames;
