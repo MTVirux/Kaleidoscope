@@ -8,9 +8,9 @@ using Kaleidoscope.Gui.MainWindow;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Manages the plugin's window system and window lifecycle.
+/// Manages the plugin's window system and lifecycle.
 /// </summary>
-public class WindowService : IDisposable
+public sealed class WindowService : IDisposable
 {
     private readonly IPluginLog _log;
     private readonly IDalamudPluginInterface _pluginInterface;
@@ -39,19 +39,8 @@ public class WindowService : IDisposable
         _fullscreenWindow = fullscreenWindow;
         _configWindow = configWindow;
 
-        // Provide WindowService reference to MainWindow so titlebar buttons can call back
-        try
-        {
-            _mainWindow.SetWindowService(this);
-        }
-        catch { }
-
-        // Provide WindowService reference to FullscreenWindow for layout management
-        try
-        {
-            _fullscreenWindow.SetWindowService(this);
-        }
-        catch { }
+        _mainWindow.SetWindowService(this);
+        _fullscreenWindow.SetWindowService(this);
 
         _windowSystem = new WindowSystem("Kaleidoscope");
 
@@ -113,12 +102,7 @@ public class WindowService : IDisposable
     private void Draw() => _windowSystem.Draw();
 
     public void OpenMainWindow() => _mainWindow.IsOpen = true;
-
     public void OpenConfigWindow() => _configWindow.IsOpen = true;
-
-    /// <summary>
-    /// Opens the config window directly to the Layouts tab.
-    /// </summary>
     public void OpenLayoutsConfig() => _configWindow.OpenToTab(ConfigWindow.TabIndex.Layouts);
 
     public void RequestShowFullscreen()
@@ -140,20 +124,15 @@ public class WindowService : IDisposable
         }
     }
 
-    public void ApplyLayout(string name)
-    {
-        _mainWindow.ApplyLayoutByName(name);
-    }
+    public void ApplyLayout(string name) => _mainWindow.ApplyLayoutByName(name);
 
     public void Dispose()
     {
         DetachEvents(_pluginInterface.UiBuilder);
         _windowSystem.RemoveAllWindows();
 
-        if (_mainWindow is IDisposable mw) mw.Dispose();
-        if (_fullscreenWindow is IDisposable fw) fw.Dispose();
-        if (_configWindow is IDisposable cw) cw.Dispose();
-
-        GC.SuppressFinalize(this);
+        (_mainWindow as IDisposable)?.Dispose();
+        (_fullscreenWindow as IDisposable)?.Dispose();
+        (_configWindow as IDisposable)?.Dispose();
     }
 }
