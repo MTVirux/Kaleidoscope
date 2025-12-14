@@ -36,6 +36,13 @@ public class WindowService : IDisposable
         _fullscreenWindow = fullscreenWindow;
         _configWindow = configWindow;
 
+            // Provide WindowService reference to MainWindow so titlebar buttons can call back
+            try
+            {
+                _mainWindow?.SetWindowService(this);
+            }
+            catch { }
+
         _windowSystem = new WindowSystem("Kaleidoscope");
 
         RegisterWindows();

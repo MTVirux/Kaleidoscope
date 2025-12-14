@@ -172,12 +172,23 @@ namespace Kaleidoscope.Gui.MainWindow
             // Register available tools
             WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
 
-            // Add default GilTracker tool
-            var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), _filenameService, _samplerService);
-            if (defaultGt != null) _contentContainer.AddTool(defaultGt);
-
             // Apply saved layout or add defaults
             ApplyInitialLayout();
+
+            // If no tools were restored from a layout, add the default GilTracker tool
+            try
+            {
+                var exported = _contentContainer?.ExportLayout() ?? new System.Collections.Generic.List<ToolLayoutState>();
+                if (exported.Count == 0)
+                {
+                    var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), _filenameService, _samplerService);
+                    if (defaultGt != null) _contentContainer.AddTool(defaultGt);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Debug($"Failed to add default tool after layout apply: {ex.Message}");
+            }
 
             // Wire layout persistence callbacks
             WireLayoutCallbacks();

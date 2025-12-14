@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Linq;
 using Kaleidoscope;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -143,21 +144,181 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             if (layout == null) return;
             LogService.Debug($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
-            foreach (var entry in layout)
+            if (_toolRegistry.Count > 0)
             {
+                LogService.Debug($"ApplyLayout: registered tool factories ({_toolRegistry.Count})");
+            }
+            var matchedIndices = new System.Collections.Generic.HashSet<int>();
+            for (var li = 0; li < layout.Count; li++)
+            {
+                var entry = layout[li];
                 try
                 {
-                    // Try to match by Id first, then by Title, then by Type
-                    var match = _tools.Find(x => x.Tool.Id == entry.Id)?.Tool
-                        ?? _tools.Find(x => x.Tool.Title == entry.Title)?.Tool
-                        ?? _tools.Find(x => x.Tool.GetType().FullName == entry.Type)?.Tool;
+                    // Try to match by Id first, then by Title, then by Type.
+                    // Only consider existing tools that have not already been matched to another layout entry.
+                    ToolComponent? match = null;
+                    var matchIdx = -1;
+                    for (var i = 0; i < _tools.Count; i++)
+                    {
+                        if (matchedIndices.Contains(i)) continue;
+                        if (_tools[i].Tool.Id == entry.Id) { match = _tools[i].Tool; matchIdx = i; break; }
+                    }
+                    if (match == null)
+                    {
+                        for (var i = 0; i < _tools.Count; i++)
+                        {
+                            if (matchedIndices.Contains(i)) continue;
+                            if (_tools[i].Tool.Title == entry.Title) { match = _tools[i].Tool; matchIdx = i; break; }
+                        }
+                    }
+                    if (match == null)
+                    {
+                        for (var i = 0; i < _tools.Count; i++)
+                        {
+                            if (matchedIndices.Contains(i)) continue;
+                            if (_tools[i].Tool.GetType().FullName == entry.Type) { match = _tools[i].Tool; matchIdx = i; break; }
+                        }
+                    }
+
                     if (match != null)
                     {
                         match.Position = entry.Position;
                         match.Size = entry.Size;
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
-                        match.BackgroundColor = entry.BackgroundColor;
+                        if (matchIdx >= 0) matchedIndices.Add(matchIdx);
+                        LogService.Debug($"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
+                        continue;
+                    }
+
+                    // No existing tool matched — attempt to create a new instance from the registered tool factories.
+                    // First, try to find a registration by factory id (common case when Id contains a factory name).
+                    var createdAny = false;
+                    var reg = _toolRegistry.Find(r => string.Equals(r.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
+                    if (reg != null && reg.Factory != null)
+                    {
+                        LogService.Debug($"ApplyLayout: attempting registry factory by id='{reg.Id}' for entry '{entry.Id}'");
+                        try
+                        {
+                            var created = reg.Factory(entry.Position);
+                            if (created != null)
+                            {
+                                created.Position = entry.Position;
+                                created.Size = entry.Size;
+                                created.Visible = entry.Visible;
+                                created.BackgroundEnabled = entry.BackgroundEnabled;
+                                created.BackgroundColor = entry.BackgroundColor;
+                                if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
+                                AddTool(created);
+                                // Mark newly added tool as matched so it won't be reused for another entry
+                                matchedIndices.Add(_tools.Count - 1);
+                                LogService.Debug($"ApplyLayout: created tool via registry id='{reg.Id}' for entry '{entry.Id}' (type={entry.Type})");
+                                createdAny = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug($"ApplyLayout: registry factory '{reg.Id}' threw: {ex.Message}");
+                        }
+                    }
+
+                    if (!createdAny)
+                    {
+                        // If not found by id, try each registered factory and match by resulting type FullName.
+                        foreach (var candReg in _toolRegistry)
+                        {
+                            try
+                            {
+                                var cand = candReg.Factory(entry.Position);
+                                if (cand == null) continue;
+                                if (cand.GetType().FullName == entry.Type)
+                                {
+                                    cand.Position = entry.Position;
+                                    cand.Size = entry.Size;
+                                    cand.Visible = entry.Visible;
+                                    cand.BackgroundEnabled = entry.BackgroundEnabled;
+                                    cand.BackgroundColor = entry.BackgroundColor;
+                                    if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
+                                    AddTool(cand);
+                                    // Mark newly added tool as matched so it won't be reused for another entry
+                                    matchedIndices.Add(_tools.Count - 1);
+                                    LogService.Debug($"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
+                                    createdAny = true;
+                                    break;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Debug($"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
+                            }
+                        }
+                    }
+
+                    if (createdAny) continue;
+
+                    // If no registry factories matched, try reflection-based creation by type name
+                    if (!createdAny && !string.IsNullOrWhiteSpace(entry.Type))
+                    {
+                        try
+                        {
+                            Type? found = null;
+                            try
+                            {
+                                found = Type.GetType(entry.Type);
+                            }
+                            catch { found = null; }
+                            if (found == null)
+                            {
+                                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                                {
+                                    try
+                                    {
+                                        var t = asm.GetType(entry.Type);
+                                        if (t != null) { found = t; break; }
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            if (found != null && typeof(ToolComponent).IsAssignableFrom(found))
+                            {
+                                try
+                                {
+                                    var inst = Activator.CreateInstance(found) as ToolComponent;
+                                    if (inst != null)
+                                    {
+                                        inst.Position = entry.Position;
+                                        inst.Size = entry.Size;
+                                        inst.Visible = entry.Visible;
+                                        inst.BackgroundEnabled = entry.BackgroundEnabled;
+                                        inst.BackgroundColor = entry.BackgroundColor;
+                                        if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
+                                        AddTool(inst);
+                                        // Mark newly added tool as matched so it won't be reused for another entry
+                                        matchedIndices.Add(_tools.Count - 1);
+                                        LogService.Debug($"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
+                                        createdAny = true;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Debug($"Reflection creation failed for type '{entry.Type}': {ex.Message}");
+                                }
+                            }
+                            else
+                            {
+                                LogService.Debug($"ApplyLayout: reflection could not find type '{entry.Type}'");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug($"ApplyLayout: reflection attempt failed for '{entry.Type}': {ex.Message}");
+                        }
+                    }
+
+                    if (!createdAny)
+                    {
+                        LogService.Debug($"ApplyLayout: no existing tool matched and creation failed for '{entry.Id}' / '{entry.Type}'");
                     }
                 }
                 catch (Exception ex)
