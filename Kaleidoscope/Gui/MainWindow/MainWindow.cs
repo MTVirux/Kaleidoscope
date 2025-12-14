@@ -38,6 +38,9 @@ public class MainWindow : Window
         private Vector2 _prevFrameSize = Vector2.Zero;
         private bool _prevFrameInitialized = false;
 
+        // Flag to track if this is the first PreDraw call (used for initial positioning)
+        private bool _firstPreDraw = true;
+
         // Reference to WindowService for window coordination (set after construction due to circular dependency)
         private WindowService? _windowService;
         public void SetWindowService(WindowService ws) => _windowService = ws;
@@ -510,26 +513,53 @@ public class MainWindow : Window
 
         public override void PreDraw()
         {
+            // On first PreDraw, apply the saved position/size from config so the window
+            // opens where it was last closed, regardless of lock state.
+            if (_firstPreDraw)
+            {
+                _firstPreDraw = false;
+                ImGui.SetNextWindowPos(Config.MainWindowPos);
+                ImGui.SetNextWindowSize(Config.MainWindowSize);
+                // Also sync the tracking variables so we don't detect a spurious change
+                _savedPos = Config.MainWindowPos;
+                _savedSize = Config.MainWindowSize;
+                _lastSavedPos = Config.MainWindowPos;
+                _lastSavedSize = Config.MainWindowSize;
+            }
+
             // Prevent the main window from being moved/resized when locked or when
             // a contained tool is currently being dragged or resized.
-            var preventMoveResize = _stateService.IsLocked || _stateService.IsDragging || _stateService.IsResizing;
-            if (preventMoveResize)
+            // When tools are being dragged/resized, we lock the window position but use
+            // the CURRENT position (not Config) to avoid snapping the window.
+            if (_stateService.IsLocked)
             {
+                // Window is locked: force position from config
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
                 ImGui.SetNextWindowPos(Config.MainWindowPos);
                 ImGui.SetNextWindowSize(Config.MainWindowSize);
             }
+            else if (_stateService.IsDragging || _stateService.IsResizing)
+            {
+                // Tool is being dragged/resized: prevent window movement but keep current position
+                // Use _prevFramePos/_prevFrameSize which track the current window state
+                Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
+                if (_prevFrameInitialized)
+                {
+                    ImGui.SetNextWindowPos(_prevFramePos);
+                    ImGui.SetNextWindowSize(_prevFrameSize);
+                }
+                else
+                {
+                    // Fallback to config values if we haven't tracked position yet
+                    ImGui.SetNextWindowPos(Config.MainWindowPos);
+                    ImGui.SetNextWindowSize(Config.MainWindowSize);
+                }
+            }
             else
             {
+                // Normal mode: allow movement and resize
                 Flags &= ~ImGuiWindowFlags.NoMove;
                 Flags &= ~ImGuiWindowFlags.NoResize;
-            }
-
-            // Only force the main window position/size when the window is locked.
-            if (_stateService.IsLocked)
-            {
-                ImGui.SetNextWindowPos(Config.MainWindowPos);
-                ImGui.SetNextWindowSize(Config.MainWindowSize);
             }
 
             Flags &= ~ImGuiWindowFlags.NoTitleBar;
