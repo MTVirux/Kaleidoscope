@@ -6,7 +6,7 @@ using OtterGui.Services;
 namespace Kaleidoscope;
 
 /// <summary>
-/// Main plugin entry point. Creates and manages the service container.
+/// Main plugin entry point.
 /// </summary>
 public sealed class KaleidoscopePlugin : IDalamudPlugin
 {
@@ -20,11 +20,11 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
         {
             _services = Services.StaticServiceManager.CreateProvider(pluginInterface, Log, this);
 
-            // Initialize the static log service for components without DI access
+            // Initialize static log service for components without DI access
             var dalamudLog = _services.GetService<IPluginLog>();
             Services.LogService.Initialize(dalamudLog);
 
-            // Initialize required services to ensure they are constructed
+            // Initialize required services
             _services.GetService<Services.ConfigurationService>();
             _services.GetService<Services.SamplerService>();
             _services.GetService<Services.WindowService>();
