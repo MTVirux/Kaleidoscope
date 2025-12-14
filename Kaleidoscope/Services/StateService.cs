@@ -4,186 +4,172 @@ using Kaleidoscope.Interfaces;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Centralized service for tracking UI mode states across the plugin.
-/// Provides a single source of truth for fullscreen, edit, locked, and drag states.
+/// Tracks UI mode states: fullscreen, edit, locked, and drag states.
 /// </summary>
 public class StateService : IStateService
 {
-        private readonly IPluginLog _log;
-        private readonly ConfigurationService _configService;
+    private readonly IPluginLog _log;
+    private readonly ConfigurationService _configService;
 
-        private bool _isFullscreen;
-        private bool _isEditMode;
-        private bool _isLocked;
-        private bool _isDragging;
-        private bool _isResizing;
-        private bool _isMainWindowMoving;
-        private bool _isMainWindowResizing;
+    private bool _isFullscreen;
+    private bool _isEditMode;
+    private bool _isLocked;
+    private bool _isDragging;
+    private bool _isResizing;
+    private bool _isMainWindowMoving;
+    private bool _isMainWindowResizing;
 
-        // Static reference for debug-only access (avoids DI in DEBUG blocks)
-        private static StateService? _instance;
+    public StateService(IPluginLog log, ConfigurationService configService)
+    {
+        _log = log;
+        _configService = configService;
 
-        /// <summary>
-        /// Static accessor for edit mode state. Use only in DEBUG blocks where DI is not available.
-        /// </summary>
-        public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
+        _isEditMode = configService.Config.EditMode;
+        _isLocked = configService.Config.PinMainWindow;
+        _isFullscreen = configService.Config.ExclusiveFullscreen;
 
-        public StateService(IPluginLog log, ConfigurationService configService)
+        _log.Debug("StateService initialized");
+    }
+
+    private Configuration Config => _configService.Config;
+
+    /// <inheritdoc />
+    public bool IsFullscreen
+    {
+        get => _isFullscreen;
+        set
         {
-            _log = log;
-            _configService = configService;
-
-            // Initialize from configuration
-            _isEditMode = configService.Config.EditMode;
-            _isLocked = configService.Config.PinMainWindow;
-            _isFullscreen = configService.Config.ExclusiveFullscreen;
-
-            // Set static instance for DEBUG access
-            _instance = this;
-
-            _log.Debug("StateService initialized");
+            if (_isFullscreen == value) return;
+            _isFullscreen = value;
+            _log.Debug($"IsFullscreen changed to {value}");
+            OnFullscreenChanged?.Invoke(value);
         }
+    }
 
-        private Configuration Config => _configService.Config;
-
-        /// <inheritdoc />
-        public bool IsFullscreen
+    /// <inheritdoc />
+    public bool IsEditMode
+    {
+        get => _isEditMode;
+        set
         {
-            get => _isFullscreen;
-            set
-            {
-                if (_isFullscreen == value) return;
-                _isFullscreen = value;
-                _log.Debug($"StateService: IsFullscreen changed to {value}");
-                OnFullscreenChanged?.Invoke(value);
-            }
+            if (_isEditMode == value) return;
+            _isEditMode = value;
+            Config.EditMode = value;
+            _configService.Save();
+            _log.Debug($"IsEditMode changed to {value}");
+            OnEditModeChanged?.Invoke(value);
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsEditMode
+    /// <inheritdoc />
+    public bool IsLocked
+    {
+        get => _isLocked;
+        set
         {
-            get => _isEditMode;
-            set
-            {
-                if (_isEditMode == value) return;
-                _isEditMode = value;
-                Config.EditMode = value;
-                _configService.Save();
-                _log.Debug($"StateService: IsEditMode changed to {value}");
-                OnEditModeChanged?.Invoke(value);
-            }
+            if (_isLocked == value) return;
+            _isLocked = value;
+            Config.PinMainWindow = value;
+            _configService.Save();
+            _log.Debug($"IsLocked changed to {value}");
+            OnLockedChanged?.Invoke(value);
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsLocked
+    /// <inheritdoc />
+    public bool IsDragging
+    {
+        get => _isDragging;
+        set
         {
-            get => _isLocked;
-            set
-            {
-                if (_isLocked == value) return;
-                _isLocked = value;
-                Config.PinMainWindow = value;
-                _configService.Save();
-                _log.Debug($"StateService: IsLocked changed to {value}");
-                OnLockedChanged?.Invoke(value);
-            }
+            if (_isDragging == value) return;
+            _isDragging = value;
+            _log.Verbose($"IsDragging changed to {value}");
+            OnDraggingChanged?.Invoke(value);
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsDragging
+    /// <inheritdoc />
+    public bool IsResizing
+    {
+        get => _isResizing;
+        set
         {
-            get => _isDragging;
-            set
-            {
-                if (_isDragging == value) return;
-                _isDragging = value;
-                _log.Verbose($"StateService: IsDragging changed to {value}");
-                OnDraggingChanged?.Invoke(value);
-            }
+            if (_isResizing == value) return;
+            _isResizing = value;
+            _log.Verbose($"IsResizing changed to {value}");
+            OnResizingChanged?.Invoke(value);
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsResizing
+    /// <inheritdoc />
+    public bool IsMainWindowMoving
+    {
+        get => _isMainWindowMoving;
+        set
         {
-            get => _isResizing;
-            set
-            {
-                if (_isResizing == value) return;
-                _isResizing = value;
-                _log.Verbose($"StateService: IsResizing changed to {value}");
-                OnResizingChanged?.Invoke(value);
-            }
+            if (_isMainWindowMoving == value) return;
+            _isMainWindowMoving = value;
+            _log.Verbose($"IsMainWindowMoving changed to {value}");
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsMainWindowMoving
+    /// <inheritdoc />
+    public bool IsMainWindowResizing
+    {
+        get => _isMainWindowResizing;
+        set
         {
-            get => _isMainWindowMoving;
-            set
-            {
-                if (_isMainWindowMoving == value) return;
-                _isMainWindowMoving = value;
-                _log.Verbose($"StateService: IsMainWindowMoving changed to {value}");
-            }
+            if (_isMainWindowResizing == value) return;
+            _isMainWindowResizing = value;
+            _log.Verbose($"IsMainWindowResizing changed to {value}");
         }
+    }
 
-        /// <inheritdoc />
-        public bool IsMainWindowResizing
-        {
-            get => _isMainWindowResizing;
-            set
-            {
-                if (_isMainWindowResizing == value) return;
-                _isMainWindowResizing = value;
-                _log.Verbose($"StateService: IsMainWindowResizing changed to {value}");
-            }
-        }
+    /// <inheritdoc />
+    public bool IsMainWindowInteracting => _isMainWindowMoving || _isMainWindowResizing;
 
-        /// <inheritdoc />
-        public bool IsMainWindowInteracting => _isMainWindowMoving || _isMainWindowResizing;
+    /// <inheritdoc />
+    public bool IsInteracting => _isDragging || _isResizing;
 
-        /// <inheritdoc />
-        public bool IsInteracting => _isDragging || _isResizing;
+    /// <inheritdoc />
+    public bool CanEditLayout => _isEditMode;
 
-        /// <inheritdoc />
-        public bool CanEditLayout => _isEditMode;
+    /// <inheritdoc />
+    public event Action<bool>? OnFullscreenChanged;
 
-        /// <inheritdoc />
-        public event Action<bool>? OnFullscreenChanged;
+    /// <inheritdoc />
+    public event Action<bool>? OnEditModeChanged;
 
-        /// <inheritdoc />
-        public event Action<bool>? OnEditModeChanged;
+    /// <inheritdoc />
+    public event Action<bool>? OnLockedChanged;
 
-        /// <inheritdoc />
-        public event Action<bool>? OnLockedChanged;
+    /// <inheritdoc />
+    public event Action<bool>? OnDraggingChanged;
 
-        /// <inheritdoc />
-        public event Action<bool>? OnDraggingChanged;
+    /// <inheritdoc />
+    public event Action<bool>? OnResizingChanged;
 
-        /// <inheritdoc />
-        public event Action<bool>? OnResizingChanged;
+    /// <inheritdoc />
+    public void ToggleEditMode()
+    {
+        IsEditMode = !IsEditMode;
+        _log.Debug($"Edit mode toggled to {IsEditMode}");
+    }
 
-        /// <inheritdoc />
-        public void ToggleEditMode()
-        {
-            var newState = !IsEditMode;
-            IsEditMode = newState;
-            _log.Debug($"StateService: Edit mode toggled to {newState}");
-        }
-
-        /// <inheritdoc />
-        public void ToggleLocked()
-        {
-            IsLocked = !IsLocked;
-            _log.Debug($"StateService: Locked toggled to {IsLocked}");
-        }
+    /// <inheritdoc />
+    public void ToggleLocked()
+    {
+        IsLocked = !IsLocked;
+        _log.Debug($"Locked toggled to {IsLocked}");
+    }
 
     /// <inheritdoc />
     public void EnterFullscreen()
     {
         if (_isFullscreen) return;
         IsFullscreen = true;
-        _log.Debug("StateService: Entered fullscreen");
+        _log.Debug("Entered fullscreen");
     }
 
     /// <inheritdoc />
@@ -191,6 +177,6 @@ public class StateService : IStateService
     {
         if (!_isFullscreen) return;
         IsFullscreen = false;
-        _log.Debug("StateService: Exited fullscreen");
+        _log.Debug("Exited fullscreen");
     }
 }
