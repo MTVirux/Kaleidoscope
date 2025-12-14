@@ -1,16 +1,14 @@
-using System;
+namespace Kaleidoscope.Interfaces;
 
-namespace Kaleidoscope.Interfaces
+/// <summary>
+/// Tracks the current UI mode states for the plugin:
+/// - Fullscreen mode: whether the plugin is displaying in fullscreen
+/// - Edit mode: whether the HUD layout is being edited
+/// - Locked mode: whether the window position/size is locked
+/// - Dragging state: whether a tool or element is currently being dragged
+/// </summary>
+public interface IStateService
 {
-    /// <summary>
-    /// Tracks the current UI mode states for the plugin:
-    /// - Fullscreen mode: whether the plugin is displaying in fullscreen
-    /// - Edit mode: whether the HUD layout is being edited
-    /// - Locked mode: whether the window position/size is locked
-    /// - Dragging state: whether a tool or element is currently being dragged
-    /// </summary>
-    public interface IStateService
-    {
         /// <summary>
         /// Gets or sets whether the plugin is currently in fullscreen mode.
         /// </summary>
@@ -92,18 +90,17 @@ namespace Kaleidoscope.Interfaces
         void ToggleEditMode();
 
         /// <summary>
-        /// Toggles the locked state.
-        /// </summary>
-        void ToggleLocked();
+    /// Toggles the locked state.
+    /// </summary>
+    void ToggleLocked();
 
-        /// <summary>
-        /// Enters fullscreen mode.
-        /// </summary>
-        void EnterFullscreen();
+    /// <summary>
+    /// Enters fullscreen mode.
+    /// </summary>
+    void EnterFullscreen();
 
-        /// <summary>
-        /// Exits fullscreen mode.
-        /// </summary>
-        void ExitFullscreen();
-    }
+    /// <summary>
+    /// Exits fullscreen mode.
+    /// </summary>
+    void ExitFullscreen();
 }

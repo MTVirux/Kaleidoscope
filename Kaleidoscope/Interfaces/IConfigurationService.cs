@@ -1,17 +1,15 @@
-namespace Kaleidoscope.Interfaces
+using Kaleidoscope.Config;
+
+namespace Kaleidoscope.Interfaces;
+
+public interface IConfigurationService
 {
-    using Kaleidoscope;
-    using Kaleidoscope.Config;
+    Configuration Config { get; }
+    ConfigManager ConfigManager { get; }
+    GeneralConfig GeneralConfig { get; }
+    SamplerConfig SamplerConfig { get; }
+    WindowConfig WindowConfig { get; }
 
-    public interface IConfigurationService
-    {
-        Configuration Config { get; }
-        ConfigManager ConfigManager { get; }
-        GeneralConfig GeneralConfig { get; }
-        SamplerConfig SamplerConfig { get; }
-        WindowConfig WindowConfig { get; }
-
-        void Save();
-        void SaveLayouts();
-    }
+    void Save();
+    void SaveLayouts();
 }

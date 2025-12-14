@@ -1,18 +1,14 @@
-namespace Kaleidoscope.Gui.MainWindow
-{
-    
-    using Dalamud.Interface.Windowing;
-    using ImGui = Dalamud.Bindings.ImGui.ImGui;
-    using Dalamud.Bindings.ImGui;
-    using Dalamud.Plugin.Services;
-    
-    using OtterGui.Text;
-    using System.Linq;
-    using System;
-    using Dalamud.Interface;
-    using Kaleidoscope.Services;
+using Dalamud.Interface.Windowing;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin.Services;
+using OtterGui.Text;
+using Dalamud.Interface;
+using Kaleidoscope.Services;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
-    public class MainWindow : Window
+namespace Kaleidoscope.Gui.MainWindow;
+
+public class MainWindow : Window
     {
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
@@ -621,13 +617,12 @@ namespace Kaleidoscope.Gui.MainWindow
             catch (Exception ex) { LogService.Debug($"[MainWindow] Draw failed: {ex.Message}"); }
         }
 
-        private static string GetDisplayTitle()
-        {
-            var asm = Assembly.GetExecutingAssembly();
-            var infoVer = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            var asmVer = asm.GetName().Version?.ToString();
-            var ver = !string.IsNullOrEmpty(infoVer) ? infoVer : (!string.IsNullOrEmpty(asmVer) ? asmVer : "0.0.0");
-            return $"Kaleidoscope {ver}";
-        }
+    private static string GetDisplayTitle()
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        var infoVer = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var asmVer = asm.GetName().Version?.ToString();
+        var ver = !string.IsNullOrEmpty(infoVer) ? infoVer : (!string.IsNullOrEmpty(asmVer) ? asmVer : "0.0.0");
+        return $"Kaleidoscope {ver}";
     }
 }

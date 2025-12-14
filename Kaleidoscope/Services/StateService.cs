@@ -1,15 +1,14 @@
-using System;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Interfaces;
 
-namespace Kaleidoscope.Services
+namespace Kaleidoscope.Services;
+
+/// <summary>
+/// Centralized service for tracking UI mode states across the plugin.
+/// Provides a single source of truth for fullscreen, edit, locked, and drag states.
+/// </summary>
+public class StateService : IStateService
 {
-    /// <summary>
-    /// Centralized service for tracking UI mode states across the plugin.
-    /// Provides a single source of truth for fullscreen, edit, locked, and drag states.
-    /// </summary>
-    public class StateService : IStateService
-    {
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
 
@@ -179,20 +178,19 @@ namespace Kaleidoscope.Services
             _log.Debug($"StateService: Locked toggled to {IsLocked}");
         }
 
-        /// <inheritdoc />
-        public void EnterFullscreen()
-        {
-            if (_isFullscreen) return;
-            IsFullscreen = true;
-            _log.Debug("StateService: Entered fullscreen");
-        }
+    /// <inheritdoc />
+    public void EnterFullscreen()
+    {
+        if (_isFullscreen) return;
+        IsFullscreen = true;
+        _log.Debug("StateService: Entered fullscreen");
+    }
 
-        /// <inheritdoc />
-        public void ExitFullscreen()
-        {
-            if (!_isFullscreen) return;
-            IsFullscreen = false;
-            _log.Debug("StateService: Exited fullscreen");
-        }
+    /// <inheritdoc />
+    public void ExitFullscreen()
+    {
+        if (!_isFullscreen) return;
+        IsFullscreen = false;
+        _log.Debug("StateService: Exited fullscreen");
     }
 }

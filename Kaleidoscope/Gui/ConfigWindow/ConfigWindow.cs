@@ -1,16 +1,15 @@
-namespace Kaleidoscope.Gui.ConfigWindow
-{
-    using Dalamud.Interface.Windowing;
-    using Dalamud.Bindings.ImGui;
-    using Dalamud.Plugin.Services;
-    using ImGui = Dalamud.Bindings.ImGui.ImGui;
-    using OtterGui.Text;
-    using Dalamud.Interface;
-    using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
-    using Kaleidoscope.Services;
+using Dalamud.Interface.Windowing;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin.Services;
+using Dalamud.Interface;
+using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
+using Kaleidoscope.Services;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
-    public class ConfigWindow : Window, IDisposable
-    {
+namespace Kaleidoscope.Gui.ConfigWindow;
+
+public class ConfigWindow : Window, IDisposable
+{
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
         private readonly SamplerService _samplerService;
@@ -138,23 +137,22 @@ namespace Kaleidoscope.Gui.ConfigWindow
             // Content area
             ImGui.BeginChild("##config_content", new System.Numerics.Vector2(fullSize.X - sidebarWidth, 0), false);
             if (_selectedTab == 0)
-            {
-                this.generalCategory?.Draw();
-            }
-            else if (_selectedTab == 1)
-            {
-                this.dataCategory?.Draw();
-            }
-            else if (_selectedTab == 2)
-            {
-                this.samplerCategory?.Draw();
-            }
-            else if (_selectedTab == 3)
-            {
-                this.layoutsCategory?.Draw();
-            }
-
-            ImGui.EndChild();
+        {
+            generalCategory?.Draw();
         }
+        else if (_selectedTab == 1)
+        {
+            dataCategory?.Draw();
+        }
+        else if (_selectedTab == 2)
+        {
+            samplerCategory?.Draw();
+        }
+        else if (_selectedTab == 3)
+        {
+            layoutsCategory?.Draw();
+        }
+
+        ImGui.EndChild();
     }
 }
