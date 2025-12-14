@@ -46,6 +46,13 @@ public class WindowService : IDisposable
             }
             catch { }
 
+            // Provide WindowService reference to FullscreenWindow for layout management
+            try
+            {
+                _fullscreenWindow?.SetWindowService(this);
+            }
+            catch { }
+
         _windowSystem = new WindowSystem("Kaleidoscope");
 
         RegisterWindows();
@@ -108,6 +115,11 @@ public class WindowService : IDisposable
     public void OpenMainWindow() => _mainWindow.IsOpen = true;
 
     public void OpenConfigWindow() => _configWindow.IsOpen = true;
+
+    /// <summary>
+    /// Opens the config window directly to the Layouts tab.
+    /// </summary>
+    public void OpenLayoutsConfig() => _configWindow.OpenToTab(ConfigWindow.TabIndex.Layouts);
 
     public void RequestShowFullscreen()
     {

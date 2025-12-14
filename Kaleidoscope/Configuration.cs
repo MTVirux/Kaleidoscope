@@ -4,7 +4,18 @@ using System.Collections.Generic;
 
 namespace Kaleidoscope
 {
-        public class Configuration : IPluginConfiguration
+    /// <summary>
+    /// Defines whether a layout is intended for windowed or fullscreen mode.
+    /// </summary>
+    public enum LayoutType
+    {
+        /// <summary>Layout for the main windowed UI.</summary>
+        Windowed = 0,
+        /// <summary>Layout for fullscreen mode.</summary>
+        Fullscreen = 1
+    }
+
+    public class Configuration : IPluginConfiguration
     {
         public int Version { get; set; } = 1;
 
@@ -44,6 +55,8 @@ namespace Kaleidoscope
     public class ContentLayoutState
     {
         public string Name { get; set; } = string.Empty;
+        /// <summary>Whether this layout is for windowed or fullscreen mode.</summary>
+        public LayoutType Type { get; set; } = LayoutType.Windowed;
         public List<ContentComponentState> Components { get; set; } = new List<ContentComponentState>();
         // New: explicit tool layout entries for the HUD tools (absolute positioning)
         public List<ToolLayoutState> Tools { get; set; } = new List<ToolLayoutState>();

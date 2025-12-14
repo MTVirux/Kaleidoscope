@@ -216,12 +216,14 @@ namespace Kaleidoscope.Gui.MainWindow
         private void ApplyInitialLayout()
         {
             var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+            // Filter to only windowed layouts for the main window
+            var windowedLayouts = layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
             var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
             ContentLayoutState? layout = null;
             
             if (activeName != null)
-                layout = layouts.Find(x => x.Name == activeName);
-            layout ??= layouts.FirstOrDefault();
+                layout = windowedLayouts.Find(x => x.Name == activeName);
+            layout ??= windowedLayouts.FirstOrDefault();
 
             if (layout != null)
             {
@@ -250,7 +252,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 var existing = layouts.Find(x => x.Name == name);
                 if (existing == null)
                 {
-                    existing = new ContentLayoutState { Name = name };
+                    existing = new ContentLayoutState { Name = name, Type = LayoutType.Windowed };
                     layouts.Add(existing);
                 }
                 existing.Tools = tools ?? new List<ToolLayoutState>();
@@ -265,7 +267,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 if (string.IsNullOrWhiteSpace(name)) return;
                 
                 var layouts = Config.Layouts ?? new List<ContentLayoutState>();
-                var found = layouts.Find(x => x.Name == name);
+                var found = layouts.Find(x => x.Name == name && x.Type == LayoutType.Windowed);
                 if (found != null)
                 {
                     // Apply grid settings first
@@ -281,19 +283,27 @@ namespace Kaleidoscope.Gui.MainWindow
 
             _contentContainer.GetAvailableLayoutNames = () =>
             {
-                return (Config.Layouts ?? new List<ContentLayoutState>()).Select(x => x.Name).ToList();
+                return (Config.Layouts ?? new List<ContentLayoutState>())
+                    .Where(x => x.Type == LayoutType.Windowed)
+                    .Select(x => x.Name)
+                    .ToList();
+            };
+
+            _contentContainer.OnManageLayouts = () =>
+            {
+                _windowService?.OpenLayoutsConfig();
             };
 
             _contentContainer.OnLayoutChanged = (tools) =>
             {
                 var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
                     ? Config.ActiveLayoutName
-                    : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                    : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
                 var layouts = Config.Layouts ??= new List<ContentLayoutState>();
                 var existing = layouts.Find(x => x.Name == activeName);
                 if (existing == null)
                 {
-                    existing = new ContentLayoutState { Name = activeName };
+                    existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
                     layouts.Add(existing);
                 }
                 existing.Tools = tools ?? new List<ToolLayoutState>();
@@ -308,12 +318,12 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
                     ? Config.ActiveLayoutName
-                    : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                    : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
                 var layouts = Config.Layouts ??= new List<ContentLayoutState>();
                 var existing = layouts.Find(x => x.Name == activeName);
                 if (existing == null)
                 {
-                    existing = new ContentLayoutState { Name = activeName };
+                    existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
                     layouts.Add(existing);
                 }
                 // Apply grid settings to layout state

@@ -74,6 +74,9 @@ namespace Kaleidoscope.Gui.MainWindow
         // Callback invoked when the layout changes. Host should persist the provided tool layout.
         public Action<List<ToolLayoutState>>? OnLayoutChanged;
 
+        // Callback invoked to open the layouts management UI (config window layouts tab).
+        public Action? OnManageLayouts;
+
         // Callbacks for interaction state changes (dragging/resizing)
         // Host can use these to update the StateService
         public Action<bool>? OnDraggingChanged;
@@ -551,7 +554,9 @@ namespace Kaleidoscope.Gui.MainWindow
             var cellH = availRegion.Y / MathF.Max(1f, effectiveRows);
             
             // Handle window resize: update tool positions based on grid coordinates
-            if (_lastContentSize != Vector2.Zero && _lastContentSize != availRegion)
+            // Also handle initial layout pass when _lastContentSize is zero so tools
+            // that have grid coordinates are placed correctly on first render
+            if (_lastContentSize != availRegion)
             {
                 try
                 {
@@ -784,6 +789,19 @@ namespace Kaleidoscope.Gui.MainWindow
                                 _previousColumns = GetEffectiveColumns(availRegion);
                                 _previousRows = GetEffectiveRows(availRegion);
                                 _gridResolutionPopupOpen = true;
+                            }
+                            
+                            // Manage Layouts - opens config window to layouts tab
+                            if (ImGui.MenuItem("Manage Layouts..."))
+                            {
+                                try
+                                {
+                                    OnManageLayouts?.Invoke();
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Error("Failed to open layouts manager", ex);
+                                }
                             }
                         }
                         catch (Exception ex)

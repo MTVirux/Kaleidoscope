@@ -16,13 +16,33 @@ namespace Kaleidoscope.Gui.ConfigWindow
         private readonly SamplerService _samplerService;
 
         private Configuration Config => _configService.Config;
-        private int _selectedTab = 0; // 0=General,1=Data,2=Sampler
+        private int _selectedTab = 0; // 0=General,1=Data,2=Sampler,3=Layouts
 
         private TitleBarButton? lockButton;
         private GeneralCategory? generalCategory;
         private DataCategory? dataCategory;
         private SamplerCategory? samplerCategory;
         private LayoutsCategory? layoutsCategory;
+        
+        /// <summary>
+        /// Tab indices for programmatic navigation.
+        /// </summary>
+        public static class TabIndex
+        {
+            public const int General = 0;
+            public const int Data = 1;
+            public const int Sampler = 2;
+            public const int Layouts = 3;
+        }
+
+        /// <summary>
+        /// Opens the config window to a specific tab.
+        /// </summary>
+        public void OpenToTab(int tabIndex)
+        {
+            _selectedTab = tabIndex;
+            IsOpen = true;
+        }
         
 
         public ConfigWindow(
