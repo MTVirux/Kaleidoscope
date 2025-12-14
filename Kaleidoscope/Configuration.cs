@@ -106,6 +106,8 @@ namespace Kaleidoscope
         public bool Visible { get; set; } = true;
         // Optional background persistence for tools
         public bool BackgroundEnabled { get; set; } = false;
+        // Whether the tool header (title/separator) is visible
+        public bool HeaderVisible { get; set; } = true;
         // Default to Dalamud red (approx. #D23A3A)
         public Vector4 BackgroundColor { get; set; } = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
         

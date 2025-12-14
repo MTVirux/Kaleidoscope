@@ -26,6 +26,12 @@ public abstract class ToolComponent
     /// </summary>
     public Vector4 BackgroundColor { get; set; } = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
 
+    /// <summary>
+    /// Whether the tool should draw its header (title/separator).
+    /// Can be toggled via the tool context menu in edit mode.
+    /// </summary>
+    public bool HeaderVisible { get; set; } = true;
+
     // Grid-based coordinates for proportional resizing
     /// <summary>Column position in grid coordinates (0-based, fractional).</summary>
     public float GridCol { get; set; } = 0f;
