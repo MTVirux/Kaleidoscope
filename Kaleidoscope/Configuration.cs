@@ -58,6 +58,8 @@ namespace Kaleidoscope
         public int Columns { get; set; } = 16;
         /// <summary>Number of rows in the grid (used when AutoAdjustResolution is false).</summary>
         public int Rows { get; set; } = 9;
+        /// <summary>Number of subdivisions inside each grid cell for finer snapping/display.</summary>
+        public int Subdivisions { get; set; } = 8;
         /// <summary>
         /// Grid resolution multiplier (1-10). When AutoAdjustResolution is true:
         /// Columns = AspectRatioWidth * GridResolutionMultiplier

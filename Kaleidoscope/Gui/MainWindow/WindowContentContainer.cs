@@ -157,29 +157,17 @@ namespace Kaleidoscope.Gui.MainWindow
         /// </summary>
         public int GetEffectiveColumns(Vector2 contentSize)
         {
-            // Calculate aspect ratio from content size
-            var aspectWidth = 16f;
-            var aspectHeight = 9f;
-            if (contentSize.X > 0 && contentSize.Y > 0)
+            // Grid resolution remains fixed for the current layout.
+            // If AutoAdjustResolution is enabled, treat the multiplier as a scale
+            // of a 16:9 base grid (multiplier=2 => 32x18). These counts are
+            // independent of the window pixel size and do not change on resize.
+            if (_currentGridSettings.AutoAdjustResolution)
             {
-                var gcd = GCD((int)contentSize.X, (int)contentSize.Y);
-                if (gcd > 0)
-                {
-                    aspectWidth = contentSize.X / gcd;
-                    aspectHeight = contentSize.Y / gcd;
-                    // Normalize to common aspect ratios
-                    if (aspectWidth > 100 || aspectHeight > 100)
-                    {
-                        var ratio = contentSize.X / contentSize.Y;
-                        if (ratio >= 1.7f && ratio <= 1.8f) { aspectWidth = 16; aspectHeight = 9; }
-                        else if (ratio >= 1.5f && ratio <= 1.6f) { aspectWidth = 16; aspectHeight = 10; }
-                        else if (ratio >= 1.3f && ratio <= 1.4f) { aspectWidth = 4; aspectHeight = 3; }
-                        else if (ratio >= 2.3f && ratio <= 2.4f) { aspectWidth = 21; aspectHeight = 9; }
-                        else { aspectWidth = 16; aspectHeight = 9; } // fallback
-                    }
-                }
+                var multiplier = Math.Max(1, _currentGridSettings.GridResolutionMultiplier);
+                return Math.Max(1, multiplier * 16);
             }
-            return _currentGridSettings.GetEffectiveColumns(aspectWidth, aspectHeight);
+
+            return Math.Max(1, _currentGridSettings.Columns);
         }
 
         /// <summary>
@@ -187,27 +175,13 @@ namespace Kaleidoscope.Gui.MainWindow
         /// </summary>
         public int GetEffectiveRows(Vector2 contentSize)
         {
-            var aspectWidth = 16f;
-            var aspectHeight = 9f;
-            if (contentSize.X > 0 && contentSize.Y > 0)
+            if (_currentGridSettings.AutoAdjustResolution)
             {
-                var gcd = GCD((int)contentSize.X, (int)contentSize.Y);
-                if (gcd > 0)
-                {
-                    aspectWidth = contentSize.X / gcd;
-                    aspectHeight = contentSize.Y / gcd;
-                    if (aspectWidth > 100 || aspectHeight > 100)
-                    {
-                        var ratio = contentSize.X / contentSize.Y;
-                        if (ratio >= 1.7f && ratio <= 1.8f) { aspectWidth = 16; aspectHeight = 9; }
-                        else if (ratio >= 1.5f && ratio <= 1.6f) { aspectWidth = 16; aspectHeight = 10; }
-                        else if (ratio >= 1.3f && ratio <= 1.4f) { aspectWidth = 4; aspectHeight = 3; }
-                        else if (ratio >= 2.3f && ratio <= 2.4f) { aspectWidth = 21; aspectHeight = 9; }
-                        else { aspectWidth = 16; aspectHeight = 9; }
-                    }
-                }
+                var multiplier = Math.Max(1, _currentGridSettings.GridResolutionMultiplier);
+                return Math.Max(1, multiplier * 9);
             }
-            return _currentGridSettings.GetEffectiveRows(aspectWidth, aspectHeight);
+
+            return Math.Max(1, _currentGridSettings.Rows);
         }
 
         private static int GCD(int a, int b)
@@ -618,7 +592,7 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 try
                 {
-                    var subdivisions = Math.Max(1, _getSubdivisions());
+                    var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
                     // minor (subdivision) lines color (very faint)
                     var minorColor = ImGui.GetColorU32(new System.Numerics.Vector4(1f, 1f, 1f, 0.03f));
                     // major (cell) lines color (slightly stronger)
@@ -725,7 +699,7 @@ namespace Kaleidoscope.Gui.MainWindow
                                                 // Snap to sub-grid on placement if possible
                                                 try
                                                 {
-                                                    var subdivisions = Math.Max(1, _getSubdivisions());
+                                                    var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
                                                     var subW = cellW / subdivisions;
                                                     var subH = cellH / subdivisions;
                                                     tool.Position = new Vector2(
@@ -941,7 +915,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         {
                             try
                             {
-                                var subdivisions = Math.Max(1, _getSubdivisions());
+                                var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
                                 var subW = cellW / subdivisions;
                                 var subH = cellH / subdivisions;
                                 var snapped = t.Position;
@@ -1010,7 +984,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         {
                             try
                             {
-                                var subdivisions = Math.Max(1, _getSubdivisions());
+                                var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
                                 var subW = cellW / subdivisions;
                                 var subH = cellH / subdivisions;
                                 var snappedSize = t.Size;

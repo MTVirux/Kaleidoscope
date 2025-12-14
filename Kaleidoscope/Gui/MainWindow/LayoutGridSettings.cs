@@ -23,6 +23,8 @@ namespace Kaleidoscope.Gui.MainWindow
         /// Rows = AspectRatioHeight * GridResolutionMultiplier
         /// </summary>
         public int GridResolutionMultiplier { get; set; } = 2;
+        /// <summary>Number of subdivisions inside each grid cell for snapping and grid drawing.</summary>
+        public int Subdivisions { get; set; } = 8;
         
         /// <summary>
         /// Creates a copy of this settings instance.
@@ -88,7 +90,8 @@ namespace Kaleidoscope.Gui.MainWindow
                 AutoAdjustResolution = layout.AutoAdjustResolution,
                 Columns = layout.Columns,
                 Rows = layout.Rows,
-                GridResolutionMultiplier = layout.GridResolutionMultiplier
+                GridResolutionMultiplier = layout.GridResolutionMultiplier,
+                Subdivisions = layout.Subdivisions
             };
         }
         
@@ -103,6 +106,7 @@ namespace Kaleidoscope.Gui.MainWindow
             layout.Columns = Columns;
             layout.Rows = Rows;
             layout.GridResolutionMultiplier = GridResolutionMultiplier;
+            layout.Subdivisions = Subdivisions;
         }
     }
 }

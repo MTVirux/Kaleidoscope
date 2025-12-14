@@ -8,6 +8,7 @@ namespace Kaleidoscope.Gui.MainWindow
     
     using OtterGui.Text;
     using System.Linq;
+    using System;
     using Dalamud.Interface;
     using Kaleidoscope.Services;
 
@@ -24,6 +25,12 @@ namespace Kaleidoscope.Gui.MainWindow
         // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
         private Vector2 _savedPos = ConfigStatic.DefaultWindowPosition;
         private Vector2 _savedSize = ConfigStatic.DefaultWindowSize;
+
+        // Track last-saved (to Config) window position/size and throttle saves
+        private Vector2 _lastSavedPos = ConfigStatic.DefaultWindowPosition;
+        private Vector2 _lastSavedSize = ConfigStatic.DefaultWindowSize;
+        private DateTime _lastSaveTime = DateTime.MinValue;
+        private const int SaveThrottleMs = 500;
 
         // Reference to WindowService for window coordination (set after construction due to circular dependency)
         private WindowService? _windowService;
@@ -72,6 +79,10 @@ namespace Kaleidoscope.Gui.MainWindow
 
             InitializeTitleBarButtons();
             InitializeContentContainer();
+
+            // Initialize last-saved pos/size from config so change detection starts correct
+            _lastSavedPos = Config.MainWindowPos;
+            _lastSavedSize = Config.MainWindowSize;
 
             _log.Debug("MainWindow initialized");
         }
@@ -370,7 +381,10 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void PreDraw()
         {
-            if (_stateService.IsLocked)
+            // Prevent the main window from being moved/resized when locked or when
+            // a contained tool is currently being dragged or resized.
+            var preventMoveResize = _stateService.IsLocked || _stateService.IsDragging || _stateService.IsResizing;
+            if (preventMoveResize)
             {
                 Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
                 ImGui.SetNextWindowPos(Config.MainWindowPos);
@@ -380,6 +394,13 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 Flags &= ~ImGuiWindowFlags.NoMove;
                 Flags &= ~ImGuiWindowFlags.NoResize;
+            }
+
+            // Only force the main window position/size when the window is locked.
+            if (_stateService.IsLocked)
+            {
+                ImGui.SetNextWindowPos(Config.MainWindowPos);
+                ImGui.SetNextWindowSize(Config.MainWindowSize);
             }
 
             Flags &= ~ImGuiWindowFlags.NoTitleBar;
@@ -426,6 +447,30 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                     }
                     catch (Exception ex) { LogService.Debug($"[MainWindow] Layout auto-save failed: {ex.Message}"); }
+                // Detect main window position/size changes and persist them promptly (throttled)
+                try
+                {
+                    var curPos = ImGui.GetWindowPos();
+                    var curSize = ImGui.GetWindowSize();
+                    const float eps = 0.5f;
+                    var posChanged = Math.Abs(curPos.X - _lastSavedPos.X) > eps || Math.Abs(curPos.Y - _lastSavedPos.Y) > eps;
+                    var sizeChanged = Math.Abs(curSize.X - _lastSavedSize.X) > eps || Math.Abs(curSize.Y - _lastSavedSize.Y) > eps;
+                    if ((posChanged || sizeChanged) && !_stateService.IsLocked && !_stateService.IsDragging && !_stateService.IsResizing)
+                    {
+                        var now = DateTime.UtcNow;
+                        if ((now - _lastSaveTime).TotalMilliseconds > SaveThrottleMs)
+                        {
+                            Config.MainWindowPos = curPos;
+                            Config.MainWindowSize = curSize;
+                            _configService.Save();
+                            _lastSavedPos = curPos;
+                            _lastSavedSize = curSize;
+                            _lastSaveTime = now;
+                            _log.Debug($"Saved main window pos/size: {curPos}, {curSize}");
+                        }
+                    }
+                }
+                catch (Exception ex) { _log.Debug($"[MainWindow] Window pos/size auto-save failed: {ex.Message}"); }
             }
             catch (Exception ex) { LogService.Debug($"[MainWindow] OnLayoutChanged failed: {ex.Message}"); }
         }
