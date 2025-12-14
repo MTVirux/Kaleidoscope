@@ -4,16 +4,16 @@ using Dalamud.Plugin.Services;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Handles registration and dispatch of plugin chat commands.
+/// Handles plugin chat commands.
 /// </summary>
-public class CommandService : IDisposable
+public sealed class CommandService : IDisposable
 {
+    private const string CommandMain = "/kld";
+    private const string CommandFull = "/kaleidoscope";
+
     private readonly ICommandManager _commands;
     private readonly IPluginLog _log;
     private readonly WindowService _windowService;
-
-    private const string CommandMain = "/kld";
-    private const string CommandFull = "/kaleidoscope";
 
     public CommandService(ICommandManager commands, IPluginLog log, WindowService windowService)
     {
@@ -40,7 +40,7 @@ public class CommandService : IDisposable
                 ShowInHelp = true
             });
 
-            _log.Debug("Registered commands: {0}, {1}", CommandMain, CommandFull);
+            _log.Debug($"Registered commands: {CommandMain}, {CommandFull}");
         }
         catch (Exception ex)
         {
@@ -75,7 +75,5 @@ public class CommandService : IDisposable
         {
             _log.Warning($"Failed to unregister commands: {ex.Message}");
         }
-
-        GC.SuppressFinalize(this);
     }
 }
