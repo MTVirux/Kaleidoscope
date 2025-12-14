@@ -77,6 +77,8 @@ namespace Kaleidoscope.Gui.MainWindow
         public Func<List<string>>? GetAvailableLayoutNames;
         private bool _saveLayoutPopupOpen = false;
         private string _layoutNameBuffer = string.Empty;
+        private bool _newLayoutPopupOpen = false;
+        private string _newLayoutNameBuffer = string.Empty;
         private bool _layoutDirty = false;
 
         // Callback invoked when the layout changes. Host should persist the provided tool layout.
@@ -792,8 +794,15 @@ namespace Kaleidoscope.Gui.MainWindow
                                 ImGui.EndMenu();
                             }
                             ImGui.Separator();
-                            // Save / Load layouts
-                            if (ImGui.MenuItem("Save layout..."))
+                            // New / Save / Load layouts
+                            if (ImGui.MenuItem("New layout..."))
+                            {
+                                _newLayoutNameBuffer = "";
+                                _newLayoutPopupOpen = true;
+                                ImGui.OpenPopup("new_layout_popup");
+                            }
+
+                            if (ImGui.MenuItem("Save layout as.."))
                             {
                                 _layoutNameBuffer = "";
                                 _saveLayoutPopupOpen = true;
@@ -893,6 +902,53 @@ namespace Kaleidoscope.Gui.MainWindow
                         catch (Exception ex)
                         {
                             LogService.Error("Error in save layout popup", ex);
+                        }
+                        ImGui.EndPopup();
+                    }
+
+                    // New layout modal
+                    if (ImGui.BeginPopupModal("new_layout_popup", ref _newLayoutPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+                    {
+                        try
+                        {
+                            ImGui.TextUnformatted("Enter a name for the new layout:");
+                            ImGui.InputText("##newlayoutname", ref _newLayoutNameBuffer, ConfigStatic.TextInputBufferSize);
+                            if (ImGui.Button("Create"))
+                            {
+                                if (!string.IsNullOrWhiteSpace(_newLayoutNameBuffer))
+                                {
+                                    try
+                                    {
+                                        // Create an empty layout for the new name
+                                        OnSaveLayout?.Invoke(_newLayoutNameBuffer, new List<ToolLayoutState>());
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Error($"Failed to create layout '{_newLayoutNameBuffer}'", ex);
+                                    }
+                                    try
+                                    {
+                                        // Switch to the newly created layout
+                                        OnLoadLayout?.Invoke(_newLayoutNameBuffer);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Error($"Failed to load new layout '{_newLayoutNameBuffer}'", ex);
+                                    }
+                                    ImGui.CloseCurrentPopup();
+                                    _newLayoutPopupOpen = false;
+                                }
+                            }
+                            ImGui.SameLine();
+                            if (ImGui.Button("Cancel"))
+                            {
+                                ImGui.CloseCurrentPopup();
+                                _newLayoutPopupOpen = false;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Error("Error in new layout popup", ex);
                         }
                         ImGui.EndPopup();
                     }
