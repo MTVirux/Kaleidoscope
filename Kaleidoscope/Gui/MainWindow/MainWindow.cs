@@ -19,6 +19,7 @@ namespace Kaleidoscope.Gui.MainWindow
         private readonly SamplerService _samplerService;
         private readonly FilenameService _filenameService;
         private readonly StateService _stateService;
+        private readonly LayoutEditingService _layoutEditingService;
         private readonly GilTrackerComponent _moneyTracker;
         private WindowContentContainer? _contentContainer;
         private TitleBarButton? editModeButton;
@@ -70,6 +71,7 @@ namespace Kaleidoscope.Gui.MainWindow
             SamplerService samplerService,
             FilenameService filenameService,
             StateService stateService,
+            LayoutEditingService layoutEditingService,
             GilTrackerComponent gilTrackerComponent) 
             : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
@@ -78,6 +80,7 @@ namespace Kaleidoscope.Gui.MainWindow
             _samplerService = samplerService;
             _filenameService = filenameService;
             _stateService = stateService;
+            _layoutEditingService = layoutEditingService;
             _moneyTracker = gilTrackerComponent;
 
             SizeConstraints = new WindowSizeConstraints() { MinimumSize = ConfigStatic.MinimumWindowSize };
@@ -88,14 +91,60 @@ namespace Kaleidoscope.Gui.MainWindow
             // Initialize last-saved pos/size from config so change detection starts correct
             _lastSavedPos = Config.MainWindowPos;
             _lastSavedSize = Config.MainWindowSize;
+            
+            // Update window title when dirty state changes
+            _layoutEditingService.OnDirtyStateChanged += (isDirty) =>
+            {
+                UpdateWindowTitle();
+            };
 
             _log.Debug("MainWindow initialized");
+        }
+        
+        /// <summary>
+        /// Updates the window title to reflect the current layout and dirty state.
+        /// </summary>
+        private void UpdateWindowTitle()
+        {
+            var baseTitle = GetDisplayTitle();
+            var layoutName = _layoutEditingService.CurrentLayoutName;
+            if (!string.IsNullOrWhiteSpace(layoutName))
+            {
+                var suffix = _layoutEditingService.IsDirty ? " *" : "";
+                WindowName = $"{baseTitle} - Layout: {layoutName}{suffix}";
+            }
+            else
+            {
+                WindowName = baseTitle;
+            }
         }
 
         private Configuration Config => _configService.Config;
 
         private void InitializeTitleBarButtons()
         {
+            // Save layout button (appears only when dirty and in edit mode)
+            TitleBarButtons.Add(new TitleBarButton
+            {
+                Click = (m) => 
+                { 
+                    if (m == ImGuiMouseButton.Left && _layoutEditingService.IsDirty)
+                    {
+                        _layoutEditingService.Save();
+                        UpdateWindowTitle();
+                    }
+                },
+                Icon = FontAwesomeIcon.Save,
+                IconOffset = new Vector2(2, 2),
+                ShowTooltip = () => 
+                {
+                    if (_layoutEditingService.IsDirty)
+                        ImGui.SetTooltip("Save layout changes");
+                    else
+                        ImGui.SetTooltip("No unsaved changes");
+                },
+            });
+            
             // Settings button
             TitleBarButtons.Add(new TitleBarButton
             {
@@ -154,7 +203,11 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 Icon = FontAwesomeIcon.Edit,
                 IconOffset = new Vector2(2, 2),
-                ShowTooltip = () => ImGui.SetTooltip("Toggle HUD edit mode"),
+                ShowTooltip = () => 
+                {
+                    var dirty = _layoutEditingService.IsDirty ? " (unsaved changes)" : "";
+                    ImGui.SetTooltip($"Toggle HUD edit mode{dirty}");
+                },
             };
             editModeButton.Click = (m) =>
             {
@@ -162,16 +215,26 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     if (_stateService.IsEditMode)
                     {
-                        // Turning off edit mode - persist layout
-                        PersistCurrentLayout();
+                        // Turning off edit mode - prompt to save if dirty
+                        if (_layoutEditingService.IsDirty)
+                        {
+                            _contentContainer?.ShowUnsavedChangesDialog("exit edit mode", () =>
+                            {
+                                _stateService.ToggleEditMode();
+                            });
+                        }
+                        else
+                        {
+                            _stateService.ToggleEditMode();
+                        }
                     }
                     else
                     {
                         // Turning on edit mode - save window position before locking
                         Config.MainWindowPos = ImGui.GetWindowPos();
                         Config.MainWindowSize = ImGui.GetWindowSize();
+                        _stateService.ToggleEditMode();
                     }
-                    _stateService.ToggleEditMode();
                 }
             };
             TitleBarButtons.Add(editModeButton);
@@ -237,6 +300,24 @@ namespace Kaleidoscope.Gui.MainWindow
                 
                 if (string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)) 
                     Config.ActiveWindowedLayoutName = layout.Name;
+                
+                // Initialize the layout editing service with the loaded layout
+                _layoutEditingService.InitializeFromPersisted(
+                    layout.Name, 
+                    LayoutType.Windowed, 
+                    layout.Tools, 
+                    _contentContainer?.GridSettings);
+                UpdateWindowTitle();
+            }
+            else
+            {
+                // No layout exists, initialize with defaults
+                _layoutEditingService.InitializeFromPersisted(
+                    "Default", 
+                    LayoutType.Windowed, 
+                    new List<ToolLayoutState>(), 
+                    _contentContainer?.GridSettings);
+                UpdateWindowTitle();
             }
         }
 
@@ -259,6 +340,11 @@ namespace Kaleidoscope.Gui.MainWindow
                 Config.ActiveWindowedLayoutName = name;
                 _configService.Save();
                 _configService.SaveLayouts();
+                
+                // After saving as new name, initialize the editing service for this layout
+                _layoutEditingService.InitializeFromPersisted(name, LayoutType.Windowed, tools, _contentContainer.GridSettings);
+                UpdateWindowTitle();
+                
                 _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)");
             };
 
@@ -266,18 +352,44 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 if (string.IsNullOrWhiteSpace(name)) return;
                 
-                var layouts = Config.Layouts ?? new List<ContentLayoutState>();
-                var found = layouts.Find(x => x.Name == name && x.Type == LayoutType.Windowed);
-                if (found != null)
+                // Check for unsaved changes before switching layouts
+                if (!_layoutEditingService.TrySwitchLayout(name, LayoutType.Windowed, () =>
                 {
-                    // Apply grid settings first
-                    _contentContainer.SetGridSettingsFromLayout(found);
-                    // Then apply tool layout
-                    _contentContainer.ApplyLayout(found.Tools);
-                    Config.ActiveWindowedLayoutName = name;
-                    _configService.Save();
-                    _configService.SaveLayouts();
-                    _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)");
+                    var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+                    var found = layouts.Find(x => x.Name == name && x.Type == LayoutType.Windowed);
+                    if (found != null)
+                    {
+                        // Apply grid settings first
+                        _contentContainer.SetGridSettingsFromLayout(found);
+                        // Then apply tool layout
+                        _contentContainer.ApplyLayout(found.Tools);
+                        Config.ActiveWindowedLayoutName = name;
+                        _configService.Save();
+                        
+                        // Initialize the editing service for the new layout
+                        _layoutEditingService.InitializeFromPersisted(name, LayoutType.Windowed, found.Tools, _contentContainer.GridSettings);
+                        UpdateWindowTitle();
+                        
+                        _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)");
+                    }
+                }))
+                {
+                    // If dirty, the dialog will be shown and the action will be deferred
+                    _contentContainer.ShowUnsavedChangesDialog($"switch to layout '{name}'", () =>
+                    {
+                        var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+                        var found = layouts.Find(x => x.Name == name && x.Type == LayoutType.Windowed);
+                        if (found != null)
+                        {
+                            _contentContainer.SetGridSettingsFromLayout(found);
+                            _contentContainer.ApplyLayout(found.Tools);
+                            Config.ActiveWindowedLayoutName = name;
+                            _configService.Save();
+                            _layoutEditingService.InitializeFromPersisted(name, LayoutType.Windowed, found.Tools, _contentContainer.GridSettings);
+                            UpdateWindowTitle();
+                            _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)");
+                        }
+                    });
                 }
             };
 
@@ -294,45 +406,47 @@ namespace Kaleidoscope.Gui.MainWindow
                 _windowService?.OpenLayoutsConfig();
             };
 
+            // Wire layout change callback - marks dirty instead of auto-saving
             _contentContainer.OnLayoutChanged = (tools) =>
             {
-                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
-                    ? Config.ActiveWindowedLayoutName
-                    : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
-                var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-                var existing = layouts.Find(x => x.Name == activeName);
-                if (existing == null)
-                {
-                    existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
-                    layouts.Add(existing);
-                }
-                existing.Tools = tools ?? new List<ToolLayoutState>();
-                Config.ActiveWindowedLayoutName = activeName;
-                _configService.Save();
-                _configService.SaveLayouts();
-                _log.Debug($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)");
+                _layoutEditingService.MarkDirty(tools, _contentContainer.GridSettings);
             };
 
-            // Wire grid settings change callback
+            // Wire grid settings change callback - marks dirty instead of auto-saving
             _contentContainer.OnGridSettingsChanged = (gridSettings) =>
             {
-                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
-                    ? Config.ActiveWindowedLayoutName
-                    : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
-                var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-                var existing = layouts.Find(x => x.Name == activeName);
-                if (existing == null)
-                {
-                    existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
-                    layouts.Add(existing);
-                }
-                // Apply grid settings to layout state
-                gridSettings.ApplyToLayoutState(existing);
-                Config.ActiveWindowedLayoutName = activeName;
-                _configService.Save();
-                _configService.SaveLayouts();
-                _log.Debug($"Saved grid settings for layout '{activeName}'");
+                _layoutEditingService.MarkDirty(_contentContainer.ExportLayout(), gridSettings);
             };
+            
+            // Wire explicit save callback
+            _contentContainer.OnSaveLayoutExplicit = () =>
+            {
+                _layoutEditingService.Save();
+                UpdateWindowTitle();
+            };
+            
+            // Wire discard changes callback
+            _contentContainer.OnDiscardChanges = () =>
+            {
+                _layoutEditingService.DiscardChanges();
+                
+                // Reload the layout from persisted state
+                var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+                var found = layouts.Find(x => x.Name == _layoutEditingService.CurrentLayoutName && x.Type == LayoutType.Windowed);
+                if (found != null)
+                {
+                    _contentContainer.SetGridSettingsFromLayout(found);
+                    _contentContainer.ApplyLayout(found.Tools);
+                }
+                
+                UpdateWindowTitle();
+            };
+            
+            // Wire dirty state query
+            _contentContainer.GetIsDirty = () => _layoutEditingService.IsDirty;
+            
+            // Wire current layout name query
+            _contentContainer.GetCurrentLayoutName = () => _layoutEditingService.CurrentLayoutName;
         }
 
         private void WireInteractionCallbacks()
@@ -356,21 +470,12 @@ namespace Kaleidoscope.Gui.MainWindow
 
         private void PersistCurrentLayout()
         {
-            var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) ? Config.ActiveWindowedLayoutName : null;
-            ContentLayoutState? layout = null;
-            
-            if (activeName != null)
-                layout = layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault(x => x.Name == activeName);
-            layout ??= layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault();
-
-            if (layout == null)
+            // Use the LayoutEditingService to save instead of manually persisting
+            if (_layoutEditingService.IsDirty)
             {
-                layout = new ContentLayoutState() { Name = activeName ?? "Default", Type = LayoutType.Windowed };
-                layouts.Add(layout);
+                _layoutEditingService.Save();
+                UpdateWindowTitle();
             }
-            layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
-            _configService.Save();
         }
 
         // Expose an explicit exit fullscreen helper so TopBar can call it.
@@ -479,28 +584,15 @@ namespace Kaleidoscope.Gui.MainWindow
             try
             {
                 _contentContainer?.Draw(_stateService.IsEditMode);
-                // If the container reports layout changes, persist them into the active layout
-                    try
-                    {
-                        if (_contentContainer != null && _contentContainer.TryConsumeLayoutDirty())
-                        {
-                            _log.Information("Detected layout dirty, persisting active layout");
-                            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
-                                ? Config.ActiveWindowedLayoutName
-                                : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
-                            var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-                            var existing = layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault(x => x.Name == activeName);
-                            if (existing == null)
-                            {
-                                existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
-                                layouts.Add(existing);
-                            }
-                            existing.Tools = _contentContainer.ExportLayout();
-                            Config.ActiveWindowedLayoutName = activeName;
-                            _configService.Save();
-                        }
-                    }
-                    catch (Exception ex) { LogService.Debug($"[MainWindow] Layout auto-save failed: {ex.Message}"); }
+                
+                // Note: Layout changes are now tracked by LayoutEditingService.
+                // The dirty flag is consumed internally and marked in the service.
+                // Auto-save has been removed - user must explicitly save.
+                if (_contentContainer != null)
+                {
+                    _contentContainer.TryConsumeLayoutDirty(); // Clear internal flag if set
+                }
+                
                 // Detect main window position/size changes and persist them promptly (throttled)
                 try
                 {
@@ -526,7 +618,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 }
                 catch (Exception ex) { _log.Debug($"[MainWindow] Window pos/size auto-save failed: {ex.Message}"); }
             }
-            catch (Exception ex) { LogService.Debug($"[MainWindow] OnLayoutChanged failed: {ex.Message}"); }
+            catch (Exception ex) { LogService.Debug($"[MainWindow] Draw failed: {ex.Message}"); }
         }
 
         private static string GetDisplayTitle()

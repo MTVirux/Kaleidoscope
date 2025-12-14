@@ -36,7 +36,8 @@ namespace Kaleidoscope.Gui.MainWindow
                 AutoAdjustResolution = AutoAdjustResolution,
                 Columns = Columns,
                 Rows = Rows,
-                GridResolutionMultiplier = GridResolutionMultiplier
+                GridResolutionMultiplier = GridResolutionMultiplier,
+                Subdivisions = Subdivisions
             };
         }
         
@@ -49,6 +50,7 @@ namespace Kaleidoscope.Gui.MainWindow
             Columns = other.Columns;
             Rows = other.Rows;
             GridResolutionMultiplier = other.GridResolutionMultiplier;
+            Subdivisions = other.Subdivisions;
         }
         
         /// <summary>

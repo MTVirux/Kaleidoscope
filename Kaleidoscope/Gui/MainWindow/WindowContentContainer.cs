@@ -80,9 +80,38 @@ namespace Kaleidoscope.Gui.MainWindow
         private bool _newLayoutPopupOpen = false;
         private string _newLayoutNameBuffer = string.Empty;
         private bool _layoutDirty = false;
+        
+        // Unsaved changes dialog state
+        private bool _unsavedChangesPopupOpen = false;
+        private string _unsavedChangesDescription = string.Empty;
+        private Action? _unsavedChangesContinueAction = null;
 
-        // Callback invoked when the layout changes. Host should persist the provided tool layout.
+        // Callback invoked when the layout changes. Host should mark the layout as dirty (not auto-save).
         public Action<List<ToolLayoutState>>? OnLayoutChanged;
+        
+        // Callback invoked when the user explicitly saves the layout.
+        public Action? OnSaveLayoutExplicit;
+        
+        // Callback invoked when the user discards unsaved changes.
+        public Action? OnDiscardChanges;
+        
+        // Callback to check if the layout has unsaved changes.
+        public Func<bool>? GetIsDirty;
+        
+        // Callback to get the current layout name for display.
+        public Func<string>? GetCurrentLayoutName;
+        
+        /// <summary>
+        /// Opens the unsaved changes dialog to prompt the user before a destructive action.
+        /// </summary>
+        /// <param name="description">A description of the action that will occur.</param>
+        /// <param name="continueAction">The action to perform after Save or Discard.</param>
+        public void ShowUnsavedChangesDialog(string description, Action? continueAction)
+        {
+            _unsavedChangesDescription = description;
+            _unsavedChangesContinueAction = continueAction;
+            _unsavedChangesPopupOpen = true;
+        }
 
         // Callback invoked to open the layouts management UI (config window layouts tab).
         public Action? OnManageLayouts;
@@ -794,7 +823,44 @@ namespace Kaleidoscope.Gui.MainWindow
                                 ImGui.EndMenu();
                             }
                             ImGui.Separator();
-                            // New / Save / Load layouts
+                            
+                            // Show current layout name and dirty indicator
+                            var layoutName = GetCurrentLayoutName?.Invoke() ?? "Default";
+                            var isDirty = GetIsDirty?.Invoke() ?? false;
+                            var displayName = isDirty ? $"{layoutName} *" : layoutName;
+                            ImGui.TextDisabled($"Layout: {displayName}");
+                            
+                            // Save Layout (explicit save action)
+                            if (isDirty)
+                            {
+                                if (ImGui.MenuItem("Save Layout"))
+                                {
+                                    try
+                                    {
+                                        OnSaveLayoutExplicit?.Invoke();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Error("Failed to save layout", ex);
+                                    }
+                                }
+                                
+                                if (ImGui.MenuItem("Discard Changes"))
+                                {
+                                    try
+                                    {
+                                        OnDiscardChanges?.Invoke();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Error("Failed to discard changes", ex);
+                                    }
+                                }
+                                
+                                ImGui.Separator();
+                            }
+                            
+                            // New / Save As / Load layouts
                             if (ImGui.MenuItem("New layout..."))
                             {
                                 _newLayoutNameBuffer = "";
@@ -957,6 +1023,9 @@ namespace Kaleidoscope.Gui.MainWindow
                     DrawGridResolutionModal(availRegion, cellW, cellH);
                 }
             }
+            
+            // Unsaved changes dialog - drawn outside edit mode so it can be shown anytime
+            DrawUnsavedChangesDialog();
 
             for (var i = 0; i < _tools.Count; i++)
             {
@@ -1442,6 +1511,111 @@ namespace Kaleidoscope.Gui.MainWindow
         catch (Exception ex)
         {
             LogService.Error("Error in grid resolution modal", ex);
+        }
+        
+        ImGui.EndPopup();
+    }
+
+    /// <summary>
+    /// Draws the unsaved changes confirmation dialog.
+    /// </summary>
+    private void DrawUnsavedChangesDialog()
+    {
+        const string popupName = "unsaved_changes_popup";
+        
+        // Open the popup if flagged
+        if (_unsavedChangesPopupOpen && !ImGui.IsPopupOpen(popupName))
+        {
+            ImGui.OpenPopup(popupName);
+        }
+        
+        if (!ImGui.BeginPopupModal(popupName, ref _unsavedChangesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            return;
+        }
+        
+        try
+        {
+            ImGui.TextUnformatted("Unsaved Layout Changes");
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            ImGui.TextWrapped($"You have unsaved changes to the current layout.");
+            if (!string.IsNullOrWhiteSpace(_unsavedChangesDescription))
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f), $"Action: {_unsavedChangesDescription}");
+            }
+            ImGui.Spacing();
+            ImGui.TextUnformatted("What would you like to do?");
+            
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            // Save button
+            if (ImGui.Button("Save", new Vector2(80, 0)))
+            {
+                try
+                {
+                    OnSaveLayoutExplicit?.Invoke();
+                    _unsavedChangesContinueAction?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    LogService.Error("Error in unsaved changes Save action", ex);
+                }
+                
+                ImGui.CloseCurrentPopup();
+                _unsavedChangesPopupOpen = false;
+                _unsavedChangesContinueAction = null;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Save your changes, then continue");
+            }
+            
+            ImGui.SameLine();
+            
+            // Discard button
+            if (ImGui.Button("Discard", new Vector2(80, 0)))
+            {
+                try
+                {
+                    OnDiscardChanges?.Invoke();
+                    _unsavedChangesContinueAction?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    LogService.Error("Error in unsaved changes Discard action", ex);
+                }
+                
+                ImGui.CloseCurrentPopup();
+                _unsavedChangesPopupOpen = false;
+                _unsavedChangesContinueAction = null;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Discard your changes and revert to the last saved layout");
+            }
+            
+            ImGui.SameLine();
+            
+            // Cancel button
+            if (ImGui.Button("Cancel", new Vector2(80, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+                _unsavedChangesPopupOpen = false;
+                _unsavedChangesContinueAction = null;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Cancel and return to editing");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Error in unsaved changes dialog", ex);
         }
         
         ImGui.EndPopup();

@@ -40,6 +40,7 @@ public static class StaticServiceManager
     private static ServiceManager AddServices(this ServiceManager services)
         => services
             .AddSingleton<StateService>()
+            .AddSingleton<LayoutEditingService>()
             .AddSingleton<SamplerService>()
             .AddSingleton<CommandService>();
 
