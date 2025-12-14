@@ -8,11 +8,28 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public class StateService : IStateService
 {
+    private static StateService? _instance;
+
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
 
     private bool _isFullscreen;
     private bool _isEditMode;
+
+    /// <summary>
+    /// Indicates whether the plugin was compiled in Debug configuration.
+    /// </summary>
+    public static bool IsDebugBuild =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
+    /// <summary>
+    /// Static accessor for edit mode state. Returns false if service not initialized.
+    /// </summary>
+    public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
     private bool _isLocked;
     private bool _isDragging;
     private bool _isResizing;
@@ -28,6 +45,7 @@ public class StateService : IStateService
         _isLocked = configService.Config.PinMainWindow;
         _isFullscreen = configService.Config.ExclusiveFullscreen;
 
+        _instance = this;
         _log.Debug("StateService initialized");
     }
 
