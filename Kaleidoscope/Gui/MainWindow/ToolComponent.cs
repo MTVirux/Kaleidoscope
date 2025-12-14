@@ -26,6 +26,18 @@ public abstract class ToolComponent
     /// </summary>
     public Vector4 BackgroundColor { get; set; } = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
 
+    // Grid-based coordinates for proportional resizing
+    /// <summary>Column position in grid coordinates (0-based, fractional).</summary>
+    public float GridCol { get; set; } = 0f;
+    /// <summary>Row position in grid coordinates (0-based, fractional).</summary>
+    public float GridRow { get; set; } = 0f;
+    /// <summary>Width in grid columns (fractional).</summary>
+    public float GridColSpan { get; set; } = 4f;
+    /// <summary>Height in grid rows (fractional).</summary>
+    public float GridRowSpan { get; set; } = 4f;
+    /// <summary>Whether grid coordinates have been initialized.</summary>
+    public bool HasGridCoords { get; set; } = false;
+
     /// <summary>
     /// Called when the tool should render its UI content.
     /// </summary>

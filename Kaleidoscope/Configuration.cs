@@ -47,6 +47,23 @@ namespace Kaleidoscope
         public List<ContentComponentState> Components { get; set; } = new List<ContentComponentState>();
         // New: explicit tool layout entries for the HUD tools (absolute positioning)
         public List<ToolLayoutState> Tools { get; set; } = new List<ToolLayoutState>();
+        
+        // Layout-specific grid resolution settings
+        /// <summary>
+        /// When true, grid resolution is calculated from aspect ratio * GridResolutionMultiplier.
+        /// When false, Columns and Rows are used directly.
+        /// </summary>
+        public bool AutoAdjustResolution { get; set; } = true;
+        /// <summary>Number of columns in the grid (used when AutoAdjustResolution is false).</summary>
+        public int Columns { get; set; } = 16;
+        /// <summary>Number of rows in the grid (used when AutoAdjustResolution is false).</summary>
+        public int Rows { get; set; } = 9;
+        /// <summary>
+        /// Grid resolution multiplier (1-10). When AutoAdjustResolution is true:
+        /// Columns = AspectRatioWidth * GridResolutionMultiplier
+        /// Rows = AspectRatioHeight * GridResolutionMultiplier
+        /// </summary>
+        public int GridResolutionMultiplier { get; set; } = 2;
     }
 
     public class ContentComponentState
@@ -70,5 +87,18 @@ namespace Kaleidoscope
         public bool BackgroundEnabled { get; set; } = false;
         // Default to Dalamud red (approx. #D23A3A)
         public Vector4 BackgroundColor { get; set; } = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+        
+        // Grid-based coordinates for proportional resizing
+        // These are the column/row positions (can be fractional for sub-grid positions)
+        /// <summary>Column position in grid coordinates (0-based, fractional).</summary>
+        public float GridCol { get; set; } = 0f;
+        /// <summary>Row position in grid coordinates (0-based, fractional).</summary>
+        public float GridRow { get; set; } = 0f;
+        /// <summary>Width in grid columns (fractional).</summary>
+        public float GridColSpan { get; set; } = 4f;
+        /// <summary>Height in grid rows (fractional).</summary>
+        public float GridRowSpan { get; set; } = 4f;
+        /// <summary>Whether grid coordinates have been set (for migration from pixel-based layouts).</summary>
+        public bool HasGridCoords { get; set; } = false;
     }
 }

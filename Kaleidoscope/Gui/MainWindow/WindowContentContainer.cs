@@ -22,6 +22,18 @@ namespace Kaleidoscope.Gui.MainWindow
         private int _settingsToolIndex = -1;
         // Whether the settings modal is currently open (used as ref for ImGui modal)
         private bool _settingsPopupOpen = false;
+        
+        // Grid resolution modal state
+        private bool _gridResolutionPopupOpen = false;
+        private LayoutGridSettings _editingGridSettings = new LayoutGridSettings();
+        private int _previousColumns = 0;
+        private int _previousRows = 0;
+        
+        // Current layout grid settings
+        private LayoutGridSettings _currentGridSettings = new LayoutGridSettings();
+        
+        // Last known content region size for detecting window resize
+        private Vector2 _lastContentSize = Vector2.Zero;
 
         private class ToolRegistration
         {
@@ -135,6 +147,140 @@ namespace Kaleidoscope.Gui.MainWindow
             _getSubdivisions = getSubdivisions ?? (() => 4);
         }
 
+        /// <summary>
+        /// Gets the current grid settings for this layout.
+        /// </summary>
+        public LayoutGridSettings GridSettings => _currentGridSettings;
+
+        /// <summary>
+        /// Gets the effective number of columns for the current grid settings and content size.
+        /// </summary>
+        public int GetEffectiveColumns(Vector2 contentSize)
+        {
+            // Calculate aspect ratio from content size
+            var aspectWidth = 16f;
+            var aspectHeight = 9f;
+            if (contentSize.X > 0 && contentSize.Y > 0)
+            {
+                var gcd = GCD((int)contentSize.X, (int)contentSize.Y);
+                if (gcd > 0)
+                {
+                    aspectWidth = contentSize.X / gcd;
+                    aspectHeight = contentSize.Y / gcd;
+                    // Normalize to common aspect ratios
+                    if (aspectWidth > 100 || aspectHeight > 100)
+                    {
+                        var ratio = contentSize.X / contentSize.Y;
+                        if (ratio >= 1.7f && ratio <= 1.8f) { aspectWidth = 16; aspectHeight = 9; }
+                        else if (ratio >= 1.5f && ratio <= 1.6f) { aspectWidth = 16; aspectHeight = 10; }
+                        else if (ratio >= 1.3f && ratio <= 1.4f) { aspectWidth = 4; aspectHeight = 3; }
+                        else if (ratio >= 2.3f && ratio <= 2.4f) { aspectWidth = 21; aspectHeight = 9; }
+                        else { aspectWidth = 16; aspectHeight = 9; } // fallback
+                    }
+                }
+            }
+            return _currentGridSettings.GetEffectiveColumns(aspectWidth, aspectHeight);
+        }
+
+        /// <summary>
+        /// Gets the effective number of rows for the current grid settings and content size.
+        /// </summary>
+        public int GetEffectiveRows(Vector2 contentSize)
+        {
+            var aspectWidth = 16f;
+            var aspectHeight = 9f;
+            if (contentSize.X > 0 && contentSize.Y > 0)
+            {
+                var gcd = GCD((int)contentSize.X, (int)contentSize.Y);
+                if (gcd > 0)
+                {
+                    aspectWidth = contentSize.X / gcd;
+                    aspectHeight = contentSize.Y / gcd;
+                    if (aspectWidth > 100 || aspectHeight > 100)
+                    {
+                        var ratio = contentSize.X / contentSize.Y;
+                        if (ratio >= 1.7f && ratio <= 1.8f) { aspectWidth = 16; aspectHeight = 9; }
+                        else if (ratio >= 1.5f && ratio <= 1.6f) { aspectWidth = 16; aspectHeight = 10; }
+                        else if (ratio >= 1.3f && ratio <= 1.4f) { aspectWidth = 4; aspectHeight = 3; }
+                        else if (ratio >= 2.3f && ratio <= 2.4f) { aspectWidth = 21; aspectHeight = 9; }
+                        else { aspectWidth = 16; aspectHeight = 9; }
+                    }
+                }
+            }
+            return _currentGridSettings.GetEffectiveRows(aspectWidth, aspectHeight);
+        }
+
+        private static int GCD(int a, int b)
+        {
+            while (b != 0)
+            {
+                var t = b;
+                b = a % b;
+                a = t;
+            }
+            return a;
+        }
+
+        /// <summary>
+        /// Updates the grid settings and repositions tools to maintain their relative positions.
+        /// </summary>
+        public void UpdateGridSettings(LayoutGridSettings newSettings, Vector2 contentSize)
+        {
+            if (newSettings == null) return;
+            
+            var oldCols = GetEffectiveColumns(contentSize);
+            var oldRows = GetEffectiveRows(contentSize);
+            
+            _currentGridSettings.CopyFrom(newSettings);
+            
+            var newCols = GetEffectiveColumns(contentSize);
+            var newRows = GetEffectiveRows(contentSize);
+            
+            // Calculate new cell sizes
+            var newCellW = contentSize.X / MathF.Max(1f, newCols);
+            var newCellH = contentSize.Y / MathF.Max(1f, newRows);
+            
+            // Reposition tools to maintain relative positions
+            if (oldCols > 0 && oldRows > 0 && newCols > 0 && newRows > 0 && (oldCols != newCols || oldRows != newRows))
+            {
+                var colScale = (float)newCols / oldCols;
+                var rowScale = (float)newRows / oldRows;
+                
+                foreach (var te in _tools)
+                {
+                    var t = te.Tool;
+                    // Scale grid coordinates to maintain relative position
+                    t.GridCol *= colScale;
+                    t.GridRow *= rowScale;
+                    t.GridColSpan *= colScale;
+                    t.GridRowSpan *= rowScale;
+                    
+                    // Update pixel positions immediately
+                    t.Position = new Vector2(t.GridCol * newCellW, t.GridRow * newCellH);
+                    t.Size = new Vector2(
+                        MathF.Max(50f, t.GridColSpan * newCellW),
+                        MathF.Max(50f, t.GridRowSpan * newCellH)
+                    );
+                }
+                
+                MarkLayoutDirty();
+            }
+        }
+
+        /// <summary>
+        /// Sets the grid settings from a layout state without repositioning tools.
+        /// </summary>
+        public void SetGridSettingsFromLayout(ContentLayoutState? layout)
+        {
+            if (layout == null) return;
+            _currentGridSettings = LayoutGridSettings.FromLayoutState(layout);
+        }
+
+        /// <summary>
+        /// Callback invoked when grid settings change. Host should persist the settings.
+        /// </summary>
+        public Action<LayoutGridSettings>? OnGridSettingsChanged;
+
         // Allows the host (e.g. MainWindow) to supply a factory to create tools
         public void SetToolFactory(Action<string, Vector2> factory)
         {
@@ -180,6 +326,12 @@ namespace Kaleidoscope.Gui.MainWindow
                     Visible = t.Visible,
                     BackgroundEnabled = t is { } ? t.BackgroundEnabled : false,
                     BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
+                    // Include grid coordinates
+                    GridCol = t.GridCol,
+                    GridRow = t.GridRow,
+                    GridColSpan = t.GridColSpan,
+                    GridRowSpan = t.GridRowSpan,
+                    HasGridCoords = t.HasGridCoords,
                 });
             }
             LogService.Debug($"ExportLayout: exported {ret.Count} tools");
@@ -232,6 +384,12 @@ namespace Kaleidoscope.Gui.MainWindow
                         match.Size = entry.Size;
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
+                        // Apply grid coordinates
+                        match.GridCol = entry.GridCol;
+                        match.GridRow = entry.GridRow;
+                        match.GridColSpan = entry.GridColSpan;
+                        match.GridRowSpan = entry.GridRowSpan;
+                        match.HasGridCoords = entry.HasGridCoords;
                         if (matchIdx >= 0) matchedIndices.Add(matchIdx);
                         LogService.Debug($"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
                         continue;
@@ -254,6 +412,12 @@ namespace Kaleidoscope.Gui.MainWindow
                                 created.Visible = entry.Visible;
                                 created.BackgroundEnabled = entry.BackgroundEnabled;
                                 created.BackgroundColor = entry.BackgroundColor;
+                                // Apply grid coordinates
+                                created.GridCol = entry.GridCol;
+                                created.GridRow = entry.GridRow;
+                                created.GridColSpan = entry.GridColSpan;
+                                created.GridRowSpan = entry.GridRowSpan;
+                                created.HasGridCoords = entry.HasGridCoords;
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
                                 AddTool(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
@@ -284,6 +448,12 @@ namespace Kaleidoscope.Gui.MainWindow
                                     cand.Visible = entry.Visible;
                                     cand.BackgroundEnabled = entry.BackgroundEnabled;
                                     cand.BackgroundColor = entry.BackgroundColor;
+                                    // Apply grid coordinates
+                                    cand.GridCol = entry.GridCol;
+                                    cand.GridRow = entry.GridRow;
+                                    cand.GridColSpan = entry.GridColSpan;
+                                    cand.GridRowSpan = entry.GridRowSpan;
+                                    cand.HasGridCoords = entry.HasGridCoords;
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
                                     AddTool(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
@@ -338,6 +508,12 @@ namespace Kaleidoscope.Gui.MainWindow
                                         inst.Visible = entry.Visible;
                                         inst.BackgroundEnabled = entry.BackgroundEnabled;
                                         inst.BackgroundColor = entry.BackgroundColor;
+                                        // Apply grid coordinates
+                                        inst.GridCol = entry.GridCol;
+                                        inst.GridRow = entry.GridRow;
+                                        inst.GridColSpan = entry.GridColSpan;
+                                        inst.GridRowSpan = entry.GridRowSpan;
+                                        inst.HasGridCoords = entry.HasGridCoords;
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
                                         AddTool(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
@@ -388,9 +564,54 @@ namespace Kaleidoscope.Gui.MainWindow
             var contentOrigin = contentMin;
             var availRegion = contentMax - contentMin;
 
-            // Compute grid cell size once
-            var cellW = MathF.Max(8f, availRegion.X * MathF.Max(0.01f, _getCellWidthPercent() / 100f));
-            var cellH = MathF.Max(8f, availRegion.Y * MathF.Max(0.01f, _getCellHeightPercent() / 100f));
+            // Get effective grid dimensions from layout settings
+            var effectiveCols = GetEffectiveColumns(availRegion);
+            var effectiveRows = GetEffectiveRows(availRegion);
+            
+            // Compute grid cell size based on layout settings
+            var cellW = availRegion.X / MathF.Max(1f, effectiveCols);
+            var cellH = availRegion.Y / MathF.Max(1f, effectiveRows);
+            
+            // Handle window resize: update tool positions based on grid coordinates
+            if (_lastContentSize != Vector2.Zero && _lastContentSize != availRegion)
+            {
+                try
+                {
+                    // Update all tools to new positions based on their grid coordinates
+                    foreach (var te in _tools)
+                    {
+                        var t = te.Tool;
+                        if (t.HasGridCoords)
+                        {
+                            // Recalculate pixel position from grid coordinates
+                            t.Position = new Vector2(t.GridCol * cellW, t.GridRow * cellH);
+                            t.Size = new Vector2(
+                                MathF.Max(50f, t.GridColSpan * cellW),
+                                MathF.Max(50f, t.GridRowSpan * cellH)
+                            );
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"Window resize tool update error: {ex.Message}");
+                }
+            }
+            _lastContentSize = availRegion;
+            
+            // Initialize grid coordinates for tools that don't have them
+            foreach (var te in _tools)
+            {
+                var t = te.Tool;
+                if (!t.HasGridCoords && cellW > 0 && cellH > 0)
+                {
+                    t.GridCol = t.Position.X / cellW;
+                    t.GridRow = t.Position.Y / cellH;
+                    t.GridColSpan = t.Size.X / cellW;
+                    t.GridRowSpan = t.Size.Y / cellH;
+                    t.HasGridCoords = true;
+                }
+            }
 
             // If in edit mode, draw a grid overlay to help alignment
             if (editMode)
@@ -403,6 +624,8 @@ namespace Kaleidoscope.Gui.MainWindow
                     // major (cell) lines color (slightly stronger)
                     var majorColor = ImGui.GetColorU32(new System.Numerics.Vector4(1f, 1f, 1f, 0.08f));
 
+                    // Draw grid lines for each column and row
+                    // Major lines at cell boundaries, minor lines at subdivision boundaries
                     var subW = cellW / subdivisions;
                     var subH = cellH / subdivisions;
 
@@ -410,31 +633,27 @@ namespace Kaleidoscope.Gui.MainWindow
                     const int MaxLines = ConfigStatic.MaxGridLines; // total per axis
 
                     // Vertical lines
-                    var totalV = (int)MathF.Ceiling((contentMax.X - contentMin.X) / subW) + 1;
+                    var totalV = effectiveCols * subdivisions + 1;
                     var vStep = 1;
                     if (totalV > MaxLines) vStep = (int)MathF.Ceiling((float)totalV / MaxLines);
                     var vx = contentMin.X;
-                    var countV = 0;
-                    for (var iV = 0; iV < totalV; iV++, vx += subW)
+                    for (var iV = 0; iV <= totalV; iV++, vx += subW)
                     {
                         if (iV % vStep != 0) continue;
-                        var isMajor = (iV % (subdivisions) == 0);
+                        var isMajor = (iV % subdivisions == 0);
                         dl.AddLine(new Vector2(vx, contentMin.Y), new Vector2(vx, contentMax.Y), isMajor ? majorColor : minorColor, 1f);
-                        countV++;
                     }
 
                     // Horizontal lines
-                    var totalH = (int)MathF.Ceiling((contentMax.Y - contentMin.Y) / subH) + 1;
+                    var totalH = effectiveRows * subdivisions + 1;
                     var hStep = 1;
                     if (totalH > MaxLines) hStep = (int)MathF.Ceiling((float)totalH / MaxLines);
                     var hy = contentMin.Y;
-                    var countH = 0;
-                    for (var iH = 0; iH < totalH; iH++, hy += subH)
+                    for (var iH = 0; iH <= totalH; iH++, hy += subH)
                     {
                         if (iH % hStep != 0) continue;
-                        var isMajor = (iH % (subdivisions) == 0);
+                        var isMajor = (iH % subdivisions == 0);
                         dl.AddLine(new Vector2(contentMin.X, hy), new Vector2(contentMax.X, hy), isMajor ? majorColor : minorColor, 1f);
-                        countH++;
                     }
                 }
                 catch (Exception ex)
@@ -513,6 +732,16 @@ namespace Kaleidoscope.Gui.MainWindow
                                                         MathF.Round(tool.Position.X / subW) * subW,
                                                         MathF.Round(tool.Position.Y / subH) * subH
                                                     );
+                                                    
+                                                    // Set grid coordinates for proportional resizing
+                                                    if (cellW > 0 && cellH > 0)
+                                                    {
+                                                        tool.GridCol = tool.Position.X / cellW;
+                                                        tool.GridRow = tool.Position.Y / cellH;
+                                                        tool.GridColSpan = tool.Size.X / cellW;
+                                                        tool.GridRowSpan = tool.Size.Y / cellH;
+                                                        tool.HasGridCoords = true;
+                                                    }
                                                 }
                                                 catch (Exception ex)
                                                 {
@@ -567,6 +796,17 @@ namespace Kaleidoscope.Gui.MainWindow
 
                                 ImGui.EndMenu();
                             }
+                            
+                            ImGui.Separator();
+                            
+                            // Edit grid resolution
+                            if (ImGui.MenuItem("Edit grid resolution..."))
+                            {
+                                _editingGridSettings = _currentGridSettings.Clone();
+                                _previousColumns = GetEffectiveColumns(availRegion);
+                                _previousRows = GetEffectiveRows(availRegion);
+                                _gridResolutionPopupOpen = true;
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -611,6 +851,9 @@ namespace Kaleidoscope.Gui.MainWindow
                         }
                         ImGui.EndPopup();
                     }
+                    
+                    // Grid resolution modal
+                    DrawGridResolutionModal(availRegion, cellW, cellH);
                 }
             }
 
@@ -712,6 +955,14 @@ namespace Kaleidoscope.Gui.MainWindow
                                 snapped.X = MathF.Max(minX2, MathF.Min(maxX2, snapped.X));
                                 snapped.Y = MathF.Max(minY2, MathF.Min(maxY2, snapped.Y));
                                 t.Position = snapped;
+                                
+                                // Update grid coordinates
+                                if (cellW > 0 && cellH > 0)
+                                {
+                                    t.GridCol = t.Position.X / cellW;
+                                    t.GridRow = t.Position.Y / cellH;
+                                    t.HasGridCoords = true;
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -771,6 +1022,14 @@ namespace Kaleidoscope.Gui.MainWindow
                                 snappedSize.X = MathF.Min(snappedSize.X, MathF.Max(50f, maxW2));
                                 snappedSize.Y = MathF.Min(snappedSize.Y, MathF.Max(50f, maxH2));
                                 t.Size = snappedSize;
+                                
+                                // Update grid coordinates
+                                if (cellW > 0 && cellH > 0)
+                                {
+                                    t.GridColSpan = t.Size.X / cellW;
+                                    t.GridRowSpan = t.Size.Y / cellH;
+                                    t.HasGridCoords = true;
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -950,6 +1209,129 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             _settingsToolIndex = -1;
         }
+    }
+
+    /// <summary>
+    /// Draws the grid resolution editing modal.
+    /// </summary>
+    private void DrawGridResolutionModal(Vector2 contentSize, float cellW, float cellH)
+    {
+        const string popupName = "grid_resolution_popup";
+        
+        // Open the popup if flagged
+        if (_gridResolutionPopupOpen && !ImGui.IsPopupOpen(popupName))
+        {
+            ImGui.OpenPopup(popupName);
+        }
+        
+        if (!ImGui.BeginPopupModal(popupName, ref _gridResolutionPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            return;
+        }
+        
+        try
+        {
+            ImGui.TextUnformatted("Edit Grid Resolution");
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            // Auto-adjust checkbox
+            var autoAdjust = _editingGridSettings.AutoAdjustResolution;
+            if (ImGui.Checkbox("Auto-adjust resolution", ref autoAdjust))
+            {
+                _editingGridSettings.AutoAdjustResolution = autoAdjust;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("When enabled, grid resolution is calculated from aspect ratio.\nColumns = AspectWidth × Multiplier\nRows = AspectHeight × Multiplier");
+            }
+            
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            if (_editingGridSettings.AutoAdjustResolution)
+            {
+                // Show only the resolution multiplier slider
+                var multiplier = _editingGridSettings.GridResolutionMultiplier;
+                ImGui.TextUnformatted("Grid Resolution Multiplier:");
+                if (ImGui.SliderInt("##resolution", ref multiplier, 1, 10))
+                {
+                    _editingGridSettings.GridResolutionMultiplier = multiplier;
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Higher values create a finer grid.\nFor 16:9 aspect ratio:\n  1 = 16×9 grid\n  2 = 32×18 grid\n  4 = 64×36 grid");
+                }
+                
+                ImGui.Spacing();
+                
+                // Show preview of calculated values
+                var previewCols = _editingGridSettings.GetEffectiveColumns(16f, 9f);
+                var previewRows = _editingGridSettings.GetEffectiveRows(16f, 9f);
+                ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), $"Preview (16:9): {previewCols} columns × {previewRows} rows");
+            }
+            else
+            {
+                // Show manual column/row inputs
+                ImGui.TextUnformatted("Columns:");
+                var cols = _editingGridSettings.Columns;
+                if (ImGui.InputInt("##cols", ref cols))
+                {
+                    _editingGridSettings.Columns = Math.Max(1, Math.Min(100, cols));
+                }
+                
+                ImGui.TextUnformatted("Rows:");
+                var rows = _editingGridSettings.Rows;
+                if (ImGui.InputInt("##rows", ref rows))
+                {
+                    _editingGridSettings.Rows = Math.Max(1, Math.Min(100, rows));
+                }
+                
+                ImGui.Spacing();
+                
+                ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), $"Grid: {_editingGridSettings.Columns} columns × {_editingGridSettings.Rows} rows");
+            }
+            
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            // OK / Cancel buttons
+            if (ImGui.Button("OK", new Vector2(80, 0)))
+            {
+                try
+                {
+                    // Apply the new settings and reposition tools
+                    UpdateGridSettings(_editingGridSettings, contentSize);
+                    
+                    // Notify host to persist the settings
+                    try { OnGridSettingsChanged?.Invoke(_currentGridSettings); }
+                    catch (Exception ex) { LogService.Debug($"OnGridSettingsChanged error: {ex.Message}"); }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Error("Error applying grid settings", ex);
+                }
+                
+                ImGui.CloseCurrentPopup();
+                _gridResolutionPopupOpen = false;
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Cancel", new Vector2(80, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+                _gridResolutionPopupOpen = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Error in grid resolution modal", ex);
+        }
+        
+        ImGui.EndPopup();
     }
     }
 }

@@ -62,9 +62,15 @@ namespace Kaleidoscope.Gui.MainWindow
                         layout = layouts.Find(x => x.Name == activeName);
                     layout ??= layouts.FirstOrDefault();
 
-                    if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
+                    if (layout != null)
                     {
-                        _contentContainer.ApplyLayout(layout.Tools);
+                        // Apply grid settings first
+                        _contentContainer.SetGridSettingsFromLayout(layout);
+                        
+                        if (layout.Tools != null && layout.Tools.Count > 0)
+                        {
+                            _contentContainer.ApplyLayout(layout.Tools);
+                        }
                     }
                 }
                 catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Layout apply failed: {ex.Message}"); }
@@ -99,6 +105,9 @@ namespace Kaleidoscope.Gui.MainWindow
                         var found = layouts.Find(x => x.Name == name);
                         if (found != null)
                         {
+                            // Apply grid settings first
+                            _contentContainer.SetGridSettingsFromLayout(found);
+                            // Then apply tool layout
                             _contentContainer.ApplyLayout(found.Tools);
                             Config.ActiveLayoutName = name;
                             _configService.Save();
@@ -137,6 +146,29 @@ namespace Kaleidoscope.Gui.MainWindow
                         _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
                     catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnLayoutChanged failed: {ex.Message}"); }
+                };
+
+                // Wire grid settings change callback
+                _contentContainer.OnGridSettingsChanged = (gridSettings) =>
+                {
+                    try
+                    {
+                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
+                            ? Config.ActiveLayoutName
+                            : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                        var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
+                        var existing = layouts.Find(x => x.Name == activeName);
+                        if (existing == null)
+                        {
+                            existing = new Kaleidoscope.ContentLayoutState { Name = activeName };
+                            layouts.Add(existing);
+                        }
+                        gridSettings.ApplyToLayoutState(existing);
+                        Config.ActiveLayoutName = activeName;
+                        _configService.Save();
+                        _log.Debug($"Saved grid settings for layout '{activeName}' [fullscreen]");
+                    }
+                    catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnGridSettingsChanged failed: {ex.Message}"); }
                 };
 
                 // Wire interaction state callbacks to StateService

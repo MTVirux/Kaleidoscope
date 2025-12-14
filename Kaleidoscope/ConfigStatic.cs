@@ -62,7 +62,7 @@ namespace Kaleidoscope
         public const float MaxDragDelta = 2000f;
 
         /// <summary>Maximum grid lines per axis.</summary>
-        public const int MaxGridLines = 512;
+        public const int MaxGridLines = 1024;
 
         #endregion
     }

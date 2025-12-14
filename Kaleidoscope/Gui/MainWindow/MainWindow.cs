@@ -207,9 +207,16 @@ namespace Kaleidoscope.Gui.MainWindow
                 layout = layouts.Find(x => x.Name == activeName);
             layout ??= layouts.FirstOrDefault();
 
-            if (layout != null && layout.Tools != null && layout.Tools.Count > 0)
+            if (layout != null)
             {
-                _contentContainer?.ApplyLayout(layout.Tools);
+                // Apply grid settings from the layout
+                _contentContainer?.SetGridSettingsFromLayout(layout);
+                
+                if (layout.Tools != null && layout.Tools.Count > 0)
+                {
+                    _contentContainer?.ApplyLayout(layout.Tools);
+                }
+                
                 if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName)) 
                     Config.ActiveLayoutName = layout.Name;
             }
@@ -245,6 +252,9 @@ namespace Kaleidoscope.Gui.MainWindow
                 var found = layouts.Find(x => x.Name == name);
                 if (found != null)
                 {
+                    // Apply grid settings first
+                    _contentContainer.SetGridSettingsFromLayout(found);
+                    // Then apply tool layout
                     _contentContainer.ApplyLayout(found.Tools);
                     Config.ActiveLayoutName = name;
                     _configService.Save();
@@ -275,6 +285,27 @@ namespace Kaleidoscope.Gui.MainWindow
                 _configService.Save();
                 _configService.SaveLayouts();
                 _log.Debug($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)");
+            };
+
+            // Wire grid settings change callback
+            _contentContainer.OnGridSettingsChanged = (gridSettings) =>
+            {
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
+                    ? Config.ActiveLayoutName
+                    : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                var layouts = Config.Layouts ??= new List<ContentLayoutState>();
+                var existing = layouts.Find(x => x.Name == activeName);
+                if (existing == null)
+                {
+                    existing = new ContentLayoutState { Name = activeName };
+                    layouts.Add(existing);
+                }
+                // Apply grid settings to layout state
+                gridSettings.ApplyToLayoutState(existing);
+                Config.ActiveLayoutName = activeName;
+                _configService.Save();
+                _configService.SaveLayouts();
+                _log.Debug($"Saved grid settings for layout '{activeName}'");
             };
         }
 
