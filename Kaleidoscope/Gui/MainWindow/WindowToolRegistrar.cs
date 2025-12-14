@@ -1,6 +1,7 @@
 namespace Kaleidoscope.Gui.MainWindow
 {
     using System.Numerics;
+    using Kaleidoscope.Gui.MainWindow.Tools.Help;
     using Kaleidoscope.Services;
 
     public static class WindowToolRegistrar
@@ -14,7 +15,11 @@ namespace Kaleidoscope.Gui.MainWindow
 
             try
             {
-                container.RegisterTool("GilTracker", "Gil Tracker", pos => CreateToolInstance("GilTracker", pos, filenameService, samplerService), "Track gil and history");
+                // Gil tracking tools
+                container.RegisterTool("GilTracker", "Gil Tracker", pos => CreateToolInstance("GilTracker", pos, filenameService, samplerService), "Track gil and history", "Gil>Graph");
+                
+                // Help tools
+                container.RegisterTool("GettingStarted", "Getting Started", pos => CreateToolInstance("GettingStarted", pos, filenameService, samplerService), "Instructions for new users", "Help");
             }
             catch (Exception ex)
             {
@@ -35,6 +40,13 @@ namespace Kaleidoscope.Gui.MainWindow
                     var gt = new Tools.GilTracker.GilTrackerTool(inner);
                     gt.Position = pos;
                     return gt;
+                }
+                
+                if (id == "GettingStarted")
+                {
+                    var tool = new GettingStartedTool();
+                    tool.Position = pos;
+                    return tool;
                 }
             }
             catch (Exception ex)
