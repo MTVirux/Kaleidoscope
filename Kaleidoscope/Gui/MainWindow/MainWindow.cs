@@ -191,14 +191,14 @@ namespace Kaleidoscope.Gui.MainWindow
             // Apply saved layout or add defaults
             ApplyInitialLayout();
 
-            // If no tools were restored from a layout, add the default GilTracker tool
+            // If no tools were restored from a layout, add the Getting Started guide
             try
             {
                 var exported = _contentContainer?.ExportLayout() ?? new System.Collections.Generic.List<ToolLayoutState>();
                 if (exported.Count == 0)
                 {
-                    var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new Vector2(20, 50), _filenameService, _samplerService);
-                    if (defaultGt != null) _contentContainer.AddTool(defaultGt);
+                    var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService);
+                    if (gettingStarted != null) _contentContainer.AddTool(gettingStarted);
                 }
             }
             catch (Exception ex)

@@ -54,13 +54,13 @@ namespace Kaleidoscope.Gui.MainWindow
                 // construct concrete tool instances; each instance is independent.
                 WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
 
-                // Add a default independent GilTracker tool instance (connected to same DB file)
+                // Add the Getting Started tool by default for new layouts
                 try
                 {
-                    var defaultGt = WindowToolRegistrar.CreateToolInstance("GilTracker", new System.Numerics.Vector2(20, 50), _filenameService, _samplerService);
-                    if (defaultGt != null) _contentContainer.AddTool(defaultGt);
+                    var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new System.Numerics.Vector2(20, 50), _filenameService, _samplerService);
+                    if (gettingStarted != null) _contentContainer.AddTool(gettingStarted);
                 }
-                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GilTracker creation failed: {ex.Message}"); }
+                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] GettingStarted creation failed: {ex.Message}"); }
                 // Attempt to apply a saved layout if present (use Config.Layouts like main window)
                 try
                 {
