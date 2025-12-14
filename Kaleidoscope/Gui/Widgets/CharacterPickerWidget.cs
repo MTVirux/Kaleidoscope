@@ -133,8 +133,8 @@ namespace Kaleidoscope.Gui.Widgets
                 LogService.Error("Character selection error", ex);
             }
 
-            // Debug popup: only available in edit mode to avoid accidental activation
 #if DEBUG
+            // Debug popup: only available in edit mode to avoid accidental activation
             try
             {
                 if (StateService.IsEditModeStatic && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
