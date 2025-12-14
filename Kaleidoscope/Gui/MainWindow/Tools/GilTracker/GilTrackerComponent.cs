@@ -138,10 +138,11 @@ namespace Kaleidoscope.Gui.MainWindow
             _graphWidget.Draw(_helper.Samples);
 
             // Debug: right-click the plot to open a popup listing all data points + timestamps
+            // Only available in edit mode to avoid accidental activation during normal use
             #if DEBUG
             try
             {
-                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                if (StateService.IsEditModeStatic && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                 {
                     ImGui.OpenPopup("giltracker_points_popup");
                     _pointsPopupOpen = true;
@@ -166,7 +167,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                     else
                     {
-                        ImGui.TextUnformatted($"Points for character: {_helper.SelectedCharacterId}");
+                        ImGui.TextUnformatted($"Gil data: " + (_helper.SelectedCharacterId == 0 ? "All Characters" : _helper.SelectedCharacterId.ToString()));
                         ImGui.Separator();
                         ImGui.BeginChild("giltracker_points_child", ConfigStatic.GilTrackerPointsPopupSize, true);
                         for (var i = 0; i < pts.Count; i++)
