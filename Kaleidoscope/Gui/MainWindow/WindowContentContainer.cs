@@ -40,6 +40,8 @@ namespace Kaleidoscope.Gui.MainWindow
             public string Id = string.Empty;
             public string Label = string.Empty;
             public string? Description;
+            // Category path for nested menus, components separated by '>' (e.g. "Gil>Graph")
+            public string? CategoryPath;
             public Func<Vector2, ToolComponent?> Factory = (_) => null;
         }
 
@@ -59,6 +61,12 @@ namespace Kaleidoscope.Gui.MainWindow
                 OrigPos = t.Position;
                 OrigSize = t.Size;
             }
+        }
+
+        private class MenuNode
+        {
+            public Dictionary<string, MenuNode> Children = new Dictionary<string, MenuNode>();
+            public List<ToolRegistration> Items = new List<ToolRegistration>();
         }
 
         private readonly List<ToolEntry> _tools = new List<ToolEntry>();
@@ -271,11 +279,11 @@ namespace Kaleidoscope.Gui.MainWindow
         // Register a tool for the "Add tool" menu. The factory receives the click-relative
         // position and should return a configured ToolComponent (position may be adjusted by
         // the container snapping logic afterwards). Factory may return null if tool creation fails.
-        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null)
+        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null, string? categoryPath = null)
         {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("id");
             if (factory == null) throw new ArgumentNullException(nameof(factory));
-            _toolRegistry.Add(new ToolRegistration { Id = id, Label = label ?? id, Description = description, Factory = factory });
+            _toolRegistry.Add(new ToolRegistration { Id = id, Label = label ?? id, Description = description, Factory = factory, CategoryPath = categoryPath });
         }
 
         public void UnregisterTool(string id)
@@ -307,6 +315,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     Visible = t.Visible,
                     BackgroundEnabled = t is { } ? t.BackgroundEnabled : false,
                     BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
+                    HeaderVisible = t is { } ? t.HeaderVisible : true,
                     // Include grid coordinates
                     GridCol = t.GridCol,
                     GridRow = t.GridRow,
@@ -365,6 +374,7 @@ namespace Kaleidoscope.Gui.MainWindow
                         match.Size = entry.Size;
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
+                        match.HeaderVisible = entry.HeaderVisible;
                         // Apply grid coordinates
                         match.GridCol = entry.GridCol;
                         match.GridRow = entry.GridRow;
@@ -392,6 +402,7 @@ namespace Kaleidoscope.Gui.MainWindow
                                 created.Size = entry.Size;
                                 created.Visible = entry.Visible;
                                 created.BackgroundEnabled = entry.BackgroundEnabled;
+                                created.HeaderVisible = entry.HeaderVisible;
                                 created.BackgroundColor = entry.BackgroundColor;
                                 // Apply grid coordinates
                                 created.GridCol = entry.GridCol;
@@ -428,6 +439,7 @@ namespace Kaleidoscope.Gui.MainWindow
                                     cand.Size = entry.Size;
                                     cand.Visible = entry.Visible;
                                     cand.BackgroundEnabled = entry.BackgroundEnabled;
+                                    cand.HeaderVisible = entry.HeaderVisible;
                                     cand.BackgroundColor = entry.BackgroundColor;
                                     // Apply grid coordinates
                                     cand.GridCol = entry.GridCol;
@@ -488,6 +500,7 @@ namespace Kaleidoscope.Gui.MainWindow
                                         inst.Size = entry.Size;
                                         inst.Visible = entry.Visible;
                                         inst.BackgroundEnabled = entry.BackgroundEnabled;
+                                        inst.HeaderVisible = entry.HeaderVisible;
                                         inst.BackgroundColor = entry.BackgroundColor;
                                         // Apply grid coordinates
                                         inst.GridCol = entry.GridCol;
@@ -695,50 +708,86 @@ namespace Kaleidoscope.Gui.MainWindow
                         {
                             if (ImGui.BeginMenu("Add tool"))
                             {
-                                // Enumerate registered tools
+                                // Build a tree of categories from registrations
+                                MenuNode rootNode = new MenuNode();
+
                                 foreach (var reg in _toolRegistry)
                                 {
-                                    if (ImGui.MenuItem(reg.Label))
+                                    var path = (reg.CategoryPath ?? "").Split(new[] { '>' }, StringSplitOptions.RemoveEmptyEntries)
+                                        .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+                                    var cur = rootNode;
+                                    foreach (var part in path)
                                     {
-                                        try
+                                        if (!cur.Children.TryGetValue(part, out var child))
                                         {
-                                            var tool = reg.Factory(_lastContextClickRel);
-                                            if (tool != null)
+                                            child = new MenuNode();
+                                            cur.Children[part] = child;
+                                        }
+                                        cur = child;
+                                    }
+                                    cur.Items.Add(reg);
+                                }
+
+                                // recursive draw
+                                void DrawNode(MenuNode node)
+                                {
+                                    // Draw items at this node first
+                                    foreach (var reg in node.Items)
+                                    {
+                                        if (ImGui.MenuItem(reg.Label))
+                                        {
+                                            try
                                             {
-                                                // Snap to sub-grid on placement if possible
-                                                try
+                                                var tool = reg.Factory(_lastContextClickRel);
+                                                if (tool != null)
                                                 {
-                                                    var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
-                                                    var subW = cellW / subdivisions;
-                                                    var subH = cellH / subdivisions;
-                                                    tool.Position = new Vector2(
-                                                        MathF.Round(tool.Position.X / subW) * subW,
-                                                        MathF.Round(tool.Position.Y / subH) * subH
-                                                    );
-                                                    
-                                                    // Set grid coordinates for proportional resizing
-                                                    if (cellW > 0 && cellH > 0)
+                                                    try
                                                     {
-                                                        tool.GridCol = tool.Position.X / cellW;
-                                                        tool.GridRow = tool.Position.Y / cellH;
-                                                        tool.GridColSpan = tool.Size.X / cellW;
-                                                        tool.GridRowSpan = tool.Size.Y / cellH;
-                                                        tool.HasGridCoords = true;
+                                                        var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
+                                                        var subW = cellW / subdivisions;
+                                                        var subH = cellH / subdivisions;
+                                                        tool.Position = new Vector2(
+                                                            MathF.Round(tool.Position.X / subW) * subW,
+                                                            MathF.Round(tool.Position.Y / subH) * subH
+                                                        );
+
+                                                        if (cellW > 0 && cellH > 0)
+                                                        {
+                                                            tool.GridCol = tool.Position.X / cellW;
+                                                            tool.GridRow = tool.Position.Y / cellH;
+                                                            tool.GridColSpan = tool.Size.X / cellW;
+                                                            tool.GridRowSpan = tool.Size.Y / cellH;
+                                                            tool.HasGridCoords = true;
+                                                        }
                                                     }
+                                                    catch (Exception ex)
+                                                    {
+                                                        LogService.Debug($"Tool snap error: {ex.Message}");
+                                                    }
+                                                    AddTool(tool);
                                                 }
-                                                catch (Exception ex)
-                                                {
-                                                    LogService.Debug($"Tool snap error: {ex.Message}");
-                                                }
-                                                AddTool(tool);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                LogService.Error($"Failed to create tool '{reg.Id}'", ex);
                                             }
                                         }
-                                        catch (Exception ex)
+                                    }
+
+                                    // Draw child menus
+                                    foreach (var kv in node.Children)
+                                    {
+                                        var name = kv.Key;
+                                        var child = kv.Value;
+                                        if (ImGui.BeginMenu(name))
                                         {
-                                            LogService.Error($"Failed to create tool '{reg.Id}'", ex);
+                                            DrawNode(child);
+                                            ImGui.EndMenu();
                                         }
                                     }
                                 }
+
+                                DrawNode(rootNode);
 
                                 ImGui.EndMenu();
                             }
@@ -881,9 +930,12 @@ namespace Kaleidoscope.Gui.MainWindow
                     LogService.Debug($"Background draw error: {ex.Message}");
                 }
                 ImGui.BeginChild(id, t.Size, true);
-                // Title bar inside the child
-                ImGui.TextUnformatted(t.Title);
-                ImGui.Separator();
+                // Title bar inside the child (toggleable)
+                if (t.HeaderVisible)
+                {
+                    ImGui.TextUnformatted(t.Title);
+                    ImGui.Separator();
+                }
                 t.DrawContent();
                 ImGui.EndChild();
 
@@ -1103,6 +1155,8 @@ namespace Kaleidoscope.Gui.MainWindow
                         ImGui.Separator();
                         var bg = t.BackgroundEnabled;
                         if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
+                        var hdr = t.HeaderVisible;
+                        if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
                         var col = t.BackgroundColor;
                         if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
                         ImGui.Separator();
