@@ -8,13 +8,12 @@ using OtterGui.Services;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Static factory for building the Kaleidoscope service container.
+/// Builds the Kaleidoscope service container.
 /// </summary>
 public static class StaticServiceManager
 {
     public static ServiceManager CreateProvider(IDalamudPluginInterface pi, Logger log, KaleidoscopePlugin plugin)
     {
-        // Initialize ECommons services for static accessor patterns that some code may still use.
         ECommons.DalamudServices.Svc.Init(pi);
 
         var services = new ServiceManager(log)
@@ -25,10 +24,7 @@ public static class StaticServiceManager
             .AddUi();
 
         DalamudServices.AddServices(services, pi);
-
-        // Auto-register all IService implementations from the assembly
         services.AddIServices(typeof(KaleidoscopePlugin).Assembly);
-
         services.CreateProvider();
         return services;
     }

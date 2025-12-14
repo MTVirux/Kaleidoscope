@@ -6,7 +6,7 @@ using OtterGui.Services;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Registers all Dalamud services with the service manager.
+/// Registers Dalamud services with the service manager.
 /// </summary>
 public static class DalamudServices
 {
