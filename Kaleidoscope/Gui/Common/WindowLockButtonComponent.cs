@@ -1,9 +1,9 @@
-namespace Kaleidoscope.Gui.Common;
-
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services;
+
+namespace Kaleidoscope.Gui.Common;
 
 /// <summary>
 /// Component for managing the window lock button functionality.

@@ -1,11 +1,14 @@
-namespace Kaleidoscope.Gui.Common;
-
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using OtterGui.Text;
 using Kaleidoscope.Services;
 
+namespace Kaleidoscope.Gui.Common;
+
+/// <summary>
+/// Manages the window lock/pin button functionality for windows.
+/// </summary>
 public class WindowLockButton
 {
     private readonly ConfigurationService _configService;

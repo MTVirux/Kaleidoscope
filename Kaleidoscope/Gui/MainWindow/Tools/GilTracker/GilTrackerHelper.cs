@@ -2,15 +2,15 @@ using ECommons.DalamudServices;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
 
-namespace Kaleidoscope.Gui.MainWindow
+namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+
+/// <summary>
+/// Helper class for the GilTracker UI component.
+/// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
+/// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
+/// </summary>
+internal class GilTrackerHelper : ICharacterDataSource
 {
-    /// <summary>
-    /// Helper class for the GilTracker UI component.
-    /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
-    /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
-    /// </summary>
-    internal class GilTrackerHelper : ICharacterDataSource
-    {
         private readonly KaleidoscopeDbService _dbService;
         private readonly int _maxSamples;
         private readonly List<float> _samples;
@@ -543,19 +543,18 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             var cid = characterId ?? SelectedCharacterId;
 
-            if (cid == 0 && SelectedCharacterId == 0)
-                cid = Svc.PlayerState.ContentId;
+        if (cid == 0 && SelectedCharacterId == 0)
+            cid = Svc.PlayerState.ContentId;
 
-            if (cid == 0)
-            {
-                // Return all points as simple list (loses character association)
-                var allPoints = _dbService.GetAllPoints("Gil");
-                return allPoints.Select(p => (p.timestamp, p.value)).ToList();
-            }
-
-            return _dbService.GetPoints("Gil", cid);
+        if (cid == 0)
+        {
+            // Return all points as simple list (loses character association)
+            var allPoints = _dbService.GetAllPoints("Gil");
+            return allPoints.Select(p => (p.timestamp, p.value)).ToList();
         }
 
-        #endregion
+        return _dbService.GetPoints("Gil", cid);
     }
+
+    #endregion
 }

@@ -1,14 +1,17 @@
-namespace Kaleidoscope.Gui.MainWindow
+using Dalamud.Interface.Windowing;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin.Services;
+using Kaleidoscope.Services;
+using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+
+namespace Kaleidoscope.Gui.MainWindow;
+
+/// <summary>
+/// Fullscreen overlay window for HUD display.
+/// </summary>
+public class FullscreenWindow : Window
 {
-    using Dalamud.Interface.Windowing;
-    using ImGui = Dalamud.Bindings.ImGui.ImGui;
-    using Dalamud.Bindings.ImGui;
-    using Dalamud.Plugin.Services;
-    using Kaleidoscope.Services;
-
-
-    public class FullscreenWindow : Window
-    {
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
         private readonly FilenameService _filenameService;
@@ -229,20 +232,19 @@ namespace Kaleidoscope.Gui.MainWindow
                 // so simply calling Draw will render tools laid out as in the main window.
                 // In fullscreen, default to non-edit mode. Only enable edit mode
                 // while the user is actively holding CTRL+SHIFT.
-                try
-                {
-                    var io = ImGui.GetIO();
-                    var fsEdit = io.KeyCtrl && io.KeyShift;
-                    _contentContainer?.Draw(fsEdit || _stateService.IsEditMode);
-                }
-                catch (Exception ex)
-                {
-                    // Fall back to StateService value if IO access fails for any reason
-                    LogService.Debug($"[FullscreenWindow] Draw IO check failed: {ex.Message}");
-                    _contentContainer?.Draw(_stateService.IsEditMode);
-                }
+            try
+            {
+                var io = ImGui.GetIO();
+                var fsEdit = io.KeyCtrl && io.KeyShift;
+                _contentContainer?.Draw(fsEdit || _stateService.IsEditMode);
             }
-            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                // Fall back to StateService value if IO access fails for any reason
+                LogService.Debug($"[FullscreenWindow] Draw IO check failed: {ex.Message}");
+                _contentContainer?.Draw(_stateService.IsEditMode);
+            }
         }
+        catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }
     }
 }

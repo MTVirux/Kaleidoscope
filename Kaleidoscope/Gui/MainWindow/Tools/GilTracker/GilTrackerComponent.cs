@@ -5,10 +5,14 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Libs;
 using Kaleidoscope.Services;
 
-namespace Kaleidoscope.Gui.MainWindow
+namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+
+/// <summary>
+/// Core component for gil tracking functionality.
+/// Manages sampling, persistence, and display of gil data.
+/// </summary>
+public class GilTrackerComponent
 {
-    public class GilTrackerComponent
-    {
         private readonly GilTrackerHelper _helper;
         private readonly CharacterPickerWidget _characterPicker;
         private readonly SampleGraphWidget _graphWidget;
@@ -190,7 +194,6 @@ namespace Kaleidoscope.Gui.MainWindow
 
                 ImGui.EndPopup();
             }
-            #endif
-        }
+#endif
     }
 }

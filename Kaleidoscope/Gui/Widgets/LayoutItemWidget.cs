@@ -1,26 +1,25 @@
-namespace Kaleidoscope.Gui.Widgets
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using System.Text.Json;
+using Kaleidoscope.Services;
+
+namespace Kaleidoscope.Gui.Widgets;
+
+/// <summary>
+/// A collapsible widget for displaying and editing a single layout entry.
+/// </summary>
+public class LayoutItemWidget
 {
-    using Dalamud.Bindings.ImGui;
-    using Dalamud.Interface;
-    using ImGui = Dalamud.Bindings.ImGui.ImGui;
-    using System.Numerics;
-    using System.Text.Json;
-    using Kaleidoscope.Services;
+    private readonly ConfigurationService _configService;
+    private readonly ContentLayoutState _layout;
+    private readonly Action _onDelete;
+    private readonly Action _onSetActive;
+    private readonly Func<bool> _isActive;
 
-    /// <summary>
-    /// A collapsible widget for displaying and editing a single layout entry.
-    /// </summary>
-    public class LayoutItemWidget
-    {
-        private readonly ConfigurationService _configService;
-        private readonly ContentLayoutState _layout;
-        private readonly Action _onDelete;
-        private readonly Action _onSetActive;
-        private readonly Func<bool> _isActive;
-        
-        private string _renameBuffer;
+    private string _renameBuffer;
 
-        public LayoutItemWidget(
+    public LayoutItemWidget(
             ConfigurationService configService,
             ContentLayoutState layout,
             Func<bool> isActive,
@@ -178,32 +177,31 @@ namespace Kaleidoscope.Gui.Widgets
                     
                     ImGui.Unindent();
                 }
-            }
-            finally
-            {
-                ImGui.PopID();
-            }
-            
-            return deleted;
         }
-        
-        private void ApplyRename()
+        finally
         {
-            if (!string.IsNullOrWhiteSpace(_renameBuffer) && _renameBuffer != _layout.Name)
+            ImGui.PopID();
+        }
+
+        return deleted;
+    }
+
+    private void ApplyRename()
+    {
+        if (!string.IsNullOrWhiteSpace(_renameBuffer) && _renameBuffer != _layout.Name)
+        {
+            // Update active layout name references if this was active
+            if (string.Equals(_configService.Config.ActiveWindowedLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
             {
-                // Update active layout name references if this was active
-                if (string.Equals(_configService.Config.ActiveWindowedLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    _configService.Config.ActiveWindowedLayoutName = _renameBuffer;
-                }
-                if (string.Equals(_configService.Config.ActiveFullscreenLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    _configService.Config.ActiveFullscreenLayoutName = _renameBuffer;
-                }
-                
-                _layout.Name = _renameBuffer;
-                _configService.Save();
+                _configService.Config.ActiveWindowedLayoutName = _renameBuffer;
             }
+            if (string.Equals(_configService.Config.ActiveFullscreenLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.ActiveFullscreenLayoutName = _renameBuffer;
+            }
+
+            _layout.Name = _renameBuffer;
+            _configService.Save();
         }
     }
 }

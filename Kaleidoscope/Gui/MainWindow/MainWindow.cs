@@ -4,12 +4,16 @@ using Dalamud.Plugin.Services;
 using OtterGui.Text;
 using Dalamud.Interface;
 using Kaleidoscope.Services;
+using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
+/// <summary>
+/// Main plugin window containing the HUD layout.
+/// </summary>
 public class MainWindow : Window
-    {
+{
         private readonly IPluginLog _log;
         private readonly ConfigurationService _configService;
         private readonly SamplerService _samplerService;
