@@ -5,34 +5,18 @@ using Newtonsoft.Json;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Represents a pending action that was blocked due to unsaved layout changes.
-/// The user must choose to Save, Discard, or Cancel before the action can proceed.
+/// Pending action blocked due to unsaved layout changes.
 /// </summary>
 public class PendingLayoutAction
 {
-    /// <summary>A human-readable description of the action that was blocked.</summary>
     public string Description { get; set; } = string.Empty;
-
-    /// <summary>The action to perform after the user chooses Save or Discard.</summary>
     public Action? ContinueAction { get; set; }
-
-    /// <summary>Optional action to perform if the user cancels.</summary>
     public Action? CancelAction { get; set; }
 }
 
 /// <summary>
-/// Manages layout editing with explicit file-editor semantics.
-/// 
-/// State model:
-/// - Persisted layout: saved to disk (layouts.json)
-/// - Working layout: in-memory, actively used
-/// - Dirty snapshot: temporary file for reload recovery
-/// 
-/// Rules:
-/// - User changes update working layout immediately and set IsDirty = true
-/// - Changes are applied and used instantly but NOT auto-persisted
-/// - Persisted layout updates ONLY on explicit Save action
-/// - After save, IsDirty = false and dirty snapshot is cleared
+/// Manages layout editing with explicit save semantics (like a file editor).
+/// Changes are applied immediately but only persisted on explicit Save.
 /// </summary>
 public class LayoutEditingService
 {
@@ -45,159 +29,111 @@ public class LayoutEditingService
     private LayoutGridSettings? _workingGridSettings;
     private string _currentLayoutName = string.Empty;
     private LayoutType _currentLayoutType = LayoutType.Windowed;
-        
-        // Pending action that was blocked due to unsaved changes
-        private PendingLayoutAction? _pendingAction;
-        
-        // Flag to show unsaved changes dialog
-        private bool _showUnsavedChangesDialog;
-        
-        /// <summary>
-        /// Path to the dirty snapshot file for reload recovery.
-        /// </summary>
-        private string DirtySnapshotPath => Path.Combine(_filenameService.ConfigDirectory, "layout_dirty_snapshot.json");
-        
-        /// <summary>
-        /// Raised when the dirty state changes.
-        /// </summary>
-        public event Action<bool>? OnDirtyStateChanged;
-        
-        /// <summary>
-        /// Raised when the unsaved changes dialog should be shown.
-        /// </summary>
-        public event Action? OnShowUnsavedChangesDialog;
-        
-        /// <summary>
-        /// True if the working layout has unsaved changes.
-        /// </summary>
-        public bool IsDirty => _isDirty;
-        
-        /// <summary>
-        /// True if the unsaved changes dialog should be shown.
-        /// </summary>
-        public bool ShowUnsavedChangesDialog => _showUnsavedChangesDialog;
-        
-        /// <summary>
-        /// The pending action that was blocked, if any.
-        /// </summary>
-        public PendingLayoutAction? PendingAction => _pendingAction;
-        
-        /// <summary>
-        /// The name of the currently active layout.
-        /// </summary>
-        public string CurrentLayoutName => _currentLayoutName;
-        
-        /// <summary>
-        /// The type of the currently active layout.
-        /// </summary>
-        public LayoutType CurrentLayoutType => _currentLayoutType;
-        
-        /// <summary>
-        /// The current working layout (may differ from persisted if dirty).
-        /// </summary>
-        public List<ToolLayoutState>? WorkingLayout => _workingLayout;
-        
-        /// <summary>
-        /// The current working grid settings (may differ from persisted if dirty).
-        /// </summary>
-        public LayoutGridSettings? WorkingGridSettings => _workingGridSettings;
+    private PendingLayoutAction? _pendingAction;
+    private bool _showUnsavedChangesDialog;
 
-        public LayoutEditingService(IPluginLog log, ConfigurationService configService, FilenameService filenameService)
+    private string DirtySnapshotPath => Path.Combine(_filenameService.ConfigDirectory, "layout_dirty_snapshot.json");
+
+    public event Action<bool>? OnDirtyStateChanged;
+    public event Action? OnShowUnsavedChangesDialog;
+
+    public bool IsDirty => _isDirty;
+    public bool ShowUnsavedChangesDialog => _showUnsavedChangesDialog;
+    public PendingLayoutAction? PendingAction => _pendingAction;
+    public string CurrentLayoutName => _currentLayoutName;
+    public LayoutType CurrentLayoutType => _currentLayoutType;
+    public List<ToolLayoutState>? WorkingLayout => _workingLayout;
+    public LayoutGridSettings? WorkingGridSettings => _workingGridSettings;
+
+    public LayoutEditingService(IPluginLog log, ConfigurationService configService, FilenameService filenameService)
+    {
+        _log = log ?? throw new ArgumentNullException(nameof(log));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _filenameService = filenameService ?? throw new ArgumentNullException(nameof(filenameService));
+
+        TryRestoreDirtySnapshot();
+        _log.Debug("LayoutEditingService initialized");
+    }
+
+    /// <summary>
+    /// Initializes the working layout from persisted state.
+    /// </summary>
+    public void InitializeFromPersisted(string layoutName, LayoutType layoutType, List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
+    {
+        // Keep restored dirty state if present
+        if (_isDirty && _workingLayout != null)
         {
-            _log = log ?? throw new ArgumentNullException(nameof(log));
-            _configService = configService ?? throw new ArgumentNullException(nameof(configService));
-            _filenameService = filenameService ?? throw new ArgumentNullException(nameof(filenameService));
-            
-            // Check for dirty snapshot on startup and restore if present
-            TryRestoreDirtySnapshot();
-            
-            _log.Debug("LayoutEditingService initialized");
+            _log.Debug($"Keeping restored dirty state for '{_currentLayoutName}'");
+            return;
         }
-        
-        /// <summary>
-        /// Initializes the working layout from the currently active persisted layout.
-        /// Call this after the layout has been loaded from config.
-        /// </summary>
-        public void InitializeFromPersisted(string layoutName, LayoutType layoutType, List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
+
+        _currentLayoutName = layoutName;
+        _currentLayoutType = layoutType;
+        _workingLayout = tools != null ? CloneToolList(tools) : new List<ToolLayoutState>();
+        _workingGridSettings = gridSettings?.Clone();
+        _isDirty = false;
+
+        _log.Debug($"Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
+    }
+
+    /// <summary>
+    /// Marks the working layout as changed.
+    /// </summary>
+    public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
+    {
+        _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
+        _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+
+        if (!_isDirty)
         {
-            // If we already have a dirty state from a snapshot restore, don't overwrite it
-            if (_isDirty && _workingLayout != null)
-            {
-                _log.Debug($"LayoutEditingService: Keeping restored dirty state for '{_currentLayoutName}'");
-                return;
-            }
-            
-            _currentLayoutName = layoutName;
-            _currentLayoutType = layoutType;
-            _workingLayout = tools != null ? CloneToolList(tools) : new List<ToolLayoutState>();
-            _workingGridSettings = gridSettings?.Clone();
-            _isDirty = false;
-            
-            _log.Debug($"LayoutEditingService: Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
+            _isDirty = true;
+            _log.Debug($"Layout marked dirty for '{_currentLayoutName}'");
+            OnDirtyStateChanged?.Invoke(true);
         }
-        
-        /// <summary>
-        /// Marks the working layout as changed. Call this when the user modifies the layout.
-        /// </summary>
-        public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
-        {
-            _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
-            _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
-            
-            if (!_isDirty)
-            {
-                _isDirty = true;
-                _log.Debug($"LayoutEditingService: Layout marked dirty for '{_currentLayoutName}'");
-                OnDirtyStateChanged?.Invoke(true);
-            }
-            
-            // Persist dirty snapshot for reload recovery
+
+        SaveDirtySnapshot();
+    }
+
+    /// <summary>
+    /// Updates the working layout without marking dirty.
+    /// </summary>
+    public void UpdateWorkingLayout(List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
+    {
+        _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
+        _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
+
+        if (_isDirty)
             SaveDirtySnapshot();
-        }
-        
-        /// <summary>
-        /// Updates the working layout without marking dirty (used for internal sync).
-        /// </summary>
-        public void UpdateWorkingLayout(List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
+    }
+
+    /// <summary>
+    /// Saves the current working layout to persistent storage.
+    /// </summary>
+    public void Save()
+    {
+        if (!_isDirty)
         {
-            _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
-            _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
-            
-            if (_isDirty)
-            {
-                SaveDirtySnapshot();
-            }
+            _log.Debug("Save called but layout is not dirty");
+            return;
         }
-        
-        /// <summary>
-        /// Saves the current working layout to the persisted storage.
-        /// Clears the dirty state and removes the dirty snapshot.
-        /// </summary>
-        public void Save()
+
+        try
         {
-            if (!_isDirty)
+            var layouts = _configService.Config.Layouts ??= new List<ContentLayoutState>();
+            var existing = layouts.Find(x => x.Name == _currentLayoutName && x.Type == _currentLayoutType);
+
+            if (existing == null)
             {
-                _log.Debug("LayoutEditingService: Save called but layout is not dirty");
-                return;
+                existing = new ContentLayoutState { Name = _currentLayoutName, Type = _currentLayoutType };
+                layouts.Add(existing);
             }
-            
-            try
-            {
-                var layouts = _configService.Config.Layouts ??= new List<ContentLayoutState>();
-                var existing = layouts.Find(x => x.Name == _currentLayoutName && x.Type == _currentLayoutType);
-                
-                if (existing == null)
-                {
-                    existing = new ContentLayoutState { Name = _currentLayoutName, Type = _currentLayoutType };
-                    layouts.Add(existing);
-                }
-                
-                existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
-                _workingGridSettings?.ApplyToLayoutState(existing);
-                
-                // Update active layout name
-                if (_currentLayoutType == LayoutType.Windowed)
-                    _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
+
+            existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
+            _workingGridSettings?.ApplyToLayoutState(existing);
+
+            // Update active layout name
+            if (_currentLayoutType == LayoutType.Windowed)
+                _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
                 else
                     _configService.Config.ActiveFullscreenLayoutName = _currentLayoutName;
                 
