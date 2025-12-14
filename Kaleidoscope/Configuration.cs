@@ -48,7 +48,13 @@ namespace Kaleidoscope
         // Layout persistence: allow multiple named layouts each containing a set of components.
         // Start empty: do not create a "Default" layout automatically on first run.
         public List<ContentLayoutState> Layouts { get; set; } = new List<ContentLayoutState>();
-        // Name of the currently active layout. If empty, the first layout will be used when present.
+        // Name of the currently active windowed layout. If empty, the first windowed layout will be used when present.
+        public string ActiveWindowedLayoutName { get; set; } = string.Empty;
+        // Name of the currently active fullscreen layout. If empty, the first fullscreen layout will be used when present.
+        public string ActiveFullscreenLayoutName { get; set; } = string.Empty;
+        
+        // Legacy: kept for migration, will be removed in future versions
+        [Obsolete("Use ActiveWindowedLayoutName or ActiveFullscreenLayoutName instead")]
         public string ActiveLayoutName { get; set; } = string.Empty;
     }
 

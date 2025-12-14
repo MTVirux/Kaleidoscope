@@ -218,7 +218,7 @@ namespace Kaleidoscope.Gui.MainWindow
             var layouts = Config.Layouts ?? new List<ContentLayoutState>();
             // Filter to only windowed layouts for the main window
             var windowedLayouts = layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
-            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
+            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) ? Config.ActiveWindowedLayoutName : null;
             ContentLayoutState? layout = null;
             
             if (activeName != null)
@@ -235,8 +235,8 @@ namespace Kaleidoscope.Gui.MainWindow
                     _contentContainer?.ApplyLayout(layout.Tools);
                 }
                 
-                if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName)) 
-                    Config.ActiveLayoutName = layout.Name;
+                if (string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)) 
+                    Config.ActiveWindowedLayoutName = layout.Name;
             }
         }
 
@@ -256,7 +256,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     layouts.Add(existing);
                 }
                 existing.Tools = tools ?? new List<ToolLayoutState>();
-                Config.ActiveLayoutName = name;
+                Config.ActiveWindowedLayoutName = name;
                 _configService.Save();
                 _configService.SaveLayouts();
                 _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools)");
@@ -274,7 +274,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     _contentContainer.SetGridSettingsFromLayout(found);
                     // Then apply tool layout
                     _contentContainer.ApplyLayout(found.Tools);
-                    Config.ActiveLayoutName = name;
+                    Config.ActiveWindowedLayoutName = name;
                     _configService.Save();
                     _configService.SaveLayouts();
                     _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools)");
@@ -296,8 +296,8 @@ namespace Kaleidoscope.Gui.MainWindow
 
             _contentContainer.OnLayoutChanged = (tools) =>
             {
-                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
-                    ? Config.ActiveLayoutName
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
+                    ? Config.ActiveWindowedLayoutName
                     : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
                 var layouts = Config.Layouts ??= new List<ContentLayoutState>();
                 var existing = layouts.Find(x => x.Name == activeName);
@@ -307,7 +307,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     layouts.Add(existing);
                 }
                 existing.Tools = tools ?? new List<ToolLayoutState>();
-                Config.ActiveLayoutName = activeName;
+                Config.ActiveWindowedLayoutName = activeName;
                 _configService.Save();
                 _configService.SaveLayouts();
                 _log.Debug($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools)");
@@ -316,8 +316,8 @@ namespace Kaleidoscope.Gui.MainWindow
             // Wire grid settings change callback
             _contentContainer.OnGridSettingsChanged = (gridSettings) =>
             {
-                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
-                    ? Config.ActiveLayoutName
+                var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
+                    ? Config.ActiveWindowedLayoutName
                     : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
                 var layouts = Config.Layouts ??= new List<ContentLayoutState>();
                 var existing = layouts.Find(x => x.Name == activeName);
@@ -328,7 +328,7 @@ namespace Kaleidoscope.Gui.MainWindow
                 }
                 // Apply grid settings to layout state
                 gridSettings.ApplyToLayoutState(existing);
-                Config.ActiveLayoutName = activeName;
+                Config.ActiveWindowedLayoutName = activeName;
                 _configService.Save();
                 _configService.SaveLayouts();
                 _log.Debug($"Saved grid settings for layout '{activeName}'");
@@ -357,16 +357,16 @@ namespace Kaleidoscope.Gui.MainWindow
         private void PersistCurrentLayout()
         {
             var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
+            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) ? Config.ActiveWindowedLayoutName : null;
             ContentLayoutState? layout = null;
             
             if (activeName != null)
-                layout = layouts.Find(x => x.Name == activeName);
-            layout ??= layouts.FirstOrDefault();
+                layout = layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault(x => x.Name == activeName);
+            layout ??= layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault();
 
             if (layout == null)
             {
-                layout = new ContentLayoutState() { Name = activeName ?? "Default" };
+                layout = new ContentLayoutState() { Name = activeName ?? "Default", Type = LayoutType.Windowed };
                 layouts.Add(layout);
             }
             layout.Tools = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
@@ -485,18 +485,18 @@ namespace Kaleidoscope.Gui.MainWindow
                         if (_contentContainer != null && _contentContainer.TryConsumeLayoutDirty())
                         {
                             _log.Information("Detected layout dirty, persisting active layout");
-                            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
-                                ? Config.ActiveLayoutName
-                                : (Config.Layouts?.FirstOrDefault()?.Name ?? "Default");
+                            var activeName = !string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)
+                                ? Config.ActiveWindowedLayoutName
+                                : (Config.Layouts?.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault()?.Name ?? "Default");
                             var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-                            var existing = layouts.Find(x => x.Name == activeName);
+                            var existing = layouts.Where(x => x.Type == LayoutType.Windowed).FirstOrDefault(x => x.Name == activeName);
                             if (existing == null)
                             {
-                                existing = new ContentLayoutState { Name = activeName };
+                                existing = new ContentLayoutState { Name = activeName, Type = LayoutType.Windowed };
                                 layouts.Add(existing);
                             }
                             existing.Tools = _contentContainer.ExportLayout();
-                            Config.ActiveLayoutName = activeName;
+                            Config.ActiveWindowedLayoutName = activeName;
                             _configService.Save();
                         }
                     }

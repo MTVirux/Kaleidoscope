@@ -68,14 +68,44 @@ namespace Kaleidoscope.Services
 
             Config.Layouts ??= new List<ContentLayoutState>();
 
-            if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && 
-                !Config.Layouts.Any(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase)))
+            // Migrate from legacy ActiveLayoutName if needed
+            #pragma warning disable CS0618 // Suppress obsolete warning for migration
+            if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName))
             {
-                Config.ActiveLayoutName = string.Empty;
+                var legacyLayout = Config.Layouts.FirstOrDefault(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase));
+                if (legacyLayout != null)
+                {
+                    if (legacyLayout.Type == LayoutType.Windowed && string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName))
+                        Config.ActiveWindowedLayoutName = legacyLayout.Name;
+                    else if (legacyLayout.Type == LayoutType.Fullscreen && string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
+                        Config.ActiveFullscreenLayoutName = legacyLayout.Name;
+                }
+                Config.ActiveLayoutName = string.Empty; // Clear legacy field
             }
-            else if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName) && Config.Layouts.Count > 0)
+            #pragma warning restore CS0618
+
+            // Validate windowed active layout
+            var windowedLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
+            if (!string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) && 
+                !windowedLayouts.Any(x => string.Equals(x.Name, Config.ActiveWindowedLayoutName, StringComparison.OrdinalIgnoreCase)))
             {
-                Config.ActiveLayoutName = Config.Layouts.First().Name;
+                Config.ActiveWindowedLayoutName = string.Empty;
+            }
+            if (string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) && windowedLayouts.Count > 0)
+            {
+                Config.ActiveWindowedLayoutName = windowedLayouts.First().Name;
+            }
+
+            // Validate fullscreen active layout
+            var fullscreenLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Fullscreen).ToList();
+            if (!string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) && 
+                !fullscreenLayouts.Any(x => string.Equals(x.Name, Config.ActiveFullscreenLayoutName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Config.ActiveFullscreenLayoutName = string.Empty;
+            }
+            if (string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) && fullscreenLayouts.Count > 0)
+            {
+                Config.ActiveFullscreenLayoutName = fullscreenLayouts.First().Name;
             }
         }
 
@@ -115,7 +145,7 @@ namespace Kaleidoscope.Services
             try
             {
                 _pluginInterface.SavePluginConfig(Config);
-                _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} active='{Config.ActiveLayoutName}'");
+                _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
             }
             catch (Exception ex)
             {

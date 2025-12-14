@@ -67,7 +67,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     var layouts = Config.Layouts ?? new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
                     // Filter to only fullscreen layouts for the fullscreen window
                     var fullscreenLayouts = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).ToList();
-                    var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName) ? Config.ActiveLayoutName : null;
+                    var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) ? Config.ActiveFullscreenLayoutName : null;
                     Kaleidoscope.ContentLayoutState? layout = null;
                     if (activeName != null)
                         layout = fullscreenLayouts.Find(x => x.Name == activeName);
@@ -82,6 +82,9 @@ namespace Kaleidoscope.Gui.MainWindow
                         {
                             _contentContainer.ApplyLayout(layout.Tools);
                         }
+                        
+                        if (string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
+                            Config.ActiveFullscreenLayoutName = layout.Name;
                     }
                 }
                 catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Layout apply failed: {ex.Message}"); }
@@ -100,7 +103,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             layouts.Add(existing);
                         }
                         existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        Config.ActiveLayoutName = name;
+                        Config.ActiveFullscreenLayoutName = name;
                         _configService.Save();
                         _log.Information($"Saved layout '{name}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
@@ -120,7 +123,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             _contentContainer.SetGridSettingsFromLayout(found);
                             // Then apply tool layout
                             _contentContainer.ApplyLayout(found.Tools);
-                            Config.ActiveLayoutName = name;
+                            Config.ActiveFullscreenLayoutName = name;
                             _configService.Save();
                             _log.Information($"Loaded layout '{name}' ({found.Tools.Count} tools) [fullscreen]");
                         }
@@ -144,18 +147,18 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     try
                     {
-                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
-                            ? Config.ActiveLayoutName
+                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
+                            ? Config.ActiveFullscreenLayoutName
                             : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
                         var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var existing = layouts.Find(x => x.Name == activeName);
+                        var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
                         if (existing == null)
                         {
                             existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
                             layouts.Add(existing);
                         }
                         existing.Tools = tools ?? new System.Collections.Generic.List<Kaleidoscope.ToolLayoutState>();
-                        Config.ActiveLayoutName = activeName;
+                        Config.ActiveFullscreenLayoutName = activeName;
                         _configService.Save();
                         _log.Information($"Auto-saved active layout '{activeName}' ({existing.Tools.Count} tools) [fullscreen]");
                     }
@@ -167,18 +170,18 @@ namespace Kaleidoscope.Gui.MainWindow
                 {
                     try
                     {
-                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveLayoutName)
-                            ? Config.ActiveLayoutName
+                        var activeName = !string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName)
+                            ? Config.ActiveFullscreenLayoutName
                             : (Config.Layouts?.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault()?.Name ?? "Default");
                         var layouts = Config.Layouts ??= new System.Collections.Generic.List<Kaleidoscope.ContentLayoutState>();
-                        var existing = layouts.Find(x => x.Name == activeName);
+                        var existing = layouts.Where(x => x.Type == Kaleidoscope.LayoutType.Fullscreen).FirstOrDefault(x => x.Name == activeName);
                         if (existing == null)
                         {
                             existing = new Kaleidoscope.ContentLayoutState { Name = activeName, Type = Kaleidoscope.LayoutType.Fullscreen };
                             layouts.Add(existing);
                         }
                         gridSettings.ApplyToLayoutState(existing);
-                        Config.ActiveLayoutName = activeName;
+                        Config.ActiveFullscreenLayoutName = activeName;
                         _configService.Save();
                         _log.Debug($"Saved grid settings for layout '{activeName}' [fullscreen]");
                     }

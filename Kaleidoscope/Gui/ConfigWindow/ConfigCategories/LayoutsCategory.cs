@@ -4,17 +4,19 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
     using ImGui = Dalamud.Bindings.ImGui.ImGui;
     using System.Text.Json;
     using Kaleidoscope.Services;
+    using Kaleidoscope.Gui.Widgets;
 
     public class LayoutsCategory
     {
         private readonly ConfigurationService _configService;
 
         private Configuration Config => _configService.Config;
-        private int _selectedWindowedIndex = -1;
-        private int _selectedFullscreenIndex = -1;
-        private string _renameBuffer = string.Empty;
-        // Track which section is being edited: 0 = Windowed, 1 = Fullscreen
-        private int _editingSection = 0;
+        
+        // Cache of layout widgets, rebuilt when layouts change
+        private List<LayoutItemWidget> _windowedWidgets = new();
+        private List<LayoutItemWidget> _fullscreenWidgets = new();
+        private int _lastWindowedCount = -1;
+        private int _lastFullscreenCount = -1;
 
         public LayoutsCategory(ConfigurationService configService)
         {
@@ -32,169 +34,145 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
             var windowedLayouts = layouts.Where(l => l.Type == LayoutType.Windowed).ToList();
             var fullscreenLayouts = layouts.Where(l => l.Type == LayoutType.Fullscreen).ToList();
 
+            // Rebuild widgets if counts changed
+            if (windowedLayouts.Count != _lastWindowedCount)
+            {
+                RebuildWindowedWidgets(windowedLayouts);
+                _lastWindowedCount = windowedLayouts.Count;
+            }
+            
+            if (fullscreenLayouts.Count != _lastFullscreenCount)
+            {
+                RebuildFullscreenWidgets(fullscreenLayouts);
+                _lastFullscreenCount = fullscreenLayouts.Count;
+            }
+
             // === Windowed Layouts Section ===
             ImGui.TextUnformatted("Windowed Layouts");
-            ImGui.BeginChild("##windowed_layouts_list", new System.Numerics.Vector2(0, 120), true);
+            ImGui.Spacing();
+            
             if (windowedLayouts.Count == 0)
             {
-                ImGui.TextDisabled("No windowed layouts.");
+                ImGui.TextDisabled("No windowed layouts. Save a layout from the main window to create one.");
             }
             else
             {
-                for (var i = 0; i < windowedLayouts.Count; i++)
+                var toRemove = -1;
+                for (var i = 0; i < _windowedWidgets.Count; i++)
                 {
-                    var l = windowedLayouts[i];
-                    var isActive = string.Equals(l.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase);
-                    var label = isActive ? $"{l.Name} (Active)" : l.Name;
-                    if (ImGui.Selectable(label, _editingSection == 0 && _selectedWindowedIndex == i))
+                    if (_windowedWidgets[i].Draw())
                     {
-                        _selectedWindowedIndex = i;
-                        _selectedFullscreenIndex = -1;
-                        _editingSection = 0;
-                        _renameBuffer = l.Name;
+                        toRemove = i;
                     }
                 }
+                
+                if (toRemove >= 0)
+                {
+                    _lastWindowedCount = -1; // Force rebuild
+                }
             }
-            ImGui.EndChild();
-
+            
+            ImGui.Spacing();
+            ImGui.Separator();
             ImGui.Spacing();
 
             // === Fullscreen Layouts Section ===
             ImGui.TextUnformatted("Fullscreen Layouts");
-            ImGui.BeginChild("##fullscreen_layouts_list", new System.Numerics.Vector2(0, 120), true);
+            ImGui.Spacing();
+            
             if (fullscreenLayouts.Count == 0)
             {
-                ImGui.TextDisabled("No fullscreen layouts.");
+                ImGui.TextDisabled("No fullscreen layouts. Save a layout from fullscreen mode to create one.");
             }
             else
             {
-                for (var i = 0; i < fullscreenLayouts.Count; i++)
+                var toRemove = -1;
+                for (var i = 0; i < _fullscreenWidgets.Count; i++)
                 {
-                    var l = fullscreenLayouts[i];
-                    var isActive = string.Equals(l.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase);
-                    var label = isActive ? $"{l.Name} (Active)" : l.Name;
-                    if (ImGui.Selectable(label, _editingSection == 1 && _selectedFullscreenIndex == i))
+                    if (_fullscreenWidgets[i].Draw())
                     {
-                        _selectedFullscreenIndex = i;
-                        _selectedWindowedIndex = -1;
-                        _editingSection = 1;
-                        _renameBuffer = l.Name;
+                        toRemove = i;
                     }
                 }
+                
+                if (toRemove >= 0)
+                {
+                    _lastFullscreenCount = -1; // Force rebuild
+                }
             }
-            ImGui.EndChild();
-
-            ImGui.Separator();
-
-            // Determine which layout is selected based on section
-            ContentLayoutState? selected = null;
-            List<ContentLayoutState>? sourceList = null;
-            int sourceIndex = -1;
             
-            if (_editingSection == 0 && _selectedWindowedIndex >= 0 && _selectedWindowedIndex < windowedLayouts.Count)
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            // Import section
+            ImGui.TextUnformatted("Import Layout");
+            if (ImGui.Button("Import from Clipboard (Windowed)"))
             {
-                selected = windowedLayouts[_selectedWindowedIndex];
-                sourceList = windowedLayouts;
-                sourceIndex = _selectedWindowedIndex;
+                ImportLayoutFromClipboard(LayoutType.Windowed);
             }
-            else if (_editingSection == 1 && _selectedFullscreenIndex >= 0 && _selectedFullscreenIndex < fullscreenLayouts.Count)
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Import from Clipboard (Fullscreen)"))
             {
-                selected = fullscreenLayouts[_selectedFullscreenIndex];
-                sourceList = fullscreenLayouts;
-                sourceIndex = _selectedFullscreenIndex;
+                ImportLayoutFromClipboard(LayoutType.Fullscreen);
             }
-
-            // Actions for selected layout
-            if (selected != null)
+        }
+        
+        private void RebuildWindowedWidgets(List<ContentLayoutState> windowedLayouts)
+        {
+            _windowedWidgets.Clear();
+            foreach (var layout in windowedLayouts)
             {
-                var typeLabel = selected.Type == LayoutType.Windowed ? "Windowed" : "Fullscreen";
-                ImGui.TextUnformatted($"Selected: {selected.Name} ({typeLabel})");
-                
-                ImGui.InputText("Rename##layout", ref _renameBuffer, 128);
-                ImGui.SameLine();
-                if (ImGui.Button("Rename"))
-                {
-                    if (!string.IsNullOrWhiteSpace(_renameBuffer))
+                var l = layout; // Capture for closure
+                _windowedWidgets.Add(new LayoutItemWidget(
+                    _configService,
+                    l,
+                    isActive: () => string.Equals(Config.ActiveWindowedLayoutName, l.Name, StringComparison.OrdinalIgnoreCase),
+                    onSetActive: () =>
                     {
-                        selected.Name = _renameBuffer;
+                        Config.ActiveWindowedLayoutName = l.Name;
+                        _configService.Save();
+                    },
+                    onDelete: () =>
+                    {
+                        Config.Layouts?.Remove(l);
+                        if (string.Equals(Config.ActiveWindowedLayoutName, l.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Config.ActiveWindowedLayoutName = string.Empty;
+                        }
                         _configService.Save();
                     }
-                }
-
-                // Type conversion
-                if (selected.Type == LayoutType.Windowed)
-                {
-                    if (ImGui.Button("Convert to Fullscreen"))
-                    {
-                        selected.Type = LayoutType.Fullscreen;
-                        _selectedWindowedIndex = -1;
-                        _configService.Save();
-                    }
-                }
-                else
-                {
-                    if (ImGui.Button("Convert to Windowed"))
-                    {
-                        selected.Type = LayoutType.Windowed;
-                        _selectedFullscreenIndex = -1;
-                        _configService.Save();
-                    }
-                }
-
-                ImGui.SameLine();
-                if (ImGui.Button("Set Active"))
-                {
-                    Config.ActiveLayoutName = selected.Name;
-                    _configService.Save();
-                }
-
-                ImGui.SameLine();
-                if (ImGui.Button("Delete"))
-                {
-                    layouts.Remove(selected);
-                    _selectedWindowedIndex = -1;
-                    _selectedFullscreenIndex = -1;
-                    _configService.Save();
-                }
-
-                // Import/Export
-                if (ImGui.Button("Export JSON"))
-                {
-                    try
-                    {
-                        var s = JsonSerializer.Serialize(selected, new JsonSerializerOptions { WriteIndented = true });
-                        ImGui.SetClipboardText(s);
-                    }
-                    catch (Exception ex) { LogService.Debug($"[LayoutsCategory] Export JSON failed: {ex.Message}"); }
-                }
-
-                ImGui.SameLine();
-                if (ImGui.Button("Import JSON (Windowed)"))
-                {
-                    ImportLayoutFromClipboard(LayoutType.Windowed);
-                }
-
-                ImGui.SameLine();
-                if (ImGui.Button("Import JSON (Fullscreen)"))
-                {
-                    ImportLayoutFromClipboard(LayoutType.Fullscreen);
-                }
+                ));
             }
-            else
+        }
+        
+        private void RebuildFullscreenWidgets(List<ContentLayoutState> fullscreenLayouts)
+        {
+            _fullscreenWidgets.Clear();
+            foreach (var layout in fullscreenLayouts)
             {
-                ImGui.TextDisabled("Select a layout to edit.");
-                
-                // Import buttons when nothing is selected
-                if (ImGui.Button("Import JSON (Windowed)"))
-                {
-                    ImportLayoutFromClipboard(LayoutType.Windowed);
-                }
-                
-                ImGui.SameLine();
-                if (ImGui.Button("Import JSON (Fullscreen)"))
-                {
-                    ImportLayoutFromClipboard(LayoutType.Fullscreen);
-                }
+                var l = layout; // Capture for closure
+                _fullscreenWidgets.Add(new LayoutItemWidget(
+                    _configService,
+                    l,
+                    isActive: () => string.Equals(Config.ActiveFullscreenLayoutName, l.Name, StringComparison.OrdinalIgnoreCase),
+                    onSetActive: () =>
+                    {
+                        Config.ActiveFullscreenLayoutName = l.Name;
+                        _configService.Save();
+                    },
+                    onDelete: () =>
+                    {
+                        Config.Layouts?.Remove(l);
+                        if (string.Equals(Config.ActiveFullscreenLayoutName, l.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Config.ActiveFullscreenLayoutName = string.Empty;
+                        }
+                        _configService.Save();
+                    }
+                ));
             }
         }
 
@@ -211,6 +189,13 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
                         imported.Type = targetType;
                         Config.Layouts ??= new List<ContentLayoutState>();
                         Config.Layouts.Add(imported);
+                        
+                        // Force rebuild of widgets
+                        if (targetType == LayoutType.Windowed)
+                            _lastWindowedCount = -1;
+                        else
+                            _lastFullscreenCount = -1;
+                        
                         _configService.Save();
                     }
                 }
