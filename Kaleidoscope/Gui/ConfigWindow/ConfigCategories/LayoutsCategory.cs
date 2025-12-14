@@ -202,6 +202,21 @@ public class LayoutsCategory
                 {
                     imported.Type = targetType;
                     Config.Layouts ??= new List<ContentLayoutState>();
+                    
+                    // Ensure unique name within the same layout type
+                    var baseName = imported.Name;
+                    if (string.IsNullOrWhiteSpace(baseName))
+                        baseName = "Imported Layout";
+                    var name = baseName;
+                    var counter = 1;
+                    while (Config.Layouts.Any(l => l.Type == targetType && 
+                                                    string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        counter++;
+                        name = $"{baseName} ({counter})";
+                    }
+                    imported.Name = name;
+                    
                     Config.Layouts.Add(imported);
 
                     // Force rebuild of widgets

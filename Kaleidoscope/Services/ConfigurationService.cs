@@ -63,16 +63,37 @@ public sealed class ConfigurationService : IConfigurationService, IService
 
     private void NormalizeLayouts()
     {
-        if (Config.Layouts != null && Config.Layouts.Count > 1)
-        {
-            var deduped = Config.Layouts
-                .GroupBy(l => (l.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
-                .ToList();
-            Config.Layouts = deduped;
-        }
-
         Config.Layouts ??= new List<ContentLayoutState>();
+
+        // Deduplicate layouts by (Name, Type) pair - rename duplicates instead of removing them
+        var seenNames = new Dictionary<(string Name, LayoutType Type), int>(
+            new LayoutNameTypeComparer());
+        
+        foreach (var layout in Config.Layouts)
+        {
+            var keyName = layout.Name?.Trim() ?? string.Empty;
+            var key = (Name: keyName, Type: layout.Type);
+            if (seenNames.TryGetValue(key, out var count))
+            {
+                // This is a duplicate - rename it
+                seenNames[key] = count + 1;
+                var newName = $"{keyName} ({count + 1})";
+                // Make sure the new name is also unique
+                while (Config.Layouts.Any(l => l != layout && 
+                                               l.Type == layout.Type && 
+                                               string.Equals(l.Name, newName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    count++;
+                    newName = $"{keyName} ({count + 1})";
+                }
+                layout.Name = newName;
+                seenNames[key] = count + 1;
+            }
+            else
+            {
+                seenNames[key] = 1;
+            }
+        }
 
         // Migrate from legacy ActiveLayoutName if needed
 #pragma warning disable CS0618 // Suppress obsolete warning for migration
@@ -209,6 +230,25 @@ public sealed class ConfigurationService : IConfigurationService, IService
         catch (Exception ex)
         {
             _log.Error($"Error saving layouts: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Helper comparer for (Name, Type) tuple that uses case-insensitive name comparison.
+    /// </summary>
+    private class LayoutNameTypeComparer : IEqualityComparer<(string Name, LayoutType Type)>
+    {
+        public bool Equals((string Name, LayoutType Type) x, (string Name, LayoutType Type) y)
+        {
+            return x.Type == y.Type && 
+                   string.Equals(x.Name, y.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public int GetHashCode((string Name, LayoutType Type) obj)
+        {
+            return HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Name ?? string.Empty),
+                obj.Type);
         }
     }
 }

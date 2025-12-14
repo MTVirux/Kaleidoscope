@@ -11,6 +11,8 @@ namespace Kaleidoscope.Gui.Widgets;
 /// </summary>
 public class LayoutItemWidget
 {
+    private static int _nextInstanceId;
+    private readonly int _instanceId;
     private readonly ConfigurationService _configService;
     private readonly ContentLayoutState _layout;
     private readonly Action _onDelete;
@@ -26,6 +28,7 @@ public class LayoutItemWidget
             Action onSetActive,
             Action onDelete)
         {
+            _instanceId = _nextInstanceId++;
             _configService = configService;
             _layout = layout;
             _isActive = isActive;
@@ -49,8 +52,8 @@ public class LayoutItemWidget
                 headerLabel = $"{_layout.Name} [Active]";
             }
 
-            // Use a unique ID for this layout
-            ImGui.PushID($"layout_{_layout.Name}_{_layout.Type}");
+            // Use a unique ID for this layout (instance ID ensures uniqueness even if names duplicate)
+            ImGui.PushID($"layout_{_instanceId}_{_layout.Type}");
             
             try
             {
@@ -188,20 +191,33 @@ public class LayoutItemWidget
 
     private void ApplyRename()
     {
-        if (!string.IsNullOrWhiteSpace(_renameBuffer) && _renameBuffer != _layout.Name)
-        {
-            // Update active layout name references if this was active
-            if (string.Equals(_configService.Config.ActiveWindowedLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                _configService.Config.ActiveWindowedLayoutName = _renameBuffer;
-            }
-            if (string.Equals(_configService.Config.ActiveFullscreenLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                _configService.Config.ActiveFullscreenLayoutName = _renameBuffer;
-            }
+        if (string.IsNullOrWhiteSpace(_renameBuffer) || _renameBuffer == _layout.Name)
+            return;
 
-            _layout.Name = _renameBuffer;
-            _configService.Save();
+        // Check for duplicate names within the same layout type
+        var existingWithSameName = _configService.Config.Layouts?
+            .FirstOrDefault(l => l != _layout && 
+                                  l.Type == _layout.Type && 
+                                  string.Equals(l.Name, _renameBuffer, StringComparison.OrdinalIgnoreCase));
+        
+        if (existingWithSameName != null)
+        {
+            // Reset buffer to current name - duplicate not allowed
+            _renameBuffer = _layout.Name;
+            return;
         }
+
+        // Update active layout name references if this was active
+        if (string.Equals(_configService.Config.ActiveWindowedLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            _configService.Config.ActiveWindowedLayoutName = _renameBuffer;
+        }
+        if (string.Equals(_configService.Config.ActiveFullscreenLayoutName, _layout.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            _configService.Config.ActiveFullscreenLayoutName = _renameBuffer;
+        }
+
+        _layout.Name = _renameBuffer;
+        _configService.Save();
     }
 }
