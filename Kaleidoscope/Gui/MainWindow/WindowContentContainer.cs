@@ -1077,6 +1077,17 @@ public class WindowContentContainer
                     try { mainWindowInteracting = IsMainWindowInteracting?.Invoke() ?? false; }
                     catch { /* ignore callback errors */ }
 
+                    // Check if any OTHER tool is already being dragged or resized - if so, block new interactions
+                    var anotherToolInteracting = false;
+                    for (var otherIdx = 0; otherIdx < _tools.Count; otherIdx++)
+                    {
+                        if (otherIdx != i && (_tools[otherIdx].Dragging || _tools[otherIdx].Resizing))
+                        {
+                            anotherToolInteracting = true;
+                            break;
+                        }
+                    }
+
                     // Dragging via mouse drag when hovering the child (title area)
                     var io = ImGui.GetIO();
                     var mouse = io.MousePos;
@@ -1086,8 +1097,8 @@ public class WindowContentContainer
                     var isMouseOverTitle = mouse.X >= titleMin.X && mouse.X <= titleMax.X && mouse.Y >= titleMin.Y && mouse.Y <= titleMax.Y;
 
                     // Start drag only when clicking the title, but continue dragging while mouse is down
-                    // Block starting new drags if main window is being moved/resized
-                    if ((isMouseOverTitle || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging))
+                    // Block starting new drags if main window is being moved/resized or another tool is being interacted with
+                    if ((isMouseOverTitle || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging) && (!anotherToolInteracting || te.Dragging))
                     {
                         if (!te.Dragging && !mainWindowInteracting)
                         {
@@ -1160,8 +1171,8 @@ public class WindowContentContainer
                     var isMouseOverHandle = mouse.X >= handleMin.X && mouse.X <= max.X && mouse.Y >= handleMin.Y && mouse.Y <= max.Y;
 
                     // Start resize when clicking the handle, but continue resizing while mouse is down
-                    // Block starting new resizes if main window is being moved/resized
-                    if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing))
+                    // Block starting new resizes if main window is being moved/resized or another tool is being interacted with
+                    if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing) && (!anotherToolInteracting || te.Resizing))
                     {
                         if (!te.Resizing && !mainWindowInteracting)
                         {
