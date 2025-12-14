@@ -21,6 +21,14 @@ namespace Kaleidoscope.Services
         private bool _isMainWindowMoving;
         private bool _isMainWindowResizing;
 
+        // Static reference for debug-only access (avoids DI in DEBUG blocks)
+        private static StateService? _instance;
+
+        /// <summary>
+        /// Static accessor for edit mode state. Use only in DEBUG blocks where DI is not available.
+        /// </summary>
+        public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
+
         public StateService(IPluginLog log, ConfigurationService configService)
         {
             _log = log;
@@ -30,6 +38,9 @@ namespace Kaleidoscope.Services
             _isEditMode = configService.Config.EditMode;
             _isLocked = configService.Config.PinMainWindow;
             _isFullscreen = configService.Config.ExclusiveFullscreen;
+
+            // Set static instance for DEBUG access
+            _instance = this;
 
             _log.Debug("StateService initialized");
         }

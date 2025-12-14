@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Interfaces;
@@ -130,10 +133,11 @@ namespace Kaleidoscope.Gui.Widgets
                 LogService.Error("Character selection error", ex);
             }
 
+            // Debug popup: only available in edit mode to avoid accidental activation
 #if DEBUG
             try
             {
-                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                if (StateService.IsEditModeStatic && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                 {
                     ImGui.OpenPopup("characterpicker_names_popup");
                     _namesPopupOpen = true;
