@@ -261,7 +261,7 @@ public class MainWindow : Window
                 if (exported.Count == 0)
                 {
                     var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService);
-                    if (gettingStarted != null) _contentContainer.AddTool(gettingStarted);
+                    if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
                 }
             }
             catch (Exception ex)

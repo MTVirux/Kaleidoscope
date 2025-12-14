@@ -1,53 +1,53 @@
-using System;
-using System.Numerics;
-using System.Collections.Generic;
-using System.Linq;
-using Kaleidoscope;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 
-namespace Kaleidoscope.Gui.MainWindow
+namespace Kaleidoscope.Gui.MainWindow;
+
+/// <summary>
+/// Container that manages tool layout and rendering within the main window.
+/// Supports drag-and-drop, grid snapping, and layout persistence.
+/// </summary>
+public class WindowContentContainer
 {
-    public class WindowContentContainer
+    private readonly Func<float> _getCellWidthPercent;
+    private readonly Func<float> _getCellHeightPercent;
+    private readonly Func<int> _getSubdivisions;
+    private Action<string, Vector2>? _toolFactory;
+    private Vector2 _lastContextClickRel;
+    // Index of the tool that was right-clicked to open the tool-specific context menu
+    private int _contextToolIndex = -1;
+    // Index of the tool whose settings modal is currently open (-1 = none)
+    private int _settingsToolIndex = -1;
+    // Whether the settings modal is currently open (used as ref for ImGui modal)
+    private bool _settingsPopupOpen = false;
+
+    // Grid resolution modal state
+    private bool _gridResolutionPopupOpen = false;
+    private LayoutGridSettings _editingGridSettings = new LayoutGridSettings();
+    private int _previousColumns = 0;
+    private int _previousRows = 0;
+
+    // Current layout grid settings
+    private LayoutGridSettings _currentGridSettings = new LayoutGridSettings();
+
+    // Last known content region size for detecting window resize
+    private Vector2 _lastContentSize = Vector2.Zero;
+
+    private class ToolRegistration
     {
-        private readonly Func<float> _getCellWidthPercent;
-        private readonly Func<float> _getCellHeightPercent;
-        private readonly Func<int> _getSubdivisions;
-        private Action<string, Vector2>? _toolFactory;
-        private Vector2 _lastContextClickRel;
-        // Index of the tool that was right-clicked to open the tool-specific context menu
-        private int _contextToolIndex = -1;
-        // Index of the tool whose settings modal is currently open (-1 = none)
-        private int _settingsToolIndex = -1;
-        // Whether the settings modal is currently open (used as ref for ImGui modal)
-        private bool _settingsPopupOpen = false;
-        
-        // Grid resolution modal state
-        private bool _gridResolutionPopupOpen = false;
-        private LayoutGridSettings _editingGridSettings = new LayoutGridSettings();
-        private int _previousColumns = 0;
-        private int _previousRows = 0;
-        
-        // Current layout grid settings
-        private LayoutGridSettings _currentGridSettings = new LayoutGridSettings();
-        
-        // Last known content region size for detecting window resize
-        private Vector2 _lastContentSize = Vector2.Zero;
+        public string Id = string.Empty;
+        public string Label = string.Empty;
+        public string? Description;
+        // Category path for nested menus, components separated by '>' (e.g. "Gil>Graph")
+        public string? CategoryPath;
+        public Func<Vector2, ToolComponent?> Factory = (_) => null;
+    }
 
-        private class ToolRegistration
-        {
-            public string Id = string.Empty;
-            public string Label = string.Empty;
-            public string? Description;
-            // Category path for nested menus, components separated by '>' (e.g. "Gil>Graph")
-            public string? CategoryPath;
-            public Func<Vector2, ToolComponent?> Factory = (_) => null;
-        }
-
-        private readonly List<ToolRegistration> _toolRegistry = new List<ToolRegistration>();
-        private class ToolEntry
-        {
+    private readonly List<ToolRegistration> _toolRegistry = new List<ToolRegistration>();
+    
+    private class ToolEntry
+    {
             public ToolComponent Tool;
             public Vector2 OrigPos;
             public Vector2 OrigSize;
@@ -335,7 +335,7 @@ namespace Kaleidoscope.Gui.MainWindow
             var ret = new List<ToolLayoutState>();
             foreach (var te in _tools)
             {
-                var t = te.Tool;
+                if (te?.Tool is not { } t) continue;
                 ret.Add(new ToolLayoutState
                 {
                     Id = t.Id,
@@ -344,9 +344,9 @@ namespace Kaleidoscope.Gui.MainWindow
                     Position = t.Position,
                     Size = t.Size,
                     Visible = t.Visible,
-                    BackgroundEnabled = t is { } ? t.BackgroundEnabled : false,
-                    BackgroundColor = t is { } ? t.BackgroundColor : new System.Numerics.Vector4(0f, 0f, 0f, 0.5f),
-                    HeaderVisible = t is { } ? t.HeaderVisible : true,
+                    BackgroundEnabled = t.BackgroundEnabled,
+                    BackgroundColor = t.BackgroundColor,
+                    HeaderVisible = t.HeaderVisible,
                     // Include grid coordinates
                     GridCol = t.GridCol,
                     GridRow = t.GridRow,
@@ -1597,28 +1597,27 @@ namespace Kaleidoscope.Gui.MainWindow
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Discard your changes and revert to the last saved layout");
-            }
-            
-            ImGui.SameLine();
-            
-            // Cancel button
-            if (ImGui.Button("Cancel", new Vector2(80, 0)))
-            {
-                ImGui.CloseCurrentPopup();
-                _unsavedChangesPopupOpen = false;
-                _unsavedChangesContinueAction = null;
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Cancel and return to editing");
-            }
         }
-        catch (Exception ex)
+
+        ImGui.SameLine();
+
+        // Cancel button
+        if (ImGui.Button("Cancel", new Vector2(80, 0)))
         {
-            LogService.Error("Error in unsaved changes dialog", ex);
+            ImGui.CloseCurrentPopup();
+            _unsavedChangesPopupOpen = false;
+            _unsavedChangesContinueAction = null;
         }
-        
-        ImGui.EndPopup();
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Cancel and return to editing");
+        }
     }
+    catch (Exception ex)
+    {
+        LogService.Error("Error in unsaved changes dialog", ex);
     }
+
+    ImGui.EndPopup();
+}
 }
