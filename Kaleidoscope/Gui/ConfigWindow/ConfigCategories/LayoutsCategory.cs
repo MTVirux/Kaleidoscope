@@ -53,6 +53,11 @@ public class LayoutsCategory
 
         // === Windowed Layouts Section ===
         ImGui.TextUnformatted("Windowed Layouts");
+        ImGui.SameLine();
+        if (ImGui.Button("New##windowed"))
+        {
+            CreateNewLayout(LayoutType.Windowed);
+        }
         ImGui.Spacing();
 
         if (windowedLayouts.Count == 0)
@@ -82,6 +87,11 @@ public class LayoutsCategory
 
         // === Fullscreen Layouts Section ===
         ImGui.TextUnformatted("Fullscreen Layouts");
+        ImGui.SameLine();
+        if (ImGui.Button("New##fullscreen"))
+        {
+            CreateNewLayout(LayoutType.Fullscreen);
+        }
         ImGui.Spacing();
 
         if (fullscreenLayouts.Count == 0)
@@ -205,5 +215,44 @@ public class LayoutsCategory
             }
         }
         catch (Exception ex) { LogService.Debug($"[LayoutsCategory] Import JSON failed: {ex.Message}"); }
+    }
+
+    private void CreateNewLayout(LayoutType layoutType)
+    {
+        try
+        {
+            Config.Layouts ??= new List<ContentLayoutState>();
+            
+            // Generate a unique name
+            var baseName = layoutType == LayoutType.Windowed ? "New Layout" : "New Fullscreen Layout";
+            var name = baseName;
+            var counter = 1;
+            while (Config.Layouts.Any(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                counter++;
+                name = $"{baseName} {counter}";
+            }
+            
+            var newLayout = new ContentLayoutState
+            {
+                Name = name,
+                Type = layoutType,
+                Tools = new List<ToolLayoutState>()
+            };
+            
+            Config.Layouts.Add(newLayout);
+            
+            // Force rebuild of widgets
+            if (layoutType == LayoutType.Windowed)
+                _lastWindowedCount = -1;
+            else
+                _lastFullscreenCount = -1;
+            
+            _configService.Save();
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[LayoutsCategory] Create layout failed: {ex.Message}");
+        }
     }
 }
