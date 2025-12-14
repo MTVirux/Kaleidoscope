@@ -1,6 +1,7 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Libs;
 using Kaleidoscope.Services;
 
@@ -9,7 +10,8 @@ namespace Kaleidoscope.Gui.MainWindow
     public class GilTrackerComponent
     {
         private readonly GilTrackerHelper _helper;
-        private readonly CharacterPicker _characterPicker;
+        private readonly CharacterPickerWidget _characterPicker;
+        private readonly SampleGraphWidget _graphWidget;
         private readonly SamplerService _samplerService;
 
         // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
@@ -29,7 +31,15 @@ namespace Kaleidoscope.Gui.MainWindow
             _dbPath = filenameService.DatabasePath;
             // Share the database service from SamplerService to avoid duplicate connections
             _helper = new GilTrackerHelper(samplerService.DbService, ConfigStatic.GilTrackerMaxSamples, ConfigStatic.GilTrackerStartingValue);
-            _characterPicker = new CharacterPicker(_helper);
+            _characterPicker = new CharacterPickerWidget(_helper);
+            _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
+            {
+                MinValue = 0f,
+                MaxValue = ConfigStatic.GilTrackerMaxGil,
+                PlotId = "gilplot",
+                NoDataText = "No data yet.",
+                FloatEpsilon = ConfigStatic.FloatEpsilon
+            });
         }
 
         public bool HasDb => !string.IsNullOrEmpty(_dbPath);
@@ -96,132 +106,27 @@ namespace Kaleidoscope.Gui.MainWindow
 
             // DB buttons moved to Config Window (Data Management)
 
+            // Draw the character picker widget
             _characterPicker.Draw();
 
-            float min = float.MaxValue;
-            float max = float.MinValue;
-            for (var i = 0; i < _helper.Samples.Count; i++)
+            // Draw the sample graph widget
+            _graphWidget.Draw(_helper.Samples);
+
+            // Debug: right-click the plot to open a popup listing all data points + timestamps
+            #if DEBUG
+            try
             {
-                var v = _helper.Samples[i];
-                if (v < min) min = v;
-                if (v > max) max = v;
-            }
-            // Force the plotted minimum baseline to 0 so the graph always starts at zero.
-            // Force the plotted maximum to a fixed ceiling so the Y-axis covers a known range.
-            min = 0f;
-            max = ConfigStatic.GilTrackerMaxGil;
-
-            //ImGui.TextUnformatted($"Current: {((long)_helper.LastValue).ToString("N0", CultureInfo.InvariantCulture)}\nMin: {((long)min).ToString("N0", CultureInfo.InvariantCulture)}\nMax: {((long)max).ToString("N0", CultureInfo.InvariantCulture)}");
-
-            // Plot the samples
-            if (_helper.Samples.Count > 0)
-            {
-                // ImGui.PlotLines expects a float array
-                var arr = _helper.Samples.ToArray();
-                // Expand the plot to fill the available content region by hosting it in a sized child
-                try
+                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                 {
-                    var avail = ImGui.GetContentRegionAvail();
-                    // Allow the plot child to auto-size to the remaining available region.
-                    // If ImGui reports a non-positive available size, pass 0 so BeginChild will
-                    // use the remaining window space rather than a forced minimum.
-                    var graphWidth = avail.X <= 0f ? 0f : avail.X;
-                    var graphHeight = avail.Y <= 0f ? 0f : avail.Y;
-
-                    // Ensure we have a non-zero vertical range for plotting
-                    if (Math.Abs(max - min) < ConfigStatic.FloatEpsilon)
-                    {
-                        max = min + 1f;
-                    }
-
-                    ImGui.BeginChild("giltracker_plot_child", new System.Numerics.Vector2(graphWidth, graphHeight), false);
-                    // Set the next item's width to the child's available width so the plot expands horizontally.
-                    var childAvailAfterBegin = ImGui.GetContentRegionAvail();
-                    ImGui.SetNextItemWidth(Math.Max(1f, childAvailAfterBegin.X));
-                    // Try to use the PlotLines overload that accepts an explicit graph size
-                    // (overlay string, scale min/max, graph size) so the plot covers the
-                    // full child height as well as width.
-                    var plotSize = new System.Numerics.Vector2(Math.Max(1f, childAvailAfterBegin.X), Math.Max(1f, childAvailAfterBegin.Y));
-                    ImGui.PlotLines("##gilplot", arr, arr.Length, "", min, max, plotSize);
-                    ImGui.EndChild();
-                }
-                catch
-                {
-                    // Fall back to default small plot if anything goes wrong
-                    ImGui.PlotLines("##gilplot", arr, arr.Length);
-                }
-                // Show a tooltip with a nicely formatted value when hovering the plot
-                if (ImGui.IsItemHovered())
-                {
-                    try
-                    {
-                        var minRect = ImGui.GetItemRectMin();
-                        var maxRect = ImGui.GetItemRectMax();
-                        var mouse = ImGui.GetMousePos();
-                        var width = maxRect.X - minRect.X;
-                        if (width > 0 && arr.Length > 0)
-                        {
-                            var rel = (mouse.X - minRect.X) / width;
-                            var idx = (int)Math.Floor(rel * arr.Length);
-                            if (idx < 0) idx = 0;
-                            if (idx >= arr.Length) idx = arr.Length - 1;
-                            var val = arr[idx];
-                            string FormatValue(float v)
-                            {
-                                if (Math.Abs(v - Math.Truncate(v)) < ConfigStatic.FloatEpsilon)
-                                    return ((long)v).ToString("N0", CultureInfo.InvariantCulture);
-                                return v.ToString("N2", CultureInfo.InvariantCulture);
-                            }
-
-                            var currentStr = $"{idx}:{FormatValue(val)}";
-                            // If we have a previous value, show the percent change in parentheses (no plus sign for positive)
-                            if (idx > 0)
-                            {
-                                var prev = arr[idx - 1];
-                                if (Math.Abs(prev) < ConfigStatic.FloatEpsilon)
-                                {
-                                    ImGui.SetTooltip($"{currentStr} (N/A)");
-                                }
-                                else
-                                {
-                                    var percent = (((double)val - (double)prev) / Math.Abs((double)prev)) * 100.0;
-                                    var sign = percent < 0 ? "-" : "";
-                                    var percentAbs = Math.Abs(percent);
-                                    var percentStr = percentAbs.ToString("0.##", CultureInfo.InvariantCulture);
-                                    ImGui.SetTooltip($"{currentStr} ({sign}{percentStr}%)");
-                                }
-                            }
-                            else
-                            {
-                                ImGui.SetTooltip(currentStr);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Debug($"Tooltip error: {ex.Message}");
-                    }
-                    // Debug: right-click the plot to open a popup listing all data points + timestamps
-                    #if DEBUG
-                    try
-                    {
-                        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-                        {
-                            ImGui.OpenPopup("giltracker_points_popup");
-                            _pointsPopupOpen = true;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Debug($"Debug popup error: {ex.Message}");
-                    }
-                    #endif
+                    ImGui.OpenPopup("giltracker_points_popup");
+                    _pointsPopupOpen = true;
                 }
             }
-            else
+            catch (Exception ex)
             {
-                ImGui.TextUnformatted("No data yet.");
+                LogService.Debug($"Debug popup error: {ex.Message}");
             }
+            #endif
 
             // Popup showing all stored points with timestamps (debug-only)
             #if DEBUG

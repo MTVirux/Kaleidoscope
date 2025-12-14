@@ -1,56 +1,78 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
-using ECommons.DalamudServices;
+using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
 
-namespace Kaleidoscope.Gui.MainWindow
+namespace Kaleidoscope.Gui.Widgets
 {
-    internal class CharacterPicker
+    /// <summary>
+    /// A reusable character selection dropdown widget.
+    /// Can be used with any data source that implements ICharacterDataSource.
+    /// </summary>
+    public class CharacterPickerWidget
     {
-        private readonly GilTrackerHelper _helper;
+        private readonly ICharacterDataSource _dataSource;
 #if DEBUG
         private bool _namesPopupOpen = false;
 #endif
 
-        public CharacterPicker(GilTrackerHelper helper)
+        /// <summary>
+        /// Creates a new CharacterPickerWidget.
+        /// </summary>
+        /// <param name="dataSource">The data source providing character information.</param>
+        public CharacterPickerWidget(ICharacterDataSource dataSource)
         {
-            _helper = helper ?? throw new ArgumentNullException(nameof(helper));
+            _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         }
 
+        /// <summary>
+        /// Draws the character picker combo box.
+        /// </summary>
         public void Draw()
+        {
+            Draw("Character");
+        }
+
+        /// <summary>
+        /// Draws the character picker combo box with a custom label.
+        /// </summary>
+        /// <param name="label">The label for the combo box.</param>
+        public void Draw(string label)
         {
             // Refresh and ensure we include any characters that have stored names
             try
             {
-                _helper.RefreshAvailableCharacters();
-                var stored = _helper.GetAllStoredCharacterNames();
+                _dataSource.RefreshAvailableCharacters();
+                var stored = _dataSource.GetAllStoredCharacterNames();
                 if (stored != null && stored.Count > 0)
                 {
                     foreach (var e in stored)
                     {
-                        if (!_helper.AvailableCharacters.Contains(e.cid)) _helper.AvailableCharacters.Add(e.cid);
+                        if (!_dataSource.AvailableCharacters.Contains(e.cid))
+                            _dataSource.AvailableCharacters.Add(e.cid);
                     }
                 }
                 // Keep the list sorted for predictable ordering
-                _helper.AvailableCharacters.Sort();
+                _dataSource.AvailableCharacters.Sort();
             }
             catch (Exception ex)
             {
-                LogService.Debug($"Character refresh error: {ex.Message}");
+                LogService.Debug($"[CharacterPickerWidget] Character refresh error: {ex.Message}");
             }
 
-            var count = _helper.AvailableCharacters.Count;
+            var count = _dataSource.AvailableCharacters.Count;
+            
             // Build a filtered list of visible character ids (hide entries where
             // the display resolver falls back to the raw numeric CID). This keeps
             // the dropdown free of numeric CIDs when no name is available.
             var visibleIds = new List<ulong>();
             if (count > 0)
             {
-                foreach (var id in _helper.AvailableCharacters)
+                foreach (var id in _dataSource.AvailableCharacters)
                 {
                     try
                     {
-                        var name = _helper.GetCharacterDisplayName(id);
+                        var name = _dataSource.GetCharacterDisplayName(id);
                         if (!string.IsNullOrEmpty(name) && name != id.ToString())
                         {
                             visibleIds.Add(id);
@@ -58,17 +80,18 @@ namespace Kaleidoscope.Gui.MainWindow
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"Display name error for {id}: {ex.Message}");
+                        LogService.Debug($"[CharacterPickerWidget] Display name error for {id}: {ex.Message}");
                     }
                 }
             }
 
             var visibleCount = visibleIds.Count;
+            
             // Build display names, inserting an "All" option at index 0
             var displayList = new List<string> { "All" };
             if (visibleCount > 0)
             {
-                displayList.AddRange(visibleIds.Select(id => _helper.GetCharacterDisplayName(id)));
+                displayList.AddRange(visibleIds.Select(id => _dataSource.GetCharacterDisplayName(id)));
             }
             else
             {
@@ -81,24 +104,24 @@ namespace Kaleidoscope.Gui.MainWindow
             if (visibleCount > 0)
             {
                 // SelectedCharacterId maps to index+1 in the displayList because 0 == All
-                var selIndex = visibleIds.IndexOf(_helper.SelectedCharacterId);
+                var selIndex = visibleIds.IndexOf(_dataSource.SelectedCharacterId);
                 idx = selIndex < 0 ? 0 : selIndex + 1;
             }
 
             try
             {
-                if (ImGui.Combo("Character", ref idx, names, names.Length))
+                if (ImGui.Combo(label, ref idx, names, names.Length))
                 {
                     // If user selected "All" (idx == 0), load for character id 0 (clears selection)
                     if (idx == 0)
-                        {
-                            // Load aggregated data across all characters
-                            _helper.LoadAllCharacters();
-                        }
+                    {
+                        // Load aggregated data across all characters
+                        _dataSource.LoadAllCharacters();
+                    }
                     else if (visibleCount > 0)
                     {
                         var id = visibleIds[idx - 1];
-                        _helper.LoadForCharacter(id);
+                        _dataSource.LoadForCharacter(id);
                     }
                 }
             }
@@ -112,19 +135,20 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                 {
-                    ImGui.OpenPopup("giltracker_names_popup");
+                    ImGui.OpenPopup("characterpicker_names_popup");
                     _namesPopupOpen = true;
                 }
             }
-            catch (Exception ex) { LogService.Debug($"[CharacterPicker] Debug popup trigger failed: {ex.Message}"); }
-#endif
+            catch (Exception ex)
+            {
+                LogService.Debug($"[CharacterPickerWidget] Debug popup trigger failed: {ex.Message}");
+            }
 
-#if DEBUG
-            if (ImGui.BeginPopupModal("giltracker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.BeginPopupModal("characterpicker_names_popup", ref _namesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
                 try
                 {
-                    var entries = _helper.GetAllStoredCharacterNames();
+                    var entries = _dataSource.GetAllStoredCharacterNames();
                     if (entries.Count == 0)
                     {
                         ImGui.TextUnformatted("No stored character names in DB.");
@@ -133,7 +157,7 @@ namespace Kaleidoscope.Gui.MainWindow
                     {
                         ImGui.TextUnformatted("Stored character names and CIDs:");
                         ImGui.Separator();
-                        ImGui.BeginChild("giltracker_names_child", new Vector2(600, 300), true);
+                        ImGui.BeginChild("characterpicker_names_child", new System.Numerics.Vector2(600, 300), true);
                         for (var i = 0; i < entries.Count; i++)
                         {
                             var e = entries[i];
@@ -143,7 +167,10 @@ namespace Kaleidoscope.Gui.MainWindow
                         ImGui.EndChild();
                     }
                 }
-                catch (Exception ex) { LogService.Debug($"[CharacterPicker] Debug popup content render failed: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"[CharacterPickerWidget] Debug popup content render failed: {ex.Message}");
+                }
 
                 if (ImGui.Button("Close"))
                 {

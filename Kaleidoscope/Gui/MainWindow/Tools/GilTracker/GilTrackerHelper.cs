@@ -1,4 +1,5 @@
 using ECommons.DalamudServices;
+using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow
@@ -6,8 +7,9 @@ namespace Kaleidoscope.Gui.MainWindow
     /// <summary>
     /// Helper class for the GilTracker UI component.
     /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
+    /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
     /// </summary>
-    internal class GilTrackerHelper
+    internal class GilTrackerHelper : ICharacterDataSource
     {
         private readonly KaleidoscopeDbService _dbService;
         private readonly int _maxSamples;
