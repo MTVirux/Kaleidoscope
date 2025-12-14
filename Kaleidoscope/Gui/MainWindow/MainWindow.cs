@@ -111,7 +111,13 @@ public class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(layoutName))
             {
                 var suffix = _layoutEditingService.IsDirty ? " *" : "";
+                // In debug builds show the full, more descriptive label. In release
+                // builds keep the title short ("Kaleidoscope x.x.x.x - {LayoutName}").
+#if DEBUG
                 WindowName = $"{baseTitle} - Layout: {layoutName}{suffix}";
+#else
+                WindowName = $"{baseTitle} - {layoutName}{suffix}";
+#endif
             }
             else
             {
@@ -624,9 +630,17 @@ public class MainWindow : Window
     private static string GetDisplayTitle()
     {
         var asm = Assembly.GetExecutingAssembly();
+        // Show the full informational version (may include commit/branch metadata)
+        // only in DEBUG builds. For release builds prefer the assembly version
+        // to keep the title concise.
+    #if DEBUG
         var infoVer = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         var asmVer = asm.GetName().Version?.ToString();
         var ver = !string.IsNullOrEmpty(infoVer) ? infoVer : (!string.IsNullOrEmpty(asmVer) ? asmVer : "0.0.0");
         return $"Kaleidoscope {ver}";
+    #else
+        var asmVer = asm.GetName().Version?.ToString() ?? "VERSION_RESOLUTION_ERROR";
+        return $"Kaleidoscope {asmVer}";
+    #endif
     }
 }
