@@ -37,6 +37,21 @@ namespace Kaleidoscope.Interfaces
         bool IsResizing { get; set; }
 
         /// <summary>
+        /// Gets or sets whether the main window is currently being moved.
+        /// </summary>
+        bool IsMainWindowMoving { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the main window is currently being resized.
+        /// </summary>
+        bool IsMainWindowResizing { get; set; }
+
+        /// <summary>
+        /// Returns true if the main window is being moved or resized.
+        /// </summary>
+        bool IsMainWindowInteracting { get; }
+
+        /// <summary>
         /// Returns true if any interaction is active (dragging or resizing).
         /// </summary>
         bool IsInteracting { get; }

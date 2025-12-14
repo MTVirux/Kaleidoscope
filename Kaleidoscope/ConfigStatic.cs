@@ -17,7 +17,7 @@ namespace Kaleidoscope
         public static readonly Vector2 DefaultWindowSize = new(800, 600);
 
         /// <summary>Minimum allowed window size.</summary>
-        public static readonly Vector2 MinimumWindowSize = new(300, 120);
+        public static readonly Vector2 MinimumWindowSize = new(250,180);
 
         #endregion
 

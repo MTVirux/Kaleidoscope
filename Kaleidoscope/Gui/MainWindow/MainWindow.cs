@@ -32,6 +32,11 @@ namespace Kaleidoscope.Gui.MainWindow
         private DateTime _lastSaveTime = DateTime.MinValue;
         private const int SaveThrottleMs = 500;
 
+        // Track previous frame's window position/size to detect main window move/resize
+        private Vector2 _prevFramePos = Vector2.Zero;
+        private Vector2 _prevFrameSize = Vector2.Zero;
+        private bool _prevFrameInitialized = false;
+
         // Reference to WindowService for window coordination (set after construction due to circular dependency)
         private WindowService? _windowService;
         public void SetWindowService(WindowService ws) => _windowService = ws;
@@ -334,6 +339,9 @@ namespace Kaleidoscope.Gui.MainWindow
             {
                 _stateService.IsResizing = resizing;
             };
+
+            // Wire main window interaction state so container can block tool interactions
+            _contentContainer.IsMainWindowInteracting = () => _stateService.IsMainWindowInteracting;
         }
 
         private void PersistCurrentLayout()
@@ -421,6 +429,42 @@ namespace Kaleidoscope.Gui.MainWindow
 
         public override void Draw()
         {
+            // Detect if main window is being moved or resized by comparing frame-to-frame position/size
+            try
+            {
+                var curPos = ImGui.GetWindowPos();
+                var curSize = ImGui.GetWindowSize();
+                var io = ImGui.GetIO();
+                const float eps = 0.5f;
+
+                if (_prevFrameInitialized)
+                {
+                    var posChanging = Math.Abs(curPos.X - _prevFramePos.X) > eps || Math.Abs(curPos.Y - _prevFramePos.Y) > eps;
+                    var sizeChanging = Math.Abs(curSize.X - _prevFrameSize.X) > eps || Math.Abs(curSize.Y - _prevFrameSize.Y) > eps;
+
+                    if (io.MouseDown[0])
+                    {
+                        // Once we detect moving/resizing started, keep the state true until mouse is released
+                        // (latch the state on, only clear when mouse is released)
+                        if (posChanging)
+                            _stateService.IsMainWindowMoving = true;
+                        if (sizeChanging)
+                            _stateService.IsMainWindowResizing = true;
+                    }
+                    else
+                    {
+                        // Mouse released, clear main window interaction state
+                        _stateService.IsMainWindowMoving = false;
+                        _stateService.IsMainWindowResizing = false;
+                    }
+                }
+
+                _prevFramePos = curPos;
+                _prevFrameSize = curSize;
+                _prevFrameInitialized = true;
+            }
+            catch (Exception ex) { _log.Debug($"[MainWindow] Window interaction detection failed: {ex.Message}"); }
+
             // Main content drawing: render the HUD content container
             try
             {
@@ -466,7 +510,7 @@ namespace Kaleidoscope.Gui.MainWindow
                             _lastSavedPos = curPos;
                             _lastSavedSize = curSize;
                             _lastSaveTime = now;
-                            _log.Debug($"Saved main window pos/size: {curPos}, {curSize}");
+                            _log.Verbose($"Saved main window pos/size: {curPos}, {curSize}");
                         }
                     }
                 }

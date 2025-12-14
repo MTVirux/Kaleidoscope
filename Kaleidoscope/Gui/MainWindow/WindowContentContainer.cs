@@ -79,6 +79,10 @@ namespace Kaleidoscope.Gui.MainWindow
         public Action<bool>? OnDraggingChanged;
         public Action<bool>? OnResizingChanged;
 
+        // Callback to check if main window is currently being moved or resized
+        // When true, tool interactions should be blocked to prevent accidental moves
+        public Func<bool>? IsMainWindowInteracting;
+
         // Track global interaction state for this container
         private bool _anyDragging = false;
         private bool _anyResizing = false;
@@ -873,6 +877,11 @@ namespace Kaleidoscope.Gui.MainWindow
                     // draw border
                     dl.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border));
 
+                    // Check if main window is being interacted with - if so, block new tool interactions
+                    var mainWindowInteracting = false;
+                    try { mainWindowInteracting = IsMainWindowInteracting?.Invoke() ?? false; }
+                    catch { /* ignore callback errors */ }
+
                     // Dragging via mouse drag when hovering the child (title area)
                     var io = ImGui.GetIO();
                     var mouse = io.MousePos;
@@ -882,9 +891,10 @@ namespace Kaleidoscope.Gui.MainWindow
                     var isMouseOverTitle = mouse.X >= titleMin.X && mouse.X <= titleMax.X && mouse.Y >= titleMin.Y && mouse.Y <= titleMax.Y;
 
                     // Start drag only when clicking the title, but continue dragging while mouse is down
-                    if ((isMouseOverTitle || te.Dragging) && io.MouseDown[0])
+                    // Block starting new drags if main window is being moved/resized
+                    if ((isMouseOverTitle || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging))
                     {
-                        if (!te.Dragging)
+                        if (!te.Dragging && !mainWindowInteracting)
                         {
                             te.Dragging = true;
                             te.OrigPos = t.Position;
@@ -955,9 +965,10 @@ namespace Kaleidoscope.Gui.MainWindow
                     var isMouseOverHandle = mouse.X >= handleMin.X && mouse.X <= max.X && mouse.Y >= handleMin.Y && mouse.Y <= max.Y;
 
                     // Start resize when clicking the handle, but continue resizing while mouse is down
-                    if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0])
+                    // Block starting new resizes if main window is being moved/resized
+                    if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing))
                     {
-                        if (!te.Resizing)
+                        if (!te.Resizing && !mainWindowInteracting)
                         {
                             te.Resizing = true;
                             te.OrigSize = t.Size;

@@ -18,6 +18,8 @@ namespace Kaleidoscope.Services
         private bool _isLocked;
         private bool _isDragging;
         private bool _isResizing;
+        private bool _isMainWindowMoving;
+        private bool _isMainWindowResizing;
 
         public StateService(IPluginLog log, ConfigurationService configService)
         {
@@ -104,10 +106,37 @@ namespace Kaleidoscope.Services
         }
 
         /// <inheritdoc />
+        public bool IsMainWindowMoving
+        {
+            get => _isMainWindowMoving;
+            set
+            {
+                if (_isMainWindowMoving == value) return;
+                _isMainWindowMoving = value;
+                _log.Verbose($"StateService: IsMainWindowMoving changed to {value}");
+            }
+        }
+
+        /// <inheritdoc />
+        public bool IsMainWindowResizing
+        {
+            get => _isMainWindowResizing;
+            set
+            {
+                if (_isMainWindowResizing == value) return;
+                _isMainWindowResizing = value;
+                _log.Verbose($"StateService: IsMainWindowResizing changed to {value}");
+            }
+        }
+
+        /// <inheritdoc />
+        public bool IsMainWindowInteracting => _isMainWindowMoving || _isMainWindowResizing;
+
+        /// <inheritdoc />
         public bool IsInteracting => _isDragging || _isResizing;
 
         /// <inheritdoc />
-        public bool CanEditLayout => _isEditMode && _isLocked;
+        public bool CanEditLayout => _isEditMode;
 
         /// <inheritdoc />
         public event Action<bool>? OnFullscreenChanged;
@@ -128,13 +157,6 @@ namespace Kaleidoscope.Services
         public void ToggleEditMode()
         {
             var newState = !IsEditMode;
-            
-            if (newState)
-            {
-                // Entering edit mode - lock the window to prevent accidental movement
-                IsLocked = true;
-            }
-            
             IsEditMode = newState;
             _log.Debug($"StateService: Edit mode toggled to {newState}");
         }
