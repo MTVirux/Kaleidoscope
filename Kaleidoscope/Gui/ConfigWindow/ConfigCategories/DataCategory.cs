@@ -1,101 +1,104 @@
-namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories
+using Dalamud.Bindings.ImGui;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services;
+
+namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
+
+/// <summary>
+/// Data management category in the config window.
+/// Provides data export, cleanup, and maintenance options.
+/// </summary>
+public class DataCategory
 {
-    using Dalamud.Bindings.ImGui;
-    using ImGui = Dalamud.Bindings.ImGui.ImGui;
-    using Kaleidoscope.Services;
+    private readonly SamplerService _samplerService;
 
-    public class DataCategory
+    private bool _clearDbOpen = false;
+    private bool _sanitizeDbOpen = false;
+
+    public DataCategory(SamplerService samplerService)
     {
-        private readonly SamplerService _samplerService;
+        _samplerService = samplerService;
+    }
 
-        private bool _clearDbOpen = false;
-        private bool _sanitizeDbOpen = false;
-
-        public DataCategory(SamplerService samplerService)
+    public void Draw()
+    {
+        ImGui.TextUnformatted("Data Management");
+        ImGui.Separator();
+        var hasDb = _samplerService.HasDb;
+        if (ImGui.Button("Export CSV") && hasDb)
         {
-            _samplerService = samplerService;
+            try
+            {
+                var fileName = _samplerService.ExportCsv();
+                if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to export CSV", ex);
+            }
         }
 
-        public void Draw()
+        if (hasDb)
         {
-            ImGui.TextUnformatted("Data Management");
-            ImGui.Separator();
-            var hasDb = _samplerService.HasDb;
-            if (ImGui.Button("Export CSV") && hasDb)
+            if (ImGui.Button("Clear DB"))
+            {
+                ImGui.OpenPopup("config_clear_db_confirm");
+                _clearDbOpen = true;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Sanitize DB Data"))
+            {
+                ImGui.OpenPopup("config_sanitize_db_confirm");
+                _sanitizeDbOpen = true;
+            }
+        }
+
+        if (ImGui.BeginPopupModal("config_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
+            if (ImGui.Button("Yes"))
             {
                 try
                 {
-                    var fileName = _samplerService.ExportCsv();
-                    if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
+                    _samplerService.ClearAllData();
+                    LogService.Info("Cleared all GilTracker data");
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Failed to export CSV", ex);
+                    LogService.Error("Failed to clear data", ex);
                 }
+                ImGui.CloseCurrentPopup();
             }
-
-            if (hasDb)
+            ImGui.SameLine();
+            if (ImGui.Button("No"))
             {
-                if (ImGui.Button("Clear DB"))
-                {
-                    ImGui.OpenPopup("config_clear_db_confirm");
-                    _clearDbOpen = true;
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("Sanitize DB Data"))
-                {
-                    ImGui.OpenPopup("config_sanitize_db_confirm");
-                    _sanitizeDbOpen = true;
-                }
+                ImGui.CloseCurrentPopup();
             }
+            ImGui.EndPopup();
+        }
 
-            if (ImGui.BeginPopupModal("config_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
+            if (ImGui.Button("Yes"))
             {
-                ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
-                if (ImGui.Button("Yes"))
+                try
                 {
-                    try
-                    {
-                        _samplerService.ClearAllData();
-                        LogService.Info("Cleared all GilTracker data");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Error("Failed to clear data", ex);
-                    }
-                    ImGui.CloseCurrentPopup();
+                    var count = _samplerService.CleanUnassociatedCharacters();
+                    LogService.Info($"Cleaned {count} unassociated character records");
                 }
-                ImGui.SameLine();
-                if (ImGui.Button("No"))
+                catch (Exception ex)
                 {
-                    ImGui.CloseCurrentPopup();
+                    LogService.Error("Failed to sanitize data", ex);
                 }
-                ImGui.EndPopup();
+                ImGui.CloseCurrentPopup();
             }
-
-            if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            ImGui.SameLine();
+            if (ImGui.Button("No"))
             {
-                ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
-                if (ImGui.Button("Yes"))
-                {
-                    try
-                    {
-                        var count = _samplerService.CleanUnassociatedCharacters();
-                        LogService.Info($"Cleaned {count} unassociated character records");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Error("Failed to sanitize data", ex);
-                    }
-                    ImGui.CloseCurrentPopup();
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("No"))
-                {
-                    ImGui.CloseCurrentPopup();
-                }
-                ImGui.EndPopup();
+                ImGui.CloseCurrentPopup();
             }
+            ImGui.EndPopup();
         }
     }
 }
