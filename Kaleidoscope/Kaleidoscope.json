@@ -1,14 +1,20 @@
 {
   "Author": "MTVirux",
   "Name": "Kaleidoscope",
-  "Punchline": "PLACEHOLDER PUNCHLINE",
+  "Punchline": "May the line go up :prayge:",
   "Description": "DM @mtvirux on discord for assistance or bug reports.",
   "Tags": [
-    "Terror"
+    "Terror",
+    "Tools",
+    "Kaleidoscope",
+    "Gil",
+    "Money",
+    "Tracker",
+    "Finance"
   ],
   "LastUpdate": 1618608322,
   "InternalName": "Kaleidoscope",
-  "AssemblyVersion": "1.0.0.0",
+  "AssemblyVersion": "0.0.0.1",
   "RepoUrl": "https://github.com/MTVirux/Kaleidoscope",
   "ApplicableVersion": "any",
   "DalamudApiLevel": 13,
