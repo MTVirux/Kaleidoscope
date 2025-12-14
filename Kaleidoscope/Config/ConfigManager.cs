@@ -1,49 +1,57 @@
 using Newtonsoft.Json;
-using System.IO;
 using Kaleidoscope.Services;
 
-namespace Kaleidoscope.Config
+namespace Kaleidoscope.Config;
+
+public class ConfigManager
 {
-    public class ConfigManager
+    private readonly string _folder;
+
+    public ConfigManager(string pluginConfigDirectory)
     {
-        private readonly string folder;
+        if (string.IsNullOrEmpty(pluginConfigDirectory))
+            throw new ArgumentNullException(nameof(pluginConfigDirectory));
 
-        public ConfigManager(string pluginConfigDirectory)
+        _folder = pluginConfigDirectory;
+        if (!Directory.Exists(_folder))
+            Directory.CreateDirectory(_folder);
+    }
+
+    private string FilePath(string name) => Path.Combine(_folder, name);
+
+    public T LoadOrCreate<T>(string fileName, Func<T> factory) where T : class
+    {
+        var filePath = FilePath(fileName);
+        try
         {
-            if (string.IsNullOrEmpty(pluginConfigDirectory)) throw new ArgumentNullException(nameof(pluginConfigDirectory));
-            folder = pluginConfigDirectory;
-            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            if (File.Exists(filePath))
+            {
+                var text = File.ReadAllText(filePath);
+                var obj = JsonConvert.DeserializeObject<T>(text);
+                if (obj != null) return obj;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Warning($"[ConfigManager] Failed to load config '{fileName}', using default: {ex.Message}");
         }
 
-        private string FilePath(string name) => Path.Combine(folder, name);
+        var defaultValue = factory();
+        Save(fileName, defaultValue);
+        return defaultValue;
+    }
 
-        public T LoadOrCreate<T>(string fileName, Func<T> factory) where T : class
+    public void Save<T>(string fileName, T obj) where T : class
+    {
+        try
         {
-            var fp = FilePath(fileName);
-            try
-            {
-                if (File.Exists(fp))
-                {
-                    var txt = File.ReadAllText(fp);
-                    var obj = JsonConvert.DeserializeObject<T>(txt);
-                    if (obj != null) return obj;
-                }
-            }
-            catch (Exception ex) { LogService.Warning($"[ConfigManager] Failed to load config '{fileName}', using default: {ex.Message}"); }
-            var def = factory();
-            Save(fileName, def);
-            return def;
+            var filePath = FilePath(fileName);
+            var text = JsonConvert.SerializeObject(obj, Formatting.Indented);
+            File.WriteAllText(filePath, text);
         }
-
-        public void Save<T>(string fileName, T obj) where T : class
+        catch (Exception ex)
         {
-            try
-            {
-                var fp = FilePath(fileName);
-                var txt = JsonConvert.SerializeObject(obj, Formatting.Indented);
-                File.WriteAllText(fp, txt);
-            }
-            catch (Exception ex) { LogService.Error($"[ConfigManager] Failed to save config '{fileName}': {ex.Message}", ex); }
+            LogService.Error($"[ConfigManager] Failed to save config '{fileName}': {ex.Message}", ex);
         }
     }
 }

@@ -1,53 +1,50 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow;
 using Newtonsoft.Json;
 
-namespace Kaleidoscope.Services
-{
-    /// <summary>
-    /// Represents a pending action that was blocked due to unsaved layout changes.
-    /// The user must choose to Save, Discard, or Cancel before the action can proceed.
-    /// </summary>
-    public class PendingLayoutAction
-    {
-        /// <summary>A human-readable description of the action that was blocked.</summary>
-        public string Description { get; set; } = string.Empty;
-        
-        /// <summary>The action to perform after the user chooses Save or Discard.</summary>
-        public Action? ContinueAction { get; set; }
-        
-        /// <summary>Optional action to perform if the user cancels.</summary>
-        public Action? CancelAction { get; set; }
-    }
+namespace Kaleidoscope.Services;
 
-    /// <summary>
-    /// Manages layout editing with explicit file-editor semantics.
-    /// 
-    /// State model:
-    /// - Persisted layout: saved to disk (layouts.json)
-    /// - Working layout: in-memory, actively used
-    /// - Dirty snapshot: temporary file for reload recovery
-    /// 
-    /// Rules:
-    /// - User changes update working layout immediately and set IsDirty = true
-    /// - Changes are applied and used instantly but NOT auto-persisted
-    /// - Persisted layout updates ONLY on explicit Save action
-    /// - After save, IsDirty = false and dirty snapshot is cleared
-    /// </summary>
-    public class LayoutEditingService
-    {
-        private readonly IPluginLog _log;
-        private readonly ConfigurationService _configService;
-        private readonly FilenameService _filenameService;
-        
-        private bool _isDirty;
-        private List<ToolLayoutState>? _workingLayout;
-        private LayoutGridSettings? _workingGridSettings;
-        private string _currentLayoutName = string.Empty;
-        private LayoutType _currentLayoutType = LayoutType.Windowed;
+/// <summary>
+/// Represents a pending action that was blocked due to unsaved layout changes.
+/// The user must choose to Save, Discard, or Cancel before the action can proceed.
+/// </summary>
+public class PendingLayoutAction
+{
+    /// <summary>A human-readable description of the action that was blocked.</summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>The action to perform after the user chooses Save or Discard.</summary>
+    public Action? ContinueAction { get; set; }
+
+    /// <summary>Optional action to perform if the user cancels.</summary>
+    public Action? CancelAction { get; set; }
+}
+
+/// <summary>
+/// Manages layout editing with explicit file-editor semantics.
+/// 
+/// State model:
+/// - Persisted layout: saved to disk (layouts.json)
+/// - Working layout: in-memory, actively used
+/// - Dirty snapshot: temporary file for reload recovery
+/// 
+/// Rules:
+/// - User changes update working layout immediately and set IsDirty = true
+/// - Changes are applied and used instantly but NOT auto-persisted
+/// - Persisted layout updates ONLY on explicit Save action
+/// - After save, IsDirty = false and dirty snapshot is cleared
+/// </summary>
+public class LayoutEditingService
+{
+    private readonly IPluginLog _log;
+    private readonly ConfigurationService _configService;
+    private readonly FilenameService _filenameService;
+
+    private bool _isDirty;
+    private List<ToolLayoutState>? _workingLayout;
+    private LayoutGridSettings? _workingGridSettings;
+    private string _currentLayoutName = string.Empty;
+    private LayoutType _currentLayoutType = LayoutType.Windowed;
         
         // Pending action that was blocked due to unsaved changes
         private PendingLayoutAction? _pendingAction;
@@ -447,13 +444,12 @@ namespace Kaleidoscope.Services
         #endregion
     }
     
-    /// <summary>
-    /// User's choice in the unsaved changes dialog.
-    /// </summary>
-    public enum UnsavedChangesChoice
-    {
-        Save,
-        Discard,
-        Cancel
-    }
+/// <summary>
+/// User's choice in the unsaved changes dialog.
+/// </summary>
+public enum UnsavedChangesChoice
+{
+    Save,
+    Discard,
+    Cancel
 }
