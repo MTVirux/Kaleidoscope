@@ -28,13 +28,6 @@ namespace Kaleidoscope.Gui.MainWindow
         {
             try
             {
-                if (id == "CharacterPicker")
-                {
-                    var cp = new Tools.CharacterPicker.CharacterPickerTool();
-                    cp.Position = pos;
-                    return cp;
-                }
-
                 if (id == "GilTracker")
                 {
                     // Each GilTracker tool gets its own GilTrackerComponent instance via DI services

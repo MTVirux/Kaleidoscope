@@ -199,13 +199,6 @@ namespace Kaleidoscope.Gui.MainWindow
                 if (string.IsNullOrWhiteSpace(Config.ActiveLayoutName)) 
                     Config.ActiveLayoutName = layout.Name;
             }
-            else
-            {
-                // No saved layout: add Character Picker as default
-                var cpTool = new Tools.CharacterPicker.CharacterPickerTool();
-                cpTool.Position = new Vector2(420, 50);
-                _contentContainer?.AddTool(cpTool);
-            }
         }
 
         private void WireLayoutCallbacks()
