@@ -1,4 +1,5 @@
 using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+using Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Services;
 
@@ -12,6 +13,7 @@ public static class WindowToolRegistrar
     public static class ToolIds
     {
         public const string GilTracker = "GilTracker";
+        public const string GilTicker = "GilTicker";
         public const string GettingStarted = "GettingStarted";
     }
 
@@ -27,6 +29,13 @@ public static class WindowToolRegistrar
                 pos => CreateToolInstance(ToolIds.GilTracker, pos, filenameService, samplerService, configService),
                 "Track gil and history",
                 "Gil>Graph");
+
+            container.RegisterTool(
+                ToolIds.GilTicker,
+                "Gil Ticker",
+                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService),
+                "Scrolling ticker of character gil values",
+                "Gil>Ticker");
 
             container.RegisterTool(
                 ToolIds.GettingStarted,
@@ -48,8 +57,14 @@ public static class WindowToolRegistrar
             switch (id)
             {
                 case ToolIds.GilTracker:
-                    var inner = new GilTrackerComponent(filenameService, samplerService, configService);
-                    return new GilTrackerTool(inner, configService) { Position = pos };
+                    var gilTrackerInner = new GilTrackerComponent(filenameService, samplerService, configService);
+                    return new GilTrackerTool(gilTrackerInner, configService) { Position = pos };
+
+                case ToolIds.GilTicker:
+                    // Create a helper that shares the database with the sampler
+                    var tickerHelper = new GilTrackerHelper(samplerService.DbService);
+                    var tickerInner = new GilTickerComponent(tickerHelper, configService);
+                    return new GilTickerTool(tickerInner, tickerHelper, configService) { Position = pos };
 
                 case ToolIds.GettingStarted:
                     return new GettingStartedTool { Position = pos };

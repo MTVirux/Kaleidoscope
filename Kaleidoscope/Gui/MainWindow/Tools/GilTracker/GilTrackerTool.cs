@@ -55,14 +55,6 @@ public class GilTrackerTool : ToolComponent
             }
             ShowSettingTooltip("When viewing 'All', shows a separate line for each character instead of a combined total.", "Off");
 
-            var showLatestValue = Config.GilTrackerShowLatestValue;
-            if (ImGui.Checkbox("Show latest value at line end", ref showLatestValue))
-            {
-                Config.GilTrackerShowLatestValue = showLatestValue;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Displays the most recent recorded value next to the end of the graph line.", "Off");
-
             var showValueLabel = Config.GilTrackerShowValueLabel;
             if (ImGui.Checkbox("Show current value label", ref showValueLabel))
             {

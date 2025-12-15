@@ -99,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
 
     /// <summary>
     /// Gets or creates a series ID for the given variable and character.
+    /// When creating a new series, inserts an initial data point with value 0.
     /// </summary>
     public long? GetOrCreateSeries(string variable, ulong characterId)
     {
@@ -120,8 +121,18 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 if (result != null && result != DBNull.Value)
                     return (long)result;
 
+                // Create new series
                 cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
-                return (long)cmd.ExecuteScalar()!;
+                var newSeriesId = (long)cmd.ExecuteScalar()!;
+
+                // Insert initial 0 value for the new series
+                cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, 0)";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("$s", newSeriesId);
+                cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.Ticks);
+                cmd.ExecuteNonQuery();
+
+                return newSeriesId;
             }
             catch (Exception ex)
             {

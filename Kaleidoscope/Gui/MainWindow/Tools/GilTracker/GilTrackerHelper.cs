@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
 /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
 /// </summary>
-internal class GilTrackerHelper : ICharacterDataSource
+public class GilTrackerHelper : ICharacterDataSource
 {
         private readonly KaleidoscopeDbService _dbService;
         private readonly int _maxSamples;

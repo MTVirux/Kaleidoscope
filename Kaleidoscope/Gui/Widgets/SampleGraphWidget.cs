@@ -41,11 +41,6 @@ public class SampleGraphWidget
         public float FloatEpsilon { get; set; } = 0.0001f;
 
         /// <summary>
-        /// Whether to show the latest value at the end of the line.
-        /// </summary>
-        public bool ShowLatestValue { get; set; } = false;
-
-        /// <summary>
         /// Whether to leave a gap at the right edge of the graph.
         /// </summary>
         public bool ShowEndGap { get; set; } = false;
@@ -81,11 +76,6 @@ public class SampleGraphWidget
     // Zoom state for CTRL+scroll
     private float _zoomLevel = 1.0f;
     private float _zoomCenterX = 0.5f; // 0-1 normalized position
-    
-    // Ticker animation state
-    private float _tickerOffset = 0f;
-    private DateTime _lastTickerUpdate = DateTime.MinValue;
-    private const float TickerSpeed = 30f; // pixels per second
 
     /// <summary>
     /// Creates a new SampleGraphWidget with default configuration.
@@ -115,9 +105,8 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
+    public void UpdateDisplayOptions(bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
     {
-        _config.ShowLatestValue = showLatestValue;
         _config.ShowEndGap = showEndGap;
         _config.EndGapPercent = endGapPercent;
         _config.ShowValueLabel = showValueLabel;
@@ -161,15 +150,7 @@ public class SampleGraphWidget
         try
         {
             var avail = ImGui.GetContentRegionAvail();
-            
-            // Reserve space for latest value label on the right if enabled
-            var reservedWidth = 0f;
-            if (_config.ShowLatestValue && samples.Count > 0)
-            {
-                reservedWidth = ImGui.CalcTextSize(FormatValue(samples[^1])).X + 10f;
-            }
-
-            var graphWidth = Math.Max(1f, avail.X - reservedWidth);
+            var graphWidth = Math.Max(1f, avail.X);
             var graphHeight = Math.Max(1f, avail.Y);
 
             // Get plot position before drawing
@@ -200,13 +181,6 @@ public class SampleGraphWidget
 
             // Show tooltip with value when hovering
             DrawTooltip(samples is float[] arrCast ? arrCast : samples.ToArray());
-
-            // Draw latest value at line end if enabled (to the right of the graph)
-            if (_config.ShowLatestValue && samples.Count > 0)
-            {
-                ImGui.SameLine();
-                ImGui.TextUnformatted(FormatValue(samples[^1]));
-            }
         }
         catch (Exception ex)
         {
@@ -220,7 +194,7 @@ public class SampleGraphWidget
     /// Draws multiple data series overlaid on the same graph with time-aligned data.
     /// All lines extend to current time using their last recorded value.
     /// Uses ImGui DrawList to render multiple lines on a single plot area.
-    /// Supports CTRL+scroll to zoom and scrolling ticker for legend.
+    /// Supports CTRL+scroll to zoom both X and Y axes.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
     public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
@@ -257,49 +231,11 @@ public class SampleGraphWidget
             totalTimeSpan *= (1f + gapPercent / 100f);
         }
 
-        // Calculate Y-axis bounds
-        float yMin, yMax;
-        if (_config.AutoScaleGraph)
-        {
-            var dataMin = float.MaxValue;
-            var dataMax = float.MinValue;
-            foreach (var (_, samples) in series)
-            {
-                if (samples == null) continue;
-                foreach (var (_, val) in samples)
-                {
-                    if (val < dataMin) dataMin = val;
-                    if (val > dataMax) dataMax = val;
-                }
-            }
-
-            var dataRange = dataMax - dataMin;
-            if (dataRange < _config.FloatEpsilon)
-            {
-                dataRange = Math.Max(dataMax * 0.1f, 1f);
-            }
-            yMin = Math.Max(0f, dataMin - dataRange * 0.1f);
-            yMax = dataMax + dataRange * 0.1f;
-        }
-        else
-        {
-            yMin = _config.MinValue;
-            yMax = _config.MaxValue;
-            if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
-            {
-                yMax = yMin + 1f;
-            }
-        }
-
         try
         {
             var avail = ImGui.GetContentRegionAvail();
             var graphWidth = Math.Max(1f, avail.X);
-            var legendHeight = 20f;
-            var graphHeight = Math.Max(1f, avail.Y - legendHeight);
-
-            // Draw scrolling ticker legend at top
-            DrawTickerLegend(series, graphWidth, legendHeight);
+            var graphHeight = Math.Max(1f, avail.Y);
 
             // Get plot area position
             var plotPos = ImGui.GetCursorScreenPos();
@@ -359,8 +295,66 @@ public class SampleGraphWidget
             var visibleTimeSpan = (visibleEndTime - visibleStartTime).TotalSeconds;
             if (visibleTimeSpan < 1) visibleTimeSpan = 1;
 
-            // Draw each series as a polyline, extending to current time
+            // Calculate Y-axis bounds based on VISIBLE data only (zoom affects Y too)
+            float yMin, yMax;
+            if (_config.AutoScaleGraph)
+            {
+                var dataMin = float.MaxValue;
+                var dataMax = float.MinValue;
+                foreach (var (_, samples) in series)
+                {
+                    if (samples == null) continue;
+                    foreach (var (ts, val) in samples)
+                    {
+                        // Only consider visible data points
+                        if (ts >= visibleStartTime && ts <= visibleEndTime)
+                        {
+                            if (val < dataMin) dataMin = val;
+                            if (val > dataMax) dataMax = val;
+                        }
+                    }
+                    // Also consider the extended line value if visible
+                    if (samples.Count > 0)
+                    {
+                        var lastVal = samples[^1].value;
+                        if (samples[^1].ts <= visibleEndTime)
+                        {
+                            if (lastVal < dataMin) dataMin = lastVal;
+                            if (lastVal > dataMax) dataMax = lastVal;
+                        }
+                    }
+                }
+
+                // Fallback if no visible data
+                if (dataMin == float.MaxValue || dataMax == float.MinValue)
+                {
+                    dataMin = 0;
+                    dataMax = 100;
+                }
+
+                var dataRange = dataMax - dataMin;
+                if (dataRange < _config.FloatEpsilon)
+                {
+                    dataRange = Math.Max(dataMax * 0.1f, 1f);
+                }
+                yMin = Math.Max(0f, dataMin - dataRange * 0.1f);
+                yMax = dataMax + dataRange * 0.1f;
+            }
+            else
+            {
+                yMin = _config.MinValue;
+                yMax = _config.MaxValue;
+                if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
+                {
+                    yMax = yMin + 1f;
+                }
+            }
+
+            // Build line segments for each series (for hover detection)
             var legendColors = GetSeriesColors(series.Count);
+            var allLineSegments = new List<(int seriesIdx, Vector2 p1, Vector2 p2, float v1, float v2, DateTime t1, DateTime t2)>();
+
+            // Draw each series as a polyline, extending to current time
             for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
             {
                 var (_, samples) = series[seriesIdx];
@@ -387,7 +381,10 @@ public class SampleGraphWidget
                     var y1 = plotPos.Y + plotSize.Y - (y1Normalized * plotSize.Y);
                     var y2 = plotPos.Y + plotSize.Y - (y2Normalized * plotSize.Y);
 
-                    drawList.AddLine(new Vector2(x1, y1), new Vector2(x2, y2), colorU32, 1.5f);
+                    var p1 = new Vector2(x1, y1);
+                    var p2 = new Vector2(x2, y2);
+                    drawList.AddLine(p1, p2, colorU32, 2f);
+                    allLineSegments.Add((seriesIdx, p1, p2, samples[i].value, samples[i + 1].value, samples[i].ts, samples[i + 1].ts));
                 }
 
                 // Extend last point to current time (all lines end at same vertical position)
@@ -405,9 +402,77 @@ public class SampleGraphWidget
                         var yNormalized = (lastSample.value - yMin) / (yMax - yMin);
                         var yPos = plotPos.Y + plotSize.Y - (yNormalized * plotSize.Y);
 
-                        // Draw horizontal line from last point to current time
-                        drawList.AddLine(new Vector2(xLast, yPos), new Vector2(xNow, yPos), colorU32, 1.5f);
+                        var p1 = new Vector2(xLast, yPos);
+                        var p2 = new Vector2(xNow, yPos);
+                        // Draw horizontal line from last point to current time (dashed style via alpha)
+                        drawList.AddLine(p1, p2, colorU32, 1.5f);
+                        allLineSegments.Add((seriesIdx, p1, p2, lastSample.value, lastSample.value, lastSample.ts, globalMaxTime));
                     }
+                }
+            }
+
+            // Draw value labels for each character (at the end of their line)
+            if (_config.ShowValueLabel)
+            {
+                for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
+                {
+                    var (name, samples) = series[seriesIdx];
+                    if (samples == null || samples.Count == 0) continue;
+
+                    var lastValue = samples[^1].value;
+                    var yNormalized = (lastValue - yMin) / (yMax - yMin);
+                    var yPos = plotPos.Y + plotSize.Y - (yNormalized * plotSize.Y);
+                    
+                    // Position label at the right edge
+                    var text = $"{name}: {FormatValue(lastValue)}";
+                    var textSize = ImGui.CalcTextSize(text);
+                    var labelX = plotPos.X + plotSize.X - textSize.X - 5f + _config.ValueLabelOffsetX;
+                    var labelY = yPos - textSize.Y / 2f + _config.ValueLabelOffsetY + (seriesIdx * (textSize.Y + 2)); // Stack labels
+                    
+                    // Clamp to plot bounds
+                    labelY = Math.Clamp(labelY, plotPos.Y, plotPos.Y + plotSize.Y - textSize.Y);
+
+                    var color = legendColors[seriesIdx];
+                    var bgColor = ImGui.GetColorU32(new Vector4(0f, 0f, 0f, 0.7f));
+                    var textColor = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 1f));
+
+                    drawList.AddRectFilled(
+                        new Vector2(labelX - 2, labelY - 1),
+                        new Vector2(labelX + textSize.X + 2, labelY + textSize.Y + 1),
+                        bgColor);
+                    drawList.AddText(new Vector2(labelX, labelY), textColor, text);
+                }
+            }
+
+            // Handle hover tooltip - find closest line segment to mouse
+            if (isHovered)
+            {
+                var mousePos = ImGui.GetIO().MousePos;
+                var closestDist = float.MaxValue;
+                var closestSeriesIdx = -1;
+                var closestValue = 0f;
+                var closestTime = DateTime.MinValue;
+
+                foreach (var (seriesIdx, p1, p2, v1, v2, t1, t2) in allLineSegments)
+                {
+                    var dist = DistanceToLineSegment(mousePos, p1, p2);
+                    if (dist < closestDist && dist < 10f) // 10 pixel threshold
+                    {
+                        closestDist = dist;
+                        closestSeriesIdx = seriesIdx;
+                        
+                        // Interpolate value based on X position
+                        var t = (p2.X - p1.X) > 0.01f ? (mousePos.X - p1.X) / (p2.X - p1.X) : 0f;
+                        t = Math.Clamp(t, 0f, 1f);
+                        closestValue = v1 + (v2 - v1) * t;
+                        closestTime = t1.AddSeconds((t2 - t1).TotalSeconds * t);
+                    }
+                }
+
+                if (closestSeriesIdx >= 0)
+                {
+                    var (name, _) = series[closestSeriesIdx];
+                    ImGui.SetTooltip($"{name}: {FormatValue(closestValue)}");
                 }
             }
 
@@ -417,7 +482,7 @@ public class SampleGraphWidget
                 var zoomText = $"{_zoomLevel:0.0}x";
                 var textSize = ImGui.CalcTextSize(zoomText);
                 drawList.AddText(
-                    new Vector2(plotPos.X + plotSize.X - textSize.X - 5, plotPos.Y + 5),
+                    new Vector2(plotPos.X + 5, plotPos.Y + 5),
                     ImGui.GetColorU32(new Vector4(1f, 1f, 1f, 0.6f)),
                     zoomText);
             }
@@ -433,102 +498,17 @@ public class SampleGraphWidget
     }
 
     /// <summary>
-    /// Draws a scrolling ticker-style legend showing character names and values.
+    /// Calculates the distance from a point to a line segment.
     /// </summary>
-    private void DrawTickerLegend(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series, float width, float height)
+    private static float DistanceToLineSegment(Vector2 point, Vector2 lineStart, Vector2 lineEnd)
     {
-        var legendColors = GetSeriesColors(series.Count);
+        var line = lineEnd - lineStart;
+        var len2 = line.LengthSquared();
+        if (len2 < 0.0001f) return Vector2.Distance(point, lineStart);
         
-        // Build the full ticker text
-        var tickerParts = new List<(string text, Vector4 color)>();
-        var totalTextWidth = 0f;
-        var separator = "  •  ";
-        var separatorWidth = ImGui.CalcTextSize(separator).X;
-        
-        for (var i = 0; i < series.Count; i++)
-        {
-            var (name, samples) = series[i];
-            var color = legendColors[i];
-            var latestVal = samples != null && samples.Count > 0 ? FormatValue(samples[^1].value) : "N/A";
-            var text = $"{name}: {latestVal}";
-            var textWidth = ImGui.CalcTextSize(text).X;
-            
-            tickerParts.Add((text, new Vector4(color.X, color.Y, color.Z, 1f)));
-            totalTextWidth += textWidth;
-            
-            if (i < series.Count - 1)
-            {
-                tickerParts.Add((separator, new Vector4(0.5f, 0.5f, 0.5f, 1f)));
-                totalTextWidth += separatorWidth;
-            }
-        }
-
-        // If all content fits, just draw it centered (no scrolling needed)
-        if (totalTextWidth <= width)
-        {
-            var startX = (width - totalTextWidth) / 2f;
-            var cursorPos = ImGui.GetCursorPos();
-            ImGui.SetCursorPosX(cursorPos.X + startX);
-            
-            for (var i = 0; i < tickerParts.Count; i++)
-            {
-                var (text, color) = tickerParts[i];
-                ImGui.TextColored(color, text);
-                if (i < tickerParts.Count - 1) ImGui.SameLine(0, 0);
-            }
-            ImGui.NewLine();
-            return;
-        }
-
-        // Update ticker animation
-        var now = DateTime.Now;
-        if (_lastTickerUpdate != DateTime.MinValue)
-        {
-            var delta = (float)(now - _lastTickerUpdate).TotalSeconds;
-            _tickerOffset += delta * TickerSpeed;
-            
-            // Add separator at the end for seamless loop
-            var loopWidth = totalTextWidth + separatorWidth + ImGui.CalcTextSize(separator).X;
-            if (_tickerOffset >= loopWidth)
-            {
-                _tickerOffset -= loopWidth;
-            }
-        }
-        _lastTickerUpdate = now;
-
-        // Draw clipped ticker using DrawList
-        var drawList = ImGui.GetWindowDrawList();
-        var clipPos = ImGui.GetCursorScreenPos();
-        var clipMax = new Vector2(clipPos.X + width, clipPos.Y + height);
-        
-        drawList.PushClipRect(clipPos, clipMax, true);
-        
-        // Draw text twice for seamless looping
-        var currentX = clipPos.X - _tickerOffset;
-        for (var repeat = 0; repeat < 2; repeat++)
-        {
-            for (var i = 0; i < tickerParts.Count; i++)
-            {
-                var (text, color) = tickerParts[i];
-                var textWidth = ImGui.CalcTextSize(text).X;
-                
-                // Only draw if visible
-                if (currentX + textWidth >= clipPos.X && currentX <= clipMax.X)
-                {
-                    drawList.AddText(new Vector2(currentX, clipPos.Y), ImGui.GetColorU32(color), text);
-                }
-                
-                currentX += textWidth;
-            }
-            
-            // Add separator between loops
-            currentX += separatorWidth;
-        }
-        
-        drawList.PopClipRect();
-        
-        // Advance cursor
-        ImGui.Dummy(new Vector2(width, height));
+        var t = Math.Clamp(Vector2.Dot(point - lineStart, line) / len2, 0f, 1f);
+        var projection = lineStart + line * t;
+        return Vector2.Distance(point, projection);
     }
 
     private static Vector3[] GetSeriesColors(int count)

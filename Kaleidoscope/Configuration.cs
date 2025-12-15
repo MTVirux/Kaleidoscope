@@ -58,13 +58,16 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerShowMultipleLines { get; set; } = false;
     public int GilTrackerTimeRangeValue { get; set; } = 7;
     public TimeRangeUnit GilTrackerTimeRangeUnit { get; set; } = TimeRangeUnit.All;
-    public bool GilTrackerShowLatestValue { get; set; } = false;
     public bool GilTrackerShowEndGap { get; set; } = false;
     public float GilTrackerEndGapPercent { get; set; } = 5f;
     public bool GilTrackerShowValueLabel { get; set; } = false;
     public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
     public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
     public bool GilTrackerAutoScaleGraph { get; set; } = true;
+
+    // GilTicker settings
+    public float GilTickerScrollSpeed { get; set; } = 30f;
+    public List<ulong> GilTickerDisabledCharacters { get; set; } = new();
 }
 
 public class ContentLayoutState
