@@ -147,7 +147,7 @@ public class SampleGraphWidget
             idx = Math.Clamp(idx, 0, arr.Length - 1);
 
             var val = arr[idx];
-            var currentStr = $"{idx}:{FormatValue(val)}";
+            var valueStr = FormatValue(val);
 
             // Show percent change from previous value if available
             if (idx > 0)
@@ -155,7 +155,7 @@ public class SampleGraphWidget
                 var prev = arr[idx - 1];
                 if (Math.Abs(prev) < _config.FloatEpsilon)
                 {
-                    ImGui.SetTooltip($"{currentStr} (N/A)");
+                    ImGui.SetTooltip($"{valueStr} (N/A)");
                 }
                 else
                 {
@@ -163,12 +163,12 @@ public class SampleGraphWidget
                     var sign = percent < 0 ? "-" : "";
                     var percentAbs = Math.Abs(percent);
                     var percentStr = percentAbs.ToString("0.##", CultureInfo.InvariantCulture);
-                    ImGui.SetTooltip($"{currentStr} ({sign}{percentStr}%)");
+                    ImGui.SetTooltip($"{valueStr} ({sign}{percentStr}%)");
                 }
             }
             else
             {
-                ImGui.SetTooltip(currentStr);
+                ImGui.SetTooltip(valueStr);
             }
         }
         catch (Exception ex)
