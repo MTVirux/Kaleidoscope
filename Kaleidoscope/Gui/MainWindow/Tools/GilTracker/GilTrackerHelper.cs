@@ -356,6 +356,147 @@ internal class GilTrackerHelper : ICharacterDataSource
             }
         }
 
+        /// <summary>
+        /// Gets all character data series for multi-line display.
+        /// </summary>
+        /// <param name="cutoffTime">Optional cutoff time to filter data.</param>
+        /// <returns>List of character names and their sample data.</returns>
+        public IReadOnlyList<(string name, IReadOnlyList<float> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
+        {
+            var result = new List<(string name, IReadOnlyList<float> samples)>();
+
+            try
+            {
+                var allPoints = _dbService.GetAllPoints("Gil");
+                if (allPoints.Count == 0) return result;
+
+                // Group points by character
+                var charPoints = new Dictionary<ulong, List<(DateTime ts, long value)>>();
+                foreach (var (charId, ts, value) in allPoints)
+                {
+                    // Apply time filter if specified
+                    if (cutoffTime.HasValue && ts < cutoffTime.Value)
+                        continue;
+
+                    if (!charPoints.TryGetValue(charId, out var list))
+                    {
+                        list = new List<(DateTime, long)>();
+                        charPoints[charId] = list;
+                    }
+                    list.Add((ts, value));
+                }
+
+                // Convert each character's data to a series
+                foreach (var kv in charPoints)
+                {
+                    var charId = kv.Key;
+                    var points = kv.Value;
+                    if (points.Count == 0) continue;
+
+                    var name = GetCharacterDisplayName(charId);
+                    var samples = new List<float>();
+
+                    var start = Math.Max(0, points.Count - _maxSamples);
+                    for (var i = start; i < points.Count; i++)
+                        samples.Add((float)points[i].value);
+
+                    result.Add((name, samples));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[GilTrackerHelper] GetAllCharacterSeries failed: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Gets samples filtered by a time cutoff.
+        /// </summary>
+        /// <param name="cutoffTime">Only include samples after this time.</param>
+        /// <returns>Filtered sample list.</returns>
+        public IReadOnlyList<float> GetFilteredSamples(DateTime cutoffTime)
+        {
+            try
+            {
+                List<(DateTime ts, long value)> points;
+
+                if (SelectedCharacterId == 0)
+                {
+                    // Get aggregated points with timestamps
+                    var allPoints = _dbService.GetAllPoints("Gil");
+                    if (allPoints.Count == 0) return Array.Empty<float>();
+
+                    // Group by character and build aggregate
+                    var charPoints = new Dictionary<ulong, List<(DateTime ts, long value)>>();
+                    foreach (var (charId, ts, value) in allPoints)
+                    {
+                        if (!charPoints.TryGetValue(charId, out var list))
+                        {
+                            list = new List<(DateTime, long)>();
+                            charPoints[charId] = list;
+                        }
+                        list.Add((ts, value));
+                    }
+
+                    var allTimestamps = new SortedSet<DateTime>();
+                    foreach (var kv in charPoints)
+                        foreach (var p in kv.Value)
+                            allTimestamps.Add(p.ts);
+
+                    var indices = new Dictionary<ulong, int>();
+                    var currentValues = new Dictionary<ulong, long>();
+                    foreach (var cid in charPoints.Keys)
+                    {
+                        indices[cid] = 0;
+                        currentValues[cid] = 0L;
+                    }
+
+                    points = new List<(DateTime ts, long value)>();
+                    foreach (var ts in allTimestamps)
+                    {
+                        foreach (var kv in charPoints)
+                        {
+                            var cid = kv.Key;
+                            var list = kv.Value;
+                            var idx = indices[cid];
+                            while (idx < list.Count && list[idx].ts <= ts)
+                            {
+                                currentValues[cid] = list[idx].value;
+                                idx++;
+                            }
+                            indices[cid] = idx;
+                        }
+
+                        long sum = 0L;
+                        foreach (var v in currentValues.Values) sum += v;
+                        points.Add((ts, sum));
+                    }
+                }
+                else
+                {
+                    points = _dbService.GetPoints("Gil", SelectedCharacterId);
+                }
+
+                // Filter by cutoff time
+                var filtered = points.Where(p => p.ts >= cutoffTime).ToList();
+                if (filtered.Count == 0) return Array.Empty<float>();
+
+                var result = new List<float>();
+                var start = Math.Max(0, filtered.Count - _maxSamples);
+                for (var i = start; i < filtered.Count; i++)
+                    result.Add((float)filtered[i].value);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[GilTrackerHelper] GetFilteredSamples failed: {ex.Message}");
+                return _samples;
+            }
+        }
+
         #endregion
 
         #region Character Display

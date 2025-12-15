@@ -39,6 +39,26 @@ public class SampleGraphWidget
         /// Epsilon for floating point comparisons.
         /// </summary>
         public float FloatEpsilon { get; set; } = 0.0001f;
+
+        /// <summary>
+        /// Whether to show the latest value at the end of the line.
+        /// </summary>
+        public bool ShowLatestValue { get; set; } = false;
+
+        /// <summary>
+        /// Whether to leave a gap at the right edge of the graph.
+        /// </summary>
+        public bool ShowEndGap { get; set; } = false;
+
+        /// <summary>
+        /// Percentage of graph width to use as end gap.
+        /// </summary>
+        public float EndGapPercent { get; set; } = 5f;
+
+        /// <summary>
+        /// Whether to show a value label near the latest point.
+        /// </summary>
+        public bool ShowValueLabel { get; set; } = false;
     }
 
     private readonly GraphConfig _config;
@@ -69,6 +89,17 @@ public class SampleGraphWidget
     }
 
     /// <summary>
+    /// Updates display options from external configuration.
+    /// </summary>
+    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel)
+    {
+        _config.ShowLatestValue = showLatestValue;
+        _config.ShowEndGap = showEndGap;
+        _config.EndGapPercent = endGapPercent;
+        _config.ShowValueLabel = showValueLabel;
+    }
+
+    /// <summary>
     /// Gets the current minimum Y-axis value.
     /// </summary>
     public float MinValue => _config.MinValue;
@@ -90,7 +121,7 @@ public class SampleGraphWidget
             return;
         }
 
-        var arr = samples is float[] arrCast ? arrCast : samples.ToArray();
+        var arr = PrepareDataArray(samples);
         var min = _config.MinValue;
         var max = _config.MaxValue;
 
@@ -116,16 +147,134 @@ public class SampleGraphWidget
                 Math.Max(1f, childAvailAfterBegin.Y));
 
             ImGui.PlotLines($"##{_config.PlotId}", arr, arr.Length, "", min, max, plotSize);
+
+            // Draw value label if enabled
+            if (_config.ShowValueLabel && samples.Count > 0)
+            {
+                DrawValueLabel(samples[^1], plotSize, min, max);
+            }
+
             ImGui.EndChild();
 
             // Show tooltip with value when hovering
-            DrawTooltip(arr);
+            DrawTooltip(samples is float[] arrCast ? arrCast : samples.ToArray());
+
+            // Draw latest value at line end if enabled
+            if (_config.ShowLatestValue && samples.Count > 0)
+            {
+                ImGui.SameLine();
+                ImGui.TextUnformatted(FormatValue(samples[^1]));
+            }
         }
         catch (Exception ex)
         {
             // Fall back to default small plot if anything goes wrong
             LogService.Debug($"[SampleGraphWidget] Graph rendering error: {ex.Message}");
             ImGui.PlotLines($"##{_config.PlotId}", arr, arr.Length);
+        }
+    }
+
+    /// <summary>
+    /// Draws multiple data series on the same graph.
+    /// </summary>
+    /// <param name="series">List of data series with names and values.</param>
+    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<float> samples)> series)
+    {
+        if (series == null || series.Count == 0)
+        {
+            ImGui.TextUnformatted(_config.NoDataText);
+            return;
+        }
+
+        var min = _config.MinValue;
+        var max = _config.MaxValue;
+
+        if (Math.Abs(max - min) < _config.FloatEpsilon)
+        {
+            max = min + 1f;
+        }
+
+        try
+        {
+            var avail = ImGui.GetContentRegionAvail();
+            var heightPerSeries = (avail.Y - (series.Count - 1) * 2) / series.Count; // 2px spacing between series
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                var (name, samples) = series[i];
+                if (samples == null || samples.Count == 0)
+                {
+                    ImGui.TextUnformatted($"{name}: No data");
+                    continue;
+                }
+
+                var arr = PrepareDataArray(samples);
+                var plotSize = new Vector2(Math.Max(1f, avail.X), Math.Max(1f, heightPerSeries));
+
+                // Draw series label
+                var latestVal = samples[^1];
+                var labelText = $"{name}: {FormatValue(latestVal)}";
+                ImGui.TextUnformatted(labelText);
+
+                ImGui.PlotLines($"##{_config.PlotId}_{i}", arr, arr.Length, "", min, max, plotSize);
+
+                if (i < series.Count - 1)
+                    ImGui.Spacing();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[SampleGraphWidget] Multi-series rendering error: {ex.Message}");
+            ImGui.TextUnformatted("Error rendering graph");
+        }
+    }
+
+    private float[] PrepareDataArray(IReadOnlyList<float> samples)
+    {
+        if (!_config.ShowEndGap || samples.Count == 0)
+        {
+            return samples is float[] arrCast ? arrCast : samples.ToArray();
+        }
+
+        // Calculate how many empty points to add based on gap percentage
+        var gapPercent = Math.Clamp(_config.EndGapPercent, 0f, 50f);
+        var gapCount = Math.Max(1, (int)Math.Ceiling(samples.Count * gapPercent / 100f));
+
+        var result = new float[samples.Count + gapCount];
+        for (var i = 0; i < samples.Count; i++)
+            result[i] = samples[i];
+
+        // Fill gap with the last value to maintain visual continuity
+        var lastVal = samples[^1];
+        for (var i = samples.Count; i < result.Length; i++)
+            result[i] = lastVal;
+
+        return result;
+    }
+
+    private void DrawValueLabel(float value, Vector2 plotSize, float min, float max)
+    {
+        try
+        {
+            var text = FormatValue(value);
+            var textSize = ImGui.CalcTextSize(text);
+
+            // Position the label near the right edge, at the appropriate Y position
+            var range = max - min;
+            var normalizedY = range > 0 ? (value - min) / range : 0.5f;
+            var yPos = plotSize.Y * (1 - normalizedY); // Invert because Y grows downward
+
+            var cursorPos = ImGui.GetCursorPos();
+            var labelX = plotSize.X - textSize.X - 5;
+            var labelY = Math.Clamp(yPos - textSize.Y / 2, 0, plotSize.Y - textSize.Y);
+
+            ImGui.SetCursorPos(new Vector2(cursorPos.X + labelX, cursorPos.Y + labelY));
+            ImGui.TextUnformatted(text);
+            ImGui.SetCursorPos(cursorPos);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[SampleGraphWidget] Value label error: {ex.Message}");
         }
     }
 

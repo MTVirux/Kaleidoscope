@@ -145,8 +145,35 @@ public class GilTrackerComponent
                 _characterPicker.Draw();
             }
 
+            // Update graph display options from config
+            _graphWidget.UpdateDisplayOptions(
+                Config.GilTrackerShowLatestValue,
+                Config.GilTrackerShowEndGap,
+                Config.GilTrackerEndGapPercent,
+                Config.GilTrackerShowValueLabel);
+
+            // Calculate time cutoff if time range filtering is enabled
+            DateTime? timeCutoff = null;
+            if (Config.GilTrackerTimeRangeUnit != TimeRangeUnit.All)
+            {
+                timeCutoff = CalculateTimeCutoff();
+            }
+
             // Draw the sample graph widget
-            _graphWidget.Draw(_helper.Samples);
+            if (Config.GilTrackerShowMultipleLines && _helper.SelectedCharacterId == 0)
+            {
+                // Multi-line mode: show each character as a separate line
+                var series = _helper.GetAllCharacterSeries(timeCutoff);
+                _graphWidget.DrawMultipleSeries(series);
+            }
+            else
+            {
+                // Single line mode
+                var samples = timeCutoff.HasValue
+                    ? _helper.GetFilteredSamples(timeCutoff.Value)
+                    : _helper.Samples;
+                _graphWidget.Draw(samples);
+            }
 
             // Debug: right-click the plot to open a popup listing all data points + timestamps
             // Only available in edit mode to avoid accidental activation during normal use
@@ -202,5 +229,21 @@ public class GilTrackerComponent
                 ImGui.EndPopup();
             }
 #endif
+    }
+
+    private DateTime CalculateTimeCutoff()
+    {
+        var now = DateTime.UtcNow;
+        var value = Config.GilTrackerTimeRangeValue;
+
+        return Config.GilTrackerTimeRangeUnit switch
+        {
+            TimeRangeUnit.Minutes => now.AddMinutes(-value),
+            TimeRangeUnit.Hours => now.AddHours(-value),
+            TimeRangeUnit.Days => now.AddDays(-value),
+            TimeRangeUnit.Weeks => now.AddDays(-value * 7),
+            TimeRangeUnit.Months => now.AddMonths(-value),
+            _ => DateTime.MinValue
+        };
     }
 }
