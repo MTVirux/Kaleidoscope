@@ -16,6 +16,9 @@ public static unsafe class GameStateService
 
     public static ulong PlayerContentId => Svc.PlayerState.ContentId;
 
+    /// <summary>
+    /// Gets the current player's name using IObjectTable.LocalPlayer (recommended Dalamud approach).
+    /// </summary>
     public static string? LocalPlayerName
     {
         get
