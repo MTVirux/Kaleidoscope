@@ -66,7 +66,75 @@ public sealed class SamplerService : IDisposable, IRequiredService
         _enabled = configService.SamplerConfig.SamplerEnabled;
         _intervalSeconds = Math.Max(1, configService.SamplerConfig.SamplerIntervalMs / 1000);
 
+        // Auto-import from AutoRetainer on startup
+        ImportFromAutoRetainer();
+
         StartTimer();
+    }
+
+    /// <summary>
+    /// Imports character data from AutoRetainer if available.
+    /// This runs automatically on plugin startup and can be called manually.
+    /// </summary>
+    public void ImportFromAutoRetainer()
+    {
+        try
+        {
+            var arIpc = new AutoRetainerIpcService();
+            arIpc.Initialize();
+            
+            if (!arIpc.IsAvailable)
+            {
+                LogService.Debug("AutoRetainer not available for auto-import");
+                return;
+            }
+            
+            var characters = arIpc.GetAllCharacterData();
+            if (characters.Count == 0)
+            {
+                LogService.Debug("No characters returned from AutoRetainer");
+                return;
+            }
+            
+            var importCount = 0;
+            var updatedCount = 0;
+            
+            foreach (var (name, world, gil, cid) in characters)
+            {
+                if (cid == 0 || string.IsNullOrEmpty(name)) continue;
+                
+                // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
+                _dbService.SaveCharacterName(cid, name);
+                
+                // Create a series if it doesn't exist
+                var seriesId = _dbService.GetOrCreateSeries("Gil", cid);
+                if (seriesId.HasValue)
+                {
+                    // Check if we already have data for this character
+                    var existingValue = _dbService.GetLastValueForCharacter("Gil", cid);
+                    
+                    // AutoRetainer data takes priority - add sample if gil differs from latest
+                    if (existingValue == null || (long)existingValue.Value != gil)
+                    {
+                        _dbService.SaveSampleIfChanged("Gil", cid, gil);
+                        if (existingValue != null) updatedCount++;
+                    }
+                    importCount++;
+                }
+            }
+            
+            if (importCount > 0)
+            {
+                var msg = $"Auto-imported {importCount} characters from AutoRetainer";
+                if (updatedCount > 0)
+                    msg += $" ({updatedCount} updated with new gil values)";
+                LogService.Info(msg);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"AutoRetainer auto-import failed: {ex.Message}");
+        }
     }
 
     private void StartTimer()
