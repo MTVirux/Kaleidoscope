@@ -50,11 +50,14 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     public KaleidoscopeDbService DbService => _dbService;
 
-    public SamplerService(IPluginLog log, FilenameService filenames, ConfigurationService configService)
+    private readonly AutoRetainerIpcService _arIpc;
+
+    public SamplerService(IPluginLog log, FilenameService filenames, ConfigurationService configService, AutoRetainerIpcService arIpc)
     {
         _log = log;
         _filenames = filenames;
         _configService = configService;
+        _arIpc = arIpc;
 
         // Create the database service
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath);
@@ -80,16 +83,13 @@ public sealed class SamplerService : IDisposable, IRequiredService
     {
         try
         {
-            var arIpc = new AutoRetainerIpcService();
-            arIpc.Initialize();
-            
-            if (!arIpc.IsAvailable)
+            if (!_arIpc.IsAvailable)
             {
                 LogService.Debug("AutoRetainer not available for auto-import");
                 return;
             }
             
-            var characters = arIpc.GetAllCharacterData();
+            var characters = _arIpc.GetAllCharacterData();
             if (characters.Count == 0)
             {
                 LogService.Debug("No characters returned from AutoRetainer");

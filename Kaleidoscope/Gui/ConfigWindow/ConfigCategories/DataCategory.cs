@@ -19,11 +19,10 @@ public class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(SamplerService samplerService)
+    public DataCategory(SamplerService samplerService, AutoRetainerIpcService autoRetainerIpc)
     {
         _samplerService = samplerService;
-        _autoRetainerIpc = new AutoRetainerIpcService();
-        _autoRetainerIpc.Initialize();
+        _autoRetainerIpc = autoRetainerIpc;
     }
 
     public void Draw()

@@ -1,6 +1,7 @@
 using ECommons.DalamudServices;
 using Dalamud.Plugin.Ipc;
 using Newtonsoft.Json.Linq;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
@@ -8,7 +9,11 @@ namespace Kaleidoscope.Services;
 /// IPC service for communicating with AutoRetainer plugin.
 /// Provides access to character data tracked by AutoRetainer.
 /// </summary>
-public class AutoRetainerIpcService
+/// <remarks>
+/// Registered as a singleton service to avoid creating multiple IPC subscriptions.
+/// Automatically initializes on first access.
+/// </remarks>
+public sealed class AutoRetainerIpcService : IService
 {
     private ICallGateSubscriber<List<ulong>>? _getRegisteredCIDs;
     private ICallGateSubscriber<ulong, object?>? _getOfflineCharacterData;
@@ -17,7 +22,15 @@ public class AutoRetainerIpcService
 
     public bool IsAvailable { get; private set; } = false;
 
-    public void Initialize()
+    /// <summary>
+    /// Creates and initializes the AutoRetainer IPC service.
+    /// </summary>
+    public AutoRetainerIpcService()
+    {
+        Initialize();
+    }
+
+    private void Initialize()
     {
         if (_initialized) return;
         
@@ -31,7 +44,7 @@ public class AutoRetainerIpcService
             {
                 var cids = _getRegisteredCIDs.InvokeFunc();
                 IsAvailable = true;
-                LogService.Info($"AutoRetainer IPC connected successfully, found {cids?.Count ?? 0} registered CIDs");
+                LogService.Debug($"AutoRetainer IPC connected, found {cids?.Count ?? 0} registered CIDs");
             }
             catch (Exception ex)
             {

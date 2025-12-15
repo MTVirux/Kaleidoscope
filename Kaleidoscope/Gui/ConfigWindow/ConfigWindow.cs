@@ -19,6 +19,7 @@ public sealed class ConfigWindow : Window, IDisposable
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly SamplerService _samplerService;
+    private readonly AutoRetainerIpcService _arIpc;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -54,12 +55,14 @@ public sealed class ConfigWindow : Window, IDisposable
     public ConfigWindow(
         IPluginLog log,
         ConfigurationService configService,
-        SamplerService samplerService)
+        SamplerService samplerService,
+        AutoRetainerIpcService arIpc)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
         _configService = configService;
         _samplerService = samplerService;
+        _arIpc = arIpc;
 
         var lockTb = new TitleBarButton
         {
@@ -95,7 +98,7 @@ public sealed class ConfigWindow : Window, IDisposable
 
         // Create category renderers
         _generalCategory = new GeneralCategory(_configService);
-        _dataCategory = new DataCategory(_samplerService);
+        _dataCategory = new DataCategory(_samplerService, _arIpc);
         _samplerCategory = new SamplerCategory(_samplerService, _configService);
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);
