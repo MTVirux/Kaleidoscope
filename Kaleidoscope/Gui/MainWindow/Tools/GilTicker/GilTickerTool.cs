@@ -24,6 +24,9 @@ public class GilTickerTool : ToolComponent
         _configService = configService;
         Title = "Gil Ticker";
         Size = new System.Numerics.Vector2(400, 30);
+        HeaderVisible = false;
+        // Default to 6 subunits height (1.5 cells at default 4 subdivisions)
+        GridRowSpan = 1.5f;
     }
 
     public override void DrawContent()

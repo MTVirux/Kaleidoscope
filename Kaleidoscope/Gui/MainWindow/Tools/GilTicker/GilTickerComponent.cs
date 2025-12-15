@@ -110,7 +110,7 @@ public class GilTickerComponent
                 ImGui.TextColored(color, text);
                 if (i < tickerParts.Count - 1) ImGui.SameLine(0, 0);
             }
-            ImGui.NewLine();
+            //ImGui.NewLine();
             return;
         }
 
