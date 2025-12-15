@@ -544,6 +544,9 @@ public sealed class MainWindow : Window, IService
             _lastSavedSize = Config.MainWindowSize;
         }
 
+        // Apply custom background color
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, Config.MainWindowBackgroundColor);
+
         // Prevent the main window from being moved/resized when locked or when
         // a contained tool is currently being dragged or resized.
         // When tools are being dragged/resized, we lock the window position but use
@@ -686,6 +689,12 @@ public sealed class MainWindow : Window, IService
             }
         }
         catch (Exception ex) { _log.Debug($"[MainWindow] Window pos/size auto-save failed: {ex.Message}"); }
+    }
+
+    public override void PostDraw()
+    {
+        // Pop the background color that was pushed in PreDraw
+        ImGui.PopStyleColor();
     }
 
     private static string GetDisplayTitle()

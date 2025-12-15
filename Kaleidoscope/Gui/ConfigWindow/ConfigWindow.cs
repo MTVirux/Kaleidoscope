@@ -28,6 +28,7 @@ public sealed class ConfigWindow : Window, IDisposable
     private DataCategory? _dataCategory;
     private SamplerCategory? _samplerCategory;
     private LayoutsCategory? _layoutsCategory;
+    private WindowsCategory? _windowsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -38,6 +39,7 @@ public sealed class ConfigWindow : Window, IDisposable
         public const int Data = 1;
         public const int Sampler = 2;
         public const int Layouts = 3;
+        public const int Windows = 4;
     }
 
     /// <summary>
@@ -96,6 +98,7 @@ public sealed class ConfigWindow : Window, IDisposable
         _dataCategory = new DataCategory(_samplerService);
         _samplerCategory = new SamplerCategory(_samplerService, _configService);
         _layoutsCategory = new LayoutsCategory(_configService);
+        _windowsCategory = new WindowsCategory(Config, _configService.Save);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -135,6 +138,7 @@ public sealed class ConfigWindow : Window, IDisposable
         if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
         if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
         if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
+        if (ImGui.Selectable("Windows", _selectedTab == 4)) _selectedTab = 4;
         ImGui.EndChild();
 
         ImGui.SameLine();
@@ -154,6 +158,9 @@ public sealed class ConfigWindow : Window, IDisposable
                 break;
             case TabIndex.Layouts:
                 _layoutsCategory?.Draw();
+                break;
+            case TabIndex.Windows:
+                _windowsCategory?.Draw();
                 break;
         }
         ImGui.EndChild();

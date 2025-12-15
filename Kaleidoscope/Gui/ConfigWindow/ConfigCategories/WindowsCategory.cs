@@ -1,50 +1,59 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
 /// <summary>
 /// Windows configuration category in the config window.
-/// Controls window pinning/locking behavior.
+/// Controls window background colors.
 /// </summary>
 public class WindowsCategory
 {
     private readonly Kaleidoscope.Configuration config;
     private readonly Action saveConfig;
-    private readonly StateService? _stateService;
+    
+    // Default ImGui theme background color
+    private static readonly Vector4 DefaultBackgroundColor = new(0.06f, 0.06f, 0.06f, 0.94f);
 
-    public WindowsCategory(Kaleidoscope.Configuration config, Action saveConfig, StateService? stateService = null)
+    public WindowsCategory(Kaleidoscope.Configuration config, Action saveConfig)
     {
         this.config = config;
         this.saveConfig = saveConfig;
-        this._stateService = stateService;
     }
 
     public void Draw()
     {
-        ImGui.TextUnformatted("Windows");
+        ImGui.TextUnformatted("Window Backgrounds");
         ImGui.Separator();
+        ImGui.Spacing();
 
-        // Use StateService for main window pin state if available
-        var pinMain = _stateService?.IsLocked ?? this.config.PinMainWindow;
-        if (ImGui.Checkbox("Pin main window", ref pinMain))
+        ImGui.TextUnformatted("Main Window");
+        var mainBgColor = this.config.MainWindowBackgroundColor;
+        if (ImGui.ColorEdit4("##MainWindowBg", ref mainBgColor, ImGuiColorEditFlags.AlphaPreviewHalf))
         {
-            if (_stateService != null)
-            {
-                _stateService.IsLocked = pinMain;
-            }
-            else
-            {
-                this.config.PinMainWindow = pinMain;
-                this.saveConfig();
-            }
+            this.config.MainWindowBackgroundColor = mainBgColor;
+            this.saveConfig();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Reset##MainWindowBgReset"))
+        {
+            this.config.MainWindowBackgroundColor = DefaultBackgroundColor;
+            this.saveConfig();
         }
 
-        var pinConfig = this.config.PinConfigWindow;
-        if (ImGui.Checkbox("Pin config window", ref pinConfig))
+        ImGui.Spacing();
+
+        ImGui.TextUnformatted("Fullscreen");
+        var fsBgColor = this.config.FullscreenBackgroundColor;
+        if (ImGui.ColorEdit4("##FullscreenBg", ref fsBgColor, ImGuiColorEditFlags.AlphaPreviewHalf))
         {
-            this.config.PinConfigWindow = pinConfig;
+            this.config.FullscreenBackgroundColor = fsBgColor;
+            this.saveConfig();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Reset##FullscreenBgReset"))
+        {
+            this.config.FullscreenBackgroundColor = DefaultBackgroundColor;
             this.saveConfig();
         }
     }

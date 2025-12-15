@@ -260,8 +260,17 @@ public sealed class FullscreenWindow : Window
             var io = ImGui.GetIO();
             ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
             ImGui.SetNextWindowSize(io.DisplaySize);
+            
+            // Apply custom background color
+            ImGui.PushStyleColor(ImGuiCol.WindowBg, Config.FullscreenBackgroundColor);
         }
         catch (Exception ex) { LogService.Debug($"[FullscreenWindow] PreDraw size setup failed: {ex.Message}"); }
+    }
+
+    public override void PostDraw()
+    {
+        // Pop the background color that was pushed in PreDraw
+        ImGui.PopStyleColor();
     }
 
     public override void Draw()
