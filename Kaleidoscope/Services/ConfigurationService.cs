@@ -15,7 +15,7 @@ namespace Kaleidoscope.Services;
 /// Consider migrating to OtterGui's ISavable pattern for better consistency with
 /// Glamourer and other Ottermandias plugins.
 /// </remarks>
-public sealed class ConfigurationService : IConfigurationService, IService
+public sealed class ConfigurationService : IConfigurationService, IRequiredService
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly IPluginLog _log;

@@ -10,7 +10,7 @@ namespace Kaleidoscope.Services;
 /// This follows the InventoryTools pattern for background services that need to
 /// periodically poll game state and persist data.
 /// </remarks>
-public sealed class SamplerService : IDisposable, IService
+public sealed class SamplerService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly FilenameService _filenames;

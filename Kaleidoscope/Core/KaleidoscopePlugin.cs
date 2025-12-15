@@ -24,11 +24,9 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
             var dalamudLog = _services.GetService<IPluginLog>();
             Services.LogService.Initialize(dalamudLog);
 
-            // Initialize required services
-            _services.GetService<Services.ConfigurationService>();
-            _services.GetService<Services.SamplerService>();
-            _services.GetService<Services.WindowService>();
-            _services.GetService<Services.CommandService>();
+            // Initialize all services marked with IRequiredService
+            // This follows the Glamourer pattern for service initialization
+            _services.EnsureRequiredServices();
 
             Log.Information("Kaleidoscope loaded successfully.");
         }

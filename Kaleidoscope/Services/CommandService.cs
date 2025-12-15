@@ -11,7 +11,7 @@ namespace Kaleidoscope.Services;
 /// Follows the Glamourer pattern for command handling with separate handlers for
 /// main and config commands.
 /// </remarks>
-public sealed class CommandService : IDisposable, IService
+public sealed class CommandService : IDisposable, IRequiredService
 {
     private const string CommandMain = "/kld";
     private const string CommandFull = "/kaleidoscope";

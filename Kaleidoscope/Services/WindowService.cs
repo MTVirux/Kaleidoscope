@@ -15,7 +15,7 @@ namespace Kaleidoscope.Services;
 /// This follows the Glamourer pattern for window management, using Dalamud's
 /// WindowSystem with event-based drawing and state management.
 /// </remarks>
-public sealed class WindowService : IDisposable, IService
+public sealed class WindowService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly IDalamudPluginInterface _pluginInterface;
