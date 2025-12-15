@@ -117,23 +117,29 @@ public sealed class MainWindow : Window, IService
     
     /// <summary>
     /// Updates the window title to reflect the current layout and dirty state.
+    /// Uses ### separator to maintain a stable ImGui window ID regardless of title changes,
+    /// preventing ImGui from restoring old window positions when the title changes.
     /// </summary>
     private void UpdateWindowTitle()
     {
         var baseTitle = GetDisplayTitle();
         var layoutName = _layoutEditingService.CurrentLayoutName;
+        // Use ###KaleidoscopeMain to keep a stable window ID - ImGui uses this ID to persist
+        // window position/size. Without it, changing the title (e.g., adding/removing the dirty
+        // asterisk) would cause ImGui to restore a previously-saved position for that title.
+        const string stableId = "###KaleidoscopeMain";
         if (!string.IsNullOrWhiteSpace(layoutName))
         {
             var suffix = _layoutEditingService.IsDirty ? " *" : "";
 #if DEBUG
-            WindowName = $"{baseTitle} - Layout: {layoutName}{suffix}";
+            WindowName = $"{baseTitle} - Layout: {layoutName}{suffix}{stableId}";
 #else
-            WindowName = $"{baseTitle} - {layoutName}{suffix}";
+            WindowName = $"{baseTitle} - {layoutName}{suffix}{stableId}";
 #endif
         }
         else
         {
-            WindowName = baseTitle;
+            WindowName = $"{baseTitle}{stableId}";
         }
     }
 
