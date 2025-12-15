@@ -865,14 +865,12 @@ public class WindowContentContainer
                             {
                                 _newLayoutNameBuffer = "";
                                 _newLayoutPopupOpen = true;
-                                ImGui.OpenPopup("new_layout_popup");
                             }
 
                             if (ImGui.MenuItem("Save layout as.."))
                             {
                                 _layoutNameBuffer = "";
                                 _saveLayoutPopupOpen = true;
-                                ImGui.OpenPopup("save_layout_popup");
                             }
 
                             if (ImGui.BeginMenu("Load layout"))
@@ -935,7 +933,11 @@ public class WindowContentContainer
 
                         ImGui.EndPopup();
                     }
-                    // Save layout modal
+                    // Save layout modal - open popup if flag is set but popup is not yet open
+                    if (_saveLayoutPopupOpen && !ImGui.IsPopupOpen("save_layout_popup"))
+                    {
+                        ImGui.OpenPopup("save_layout_popup");
+                    }
                     if (ImGui.BeginPopupModal("save_layout_popup", ref _saveLayoutPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
                     {
                         try
@@ -972,7 +974,11 @@ public class WindowContentContainer
                         ImGui.EndPopup();
                     }
 
-                    // New layout modal
+                    // New layout modal - open popup if flag is set but popup is not yet open
+                    if (_newLayoutPopupOpen && !ImGui.IsPopupOpen("new_layout_popup"))
+                    {
+                        ImGui.OpenPopup("new_layout_popup");
+                    }
                     if (ImGui.BeginPopupModal("new_layout_popup", ref _newLayoutPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
                     {
                         try
