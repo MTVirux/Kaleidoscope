@@ -71,6 +71,25 @@ public class GilTrackerTool : ToolComponent
             }
             ShowSettingTooltip("Shows the current value as a small label near the latest data point.", "Off");
 
+            if (showValueLabel)
+            {
+                var labelOffsetX = Config.GilTrackerValueLabelOffsetX;
+                if (ImGui.SliderFloat("Label X offset", ref labelOffsetX, -100f, 100f, "%.0f"))
+                {
+                    Config.GilTrackerValueLabelOffsetX = labelOffsetX;
+                    _configService.Save();
+                }
+                ShowSettingTooltip("Horizontal offset for the value label. Negative = left, positive = right.", "0");
+
+                var labelOffsetY = Config.GilTrackerValueLabelOffsetY;
+                if (ImGui.SliderFloat("Label Y offset", ref labelOffsetY, -50f, 50f, "%.0f"))
+                {
+                    Config.GilTrackerValueLabelOffsetY = labelOffsetY;
+                    _configService.Save();
+                }
+                ShowSettingTooltip("Vertical offset for the value label. Negative = up, positive = down.", "0");
+            }
+
             var showEndGap = Config.GilTrackerShowEndGap;
             if (ImGui.Checkbox("Leave gap at graph end", ref showEndGap))
             {

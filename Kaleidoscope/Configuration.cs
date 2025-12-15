@@ -62,6 +62,8 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerShowEndGap { get; set; } = false;
     public float GilTrackerEndGapPercent { get; set; } = 5f;
     public bool GilTrackerShowValueLabel { get; set; } = false;
+    public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
+    public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
 }
 
 public class ContentLayoutState

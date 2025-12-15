@@ -59,6 +59,16 @@ public class SampleGraphWidget
         /// Whether to show a value label near the latest point.
         /// </summary>
         public bool ShowValueLabel { get; set; } = false;
+
+        /// <summary>
+        /// X offset for the value label position (negative = left, positive = right).
+        /// </summary>
+        public float ValueLabelOffsetX { get; set; } = 0f;
+
+        /// <summary>
+        /// Y offset for the value label position (negative = up, positive = down).
+        /// </summary>
+        public float ValueLabelOffsetY { get; set; } = 0f;
     }
 
     private readonly GraphConfig _config;
@@ -91,12 +101,14 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel)
+    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f)
     {
         _config.ShowLatestValue = showLatestValue;
         _config.ShowEndGap = showEndGap;
         _config.EndGapPercent = endGapPercent;
         _config.ShowValueLabel = showValueLabel;
+        _config.ValueLabelOffsetX = valueLabelOffsetX;
+        _config.ValueLabelOffsetY = valueLabelOffsetY;
     }
 
     /// <summary>
@@ -202,13 +214,27 @@ public class SampleGraphWidget
             return;
         }
 
-        var min = _config.MinValue;
-        var max = _config.MaxValue;
-
-        if (Math.Abs(max - min) < _config.FloatEpsilon)
+        // Auto-calculate min/max from actual data for better visualization
+        var dataMin = float.MaxValue;
+        var dataMax = float.MinValue;
+        foreach (var (_, samples) in series)
         {
-            max = min + 1f;
+            if (samples == null) continue;
+            foreach (var val in samples)
+            {
+                if (val < dataMin) dataMin = val;
+                if (val > dataMax) dataMax = val;
+            }
         }
+
+        // Add 10% padding to min/max for visual clarity
+        var dataRange = dataMax - dataMin;
+        if (dataRange < _config.FloatEpsilon)
+        {
+            dataRange = Math.Max(dataMax * 0.1f, 1f);
+        }
+        var min = Math.Max(0f, dataMin - dataRange * 0.1f);
+        var max = dataMax + dataRange * 0.1f;
 
         try
         {
@@ -346,12 +372,15 @@ public class SampleGraphWidget
             var normalizedY = range > 0 ? (value - min) / range : 0.5f;
             normalizedY = Math.Clamp(normalizedY, 0f, 1f);
 
-            // Calculate screen position for the label
-            var labelX = plotPos.X + plotSize.X - textSize.X - 8f;
-            var labelY = plotPos.Y + plotSize.Y * (1f - normalizedY) - textSize.Y / 2f;
+            // Calculate screen position for the label with user offsets
+            var labelX = plotPos.X + plotSize.X - textSize.X - 8f + _config.ValueLabelOffsetX;
+            var labelY = plotPos.Y + plotSize.Y * (1f - normalizedY) - textSize.Y / 2f + _config.ValueLabelOffsetY;
 
-            // Clamp Y to stay within plot bounds
-            labelY = Math.Clamp(labelY, plotPos.Y, plotPos.Y + plotSize.Y - textSize.Y);
+            // Clamp Y to stay within plot bounds (but allow offset to push it outside if desired)
+            if (_config.ValueLabelOffsetY == 0f)
+            {
+                labelY = Math.Clamp(labelY, plotPos.Y, plotPos.Y + plotSize.Y - textSize.Y);
+            }
 
             // Draw using DrawList for precise positioning
             var drawList = ImGui.GetWindowDrawList();
