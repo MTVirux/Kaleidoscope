@@ -360,10 +360,10 @@ internal class GilTrackerHelper : ICharacterDataSource
         /// Gets all character data series for multi-line display.
         /// </summary>
         /// <param name="cutoffTime">Optional cutoff time to filter data.</param>
-        /// <returns>List of character names and their sample data.</returns>
-        public IReadOnlyList<(string name, IReadOnlyList<float> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
+        /// <returns>List of character names and their sample data with timestamps.</returns>
+        public IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
         {
-            var result = new List<(string name, IReadOnlyList<float> samples)>();
+            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
 
             try
             {
@@ -386,7 +386,7 @@ internal class GilTrackerHelper : ICharacterDataSource
                     list.Add((ts, value));
                 }
 
-                // Convert each character's data to a series
+                // Convert each character's data to a series with timestamps
                 foreach (var kv in charPoints)
                 {
                     var charId = kv.Key;
@@ -394,11 +394,11 @@ internal class GilTrackerHelper : ICharacterDataSource
                     if (points.Count == 0) continue;
 
                     var name = GetCharacterDisplayName(charId);
-                    var samples = new List<float>();
+                    var samples = new List<(DateTime ts, float value)>();
 
                     var start = Math.Max(0, points.Count - _maxSamples);
                     for (var i = start; i < points.Count; i++)
-                        samples.Add((float)points[i].value);
+                        samples.Add((points[i].ts, (float)points[i].value));
 
                     result.Add((name, samples));
                 }

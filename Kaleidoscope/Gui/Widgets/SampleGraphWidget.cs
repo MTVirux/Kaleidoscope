@@ -77,6 +77,15 @@ public class SampleGraphWidget
     }
 
     private readonly GraphConfig _config;
+    
+    // Zoom state for CTRL+scroll
+    private float _zoomLevel = 1.0f;
+    private float _zoomCenterX = 0.5f; // 0-1 normalized position
+    
+    // Ticker animation state
+    private float _tickerOffset = 0f;
+    private DateTime _lastTickerUpdate = DateTime.MinValue;
+    private const float TickerSpeed = 30f; // pixels per second
 
     /// <summary>
     /// Creates a new SampleGraphWidget with default configuration.
@@ -208,11 +217,13 @@ public class SampleGraphWidget
     }
 
     /// <summary>
-    /// Draws multiple data series overlaid on the same graph.
+    /// Draws multiple data series overlaid on the same graph with time-aligned data.
+    /// All lines extend to current time using their last recorded value.
     /// Uses ImGui DrawList to render multiple lines on a single plot area.
+    /// Supports CTRL+scroll to zoom and scrolling ticker for legend.
     /// </summary>
-    /// <param name="series">List of data series with names and values.</param>
-    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<float> samples)> series)
+    /// <param name="series">List of data series with names and timestamped values.</param>
+    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
     {
         if (series == null || series.Count == 0)
         {
@@ -220,41 +231,63 @@ public class SampleGraphWidget
             return;
         }
 
-        float min, max;
+        // Find global time range across all series
+        var globalMinTime = DateTime.MaxValue;
+        var globalMaxTime = DateTime.Now; // Use current time as max so all lines end at same point
 
+        foreach (var (_, samples) in series)
+        {
+            if (samples == null || samples.Count == 0) continue;
+            if (samples[0].ts < globalMinTime) globalMinTime = samples[0].ts;
+        }
+
+        if (globalMinTime == DateTime.MaxValue)
+        {
+            ImGui.TextUnformatted(_config.NoDataText);
+            return;
+        }
+
+        var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
+        if (totalTimeSpan < 1) totalTimeSpan = 1;
+
+        // Apply end gap
+        if (_config.ShowEndGap)
+        {
+            var gapPercent = Math.Clamp(_config.EndGapPercent, 0f, 50f);
+            totalTimeSpan *= (1f + gapPercent / 100f);
+        }
+
+        // Calculate Y-axis bounds
+        float yMin, yMax;
         if (_config.AutoScaleGraph)
         {
-            // Auto-calculate min/max from actual data for better visualization
             var dataMin = float.MaxValue;
             var dataMax = float.MinValue;
             foreach (var (_, samples) in series)
             {
                 if (samples == null) continue;
-                foreach (var val in samples)
+                foreach (var (_, val) in samples)
                 {
                     if (val < dataMin) dataMin = val;
                     if (val > dataMax) dataMax = val;
                 }
             }
 
-            // Add 10% padding to min/max for visual clarity
             var dataRange = dataMax - dataMin;
             if (dataRange < _config.FloatEpsilon)
             {
                 dataRange = Math.Max(dataMax * 0.1f, 1f);
             }
-            min = Math.Max(0f, dataMin - dataRange * 0.1f);
-            max = dataMax + dataRange * 0.1f;
+            yMin = Math.Max(0f, dataMin - dataRange * 0.1f);
+            yMax = dataMax + dataRange * 0.1f;
         }
         else
         {
-            // Use configured min/max values
-            min = _config.MinValue;
-            max = _config.MaxValue;
-
-            if (Math.Abs(max - min) < _config.FloatEpsilon)
+            yMin = _config.MinValue;
+            yMax = _config.MaxValue;
+            if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
             {
-                max = min + 1f;
+                yMax = yMin + 1f;
             }
         }
 
@@ -262,22 +295,11 @@ public class SampleGraphWidget
         {
             var avail = ImGui.GetContentRegionAvail();
             var graphWidth = Math.Max(1f, avail.X);
-            var graphHeight = Math.Max(1f, avail.Y - 20f); // Reserve space for legend
+            var legendHeight = 20f;
+            var graphHeight = Math.Max(1f, avail.Y - legendHeight);
 
-            // Draw legend at top
-            var legendColors = GetSeriesColors(series.Count);
-            for (var i = 0; i < series.Count; i++)
-            {
-                var (name, samples) = series[i];
-                var color = legendColors[i];
-                var latestVal = samples != null && samples.Count > 0 ? FormatValue(samples[^1]) : "N/A";
-                
-                if (i > 0) ImGui.SameLine();
-                ImGui.TextColored(new Vector4(color.X, color.Y, color.Z, 1f), $"{name}: {latestVal}");
-                ImGui.SameLine();
-                ImGui.TextUnformatted(" ");
-            }
-            ImGui.NewLine();
+            // Draw scrolling ticker legend at top
+            DrawTickerLegend(series, graphWidth, legendHeight);
 
             // Get plot area position
             var plotPos = ImGui.GetCursorScreenPos();
@@ -288,43 +310,116 @@ public class SampleGraphWidget
             drawList.AddRectFilled(plotPos, new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y), 
                 ImGui.GetColorU32(new Vector4(0.1f, 0.1f, 0.1f, 0.5f)));
 
-            // Find the maximum sample count for X-axis scaling
-            var maxSampleCount = 1;
-            foreach (var (_, samples) in series)
+            // Handle CTRL+scroll zoom
+            var plotRect = new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y);
+            var isHovered = ImGui.IsMouseHoveringRect(plotPos, plotRect);
+            
+            if (isHovered)
             {
-                if (samples != null && samples.Count > maxSampleCount)
-                    maxSampleCount = samples.Count;
+                var io = ImGui.GetIO();
+                var wheel = io.MouseWheel;
+                
+                if (io.KeyCtrl && Math.Abs(wheel) > 0.01f)
+                {
+                    // Calculate mouse position relative to plot (0-1)
+                    var mouseRelX = (io.MousePos.X - plotPos.X) / plotSize.X;
+                    mouseRelX = Math.Clamp(mouseRelX, 0f, 1f);
+                    
+                    // Zoom in/out
+                    var zoomFactor = wheel > 0 ? 1.2f : 1f / 1.2f;
+                    var newZoom = Math.Clamp(_zoomLevel * zoomFactor, 1f, 20f);
+                    
+                    if (Math.Abs(newZoom - _zoomLevel) > 0.001f)
+                    {
+                        // Adjust center to keep mouse position stable
+                        var oldViewStart = _zoomCenterX - 0.5f / _zoomLevel;
+                        var mouseWorldX = oldViewStart + mouseRelX / _zoomLevel;
+                        
+                        _zoomLevel = newZoom;
+                        
+                        // Calculate new center so mouse stays at same world position
+                        var newViewStart = mouseWorldX - mouseRelX / _zoomLevel;
+                        _zoomCenterX = newViewStart + 0.5f / _zoomLevel;
+                        
+                        // Clamp center to valid range
+                        var halfView = 0.5f / _zoomLevel;
+                        _zoomCenterX = Math.Clamp(_zoomCenterX, halfView, 1f - halfView);
+                    }
+                }
             }
 
-            // Apply end gap to max sample count
-            if (_config.ShowEndGap)
-            {
-                var gapPercent = Math.Clamp(_config.EndGapPercent, 0f, 50f);
-                maxSampleCount = (int)(maxSampleCount * (1f + gapPercent / 100f));
-            }
+            // Calculate visible time range based on zoom
+            var viewStart = _zoomCenterX - 0.5f / _zoomLevel;
+            var viewEnd = _zoomCenterX + 0.5f / _zoomLevel;
+            viewStart = Math.Clamp(viewStart, 0f, 1f);
+            viewEnd = Math.Clamp(viewEnd, 0f, 1f);
 
-            // Draw each series as a polyline
+            var visibleStartTime = globalMinTime.AddSeconds(viewStart * totalTimeSpan);
+            var visibleEndTime = globalMinTime.AddSeconds(viewEnd * totalTimeSpan);
+            var visibleTimeSpan = (visibleEndTime - visibleStartTime).TotalSeconds;
+            if (visibleTimeSpan < 1) visibleTimeSpan = 1;
+
+            // Draw each series as a polyline, extending to current time
+            var legendColors = GetSeriesColors(series.Count);
             for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
             {
-                var (name, samples) = series[seriesIdx];
-                if (samples == null || samples.Count < 2) continue;
+                var (_, samples) = series[seriesIdx];
+                if (samples == null || samples.Count == 0) continue;
 
                 var color = legendColors[seriesIdx];
                 var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 1f));
 
+                // Draw lines between data points
                 for (var i = 0; i < samples.Count - 1; i++)
                 {
-                    var x1 = plotPos.X + (i / (float)maxSampleCount) * plotSize.X;
-                    var x2 = plotPos.X + ((i + 1) / (float)maxSampleCount) * plotSize.X;
+                    var t1 = (samples[i].ts - visibleStartTime).TotalSeconds / visibleTimeSpan;
+                    var t2 = (samples[i + 1].ts - visibleStartTime).TotalSeconds / visibleTimeSpan;
                     
-                    var y1Normalized = (samples[i] - min) / (max - min);
-                    var y2Normalized = (samples[i + 1] - min) / (max - min);
+                    // Skip if both points are outside visible range
+                    if ((t1 < 0 && t2 < 0) || (t1 > 1 && t2 > 1)) continue;
+                    
+                    var x1 = plotPos.X + (float)t1 * plotSize.X;
+                    var x2 = plotPos.X + (float)t2 * plotSize.X;
+                    
+                    var y1Normalized = (samples[i].value - yMin) / (yMax - yMin);
+                    var y2Normalized = (samples[i + 1].value - yMin) / (yMax - yMin);
                     
                     var y1 = plotPos.Y + plotSize.Y - (y1Normalized * plotSize.Y);
                     var y2 = plotPos.Y + plotSize.Y - (y2Normalized * plotSize.Y);
 
                     drawList.AddLine(new Vector2(x1, y1), new Vector2(x2, y2), colorU32, 1.5f);
                 }
+
+                // Extend last point to current time (all lines end at same vertical position)
+                if (samples.Count > 0)
+                {
+                    var lastSample = samples[^1];
+                    var tLast = (lastSample.ts - visibleStartTime).TotalSeconds / visibleTimeSpan;
+                    var tNow = (globalMaxTime - visibleStartTime).TotalSeconds / visibleTimeSpan;
+                    
+                    if (tLast < 1 && tNow > 0 && tNow > tLast)
+                    {
+                        var xLast = plotPos.X + (float)tLast * plotSize.X;
+                        var xNow = plotPos.X + (float)Math.Min(tNow, 1.0) * plotSize.X;
+                        
+                        var yNormalized = (lastSample.value - yMin) / (yMax - yMin);
+                        var yPos = plotPos.Y + plotSize.Y - (yNormalized * plotSize.Y);
+
+                        // Draw horizontal line from last point to current time
+                        drawList.AddLine(new Vector2(xLast, yPos), new Vector2(xNow, yPos), colorU32, 1.5f);
+                    }
+                }
+            }
+
+            // Draw zoom indicator if zoomed in
+            if (_zoomLevel > 1.01f)
+            {
+                var zoomText = $"{_zoomLevel:0.0}x";
+                var textSize = ImGui.CalcTextSize(zoomText);
+                drawList.AddText(
+                    new Vector2(plotPos.X + plotSize.X - textSize.X - 5, plotPos.Y + 5),
+                    ImGui.GetColorU32(new Vector4(1f, 1f, 1f, 0.6f)),
+                    zoomText);
             }
 
             // Advance cursor past the plot area
@@ -335,6 +430,105 @@ public class SampleGraphWidget
             LogService.Debug($"[SampleGraphWidget] Multi-series rendering error: {ex.Message}");
             ImGui.TextUnformatted("Error rendering graph");
         }
+    }
+
+    /// <summary>
+    /// Draws a scrolling ticker-style legend showing character names and values.
+    /// </summary>
+    private void DrawTickerLegend(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series, float width, float height)
+    {
+        var legendColors = GetSeriesColors(series.Count);
+        
+        // Build the full ticker text
+        var tickerParts = new List<(string text, Vector4 color)>();
+        var totalTextWidth = 0f;
+        var separator = "  •  ";
+        var separatorWidth = ImGui.CalcTextSize(separator).X;
+        
+        for (var i = 0; i < series.Count; i++)
+        {
+            var (name, samples) = series[i];
+            var color = legendColors[i];
+            var latestVal = samples != null && samples.Count > 0 ? FormatValue(samples[^1].value) : "N/A";
+            var text = $"{name}: {latestVal}";
+            var textWidth = ImGui.CalcTextSize(text).X;
+            
+            tickerParts.Add((text, new Vector4(color.X, color.Y, color.Z, 1f)));
+            totalTextWidth += textWidth;
+            
+            if (i < series.Count - 1)
+            {
+                tickerParts.Add((separator, new Vector4(0.5f, 0.5f, 0.5f, 1f)));
+                totalTextWidth += separatorWidth;
+            }
+        }
+
+        // If all content fits, just draw it centered (no scrolling needed)
+        if (totalTextWidth <= width)
+        {
+            var startX = (width - totalTextWidth) / 2f;
+            var cursorPos = ImGui.GetCursorPos();
+            ImGui.SetCursorPosX(cursorPos.X + startX);
+            
+            for (var i = 0; i < tickerParts.Count; i++)
+            {
+                var (text, color) = tickerParts[i];
+                ImGui.TextColored(color, text);
+                if (i < tickerParts.Count - 1) ImGui.SameLine(0, 0);
+            }
+            ImGui.NewLine();
+            return;
+        }
+
+        // Update ticker animation
+        var now = DateTime.Now;
+        if (_lastTickerUpdate != DateTime.MinValue)
+        {
+            var delta = (float)(now - _lastTickerUpdate).TotalSeconds;
+            _tickerOffset += delta * TickerSpeed;
+            
+            // Add separator at the end for seamless loop
+            var loopWidth = totalTextWidth + separatorWidth + ImGui.CalcTextSize(separator).X;
+            if (_tickerOffset >= loopWidth)
+            {
+                _tickerOffset -= loopWidth;
+            }
+        }
+        _lastTickerUpdate = now;
+
+        // Draw clipped ticker using DrawList
+        var drawList = ImGui.GetWindowDrawList();
+        var clipPos = ImGui.GetCursorScreenPos();
+        var clipMax = new Vector2(clipPos.X + width, clipPos.Y + height);
+        
+        drawList.PushClipRect(clipPos, clipMax, true);
+        
+        // Draw text twice for seamless looping
+        var currentX = clipPos.X - _tickerOffset;
+        for (var repeat = 0; repeat < 2; repeat++)
+        {
+            for (var i = 0; i < tickerParts.Count; i++)
+            {
+                var (text, color) = tickerParts[i];
+                var textWidth = ImGui.CalcTextSize(text).X;
+                
+                // Only draw if visible
+                if (currentX + textWidth >= clipPos.X && currentX <= clipMax.X)
+                {
+                    drawList.AddText(new Vector2(currentX, clipPos.Y), ImGui.GetColorU32(color), text);
+                }
+                
+                currentX += textWidth;
+            }
+            
+            // Add separator between loops
+            currentX += separatorWidth;
+        }
+        
+        drawList.PopClipRect();
+        
+        // Advance cursor
+        ImGui.Dummy(new Vector2(width, height));
     }
 
     private static Vector3[] GetSeriesColors(int count)
