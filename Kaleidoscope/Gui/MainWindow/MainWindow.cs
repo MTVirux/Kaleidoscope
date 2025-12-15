@@ -271,7 +271,7 @@ public sealed class MainWindow : Window, IService
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -282,7 +282,7 @@ public sealed class MainWindow : Window, IService
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService);
+                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService);
                 if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
             }
         }

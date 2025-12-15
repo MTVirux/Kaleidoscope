@@ -17,6 +17,7 @@ public class GilTrackerComponent
         private readonly CharacterPickerWidget _characterPicker;
         private readonly SampleGraphWidget _graphWidget;
         private readonly SamplerService _samplerService;
+        private readonly ConfigurationService _configService;
 
         // Expose DB path so callers can reuse the same DB file when creating multiple UI instances.
         public string? DbPath => _dbPath;
@@ -32,6 +33,8 @@ public class GilTrackerComponent
         // Graph bounds (editable via settings)
         private float _graphMinValue = 0f;
         private float _graphMaxValue = ConfigStatic.GilTrackerMaxGil;
+
+        private Configuration Config => _configService.Config;
 
         public float GraphMinValue
         {
@@ -53,9 +56,10 @@ public class GilTrackerComponent
             }
         }
 
-        public GilTrackerComponent(FilenameService filenameService, SamplerService samplerService)
+        public GilTrackerComponent(FilenameService filenameService, SamplerService samplerService, ConfigurationService configService)
         {
             _samplerService = samplerService;
+            _configService = configService;
             _dbPath = filenameService.DatabasePath;
             // Share the database service from SamplerService to avoid duplicate connections
             _helper = new GilTrackerHelper(samplerService.DbService, ConfigStatic.GilTrackerMaxSamples, ConfigStatic.GilTrackerStartingValue);
@@ -135,8 +139,11 @@ public class GilTrackerComponent
 
             // DB buttons moved to Config Window (Data Management)
 
-            // Draw the character picker widget
-            _characterPicker.Draw();
+            // Draw the character picker widget (if not hidden)
+            if (!Config.GilTrackerHideCharacterSelector)
+            {
+                _characterPicker.Draw();
+            }
 
             // Draw the sample graph widget
             _graphWidget.Draw(_helper.Samples);

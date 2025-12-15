@@ -15,7 +15,7 @@ public static class WindowToolRegistrar
         public const string GettingStarted = "GettingStarted";
     }
 
-    public static void RegisterTools(WindowContentContainer container, FilenameService filenameService, SamplerService samplerService)
+    public static void RegisterTools(WindowContentContainer container, FilenameService filenameService, SamplerService samplerService, ConfigurationService configService)
     {
         if (container == null) return;
 
@@ -24,14 +24,14 @@ public static class WindowToolRegistrar
             container.RegisterTool(
                 ToolIds.GilTracker,
                 "Gil Tracker",
-                pos => CreateToolInstance(ToolIds.GilTracker, pos, filenameService, samplerService),
+                pos => CreateToolInstance(ToolIds.GilTracker, pos, filenameService, samplerService, configService),
                 "Track gil and history",
                 "Gil>Graph");
 
             container.RegisterTool(
                 ToolIds.GettingStarted,
                 "Getting Started",
-                pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService),
+                pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService),
                 "Instructions for new users",
                 "Help");
         }
@@ -41,15 +41,15 @@ public static class WindowToolRegistrar
         }
     }
 
-    public static ToolComponent? CreateToolInstance(string id, Vector2 pos, FilenameService filenameService, SamplerService samplerService)
+    public static ToolComponent? CreateToolInstance(string id, Vector2 pos, FilenameService filenameService, SamplerService samplerService, ConfigurationService configService)
     {
         try
         {
             switch (id)
             {
                 case ToolIds.GilTracker:
-                    var inner = new GilTrackerComponent(filenameService, samplerService);
-                    return new GilTrackerTool(inner) { Position = pos };
+                    var inner = new GilTrackerComponent(filenameService, samplerService, configService);
+                    return new GilTrackerTool(inner, configService) { Position = pos };
 
                 case ToolIds.GettingStarted:
                     return new GettingStartedTool { Position = pos };

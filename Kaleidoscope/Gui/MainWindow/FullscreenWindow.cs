@@ -49,7 +49,7 @@ public sealed class FullscreenWindow : Window
         _samplerService = samplerService;
         _stateService = stateService;
         // Use the shared gil tracker from the sampler service
-        _moneyTracker = new GilTrackerComponent(filenameService, samplerService);
+        _moneyTracker = new GilTrackerComponent(filenameService, samplerService, configService);
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the
@@ -68,7 +68,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -89,7 +89,8 @@ public sealed class FullscreenWindow : Window
                 "GettingStarted",
                 new System.Numerics.Vector2(20, 50),
                 _filenameService,
-                _samplerService);
+                _samplerService,
+                _configService);
             if (gettingStarted != null)
                 _contentContainer.AddTool(gettingStarted);
         }

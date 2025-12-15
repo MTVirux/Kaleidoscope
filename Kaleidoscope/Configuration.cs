@@ -11,6 +11,19 @@ public enum LayoutType
     Fullscreen = 1
 }
 
+/// <summary>
+/// Time range unit for data filtering.
+/// </summary>
+public enum TimeRangeUnit
+{
+    Minutes = 0,
+    Hours = 1,
+    Days = 2,
+    Weeks = 3,
+    Months = 4,
+    All = 5
+}
+
 public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
@@ -39,6 +52,16 @@ public class Configuration : IPluginConfiguration
 
     [Obsolete("Use ActiveWindowedLayoutName or ActiveFullscreenLayoutName instead")]
     public string ActiveLayoutName { get; set; } = string.Empty;
+
+    // GilTracker settings
+    public bool GilTrackerHideCharacterSelector { get; set; } = false;
+    public bool GilTrackerShowMultipleLines { get; set; } = false;
+    public int GilTrackerTimeRangeValue { get; set; } = 7;
+    public TimeRangeUnit GilTrackerTimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public bool GilTrackerShowLatestValue { get; set; } = false;
+    public bool GilTrackerShowEndGap { get; set; } = false;
+    public float GilTrackerEndGapPercent { get; set; } = 5f;
+    public bool GilTrackerShowValueLabel { get; set; } = false;
 }
 
 public class ContentLayoutState
