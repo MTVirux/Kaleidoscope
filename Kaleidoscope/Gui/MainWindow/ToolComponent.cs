@@ -33,6 +33,7 @@ public abstract class ToolComponent
     public bool BackgroundEnabled { get; set; } = true;
     public Vector4 BackgroundColor { get; set; } = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
     public bool HeaderVisible { get; set; } = true;
+    public bool ScrollbarVisible { get; set; } = false;
 
     // Grid-based coordinates for proportional resizing
     public float GridCol { get; set; } = 0f;

@@ -26,4 +26,8 @@ public static class ConfigStatic
     public const int TextInputBufferSize = 128;
     public const float MaxDragDelta = 2000f;
     public const int MaxGridLines = 1024;
+    
+    // Tool component size constraints
+    public const float MinToolWidth = 50f;
+    // MinToolHeight is calculated dynamically based on text line height
 }

@@ -107,6 +107,7 @@ public class ToolLayoutState
 
     public bool BackgroundEnabled { get; set; } = false;
     public bool HeaderVisible { get; set; } = true;
+    public bool ScrollbarVisible { get; set; } = false;
     public Vector4 BackgroundColor { get; set; } = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
 
     public float GridCol { get; set; } = 0f;
