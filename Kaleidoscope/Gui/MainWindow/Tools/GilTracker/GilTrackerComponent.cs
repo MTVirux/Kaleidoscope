@@ -27,9 +27,6 @@ public class GilTrackerComponent
 
         private readonly string? _dbPath;
 
-        /// <summary>
-        /// DI constructor. Shares the database service from SamplerService.
-        /// </summary>
         // Graph bounds (editable via settings)
         private float _graphMinValue = 0f;
         private float _graphMaxValue = ConfigStatic.GilTrackerMaxGil;
@@ -56,6 +53,9 @@ public class GilTrackerComponent
             }
         }
 
+        /// <summary>
+        /// Initializes the GilTrackerComponent with shared database access from SamplerService.
+        /// </summary>
         public GilTrackerComponent(FilenameService filenameService, SamplerService samplerService, ConfigurationService configService)
         {
             _samplerService = samplerService;
