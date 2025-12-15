@@ -14,12 +14,6 @@ public static unsafe class GameStateService
         catch (Exception ex) { LogService.Debug($"InventoryManager.Instance() failed: {ex.Message}"); return null; }
     }
 
-    public static FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager* CurrencyManagerInstance()
-    {
-        try { return FFXIVClientStructs.FFXIV.Client.Game.CurrencyManager.Instance(); }
-        catch (Exception ex) { LogService.Debug($"CurrencyManager.Instance() failed: {ex.Message}"); return null; }
-    }
-
     public static ulong PlayerContentId => Svc.PlayerState.ContentId;
 
     public static string? LocalPlayerName

@@ -154,36 +154,23 @@ public class GilTrackerHelper : ICharacterDataSource
                     var im = GameStateService.InventoryManagerInstance();
                     if (im != null)
                     {
-                        try
+                        float gil = 0;
+                        // Use GetInventoryItemCount(1) as primary (matches AutoRetainer approach)
+                        try { gil = im->GetInventoryItemCount(1); }
+                        catch { gil = 0; }
+                        
+                        // Fallback to GetGil() if primary returns 0
+                        if (gil == 0)
                         {
-                            var gil = (float)im->GetGil();
-                            if (Math.Abs(gil - LastValue) > ConfigStatic.FloatEpsilon)
-                            {
-                                PushSample(gil);
-                            }
+                            try { gil = im->GetGil(); }
+                            catch { gil = 0; }
                         }
-                        catch (Exception ex)
+                        
+                        if (Math.Abs(gil - LastValue) > ConfigStatic.FloatEpsilon)
                         {
-                            LogService.Debug($"[GilTrackerHelper] InventoryManager read failed: {ex.Message}");
+                            PushSample(gil);
                         }
                         return;
-                    }
-
-                    var cm = GameStateService.CurrencyManagerInstance();
-                    if (cm != null)
-                    {
-                        try
-                        {
-                            var gil = (float)cm->GetItemCount(1);
-                            if (Math.Abs(gil - LastValue) > ConfigStatic.FloatEpsilon)
-                            {
-                                PushSample(gil);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogService.Debug($"[GilTrackerHelper] CurrencyManager read failed: {ex.Message}");
-                        }
                     }
                 }
             }

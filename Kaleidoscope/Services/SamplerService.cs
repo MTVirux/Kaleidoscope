@@ -87,16 +87,17 @@ public sealed class SamplerService : IDisposable, IRequiredService
             unsafe
             {
                 var im = GameStateService.InventoryManagerInstance();
-                if (im != null) gil = im->GetGil();
-
-                var cm = GameStateService.CurrencyManagerInstance();
-                if (gil == 0 && cm != null)
+                if (im != null)
                 {
-                    try { gil = cm->GetItemCount(1); }
-                    catch (Exception ex)
+                    // Use GetInventoryItemCount(1) as primary (matches AutoRetainer approach)
+                    try { gil = (uint)im->GetInventoryItemCount(1); }
+                    catch { gil = 0; }
+                    
+                    // Fallback to GetGil() if primary returns 0
+                    if (gil == 0)
                     {
-                        LogService.Debug($"[SamplerService] CurrencyManager read failed: {ex.Message}");
-                        gil = 0;
+                        try { gil = im->GetGil(); }
+                        catch { gil = 0; }
                     }
                 }
             }
