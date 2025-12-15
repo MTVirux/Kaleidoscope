@@ -248,9 +248,7 @@ public sealed class MainWindow : Window, IService
                 }
                 else
                 {
-                    // Turning on edit mode - save window position before locking
-                    Config.MainWindowPos = ImGui.GetWindowPos();
-                    Config.MainWindowSize = ImGui.GetWindowSize();
+                    // Turning on edit mode
                     _stateService.ToggleEditMode();
                 }
             }
@@ -594,6 +592,7 @@ public sealed class MainWindow : Window, IService
     public override void Draw()
     {
         // Detect if main window is being moved or resized by comparing frame-to-frame position/size
+        // But only track position changes when the window is not locked and not being constrained
         try
         {
             var curPos = ImGui.GetWindowPos();
@@ -601,7 +600,11 @@ public sealed class MainWindow : Window, IService
             var io = ImGui.GetIO();
             const float eps = 0.5f;
 
-            if (_prevFrameInitialized)
+            // Only detect movement/resizing when in free mode (not locked, not edit mode)
+            // Title bar button clicks should not trigger window movement detection
+            var isConstrained = _stateService.IsLocked || _stateService.IsDragging || _stateService.IsResizing;
+
+            if (_prevFrameInitialized && !isConstrained)
             {
                 var posChanging = Math.Abs(curPos.X - _prevFramePos.X) > eps || Math.Abs(curPos.Y - _prevFramePos.Y) > eps;
                 var sizeChanging = Math.Abs(curSize.X - _prevFrameSize.X) > eps || Math.Abs(curSize.Y - _prevFrameSize.Y) > eps;
@@ -622,7 +625,14 @@ public sealed class MainWindow : Window, IService
                     _stateService.IsMainWindowResizing = false;
                 }
             }
+            else if (!io.MouseDown[0])
+            {
+                // Always clear interaction state when mouse is released
+                _stateService.IsMainWindowMoving = false;
+                _stateService.IsMainWindowResizing = false;
+            }
 
+            // Always track the current position/size
             _prevFramePos = curPos;
             _prevFrameSize = curSize;
             _prevFrameInitialized = true;
