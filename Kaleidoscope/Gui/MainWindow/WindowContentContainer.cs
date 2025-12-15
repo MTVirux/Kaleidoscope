@@ -22,6 +22,11 @@ public class WindowContentContainer
     // Whether the settings modal is currently open (used as ref for ImGui modal)
     private bool _settingsPopupOpen = false;
 
+    // Rename modal state
+    private int _renameToolIndex = -1;
+    private bool _renamePopupOpen = false;
+    private string _renameBuffer = string.Empty;
+
     // Grid resolution modal state
     private bool _gridResolutionPopupOpen = false;
     private LayoutGridSettings _editingGridSettings = new LayoutGridSettings();
@@ -341,6 +346,7 @@ public class WindowContentContainer
                     Id = t.Id,
                     Type = t.GetType().FullName ?? t.GetType().Name,
                     Title = t.Title,
+                    CustomTitle = t.CustomTitle,
                     Position = t.Position,
                     Size = t.Size,
                     Visible = t.Visible,
@@ -406,6 +412,7 @@ public class WindowContentContainer
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
                         match.HeaderVisible = entry.HeaderVisible;
+                        match.CustomTitle = entry.CustomTitle;
                         // Apply grid coordinates
                         match.GridCol = entry.GridCol;
                         match.GridRow = entry.GridRow;
@@ -442,6 +449,7 @@ public class WindowContentContainer
                                 created.GridRowSpan = entry.GridRowSpan;
                                 created.HasGridCoords = entry.HasGridCoords;
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
+                                created.CustomTitle = entry.CustomTitle;
                                 AddTool(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
                                 matchedIndices.Add(_tools.Count - 1);
@@ -479,6 +487,7 @@ public class WindowContentContainer
                                     cand.GridRowSpan = entry.GridRowSpan;
                                     cand.HasGridCoords = entry.HasGridCoords;
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
+                                    cand.CustomTitle = entry.CustomTitle;
                                     AddTool(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
                                     matchedIndices.Add(_tools.Count - 1);
@@ -540,6 +549,7 @@ public class WindowContentContainer
                                         inst.GridRowSpan = entry.GridRowSpan;
                                         inst.HasGridCoords = entry.HasGridCoords;
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
+                                        inst.CustomTitle = entry.CustomTitle;
                                         AddTool(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
                                         matchedIndices.Add(_tools.Count - 1);
@@ -1064,7 +1074,7 @@ public class WindowContentContainer
                 // Title bar inside the child (toggleable)
                 if (t.HeaderVisible)
                 {
-                    ImGui.TextUnformatted(t.Title);
+                    ImGui.TextUnformatted(t.DisplayTitle);
                     ImGui.Separator();
                 }
                 t.DrawContent();
@@ -1293,7 +1303,18 @@ public class WindowContentContainer
                     if (_contextToolIndex >= 0 && _contextToolIndex < _tools.Count)
                     {
                         var t = _tools[_contextToolIndex].Tool;
-                        ImGui.TextUnformatted(t.Title ?? "Tool");
+                        ImGui.TextUnformatted(t.DisplayTitle ?? "Tool");
+                        ImGui.Separator();
+                        
+                        // Rename option
+                        if (ImGui.MenuItem("Rename..."))
+                        {
+                            ImGui.CloseCurrentPopup();
+                            _renameToolIndex = _contextToolIndex;
+                            _renameBuffer = t.CustomTitle ?? t.Title ?? "";
+                            _renamePopupOpen = true;
+                        }
+                        
                         ImGui.Separator();
                         var bg = t.BackgroundEnabled;
                         if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
@@ -1340,6 +1361,100 @@ public class WindowContentContainer
 
             // Tool settings modal (renders when a tool has opened its settings)
             DrawToolSettingsModal();
+            
+            // Tool rename modal
+            DrawToolRenameModal();
+        }
+
+        /// <summary>
+        /// Draws the tool rename modal if one is currently open.
+        /// </summary>
+        private void DrawToolRenameModal()
+        {
+            if (_renameToolIndex < 0 || _renameToolIndex >= _tools.Count)
+                return;
+
+            const string popupName = "tool_rename_popup";
+            var toolToRename = _tools[_renameToolIndex].Tool;
+
+            // The popup must be opened each frame until it appears
+            if (_renamePopupOpen && !ImGui.IsPopupOpen(popupName))
+            {
+                ImGui.OpenPopup(popupName);
+            }
+
+            if (!ImGui.BeginPopupModal(popupName, ref _renamePopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                // Modal not showing - if user closed it, reset state
+                if (!_renamePopupOpen)
+                {
+                    _renameToolIndex = -1;
+                }
+                return;
+            }
+
+            try
+            {
+                ImGui.TextUnformatted("Rename Tool");
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.TextUnformatted("Enter a new name for this tool:");
+                ImGui.InputText("##renameinput", ref _renameBuffer, ConfigStatic.TextInputBufferSize);
+                
+                ImGui.Spacing();
+                ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"Original name: {toolToRename.Title}");
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                if (ImGui.Button("OK", new Vector2(80, 0)))
+                {
+                    var trimmed = _renameBuffer?.Trim();
+                    // If the name is empty or matches the original title, clear the custom title
+                    if (string.IsNullOrWhiteSpace(trimmed) || trimmed == toolToRename.Title)
+                    {
+                        toolToRename.CustomTitle = null;
+                    }
+                    else
+                    {
+                        toolToRename.CustomTitle = trimmed;
+                    }
+                    MarkLayoutDirty();
+                    ImGui.CloseCurrentPopup();
+                    _renamePopupOpen = false;
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                {
+                    ImGui.CloseCurrentPopup();
+                    _renamePopupOpen = false;
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Reset", new Vector2(80, 0)))
+                {
+                    toolToRename.CustomTitle = null;
+                    MarkLayoutDirty();
+                    ImGui.CloseCurrentPopup();
+                    _renamePopupOpen = false;
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Reset to the original name");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Error in tool rename modal", ex);
+            }
+
+            ImGui.EndPopup();
+
+            if (!_renamePopupOpen)
+            {
+                _renameToolIndex = -1;
+            }
         }
 
         /// <summary>

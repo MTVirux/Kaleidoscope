@@ -25,6 +25,9 @@ public class Configuration : IPluginConfiguration
     public Vector2 ConfigWindowPos { get; set; } = new(100, 100);
     public Vector2 ConfigWindowSize { get; set; } = new(600, 400);
 
+    public Vector4 MainWindowBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
+    public Vector4 FullscreenBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
+
     public float ContentGridCellWidthPercent { get; set; } = 25f;
     public float ContentGridCellHeightPercent { get; set; } = 25f;
     public int GridSubdivisions { get; set; } = 8;
@@ -68,6 +71,7 @@ public class ToolLayoutState
     public string Id { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
+    public string? CustomTitle { get; set; } = null;
     public Vector2 Position { get; set; } = new(50, 50);
     public Vector2 Size { get; set; } = new(300, 200);
     public bool Visible { get; set; } = true;

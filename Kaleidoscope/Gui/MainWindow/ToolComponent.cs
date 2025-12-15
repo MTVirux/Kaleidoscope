@@ -11,7 +11,22 @@ namespace Kaleidoscope.Gui.MainWindow;
 public abstract class ToolComponent
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
+    
+    /// <summary>
+    /// The default title for this tool type.
+    /// </summary>
     public string Title { get; set; } = "Tool";
+    
+    /// <summary>
+    /// User-customized title override. When set, this is displayed instead of Title.
+    /// </summary>
+    public string? CustomTitle { get; set; } = null;
+    
+    /// <summary>
+    /// Gets the display title for the header. Returns CustomTitle if set, otherwise Title.
+    /// </summary>
+    public string DisplayTitle => !string.IsNullOrWhiteSpace(CustomTitle) ? CustomTitle : Title;
+    
     public Vector2 Position { get; set; } = new(50, 50);
     public Vector2 Size { get; set; } = new(300, 200);
     public bool Visible { get; set; } = true;
