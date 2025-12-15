@@ -149,6 +149,17 @@ public class WindowContentContainer
         /// </summary>
         public bool IsInteracting => _anyDragging || _anyResizing;
 
+        /// <summary>
+        /// Gets the minimum tool width (constant).
+        /// </summary>
+        private static float MinToolWidth => ConfigStatic.MinToolWidth;
+
+        /// <summary>
+        /// Gets the minimum tool height based on current text line height.
+        /// This allows tools to be resized down to a single text line.
+        /// </summary>
+        private static float MinToolHeight => MathF.Max(16f, ImGui.GetFrameHeight());
+
         // Update the global dragging state and notify if changed
         private void SetDraggingState(bool dragging)
         {
@@ -283,8 +294,8 @@ public class WindowContentContainer
                     // Update pixel positions immediately
                     t.Position = new Vector2(t.GridCol * newCellW, t.GridRow * newCellH);
                     t.Size = new Vector2(
-                        MathF.Max(50f, t.GridColSpan * newCellW),
-                        MathF.Max(50f, t.GridRowSpan * newCellH)
+                        MathF.Max(MinToolWidth, t.GridColSpan * newCellW),
+                        MathF.Max(MinToolHeight, t.GridRowSpan * newCellH)
                     );
                 }
                 
@@ -353,6 +364,7 @@ public class WindowContentContainer
                     BackgroundEnabled = t.BackgroundEnabled,
                     BackgroundColor = t.BackgroundColor,
                     HeaderVisible = t.HeaderVisible,
+                    ScrollbarVisible = t.ScrollbarVisible,
                     // Include grid coordinates
                     GridCol = t.GridCol,
                     GridRow = t.GridRow,
@@ -412,6 +424,7 @@ public class WindowContentContainer
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
                         match.HeaderVisible = entry.HeaderVisible;
+                        match.ScrollbarVisible = entry.ScrollbarVisible;
                         match.CustomTitle = entry.CustomTitle;
                         // Apply grid coordinates
                         match.GridCol = entry.GridCol;
@@ -441,6 +454,7 @@ public class WindowContentContainer
                                 created.Visible = entry.Visible;
                                 created.BackgroundEnabled = entry.BackgroundEnabled;
                                 created.HeaderVisible = entry.HeaderVisible;
+                                created.ScrollbarVisible = entry.ScrollbarVisible;
                                 created.BackgroundColor = entry.BackgroundColor;
                                 // Apply grid coordinates
                                 created.GridCol = entry.GridCol;
@@ -479,6 +493,7 @@ public class WindowContentContainer
                                     cand.Visible = entry.Visible;
                                     cand.BackgroundEnabled = entry.BackgroundEnabled;
                                     cand.HeaderVisible = entry.HeaderVisible;
+                                    cand.ScrollbarVisible = entry.ScrollbarVisible;
                                     cand.BackgroundColor = entry.BackgroundColor;
                                     // Apply grid coordinates
                                     cand.GridCol = entry.GridCol;
@@ -623,8 +638,8 @@ public class WindowContentContainer
                             // Recalculate pixel position from grid coordinates
                             t.Position = new Vector2(t.GridCol * cellW, t.GridRow * cellH);
                             t.Size = new Vector2(
-                                MathF.Max(50f, t.GridColSpan * cellW),
-                                MathF.Max(50f, t.GridRowSpan * cellH)
+                                MathF.Max(MinToolWidth, t.GridColSpan * cellW),
+                                MathF.Max(MinToolHeight, t.GridRowSpan * cellH)
                             );
                         }
                     }
@@ -1070,7 +1085,8 @@ public class WindowContentContainer
                 {
                     LogService.Debug($"Background draw error: {ex.Message}");
                 }
-                ImGui.BeginChild(id, t.Size, true);
+                var childFlags = t.ScrollbarVisible ? ImGuiWindowFlags.None : (ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+                ImGui.BeginChild(id, t.Size, true, childFlags);
                 // Title bar inside the child (toggleable)
                 if (t.HeaderVisible)
                 {
@@ -1104,17 +1120,26 @@ public class WindowContentContainer
                         }
                     }
 
-                    // Dragging via mouse drag when hovering the child (title area)
+                    // Define interaction regions
                     var io = ImGui.GetIO();
                     var mouse = io.MousePos;
                     var titleHeight = MathF.Min(24f, t.Size.Y);
                     var titleMin = min;
                     var titleMax = new Vector2(max.X, min.Y + titleHeight);
-                    var isMouseOverTitle = mouse.X >= titleMin.X && mouse.X <= titleMax.X && mouse.Y >= titleMin.Y && mouse.Y <= titleMax.Y;
 
-                    // Start drag only when clicking the title, but continue dragging while mouse is down
+                    // Resize handle (bottom-right): detect mouse in corner region and drag to resize
+                    var handleSize = 12f;
+                    var handleMin = new Vector2(max.X - handleSize, max.Y - handleSize);
+                    var isMouseOverHandle = mouse.X >= handleMin.X && mouse.X <= max.X && mouse.Y >= handleMin.Y && mouse.Y <= max.Y;
+
+                    // Dragging via mouse drag when hovering the child (title area)
+                    // Prioritize resize over drag - don't allow drag start if mouse is over resize handle
+                    var isMouseOverTitle = mouse.X >= titleMin.X && mouse.X <= titleMax.X && mouse.Y >= titleMin.Y && mouse.Y <= titleMax.Y;
+                    var canStartDrag = isMouseOverTitle && !isMouseOverHandle;
+
+                    // Start drag only when clicking the title (not resize handle), but continue dragging while mouse is down
                     // Block starting new drags if main window is being moved/resized or another tool is being interacted with
-                    if ((isMouseOverTitle || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging) && (!anotherToolInteracting || te.Dragging))
+                    if ((canStartDrag || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging) && (!anotherToolInteracting || te.Dragging) && !te.Resizing)
                     {
                         if (!te.Dragging && !mainWindowInteracting)
                         {
@@ -1181,11 +1206,6 @@ public class WindowContentContainer
                         te.Dragging = false;
                     }
 
-                    // Resize handle (bottom-right): detect mouse in corner region and drag to resize
-                    var handleSize = 12f;
-                    var handleMin = new Vector2(max.X - handleSize, max.Y - handleSize);
-                    var isMouseOverHandle = mouse.X >= handleMin.X && mouse.X <= max.X && mouse.Y >= handleMin.Y && mouse.Y <= max.Y;
-
                     // Start resize when clicking the handle, but continue resizing while mouse is down
                     // Block starting new resizes if main window is being moved/resized or another tool is being interacted with
                     if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing) && (!anotherToolInteracting || te.Resizing))
@@ -1201,12 +1221,12 @@ public class WindowContentContainer
                         const float MaxDelta = ConfigStatic.MaxDragDelta;
                         rawDelta.X = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.X));
                         rawDelta.Y = MathF.Max(-MaxDelta, MathF.Min(MaxDelta, rawDelta.Y));
-                        var newSize = new Vector2(MathF.Max(50f, te.OrigSize.X + rawDelta.X), MathF.Max(50f, te.OrigSize.Y + rawDelta.Y));
+                        var newSize = new Vector2(MathF.Max(MinToolWidth, te.OrigSize.X + rawDelta.X), MathF.Max(MinToolHeight, te.OrigSize.Y + rawDelta.Y));
                         // Clamp size so it doesn't exceed content while dragging
                         var maxW = (contentMax.X - contentOrigin.X) - t.Position.X;
                         var maxH = (contentMax.Y - contentOrigin.Y) - t.Position.Y;
-                        newSize.X = MathF.Min(newSize.X, MathF.Max(50f, maxW));
-                        newSize.Y = MathF.Min(newSize.Y, MathF.Max(50f, maxH));
+                        newSize.X = MathF.Min(newSize.X, MathF.Max(MinToolWidth, maxW));
+                        newSize.Y = MathF.Min(newSize.Y, MathF.Max(MinToolHeight, maxH));
                         // During resize: follow mouse freely (no snapping). Snap on release.
                         t.Size = newSize;
                     }
@@ -1221,13 +1241,13 @@ public class WindowContentContainer
                                 var subW = cellW / subdivisions;
                                 var subH = cellH / subdivisions;
                                 var snappedSize = t.Size;
-                                snappedSize.X = MathF.Max(50f, MathF.Round(snappedSize.X / subW) * subW);
-                                snappedSize.Y = MathF.Max(50f, MathF.Round(snappedSize.Y / subH) * subH);
+                                snappedSize.X = MathF.Max(MinToolWidth, MathF.Round(snappedSize.X / subW) * subW);
+                                snappedSize.Y = MathF.Max(MinToolHeight, MathF.Round(snappedSize.Y / subH) * subH);
                                 // Clamp so size doesn't exceed content after snapping
                                 var maxW2 = (contentMax.X - contentOrigin.X) - t.Position.X;
                                 var maxH2 = (contentMax.Y - contentOrigin.Y) - t.Position.Y;
-                                snappedSize.X = MathF.Min(snappedSize.X, MathF.Max(50f, maxW2));
-                                snappedSize.Y = MathF.Min(snappedSize.Y, MathF.Max(50f, maxH2));
+                                snappedSize.X = MathF.Min(snappedSize.X, MathF.Max(MinToolWidth, maxW2));
+                                snappedSize.Y = MathF.Min(snappedSize.Y, MathF.Max(MinToolHeight, maxH2));
                                 t.Size = snappedSize;
                                 
                                 // Update grid coordinates
@@ -1320,6 +1340,8 @@ public class WindowContentContainer
                         if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
                         var hdr = t.HeaderVisible;
                         if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
+                        var scroll = t.ScrollbarVisible;
+                        if (ImGui.Checkbox("Show scrollbar", ref scroll)) t.ScrollbarVisible = scroll;
                         var col = t.BackgroundColor;
                         if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
                         ImGui.Separator();
