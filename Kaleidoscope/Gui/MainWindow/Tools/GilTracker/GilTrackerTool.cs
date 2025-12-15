@@ -141,23 +141,34 @@ public class GilTrackerTool : ToolComponent
             ImGui.TextUnformatted("Graph Bounds (Y-axis)");
             ImGui.Separator();
 
-            var min = _inner.GraphMinValue;
-            var max = _inner.GraphMaxValue;
-
-            if (ImGui.InputFloat("Min value", ref min, 0f, 0f, "%.0f"))
+            var autoScale = Config.GilTrackerAutoScaleGraph;
+            if (ImGui.Checkbox("Auto-scale to data", ref autoScale))
             {
-                // Ensure min isn't greater than or equal to max - clamp
-                if (min >= max) min = MathF.Max(0f, max - 1f);
-                _inner.GraphMinValue = min;
+                Config.GilTrackerAutoScaleGraph = autoScale;
+                _configService.Save();
             }
-            ShowSettingTooltip("Minimum Y value displayed on the graph. Values below this will be clamped.", "0");
+            ShowSettingTooltip("Automatically adjusts the Y-axis range based on actual data values.", "On");
 
-            if (ImGui.InputFloat("Max value", ref max, 0f, 0f, "%.0f"))
+            if (!autoScale)
             {
-                if (max <= min) max = MathF.Max(min + 1f, min + 1f);
-                _inner.GraphMaxValue = max;
+                var min = _inner.GraphMinValue;
+                var max = _inner.GraphMaxValue;
+
+                if (ImGui.InputFloat("Min value", ref min, 0f, 0f, "%.0f"))
+                {
+                    // Ensure min isn't greater than or equal to max - clamp
+                    if (min >= max) min = MathF.Max(0f, max - 1f);
+                    _inner.GraphMinValue = min;
+                }
+                ShowSettingTooltip("Minimum Y value displayed on the graph. Values below this will be clamped.", "0");
+
+                if (ImGui.InputFloat("Max value", ref max, 0f, 0f, "%.0f"))
+                {
+                    if (max <= min) max = MathF.Max(min + 1f, min + 1f);
+                    _inner.GraphMaxValue = max;
+                }
+                ShowSettingTooltip($"Maximum Y value displayed on the graph. Values above this will be clamped.", ConfigStatic.GilTrackerMaxGil.ToString("N0"));
             }
-            ShowSettingTooltip($"Maximum Y value displayed on the graph. Values above this will be clamped.", ConfigStatic.GilTrackerMaxGil.ToString("N0"));
         }
         catch (Exception ex)
         {

@@ -69,6 +69,11 @@ public class SampleGraphWidget
         /// Y offset for the value label position (negative = up, positive = down).
         /// </summary>
         public float ValueLabelOffsetY { get; set; } = 0f;
+
+        /// <summary>
+        /// Whether to auto-scale the Y-axis based on actual data values.
+        /// </summary>
+        public bool AutoScaleGraph { get; set; } = true;
     }
 
     private readonly GraphConfig _config;
@@ -101,7 +106,7 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f)
+    public void UpdateDisplayOptions(bool showLatestValue, bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
     {
         _config.ShowLatestValue = showLatestValue;
         _config.ShowEndGap = showEndGap;
@@ -109,6 +114,7 @@ public class SampleGraphWidget
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
         _config.ValueLabelOffsetY = valueLabelOffsetY;
+        _config.AutoScaleGraph = autoScaleGraph;
     }
 
     /// <summary>
@@ -214,27 +220,43 @@ public class SampleGraphWidget
             return;
         }
 
-        // Auto-calculate min/max from actual data for better visualization
-        var dataMin = float.MaxValue;
-        var dataMax = float.MinValue;
-        foreach (var (_, samples) in series)
+        float min, max;
+
+        if (_config.AutoScaleGraph)
         {
-            if (samples == null) continue;
-            foreach (var val in samples)
+            // Auto-calculate min/max from actual data for better visualization
+            var dataMin = float.MaxValue;
+            var dataMax = float.MinValue;
+            foreach (var (_, samples) in series)
             {
-                if (val < dataMin) dataMin = val;
-                if (val > dataMax) dataMax = val;
+                if (samples == null) continue;
+                foreach (var val in samples)
+                {
+                    if (val < dataMin) dataMin = val;
+                    if (val > dataMax) dataMax = val;
+                }
+            }
+
+            // Add 10% padding to min/max for visual clarity
+            var dataRange = dataMax - dataMin;
+            if (dataRange < _config.FloatEpsilon)
+            {
+                dataRange = Math.Max(dataMax * 0.1f, 1f);
+            }
+            min = Math.Max(0f, dataMin - dataRange * 0.1f);
+            max = dataMax + dataRange * 0.1f;
+        }
+        else
+        {
+            // Use configured min/max values
+            min = _config.MinValue;
+            max = _config.MaxValue;
+
+            if (Math.Abs(max - min) < _config.FloatEpsilon)
+            {
+                max = min + 1f;
             }
         }
-
-        // Add 10% padding to min/max for visual clarity
-        var dataRange = dataMax - dataMin;
-        if (dataRange < _config.FloatEpsilon)
-        {
-            dataRange = Math.Max(dataMax * 0.1f, 1f);
-        }
-        var min = Math.Max(0f, dataMin - dataRange * 0.1f);
-        var max = dataMax + dataRange * 0.1f;
 
         try
         {

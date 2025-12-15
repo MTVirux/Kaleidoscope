@@ -64,6 +64,7 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerShowValueLabel { get; set; } = false;
     public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
     public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
+    public bool GilTrackerAutoScaleGraph { get; set; } = true;
 }
 
 public class ContentLayoutState
