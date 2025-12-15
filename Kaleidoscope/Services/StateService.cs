@@ -194,6 +194,14 @@ public sealed class StateService : IStateService, IService
     public void EnterFullscreen()
     {
         if (_isFullscreen) return;
+        
+        // Exit edit mode when entering fullscreen to prevent accidental edits
+        if (_isEditMode)
+        {
+            IsEditMode = false;
+            _log.Debug("Exited edit mode due to fullscreen entry");
+        }
+        
         IsFullscreen = true;
         _log.Debug("Entered fullscreen");
     }
