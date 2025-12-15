@@ -516,7 +516,11 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 cmd.CommandText = "DELETE FROM series WHERE variable = $v";
                 cmd.ExecuteNonQuery();
 
-                LogService.Info($"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
+                // Also clear character_names table
+                cmd.CommandText = "DELETE FROM character_names";
+                cmd.ExecuteNonQuery();
+
+                LogService.Info($"[KaleidoscopeDb] Cleared all data for variable '{variable}' including character names");
                 return true;
             }
             catch (Exception ex)
