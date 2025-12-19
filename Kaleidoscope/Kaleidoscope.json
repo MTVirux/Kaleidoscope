@@ -17,7 +17,7 @@
   "AssemblyVersion": "1.0.0.1",
   "RepoUrl": "https://github.com/MTVirux/Kaleidoscope",
   "ApplicableVersion": "any",
-  "DalamudApiLevel": 13,
+  "DalamudApiLevel": 14,
   "ImageUrls": null,
   "IconUrl": null
 }
