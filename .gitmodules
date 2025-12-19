@@ -7,6 +7,3 @@
 [submodule "FFXIVClientStructs"]
 	path = FFXIVClientStructs
 	url = https://github.com/aers/FFXIVClientStructs.git
-[submodule "CriticalCommonLib"]
-	path = CriticalCommonLib
-	url = https://github.com/Critical-Impact/CriticalCommonLib.git
