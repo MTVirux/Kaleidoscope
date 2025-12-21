@@ -120,7 +120,8 @@ public class DataTrackerSettings
     public bool HideCharacterSelector { get; set; } = false;
     public bool ShowMultipleLines { get; set; } = false;
     public int TimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowEndGap { get; set; } = false;
     public float EndGapPercent { get; set; } = 5f;
     public bool ShowValueLabel { get; set; } = false;
@@ -129,7 +130,7 @@ public class DataTrackerSettings
     public bool AutoScaleGraph { get; set; } = true;
     public float GraphMinValue { get; set; } = 0f;
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
-    public float LegendWidth { get; set; } = 120f;
+    public float LegendWidth { get; set; } = 140f;
     public bool ShowLegend { get; set; } = true;
     public GraphType GraphType { get; set; } = GraphType.Area;
 }
@@ -169,7 +170,11 @@ public enum CrystalGrouping
     /// <summary>Show separate lines/values per element (Fire, Ice, etc.).</summary>
     ByElement = 2,
     /// <summary>Show separate lines/values per element per character.</summary>
-    ByCharacterAndElement = 3
+    ByCharacterAndElement = 3,
+    /// <summary>Show separate lines/values per tier (Shard, Crystal, Cluster).</summary>
+    ByTier = 4,
+    /// <summary>Show separate lines/values per tier per character.</summary>
+    ByCharacterAndTier = 5
 }
 
 /// <summary>
@@ -198,12 +203,13 @@ public class CrystalTrackerSettings
 
     // Display settings
     public int TimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public bool ShowXAxisTimestamps { get; set; } = true;
     public bool AutoScaleGraph { get; set; } = true;
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;
-    public float LegendWidth { get; set; } = 120f;
+    public float LegendWidth { get; set; } = 140f;
     public bool ShowLegend { get; set; } = true;
     public GraphType GraphType { get; set; } = GraphType.Area;
 
