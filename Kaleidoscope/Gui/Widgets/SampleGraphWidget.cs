@@ -64,7 +64,7 @@ public class SampleGraphWidget
         /// <summary>
         /// Width of the scrollable legend panel in multi-series mode.
         /// </summary>
-        public float LegendWidth { get; set; } = 120f;
+        public float LegendWidth { get; set; } = 140f;
         
         /// <summary>
         /// Whether to show the legend panel in multi-series mode.
@@ -75,6 +75,11 @@ public class SampleGraphWidget
         /// The type of graph to render (Area, Line, Stairs, Bars).
         /// </summary>
         public GraphType GraphType { get; set; } = GraphType.Area;
+        
+        /// <summary>
+        /// Whether to show X-axis time labels with timestamps.
+        /// </summary>
+        public bool ShowXAxisTimestamps { get; set; } = true;
     }
 
     private readonly GraphConfig _config;
@@ -101,6 +106,23 @@ public class SampleGraphWidget
                 _hiddenSeries.Add(name);
         }
     }
+    
+    /// <summary>
+    /// Formatter delegate for X-axis tick labels with time values.
+    /// </summary>
+    private static readonly unsafe ImPlotFormatter XAxisTimeFormatter = (double value, byte* buff, int size, void* userData) =>
+    {
+        // value is seconds from the start time, userData contains the start time ticks
+        var startTicks = (long)userData;
+        var startTime = new DateTime(startTicks);
+        var time = startTime.AddSeconds(value).ToLocalTime();
+        var formatted = time.ToString("M/d HH:mm");
+        var len = Math.Min(formatted.Length, size - 1);
+        for (var i = 0; i < len; i++)
+            buff[i] = (byte)formatted[i];
+        buff[len] = 0;
+        return len;
+    };
     
     /// <summary>
     /// Formatter delegate for Y-axis tick labels with abbreviated notation (K, M, B).
@@ -157,7 +179,7 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 120f, bool showLegend = true, GraphType graphType = GraphType.Area)
+    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 140f, bool showLegend = true, GraphType graphType = GraphType.Area, bool showXAxisTimestamps = true)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
@@ -166,6 +188,7 @@ public class SampleGraphWidget
         _config.LegendWidth = legendWidth;
         _config.ShowLegend = showLegend;
         _config.GraphType = graphType;
+        _config.ShowXAxisTimestamps = showXAxisTimestamps;
     }
 
     /// <summary>
@@ -420,7 +443,17 @@ public class SampleGraphWidget
             if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
             {
                 // Configure axes with minimal chrome - show Y-axis tick labels for value reference
-                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoGridLines);
+                // Optionally show X-axis time labels
+                var xAxisFlags = _config.ShowXAxisTimestamps 
+                    ? ImPlotAxisFlags.NoGridLines 
+                    : ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines;
+                ImPlot.SetupAxes("", "", xAxisFlags, ImPlotAxisFlags.NoGridLines);
+                
+                // Format X-axis with time labels if enabled
+                if (_config.ShowXAxisTimestamps)
+                {
+                    ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
+                }
                 
                 // Format Y-axis with thousand separators
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
@@ -637,8 +670,14 @@ public class SampleGraphWidget
     {
         if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), true))
         {
-            for (var i = 0; i < series.Count; i++)
+            // Create sorted list of indices by series name (character name)
+            var sortedIndices = Enumerable.Range(0, series.Count)
+                .OrderBy(i => series[i].name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
+            for (var idx = 0; idx < sortedIndices.Count; idx++)
             {
+                var i = sortedIndices[idx];
                 var (name, samples) = series[i];
                 if (samples == null || samples.Count == 0) continue;
                 
