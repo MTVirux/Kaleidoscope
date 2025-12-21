@@ -105,12 +105,12 @@ public class DataTrackerTool : ToolComponent
                 if (showLegend)
                 {
                     var legendWidth = settings.LegendWidth;
-                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 200f, "%.0f px"))
+                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
                     {
                         settings.LegendWidth = legendWidth;
                         _configService.Save();
                     }
-                    ShowSettingTooltip("Width of the scrollable legend panel on the right side of the graph.", "120");
+                    ShowSettingTooltip("Width of the scrollable legend panel on the right side of the graph.", "140");
                 }
             }
 
@@ -160,6 +160,14 @@ public class DataTrackerTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Automatically scales the graph Y-axis to fit the data range.", "On");
+
+            var showXAxisTimestamps = settings.ShowXAxisTimestamps;
+            if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
+            {
+                settings.ShowXAxisTimestamps = showXAxisTimestamps;
+                _configService.Save();
+            }
+            ShowSettingTooltip("Shows time labels on the X-axis.", "On");
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Time Range");
