@@ -5,6 +5,6 @@ namespace Kaleidoscope.Config;
 /// </summary>
 public class SamplerConfig
 {
-    public bool SamplerEnabled { get; set; } = true;
+    public bool SamplerEnabled { get; set; } = false;
     public int SamplerIntervalMs { get; set; } = 1000;
 }

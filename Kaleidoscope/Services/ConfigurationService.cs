@@ -44,7 +44,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
         GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-        SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = true, SamplerIntervalMs = ConfigStatic.DefaultSamplerIntervalMs });
+        SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = false, SamplerIntervalMs = ConfigStatic.DefaultSamplerIntervalMs });
         WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig
         {
             PinMainWindow = Config.PinMainWindow,
