@@ -1,4 +1,4 @@
-using ECommons.DalamudServices;
+using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace Kaleidoscope.Services;
@@ -9,6 +9,18 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public static unsafe class GameStateService
 {
+    private static IPlayerState? _playerState;
+    private static IObjectTable? _objectTable;
+
+    /// <summary>
+    /// Initializes the static service references. Called once during plugin startup.
+    /// </summary>
+    public static void Initialize(IPlayerState playerState, IObjectTable objectTable)
+    {
+        _playerState = playerState;
+        _objectTable = objectTable;
+    }
+
     public static InventoryManager* InventoryManagerInstance()
     {
         try { return InventoryManager.Instance(); }
@@ -21,7 +33,7 @@ public static unsafe class GameStateService
         catch (Exception ex) { LogService.Debug($"RetainerManager.Instance() failed: {ex.Message}"); return null; }
     }
 
-    public static ulong PlayerContentId => Svc.PlayerState.ContentId;
+    public static ulong PlayerContentId => _playerState?.ContentId ?? 0;
 
     /// <summary>
     /// Gets the current player's name using IObjectTable.LocalPlayer (recommended Dalamud approach).
@@ -30,7 +42,7 @@ public static unsafe class GameStateService
     {
         get
         {
-            try { return Svc.Objects.LocalPlayer?.Name.ToString(); }
+            try { return _objectTable?.LocalPlayer?.Name.ToString(); }
             catch (Exception ex) { LogService.Debug($"LocalPlayer name access failed: {ex.Message}"); return null; }
         }
     }

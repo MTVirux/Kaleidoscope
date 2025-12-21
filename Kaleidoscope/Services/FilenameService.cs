@@ -12,6 +12,11 @@ namespace Kaleidoscope.Services;
 /// </remarks>
 public sealed class FilenameService : IService
 {
+    /// <summary>
+    /// Static accessor for components without DI access.
+    /// </summary>
+    public static FilenameService? Instance { get; private set; }
+
     public string ConfigDirectory { get; }
     public string ConfigFile { get; }
     public string DatabasePath { get; }
@@ -21,5 +26,6 @@ public sealed class FilenameService : IService
         ConfigDirectory = pi.GetPluginConfigDirectory();
         ConfigFile = pi.ConfigFile.FullName;
         DatabasePath = Path.Combine(ConfigDirectory, "kaleidoscope.sqlite");
+        Instance = this;
     }
 }

@@ -1,8 +1,6 @@
 using Dalamud.Game.ClientState.Objects.SubKinds;
-using Dalamud.Game.ClientState.Objects.Types;
-using Dalamud.Game.ClientState.Objects.Enums;
-using ECommons.DalamudServices;
-using ECommons.GameFunctions;
+using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 
 namespace Kaleidoscope.Libs;
 
@@ -11,6 +9,18 @@ namespace Kaleidoscope.Libs;
 /// </summary>
 public static unsafe class CharacterLib
 {
+    private static IPlayerState? _playerState;
+    private static IObjectTable? _objectTable;
+
+    /// <summary>
+    /// Initializes the static service references. Called once during plugin startup.
+    /// </summary>
+    public static void Initialize(IPlayerState playerState, IObjectTable objectTable)
+    {
+        _playerState = playerState;
+        _objectTable = objectTable;
+    }
+
     /// <summary>
     /// Validates that a character name follows FFXIV naming conventions.
     /// </summary>
@@ -30,6 +40,14 @@ public static unsafe class CharacterLib
     }
 
     /// <summary>
+    /// Gets the FFXIVClientStructs Character pointer from a player character.
+    /// </summary>
+    private static Character* GetCharacterStruct(IPlayerCharacter pc)
+    {
+        return (Character*)pc.Address;
+    }
+
+    /// <summary>
     /// Gets a character name by content ID from loaded game objects.
     /// </summary>
     public static string? GetCharacterName(ulong contentId)
@@ -37,20 +55,27 @@ public static unsafe class CharacterLib
         try
         {
             if (contentId == 0) return null;
-            var localCid = Svc.PlayerState.ContentId;
+            var localCid = _playerState?.ContentId ?? 0;
             if (contentId == localCid)
             {
-                var name = Svc.Objects.LocalPlayer?.Name.ToString();
+                var name = _objectTable?.LocalPlayer?.Name.ToString();
                 if (!string.IsNullOrEmpty(name)) return name;
                 return null;
             }
 
             // Try to find the character among currently-loaded objects and return their name.
-            var pc = Svc.Objects.OfType<Dalamud.Game.ClientState.Objects.SubKinds.IPlayerCharacter>().FirstOrDefault(p => p.Struct() != null && p.Struct()->ContentId == contentId);
-            if (pc != null)
+            if (_objectTable != null)
             {
-                var oname = pc.Name.ToString();
-                if (!string.IsNullOrEmpty(oname)) return oname;
+                var pc = _objectTable.OfType<IPlayerCharacter>().FirstOrDefault(p =>
+                {
+                    var charStruct = GetCharacterStruct(p);
+                    return charStruct != null && charStruct->ContentId == contentId;
+                });
+                if (pc != null)
+                {
+                    var oname = pc.Name.ToString();
+                    if (!string.IsNullOrEmpty(oname)) return oname;
+                }
             }
 
             // last-resort fallback: return null (no reliable global lookup available here)
