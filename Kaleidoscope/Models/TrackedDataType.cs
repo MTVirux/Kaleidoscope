@@ -110,5 +110,6 @@ public enum TrackedDataCategory
     Tribal,
     Crafting,
     Inventory,
+    Retainer,
     FreeCompanyRetainer
 }

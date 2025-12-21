@@ -286,7 +286,7 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             Type = TrackedDataType.Ventures,
             DisplayName = "Ventures",
             ShortName = "Venture",
-            Category = TrackedDataCategory.Crafting,
+            Category = TrackedDataCategory.Retainer,
             ItemId = 21072,
             MaxValue = 65535,
             EnabledByDefault = true,

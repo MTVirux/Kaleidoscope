@@ -83,6 +83,7 @@ public static class WindowToolRegistrar
             TrackedDataCategory.Tribal => "Tribal>Graph",
             TrackedDataCategory.Crafting => "Crafting>Graph",
             TrackedDataCategory.Inventory => "Inventory>Graph",
+            TrackedDataCategory.Retainer => "Retainer>Graph",
             TrackedDataCategory.FreeCompanyRetainer => "FC/Retainer>Graph",
             _ => "Other>Graph"
         };
