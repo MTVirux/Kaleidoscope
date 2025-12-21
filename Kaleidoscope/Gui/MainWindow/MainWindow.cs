@@ -17,7 +17,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// This window follows the Glamourer pattern for complex plugin windows with
 /// title bar buttons, content containers, and state management.
 /// </remarks>
-public sealed class MainWindow : Window, IService
+public sealed class MainWindow : Window, IService, IDisposable
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -110,9 +110,19 @@ public sealed class MainWindow : Window, IService
         _lastSavedSize = Config.MainWindowSize;
         
         // Update window title when dirty state changes
-        _layoutEditingService.OnDirtyStateChanged += _ => UpdateWindowTitle();
+        _layoutEditingService.OnDirtyStateChanged += OnDirtyStateChanged;
 
         _log.Debug("MainWindow initialized");
+    }
+    
+    private void OnDirtyStateChanged(bool isDirty)
+    {
+        UpdateWindowTitle();
+    }
+
+    public void Dispose()
+    {
+        _layoutEditingService.OnDirtyStateChanged -= OnDirtyStateChanged;
     }
     
     /// <summary>
