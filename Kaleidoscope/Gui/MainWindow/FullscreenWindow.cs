@@ -3,7 +3,6 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Services;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
@@ -21,7 +20,6 @@ public sealed class FullscreenWindow : Window
     private readonly FilenameService _filenameService;
     private readonly SamplerService _samplerService;
     private readonly StateService _stateService;
-    private readonly GilTrackerComponent _moneyTracker;
     private readonly TrackedDataRegistry _trackedDataRegistry;
     private readonly WindowContentContainer _contentContainer;
 
@@ -51,8 +49,6 @@ public sealed class FullscreenWindow : Window
         _samplerService = samplerService;
         _stateService = stateService;
         _trackedDataRegistry = trackedDataRegistry;
-        // Use the shared gil tracker from the sampler service
-        _moneyTracker = new GilTrackerComponent(filenameService, samplerService, configService);
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the

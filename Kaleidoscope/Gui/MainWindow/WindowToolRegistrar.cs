@@ -14,7 +14,6 @@ public static class WindowToolRegistrar
 {
     public static class ToolIds
     {
-        public const string GilTracker = "GilTracker";
         public const string GilTicker = "GilTicker";
         public const string GettingStarted = "GettingStarted";
         
@@ -33,14 +32,6 @@ public static class WindowToolRegistrar
 
         try
         {
-            // Legacy Gil Tracker (kept for backwards compatibility)
-            container.RegisterTool(
-                ToolIds.GilTracker,
-                "Gil Tracker (Legacy)",
-                pos => CreateToolInstance(ToolIds.GilTracker, pos, filenameService, samplerService, configService, registry),
-                "Track gil and history",
-                "Gil>Graph");
-
             container.RegisterTool(
                 ToolIds.GilTicker,
                 "Gil Ticker",
@@ -82,18 +73,18 @@ public static class WindowToolRegistrar
     {
         return category switch
         {
-            TrackedDataCategory.Currency => "Currency>Tracker",
-            TrackedDataCategory.Tomestone => "Tomestones>Tracker",
-            TrackedDataCategory.Scrip => "Scrips>Tracker",
-            TrackedDataCategory.GrandCompany => "Grand Company>Tracker",
-            TrackedDataCategory.PvP => "PvP>Tracker",
-            TrackedDataCategory.Hunt => "Hunt>Tracker",
-            TrackedDataCategory.GoldSaucer => "Gold Saucer>Tracker",
-            TrackedDataCategory.Tribal => "Tribal>Tracker",
-            TrackedDataCategory.Crafting => "Crafting>Tracker",
-            TrackedDataCategory.Inventory => "Inventory>Tracker",
-            TrackedDataCategory.FreeCompanyRetainer => "FC/Retainer>Tracker",
-            _ => "Other>Tracker"
+            TrackedDataCategory.Currency => "Gil>Graph",
+            TrackedDataCategory.Tomestone => "Tomestones>Graph",
+            TrackedDataCategory.Scrip => "Scrips>Graph",
+            TrackedDataCategory.GrandCompany => "Grand Company>Graph",
+            TrackedDataCategory.PvP => "PvP>Graph",
+            TrackedDataCategory.Hunt => "Hunt>Graph",
+            TrackedDataCategory.GoldSaucer => "Gold Saucer>Graph",
+            TrackedDataCategory.Tribal => "Tribal>Graph",
+            TrackedDataCategory.Crafting => "Crafting>Graph",
+            TrackedDataCategory.Inventory => "Inventory>Graph",
+            TrackedDataCategory.FreeCompanyRetainer => "FC/Retainer>Graph",
+            _ => "Other>Graph"
         };
     }
 
@@ -138,10 +129,6 @@ public static class WindowToolRegistrar
 
             switch (id)
             {
-                case ToolIds.GilTracker:
-                    var gilTrackerInner = new GilTrackerComponent(filenameService, samplerService, configService);
-                    return new GilTrackerTool(gilTrackerInner, configService) { Position = pos };
-
                 case ToolIds.GilTicker:
                     // Create a helper that shares the database with the sampler
                     var tickerHelper = new GilTrackerHelper(samplerService.DbService);

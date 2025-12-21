@@ -4,7 +4,7 @@ using Dalamud.Plugin.Services;
 using OtterGui.Text;
 using Dalamud.Interface;
 using Kaleidoscope.Services;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+using Kaleidoscope.Models;
 using OtterGui.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -25,7 +25,6 @@ public sealed class MainWindow : Window, IService
     private readonly FilenameService _filenameService;
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
-    private readonly GilTrackerComponent _moneyTracker;
     private readonly TrackedDataRegistry _trackedDataRegistry;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
@@ -63,23 +62,23 @@ public sealed class MainWindow : Window, IService
     /// <summary>
     /// Gets whether the database is available.
     /// </summary>
-    public bool HasDb => _moneyTracker?.HasDb ?? false;
+    public bool HasDb => _samplerService.HasDb;
 
     public void ClearAllData()
     {
-        try { _moneyTracker.ClearAllData(); }
+        try { _samplerService.ClearAllData(); }
         catch (Exception ex) { _log.Error($"ClearAllData failed: {ex.Message}"); }
     }
 
     public int CleanUnassociatedCharacters()
     {
-        try { return _moneyTracker.CleanUnassociatedCharacters(); }
+        try { return _samplerService.CleanUnassociatedCharacters(); }
         catch (Exception ex) { _log.Error($"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
     }
 
     public string? ExportCsv()
     {
-        try { return _moneyTracker.ExportCsv(); }
+        try { return _samplerService.ExportCsv(TrackedDataType.Gil); }
         catch (Exception ex) { _log.Error($"ExportCsv failed: {ex.Message}"); return null; }
     }
 
@@ -90,7 +89,6 @@ public sealed class MainWindow : Window, IService
         FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
-        GilTrackerComponent gilTrackerComponent,
         TrackedDataRegistry trackedDataRegistry) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
@@ -100,7 +98,6 @@ public sealed class MainWindow : Window, IService
         _filenameService = filenameService;
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;
-        _moneyTracker = gilTrackerComponent;
         _trackedDataRegistry = trackedDataRegistry;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };

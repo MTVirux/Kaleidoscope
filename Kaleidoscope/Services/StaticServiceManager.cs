@@ -1,7 +1,6 @@
 using Dalamud.Plugin;
 using Kaleidoscope.Gui.ConfigWindow;
 using Kaleidoscope.Gui.MainWindow;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 using OtterGui.Log;
 using OtterGui.Services;
 
@@ -49,6 +48,5 @@ public static class StaticServiceManager
             .AddSingleton<WindowService>()
             .AddSingleton<MainWindow>()
             .AddSingleton<FullscreenWindow>()
-            .AddSingleton<ConfigWindow>()
-            .AddSingleton<GilTrackerComponent>();
+            .AddSingleton<ConfigWindow>();
 }
