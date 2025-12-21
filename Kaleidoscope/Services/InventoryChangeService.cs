@@ -68,7 +68,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private void OnDalamudInventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
     {
         // Dalamud's inventory change event fired
-        // This covers player inventory, armory, crystals, etc.
+        // This covers player inventory, armory, crystals, retainer inventories, etc.
         var hasCrystalChange = false;
 
         foreach (var evt in events)
@@ -76,13 +76,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             // Check container type from the item
             var containerType = evt.Item.ContainerType;
 
-            // Crystals container
-            if (containerType == GameInventoryType.Crystals)
+            // Crystals container (player or retainer)
+            if (containerType == GameInventoryType.Crystals || containerType == GameInventoryType.RetainerCrystals)
             {
                 hasCrystalChange = true;
                 _pendingInventoryUpdate = true;
             }
-            // Regular inventory
+            // Regular inventory (player or retainer)
             else if (IsTrackedContainerType(containerType))
             {
                 _pendingInventoryUpdate = true;
@@ -106,12 +106,19 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     {
         return type switch
         {
-            // Crystals container
+            // Crystals container (player and retainer)
             GameInventoryType.Crystals => true,
+            GameInventoryType.RetainerCrystals => true,
 
             // Main inventory
             GameInventoryType.Inventory1 or GameInventoryType.Inventory2 or
             GameInventoryType.Inventory3 or GameInventoryType.Inventory4 => true,
+
+            // Retainer inventory pages
+            GameInventoryType.RetainerPage1 or GameInventoryType.RetainerPage2 or
+            GameInventoryType.RetainerPage3 or GameInventoryType.RetainerPage4 or
+            GameInventoryType.RetainerPage5 or GameInventoryType.RetainerPage6 or
+            GameInventoryType.RetainerPage7 => true,
 
             // Key items (contains things like Ventures)
             GameInventoryType.KeyItems => true,

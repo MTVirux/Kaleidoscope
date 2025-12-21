@@ -84,7 +84,14 @@ public class Configuration : IPluginConfiguration
         TrackedDataType.OrangeCraftersScrip,
         TrackedDataType.OrangeGatherersScrip,
         TrackedDataType.SackOfNuts,
-        TrackedDataType.Ventures
+        TrackedDataType.Ventures,
+        // Individual crystals (player + retainers)
+        TrackedDataType.FireCrystals,
+        TrackedDataType.IceCrystals,
+        TrackedDataType.WindCrystals,
+        TrackedDataType.EarthCrystals,
+        TrackedDataType.LightningCrystals,
+        TrackedDataType.WaterCrystals
     };
 
     /// <summary>

@@ -32,14 +32,7 @@ public static class WindowToolRegistrar
 
         try
         {
-            container.RegisterTool(
-                ToolIds.GilTicker,
-                "Gil Ticker",
-                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService, registry),
-                "Scrolling ticker of character gil values",
-                "Gil>Ticker");
-
-            // Register all data tracker tools from the registry
+            // Register all data tracker (graph) tools from the registry
             if (registry != null)
             {
                 foreach (var (dataType, definition) in registry.Definitions)
@@ -57,6 +50,13 @@ public static class WindowToolRegistrar
             }
 
             container.RegisterTool(
+                ToolIds.GilTicker,
+                "Gil Ticker",
+                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService, registry),
+                "Scrolling ticker of character gil values",
+                "Ticker");
+
+            container.RegisterTool(
                 ToolIds.GettingStarted,
                 "Getting Started",
                 pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService, registry),
@@ -71,22 +71,10 @@ public static class WindowToolRegistrar
 
     private static string GetCategoryPath(TrackedDataCategory category)
     {
-        return category switch
-        {
-            TrackedDataCategory.Currency => "Gil>Graph",
-            TrackedDataCategory.Tomestone => "Tomestones>Graph",
-            TrackedDataCategory.Scrip => "Scrips>Graph",
-            TrackedDataCategory.GrandCompany => "Grand Company>Graph",
-            TrackedDataCategory.PvP => "PvP>Graph",
-            TrackedDataCategory.Hunt => "Hunt>Graph",
-            TrackedDataCategory.GoldSaucer => "Gold Saucer>Graph",
-            TrackedDataCategory.Tribal => "Tribal>Graph",
-            TrackedDataCategory.Crafting => "Crafting>Graph",
-            TrackedDataCategory.Inventory => "Inventory>Graph",
-            TrackedDataCategory.Retainer => "Retainer>Graph",
-            TrackedDataCategory.FreeCompanyRetainer => "FC/Retainer>Graph",
-            _ => "Other>Graph"
-        };
+        // All data tracker tools are graphs - category path is just "Graph"
+        // The TrackedDataCategory is used for grouping within the tool's data selection,
+        // not for the top-level tool type categorization
+        return "Graph";
     }
 
     private static ToolComponent? CreateDataTrackerTool(
