@@ -22,6 +22,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly IGameInventory _gameInventory;
     private readonly IFramework _framework;
     private readonly TrackedDataRegistry _registry;
+    private readonly ConfigurationService _configService;
 
     // Debounce tracking for inventory events
     private volatile bool _pendingInventoryUpdate;
@@ -31,12 +32,19 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     // Value tracking - caches last known values to detect changes
     private readonly Dictionary<TrackedDataType, long> _lastKnownValues = new();
     private DateTime _lastValueCheck = DateTime.MinValue;
-    private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(500);
+    private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(1000); // Reduced from 500ms to 1s
+
+    /// <summary>
+    /// Event fired when any tracked inventory/currency value may have changed.
+    /// Passes the already-captured values to avoid re-reading game memory.
+    /// </summary>
+    public event Action<IReadOnlyDictionary<TrackedDataType, long>>? OnValuesChanged;
 
     /// <summary>
     /// Event fired when any tracked inventory/currency value may have changed.
     /// The event is debounced to avoid excessive updates.
     /// </summary>
+    [Obsolete("Use OnValuesChanged instead to avoid re-reading game memory")]
     public event Action? OnInventoryChanged;
 
     /// <summary>
@@ -49,12 +57,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     public event Action? OnCurrencyChanged;
 
-    public InventoryChangeService(IPluginLog log, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry)
+    public InventoryChangeService(IPluginLog log, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)
     {
         _log = log;
         _gameInventory = gameInventory;
         _framework = framework;
         _registry = registry;
+        _configService = configService;
 
         // Subscribe to Dalamud's inventory events (covers items/crystals)
         _gameInventory.InventoryChanged += OnDalamudInventoryChanged;
@@ -157,31 +166,39 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Checks all tracked data types for value changes using direct InventoryManager reads.
-    /// This follows the pattern used by popular plugins: cache last known values and compare.
+    /// Checks enabled data types for value changes using direct InventoryManager reads.
+    /// Only reads values for types that are actually being tracked to minimize game memory access.
     /// </summary>
     private void CheckForValueChanges()
     {
         try
         {
-            var anyChange = false;
+            // Only check enabled types to avoid unnecessary game memory reads
+            var enabledTypes = _configService.Config.EnabledTrackedDataTypes;
+            if (enabledTypes == null || enabledTypes.Count == 0)
+            {
+                enabledTypes = new HashSet<TrackedDataType> { TrackedDataType.Gil };
+            }
+
+            var changedValues = new Dictionary<TrackedDataType, long>();
             var hasCurrencyChange = false;
 
-            // Check all tracked data types
-            foreach (var def in _registry.Definitions.Values)
+            // Check only enabled data types
+            foreach (var dataType in enabledTypes)
             {
-                var currentValue = _registry.GetCurrentValue(def.Type);
+                var currentValue = _registry.GetCurrentValue(dataType);
                 if (!currentValue.HasValue) continue;
 
-                if (_lastKnownValues.TryGetValue(def.Type, out var lastValue))
+                if (_lastKnownValues.TryGetValue(dataType, out var lastValue))
                 {
                     if (currentValue.Value != lastValue)
                     {
-                        _lastKnownValues[def.Type] = currentValue.Value;
-                        anyChange = true;
+                        _lastKnownValues[dataType] = currentValue.Value;
+                        changedValues[dataType] = currentValue.Value;
 
                         // Track if this is a currency-type change
-                        if (def.Category is TrackedDataCategory.Currency or
+                        if (_registry.Definitions.TryGetValue(dataType, out var def) &&
+                            def.Category is TrackedDataCategory.Currency or
                             TrackedDataCategory.Tomestone or
                             TrackedDataCategory.Scrip or
                             TrackedDataCategory.GrandCompany or
@@ -197,13 +214,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 }
                 else
                 {
-                    // First time seeing this value, cache it
-                    _lastKnownValues[def.Type] = currentValue.Value;
-                    // Don't treat initial population as a "change" to avoid spam on startup
+                    // First time seeing this value, cache it but also treat as "change" for initial sampling
+                    _lastKnownValues[dataType] = currentValue.Value;
+                    changedValues[dataType] = currentValue.Value;
                 }
             }
 
-            if (anyChange)
+            if (changedValues.Count > 0)
             {
                 try
                 {
@@ -211,11 +228,18 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                     {
                         OnCurrencyChanged?.Invoke();
                     }
+                    
+                    // Pass the already-captured values to avoid re-reading game memory
+                    OnValuesChanged?.Invoke(changedValues);
+                    
+                    // Legacy event for backwards compatibility
+                    #pragma warning disable CS0618
                     OnInventoryChanged?.Invoke();
+                    #pragma warning restore CS0618
                 }
                 catch (Exception ex)
                 {
-                    _log.Debug($"[InventoryChangeService] OnInventoryChanged callback error: {ex.Message}");
+                    _log.Debug($"[InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
                 }
             }
         }

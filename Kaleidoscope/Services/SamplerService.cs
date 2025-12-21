@@ -1,16 +1,19 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
+using System.Threading.Channels;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Background service that samples game data (currencies, inventories) and persists it via KaleidoscopeDbService.
 /// Uses event-driven hooks for real-time updates with a fallback periodic sync.
+/// Database writes are offloaded to a background thread to avoid game lag.
 /// </summary>
 /// <remarks>
 /// Primary: Reacts to inventory/currency change events from InventoryChangeService.
 /// Fallback: Periodic timer sync to catch any missed updates (runs less frequently).
+/// Threading: Game data reads happen on main thread, database writes happen on background thread.
 /// </remarks>
 public sealed class SamplerService : IDisposable, IRequiredService
 {
@@ -21,9 +24,10 @@ public sealed class SamplerService : IDisposable, IRequiredService
     private readonly TrackedDataRegistry _registry;
     private readonly InventoryChangeService _inventoryChangeService;
 
-    // Fallback timer for periodic sync (runs less frequently since we have hooks)
-    private Timer? _fallbackTimer;
-    private const int FallbackIntervalSeconds = 1; // Reduced frequency since hooks handle most updates
+    // Background thread for database writes
+    private readonly Channel<SampleWorkItem> _sampleQueue;
+    private readonly Task _backgroundWorker;
+    private readonly CancellationTokenSource _cts = new();
 
     private volatile bool _enabled = true;
 
@@ -37,16 +41,13 @@ public sealed class SamplerService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Gets or sets the fallback sampling interval in milliseconds.
-    /// This is only used for periodic sync, not the primary event-driven updates.
+    /// Gets the effective sampling interval in milliseconds.
+    /// This is controlled by InventoryChangeService's polling interval.
     /// </summary>
     public int IntervalMs
     {
-        get => FallbackIntervalSeconds * 1000;
-        set
-        {
-            // Interval is now fixed for fallback; this property kept for config compatibility
-        }
+        get => 1000; // InventoryChangeService polls every 1s
+        set { /* Interval is now controlled by InventoryChangeService */ }
     }
 
     /// <summary>
@@ -79,6 +80,21 @@ public sealed class SamplerService : IDisposable, IRequiredService
         // Create the database service
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath);
 
+        // Initialize background work queue (unbounded, single consumer)
+        _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        // Start the background worker thread for database writes
+        _backgroundWorker = Task.Factory.StartNew(
+            ProcessSampleQueueAsync,
+            _cts.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default
+        ).Unwrap();
+
         // Perform one-time migration of stored names
         _dbService.MigrateStoredNames();
 
@@ -88,13 +104,10 @@ public sealed class SamplerService : IDisposable, IRequiredService
         // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
 
-        // Subscribe to inventory change events (primary update mechanism)
-        _inventoryChangeService.OnInventoryChanged += OnInventoryChanged;
+        // Subscribe to inventory change events - uses pre-captured values to avoid re-reading game memory
+        _inventoryChangeService.OnValuesChanged += OnValuesChanged;
 
-        // Start fallback timer for periodic sync
-        StartFallbackTimer();
-
-        _log.Information("[SamplerService] Initialized with event-driven hooks + fallback timer");
+        _log.Information("[SamplerService] Initialized with background thread for database writes");
     }
 
     /// <summary>
@@ -159,129 +172,88 @@ public sealed class SamplerService : IDisposable, IRequiredService
         }
     }
 
-    private void StartFallbackTimer()
-    {
-        _fallbackTimer = new Timer(OnFallbackTimerTick, null, TimeSpan.FromSeconds(FallbackIntervalSeconds), TimeSpan.FromSeconds(FallbackIntervalSeconds));
-    }
-
     /// <summary>
-    /// Called when inventory/currency changes are detected via hooks.
-    /// This is the primary update mechanism for real-time tracking.
+    /// Called when inventory/currency values change with pre-captured values.
+    /// Uses values already read by InventoryChangeService to avoid re-reading game memory.
     /// </summary>
-    private void OnInventoryChanged()
+    private void OnValuesChanged(IReadOnlyDictionary<TrackedDataType, long> changedValues)
     {
         if (!_enabled) return;
+        if (changedValues.Count == 0) return;
 
         try
         {
-            SampleAllEnabledTypes();
-        }
-        catch (Exception ex)
-        {
-            _log.Debug($"[SamplerService] OnInventoryChanged error: {ex.Message}");
-        }
-    }
+            var cid = GameStateService.PlayerContentId;
+            if (cid == 0) return;
 
-    /// <summary>
-    /// Fallback timer tick - runs less frequently to catch any missed updates.
-    /// </summary>
-    private void OnFallbackTimerTick(object? state)
-    {
-        if (!_enabled) return;
-
-        try
-        {
-            SampleAllEnabledTypes();
-        }
-        catch (Exception ex)
-        {
-            _log.Error($"Sampler fallback tick error: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Samples all enabled data types and persists any changes.
-    /// </summary>
-    private void SampleAllEnabledTypes()
-    {
-        var cid = GameStateService.PlayerContentId;
-        if (cid == 0) return;
-
-        // Sample all enabled data types
-        var enabledTypes = _configService.Config.EnabledTrackedDataTypes;
-        if (enabledTypes == null || enabledTypes.Count == 0)
-        {
-            // Fallback to just Gil if nothing configured
-            enabledTypes = new HashSet<TrackedDataType> { TrackedDataType.Gil };
-        }
-
-        var anyInserted = false;
-        foreach (var dataType in enabledTypes)
-        {
+            // Capture character name on main thread (game data access)
+            string? characterName = null;
             try
             {
-                var value = _registry.GetCurrentValue(dataType);
-                if (value.HasValue)
+                var rawName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
+                characterName = SanitizeName(rawName);
+                if (string.Equals(characterName, "You", StringComparison.OrdinalIgnoreCase))
                 {
-                    var variableName = dataType.ToString();
-                    var inserted = _dbService.SaveSampleIfChanged(variableName, cid, value.Value);
-                    if (inserted)
+                    var localName = GameStateService.LocalPlayerName;
+                    if (!string.IsNullOrEmpty(localName))
+                        characterName = localName;
+                }
+            }
+            catch { /* Ignore name capture failures */ }
+
+            // Queue all changed values for background database write
+            foreach (var (dataType, value) in changedValues)
+            {
+                var workItem = new SampleWorkItem(cid, dataType.ToString(), value, characterName);
+                _sampleQueue.Writer.TryWrite(workItem);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[SamplerService] OnValuesChanged error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Background worker that processes queued sample writes.
+    /// Runs on a dedicated thread to avoid blocking the game.
+    /// </summary>
+    private async Task ProcessSampleQueueAsync()
+    {
+        var reader = _sampleQueue.Reader;
+
+        try
+        {
+            while (await reader.WaitToReadAsync(_cts.Token))
+            {
+                while (reader.TryRead(out var workItem))
+                {
+                    if (_cts.Token.IsCancellationRequested) return;
+
+                    try
                     {
-                        anyInserted = true;
+                        var inserted = _dbService.SaveSampleIfChanged(workItem.Variable, workItem.CharacterId, workItem.Value);
+
+                        if (inserted && !string.IsNullOrEmpty(workItem.CharacterName) 
+                            && Kaleidoscope.Libs.CharacterLib.ValidateName(workItem.CharacterName))
+                        {
+                            _dbService.SaveCharacterName(workItem.CharacterId, workItem.CharacterName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Debug($"[SamplerService] Background write error: {ex.Message}");
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                _log.Debug($"Failed to sample {dataType}: {ex.Message}");
-            }
         }
-
-        if (anyInserted)
+        catch (OperationCanceledException)
         {
-            // Save character name on any data insert
-            TrySaveCharacterName(cid);
-        }
-    }
-
-    private void PersistSample(ulong characterId, TrackedDataType dataType, long value)
-    {
-        var variableName = dataType.ToString();
-        var inserted = _dbService.SaveSampleIfChanged(variableName, characterId, value);
-
-        if (inserted)
-        {
-            TrySaveCharacterName(characterId);
-        }
-    }
-
-    private void TrySaveCharacterName(ulong characterId)
-    {
-        try
-        {
-            var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
-            if (string.IsNullOrEmpty(name)) return;
-
-            // Sanitize the name (remove "You (Name)" wrappers, etc.)
-            var sanitized = SanitizeName(name);
-
-            // Try to get local player name if it's just "You"
-            if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
-            {
-                var localName = GameStateService.LocalPlayerName;
-                if (!string.IsNullOrEmpty(localName))
-                    sanitized = localName;
-            }
-
-            // Validate and save
-            if (!string.IsNullOrEmpty(sanitized) && Kaleidoscope.Libs.CharacterLib.ValidateName(sanitized))
-            {
-                _dbService.SaveCharacterName(characterId, sanitized);
-            }
+            // Expected during shutdown
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[SamplerService] Character name save failed: {ex.Message}");
+            LogService.Error($"[SamplerService] Background worker crashed: {ex.Message}", ex);
         }
     }
 
@@ -398,11 +370,39 @@ public sealed class SamplerService : IDisposable, IRequiredService
     public void Dispose()
     {
         // Unsubscribe from inventory change events
-        _inventoryChangeService.OnInventoryChanged -= OnInventoryChanged;
+        _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
 
-        _fallbackTimer?.Dispose();
-        _fallbackTimer = null;
+        // Signal background worker to stop and wait for it to finish
+        _cts.Cancel();
+        _sampleQueue.Writer.Complete();
+
+        try
+        {
+            // Wait for background worker to finish processing (with timeout)
+            _backgroundWorker.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (AggregateException) { /* Expected if task was canceled */ }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[SamplerService] Background worker shutdown error: {ex.Message}");
+        }
+
+        _cts.Dispose();
         _dbService.Dispose();
         GC.SuppressFinalize(this);
     }
 }
+
+/// <summary>
+/// Work item representing a sample to be persisted to the database.
+/// </summary>
+/// <param name="CharacterId">The character's content ID.</param>
+/// <param name="Variable">The variable name (e.g., "Gil", "TomestonePoetics").</param>
+/// <param name="Value">The sampled value.</param>
+/// <param name="CharacterName">The character name to save (captured on main thread).</param>
+internal readonly record struct SampleWorkItem(
+    ulong CharacterId,
+    string Variable,
+    long Value,
+    string? CharacterName
+);
