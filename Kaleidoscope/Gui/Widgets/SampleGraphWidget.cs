@@ -395,12 +395,33 @@ public class SampleGraphWidget
                         ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
                     }
 
-                    // Draw value label annotation if enabled
-                    if (_config.ShowValueLabel)
+                }
+
+                // Draw value labels after all lines are drawn, with vertical spacing to prevent overlap
+                if (_config.ShowValueLabel)
+                {
+                    const float labelHeight = 18f; // Approximate height of each label
+                    
+                    // Collect all labels with their values for sorting
+                    var labels = new List<(int idx, string name, float value, Vector3 color)>();
+                    for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
                     {
-                        var lastValue = samples[^1].value;
-                        var text = $"{name}: {FormatValue(lastValue)}";
-                        var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
+                        var (name, samples) = series[seriesIdx];
+                        if (samples == null || samples.Count == 0) continue;
+                        labels.Add((seriesIdx, name, samples[^1].value, colors[seriesIdx]));
+                    }
+                    
+                    // Sort by value descending so higher values get higher positions
+                    labels.Sort((a, b) => b.value.CompareTo(a.value));
+                    
+                    // Draw labels with vertical offset based on sorted position
+                    for (var i = 0; i < labels.Count; i++)
+                    {
+                        var (_, labelName, lastValue, color) = labels[i];
+                        var text = $"{labelName}: {FormatValue(lastValue)}";
+                        // Stack labels vertically: first (highest value) at top, subsequent ones below
+                        var yOffset = _config.ValueLabelOffsetY + (i * labelHeight);
+                        var pixOffset = new Vector2(_config.ValueLabelOffsetX, yOffset);
                         ImPlot.Annotation(totalTimeSpan, lastValue,
                             new Vector4(color.X, color.Y, color.Z, 0.8f), pixOffset, true, text);
                     }
