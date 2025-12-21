@@ -8,7 +8,7 @@ namespace Kaleidoscope.Services;
 /// Registry of all trackable data types and their definitions.
 /// Provides methods to fetch current values from game state.
 /// </summary>
-public sealed class TrackedDataRegistry : IDisposable, IRequiredService
+public sealed class TrackedDataRegistry : IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
@@ -575,10 +575,5 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
         }
         
         return total;
-    }
-
-    public void Dispose()
-    {
-        _definitions.Clear();
     }
 }
