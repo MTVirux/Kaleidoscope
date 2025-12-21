@@ -41,13 +41,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     public event Action<IReadOnlyDictionary<TrackedDataType, long>>? OnValuesChanged;
 
     /// <summary>
-    /// Event fired when any tracked inventory/currency value may have changed.
-    /// The event is debounced to avoid excessive updates.
-    /// </summary>
-    [Obsolete("Use OnValuesChanged instead to avoid re-reading game memory")]
-    public event Action? OnInventoryChanged;
-
-    /// <summary>
     /// Event fired when crystals specifically change (for crystal tracking).
     /// </summary>
     public event Action? OnCrystalsChanged;
@@ -146,14 +139,8 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             _pendingInventoryUpdate = false;
             _lastEventTime = now;
 
-            try
-            {
-                OnInventoryChanged?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                _log.Debug($"[InventoryChangeService] OnInventoryChanged callback error: {ex.Message}");
-            }
+            // Note: The debounced inventory update is now handled via CheckForValueChanges
+            // which reads all values and fires OnValuesChanged with the complete set.
         }
 
         // Check all tracked values periodically via direct InventoryManager reads
@@ -231,11 +218,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                     
                     // Pass the already-captured values to avoid re-reading game memory
                     OnValuesChanged?.Invoke(changedValues);
-                    
-                    // Legacy event for backwards compatibility
-                    #pragma warning disable CS0618
-                    OnInventoryChanged?.Invoke();
-                    #pragma warning restore CS0618
                 }
                 catch (Exception ex)
                 {
