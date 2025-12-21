@@ -14,7 +14,7 @@ public class CrystalTrackerTool : ToolComponent
     private readonly ConfigurationService _configService;
 
     private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
-    private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element" };
+    private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element", "By Tier", "By Character & Tier" };
     private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
@@ -166,12 +166,12 @@ public class CrystalTrackerTool : ToolComponent
             if (showLegend)
             {
                 var legendWidth = settings.LegendWidth;
-                if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 200f, "%.0f px"))
+                if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
                 {
                     settings.LegendWidth = legendWidth;
                     _configService.Save();
                 }
-                ShowSettingTooltip("Width of the scrollable legend panel.", "120");
+                ShowSettingTooltip("Width of the scrollable legend panel.", "140");
             }
 
             var showValueLabel = settings.ShowValueLabel;
@@ -214,6 +214,14 @@ public class CrystalTrackerTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Automatically scales the graph Y-axis to fit the data range.", "On");
+
+            var showXAxisTimestamps = settings.ShowXAxisTimestamps;
+            if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
+            {
+                settings.ShowXAxisTimestamps = showXAxisTimestamps;
+                _configService.Save();
+            }
+            ShowSettingTooltip("Shows time labels on the X-axis.", "On");
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Time Range");
