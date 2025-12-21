@@ -187,8 +187,8 @@ public class SampleGraphWidget
             // Configure plot flags - hide legend and title for clean look
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect;
             
-            // Set up axis limits before BeginPlot
-            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Always);
+            // Set up axis limits before BeginPlot (use Once to allow user zoom/pan)
+            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}", plotSize, plotFlags))
             {
@@ -318,8 +318,8 @@ public class SampleGraphWidget
             // Configure plot flags
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect;
 
-            // Set up axis limits
-            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Always);
+            // Set up axis limits (use Once to allow user zoom/pan)
+            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
             {
