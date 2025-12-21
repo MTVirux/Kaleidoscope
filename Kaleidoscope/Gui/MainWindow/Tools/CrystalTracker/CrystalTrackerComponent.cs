@@ -116,7 +116,8 @@ public class CrystalTrackerComponent : IDisposable
             settings.AutoScaleGraph,
             settings.LegendWidth,
             settings.ShowLegend,
-            settings.GraphType);
+            settings.GraphType,
+            settings.ShowXAxisTimestamps);
 
         // Calculate time cutoff
         DateTime? timeCutoff = null;
@@ -141,6 +142,12 @@ public class CrystalTrackerComponent : IDisposable
                     break;
                 case CrystalGrouping.ByCharacterAndElement:
                     DrawByCharacterAndElement(timeCutoff);
+                    break;
+                case CrystalGrouping.ByTier:
+                    DrawByTier(timeCutoff);
+                    break;
+                case CrystalGrouping.ByCharacterAndTier:
+                    DrawByCharacterAndTier(timeCutoff);
                     break;
             }
         }
@@ -445,6 +452,105 @@ public class CrystalTrackerComponent : IDisposable
             {
                 var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
                 var seriesName = $"{charName} - {ElementNames[element]}";
+                var samples = charPoints
+                    .OrderBy(p => p.Key)
+                    .Select(p => (p.Key, (float)p.Value))
+                    .ToList();
+
+                if (samples.Count > 0)
+                    series.Add((seriesName, samples));
+            }
+        }
+
+        if (series.Count == 0)
+        {
+            ImGui.TextUnformatted("No crystal data yet.");
+            return;
+        }
+
+        _graphWidget.DrawMultipleSeries(series);
+    }
+
+    /// <summary>
+    /// Draws separate lines per tier (Shard, Crystal, Cluster).
+    /// </summary>
+    private void DrawByTier(DateTime? timeCutoff)
+    {
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+
+        foreach (var tier in GetEnabledTiers())
+        {
+            var allPoints = new Dictionary<DateTime, long>();
+
+            // Aggregate all enabled elements for this tier
+            foreach (var element in GetEnabledElements())
+            {
+                var variableName = GetVariableName(element, tier);
+                var points = _samplerService.DbService.GetAllPoints(variableName);
+
+                foreach (var (_, ts, value) in points)
+                {
+                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
+
+                    if (!allPoints.ContainsKey(ts))
+                        allPoints[ts] = 0;
+                    allPoints[ts] += value;
+                }
+            }
+
+            var samples = allPoints
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+
+            if (samples.Count > 0)
+                series.Add((TierNames[tier], samples));
+        }
+
+        if (series.Count == 0)
+        {
+            ImGui.TextUnformatted("No crystal data yet.");
+            return;
+        }
+
+        _graphWidget.DrawMultipleSeries(series);
+    }
+
+    /// <summary>
+    /// Draws separate lines per tier per character.
+    /// </summary>
+    private void DrawByCharacterAndTier(DateTime? timeCutoff)
+    {
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
+
+        foreach (var tier in GetEnabledTiers())
+        {
+            // Aggregate all enabled elements, grouped by character
+            var byCharacter = new Dictionary<ulong, Dictionary<DateTime, long>>();
+
+            foreach (var element in GetEnabledElements())
+            {
+                var variableName = GetVariableName(element, tier);
+                var points = _samplerService.DbService.GetAllPoints(variableName);
+
+                foreach (var (charId, ts, value) in points)
+                {
+                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
+
+                    if (!byCharacter.ContainsKey(charId))
+                        byCharacter[charId] = new Dictionary<DateTime, long>();
+
+                    if (!byCharacter[charId].ContainsKey(ts))
+                        byCharacter[charId][ts] = 0;
+                    byCharacter[charId][ts] += value;
+                }
+            }
+
+            foreach (var (charId, charPoints) in byCharacter)
+            {
+                var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
+                var seriesName = $"{charName} - {TierNames[tier]}";
                 var samples = charPoints
                     .OrderBy(p => p.Key)
                     .Select(p => (p.Key, (float)p.Value))
