@@ -7,8 +7,9 @@ namespace Kaleidoscope.Gui.MainWindow;
 
 /// <summary>
 /// Base class for draggable/resizable tool components in the main window.
+/// Implements IDisposable for consistent cleanup of derived tool resources.
 /// </summary>
-public abstract class ToolComponent
+public abstract class ToolComponent : IDisposable
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     
@@ -46,6 +47,11 @@ public abstract class ToolComponent
 
     public virtual bool HasSettings => false;
     public virtual void DrawSettings() { }
+    
+    /// <summary>
+    /// Disposes resources held by this tool. Override in derived classes for cleanup.
+    /// </summary>
+    public virtual void Dispose() { }
 
     protected void ShowSettingTooltip(string description, string defaultText)
     {

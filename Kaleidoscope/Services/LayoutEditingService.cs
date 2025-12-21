@@ -23,7 +23,7 @@ public sealed class PendingLayoutAction
 /// This follows the "dirty flag" pattern common in document editors. The working
 /// layout is kept in memory and a snapshot is persisted to disk for crash recovery.
 /// </remarks>
-public sealed class LayoutEditingService : IService
+public sealed class LayoutEditingService : IService, IDisposable
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -380,6 +380,20 @@ public sealed class LayoutEditingService : IService
             // Deep clone by serializing/deserializing
             var json = JsonConvert.SerializeObject(source);
             return JsonConvert.DeserializeObject<List<ToolLayoutState>>(json) ?? new List<ToolLayoutState>();
+        }
+        
+        #endregion
+        
+        #region IDisposable
+        
+        /// <summary>
+        /// Clears event handlers to prevent memory leaks.
+        /// </summary>
+        public void Dispose()
+        {
+            OnDirtyStateChanged = null;
+            OnShowUnsavedChangesDialog = null;
+            _log.Debug("LayoutEditingService disposed");
         }
         
         #endregion

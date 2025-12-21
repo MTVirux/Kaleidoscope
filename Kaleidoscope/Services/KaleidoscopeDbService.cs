@@ -630,7 +630,8 @@ CREATE INDEX IF NOT EXISTS idx_retainer_crystals_char ON retainer_crystals(chara
                 catch (Exception ex)
                 {
                     LogService.Error($"[KaleidoscopeDb] Transaction failed: {ex.Message}", ex);
-                    try { tx.Rollback(); } catch { }
+                    try { tx.Rollback(); } 
+                    catch (Exception rollbackEx) { LogService.Debug($"[KaleidoscopeDb] Rollback also failed: {rollbackEx.Message}"); }
                     return 0;
                 }
             }
