@@ -194,6 +194,10 @@ public class SampleGraphWidget
             {
                 // Configure axes
                 ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines);
+                
+                // Constrain axes to prevent negative values
+                ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
+                ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
 
                 // Convert samples to arrays for plotting
                 var xValues = new double[samples.Count];
@@ -328,6 +332,10 @@ public class SampleGraphWidget
                 
                 // Setup legend at the top-right
                 ImPlot.SetupLegend(ImPlotLocation.NorthEast, ImPlotLegendFlags.Outside);
+                
+                // Constrain axes to prevent negative values
+                ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
+                ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
 
                 var colors = GetSeriesColors(series.Count);
 
