@@ -42,16 +42,6 @@ public class SampleGraphWidget
         public float FloatEpsilon { get; set; } = 0.0001f;
 
         /// <summary>
-        /// Whether to leave a gap at the right edge of the graph.
-        /// </summary>
-        public bool ShowEndGap { get; set; } = false;
-
-        /// <summary>
-        /// Percentage of graph width to use as end gap.
-        /// </summary>
-        public float EndGapPercent { get; set; } = 5f;
-
-        /// <summary>
         /// Whether to show a value label near the latest point.
         /// </summary>
         public bool ShowValueLabel { get; set; } = false;
@@ -73,6 +63,33 @@ public class SampleGraphWidget
     }
 
     private readonly GraphConfig _config;
+    
+    /// <summary>
+    /// Formatter delegate for Y-axis tick labels with abbreviated notation (K, M, B).
+    /// </summary>
+    private static readonly unsafe ImPlotFormatter YAxisFormatter = (double value, byte* buff, int size, void* userData) =>
+    {
+        var formatted = FormatAbbreviated(value);
+        var len = Math.Min(formatted.Length, size - 1);
+        for (var i = 0; i < len; i++)
+            buff[i] = (byte)formatted[i];
+        buff[len] = 0;
+        return len;
+    };
+    
+    /// <summary>
+    /// Formats a number with abbreviated notation (K, M, B).
+    /// </summary>
+    private static string FormatAbbreviated(double value)
+    {
+        return value switch
+        {
+            >= 1_000_000_000 => $"{value / 1_000_000_000:0.##}B",
+            >= 1_000_000 => $"{value / 1_000_000:0.##}M",
+            >= 1_000 => $"{value / 1_000:0.##}K",
+            _ => $"{value:0.##}"
+        };
+    }
 
     /// <summary>
     /// Creates a new SampleGraphWidget with default configuration.
@@ -102,10 +119,8 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showEndGap, float endGapPercent, bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
+    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
     {
-        _config.ShowEndGap = showEndGap;
-        _config.EndGapPercent = endGapPercent;
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
         _config.ValueLabelOffsetY = valueLabelOffsetY;
@@ -178,22 +193,20 @@ public class SampleGraphWidget
 
             // Calculate X-axis range
             var xMax = (double)samples.Count;
-            if (_config.ShowEndGap)
-            {
-                var gapPercent = Math.Clamp(_config.EndGapPercent, 0f, 50f);
-                xMax *= (1f + gapPercent / 100f);
-            }
 
-            // Configure plot flags - hide legend and title for clean look
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect;
+            // Configure plot flags - hide legend, title, and mouse position text for clean look
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText;
             
             // Set up axis limits before BeginPlot (use Once to allow user zoom/pan)
             ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}", plotSize, plotFlags))
             {
-                // Configure axes
-                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines);
+                // Configure axes - show Y-axis tick labels for value reference
+                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoGridLines);
+                
+                // Format Y-axis with thousand separators
+                ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
                 
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
@@ -220,8 +233,9 @@ public class SampleGraphWidget
                 {
                     var lastValue = samples[^1];
                     var text = FormatValue(lastValue);
-                    ImPlot.Annotation(samples.Count - 1 + _config.ValueLabelOffsetX, lastValue + _config.ValueLabelOffsetY, 
-                        new Vector4(0, 0, 0, 0.7f), new Vector2(5, 5), true, text);
+                    var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
+                    ImPlot.Annotation(samples.Count - 1, lastValue, 
+                        new Vector4(0, 0, 0, 0.7f), pixOffset, true, text);
                 }
 
                 ImPlot.EndPlot();
@@ -266,13 +280,7 @@ public class SampleGraphWidget
         var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
         if (totalTimeSpan < 1) totalTimeSpan = 1;
 
-        // Apply end gap
         var xMax = totalTimeSpan;
-        if (_config.ShowEndGap)
-        {
-            var gapPercent = Math.Clamp(_config.EndGapPercent, 0f, 50f);
-            xMax *= (1f + gapPercent / 100f);
-        }
 
         try
         {
@@ -319,16 +327,19 @@ public class SampleGraphWidget
                 }
             }
 
-            // Configure plot flags
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect;
+            // Configure plot flags - disable mouse position text for clean look
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText;
 
             // Set up axis limits (use Once to allow user zoom/pan)
             ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
             {
-                // Configure axes with minimal chrome
-                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines);
+                // Configure axes with minimal chrome - show Y-axis tick labels for value reference
+                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoGridLines);
+                
+                // Format Y-axis with thousand separators
+                ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
                 
                 // Setup legend at the top-right
                 ImPlot.SetupLegend(ImPlotLocation.NorthEast, ImPlotLegendFlags.Outside);
@@ -376,8 +387,9 @@ public class SampleGraphWidget
                     {
                         var lastValue = samples[^1].value;
                         var text = $"{name}: {FormatValue(lastValue)}";
-                        ImPlot.Annotation(totalTimeSpan + _config.ValueLabelOffsetX, lastValue + _config.ValueLabelOffsetY,
-                            new Vector4(color.X, color.Y, color.Z, 0.8f), new Vector2(5, 5), true, text);
+                        var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
+                        ImPlot.Annotation(totalTimeSpan, lastValue,
+                            new Vector4(color.X, color.Y, color.Z, 0.8f), pixOffset, true, text);
                     }
                 }
 
