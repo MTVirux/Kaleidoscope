@@ -96,16 +96,12 @@ public class CrystalTrackerTool : ToolComponent
             ShowSettingTooltip("Include Clusters (highest tier) in the count.", "On");
 
             ImGui.Spacing();
-            ImGui.TextUnformatted("Source Filters");
+            ImGui.TextUnformatted("Data Source");
             ImGui.Separator();
 
-            var includeRetainers = settings.IncludeRetainers;
-            if (ImGui.Checkbox("Include Retainers", ref includeRetainers))
-            {
-                settings.IncludeRetainers = includeRetainers;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Include crystals from all retainer inventories. Retainer data is cached when you access each retainer.", "On");
+            // Show info about retainer tracking instead of a toggle
+            ImGui.TextDisabled("Retainer crystals are always tracked.");
+            ShowSettingTooltip("Crystal data includes both player inventory and cached retainer inventories. Retainer data is updated when you access each retainer.", "Always On");
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Element Filters");

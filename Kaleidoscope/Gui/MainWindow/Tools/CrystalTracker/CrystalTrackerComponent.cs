@@ -8,15 +8,16 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 /// <summary>
 /// Component for tracking all crystal types with flexible grouping and filtering.
 /// Stores shards, crystals, and clusters separately per element for dynamic filtering.
+/// Uses IGameInventory events for immediate updates when crystals change.
 /// </summary>
-public class CrystalTrackerComponent
+public class CrystalTrackerComponent : IDisposable
 {
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
+    private readonly InventoryChangeService? _inventoryChangeService;
     private readonly SampleGraphWidget _graphWidget;
 
-    private DateTime _lastSampleTime = DateTime.MinValue;
-    private int _sampleIntervalMs = ConfigStatic.DefaultSamplerIntervalMs;
+    private volatile bool _pendingCrystalUpdate = false;
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
 
@@ -43,10 +44,11 @@ public class CrystalTrackerComponent
         new(0.3f, 0.5f, 1.0f, 1.0f)   // Water - blue
     };
 
-    public CrystalTrackerComponent(SamplerService samplerService, ConfigurationService configService)
+    public CrystalTrackerComponent(SamplerService samplerService, ConfigurationService configService, InventoryChangeService? inventoryChangeService = null)
     {
         _samplerService = samplerService;
         _configService = configService;
+        _inventoryChangeService = inventoryChangeService;
 
         _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
         {
@@ -56,6 +58,26 @@ public class CrystalTrackerComponent
             NoDataText = "No crystal data yet.",
             FloatEpsilon = ConfigStatic.FloatEpsilon
         });
+
+        // Subscribe to inventory change events for immediate crystal updates
+        if (_inventoryChangeService != null)
+        {
+            _inventoryChangeService.OnCrystalsChanged += OnCrystalsChanged;
+        }
+    }
+
+    private void OnCrystalsChanged()
+    {
+        // Flag that crystals have changed - will be processed on next Draw()
+        _pendingCrystalUpdate = true;
+    }
+
+    public void Dispose()
+    {
+        if (_inventoryChangeService != null)
+        {
+            _inventoryChangeService.OnCrystalsChanged -= OnCrystalsChanged;
+        }
     }
     
     /// <summary>
@@ -72,16 +94,13 @@ public class CrystalTrackerComponent
     {
         var settings = Settings;
 
-        // Sample crystals at regular intervals
+        // Sample crystals only when inventory change events fire (no polling)
         try
         {
-            _sampleIntervalMs = Math.Max(1, _samplerService.IntervalMs);
-
-            var now = DateTime.UtcNow;
-            if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
+            if (_pendingCrystalUpdate)
             {
+                _pendingCrystalUpdate = false;
                 SampleCrystals();
-                _lastSampleTime = now;
             }
         }
         catch (Exception ex)
@@ -164,8 +183,8 @@ public class CrystalTrackerComponent
 
     /// <summary>
     /// Samples current crystal values and persists them separately by tier.
-    /// Player crystals go to the main series for historical tracking.
-    /// Retainer crystals are cached separately per-retainer for aggregation.
+    /// Always samples total (player + cached retainer) for consistent historical tracking.
+    /// Retainer crystals are also cached separately per-retainer when a retainer is open.
     /// </summary>
     private unsafe void SampleCrystals()
     {
@@ -175,35 +194,8 @@ public class CrystalTrackerComponent
         var im = GameStateService.InventoryManagerInstance();
         if (im == null) return;
 
-        var includeRetainers = Settings.IncludeRetainers;
-
-        // Sample ALL elements and tiers (not filtered by settings)
-        // This ensures we always have complete data regardless of current filter settings
-        for (int element = 0; element < 6; element++)
-        {
-            for (int tier = 0; tier < 3; tier++)
-            {
-                // Item IDs: Shard = 2 + element, Crystal = 8 + element, Cluster = 14 + element
-                uint itemId = (uint)(2 + element + tier * 6);
-                
-                // Get player's crystal count
-                long playerCount = 0;
-                try { playerCount = im->GetInventoryItemCount(itemId); } catch { }
-                
-                // Get cached retainer crystal totals for this element/tier (if enabled)
-                long cachedRetainerTotal = 0;
-                if (includeRetainers)
-                {
-                    cachedRetainerTotal = _samplerService.DbService.GetTotalRetainerCrystals(cid, element, tier);
-                }
-                
-                // Save the combined total (player + all cached retainers) for historical tracking
-                var variableName = GetVariableName(element, tier);
-                _samplerService.DbService.SaveSampleIfChanged(variableName, cid, playerCount + cachedRetainerTotal);
-            }
-        }
-
-        // If a retainer is currently active, update their cached crystal counts
+        // First, update retainer cache if a retainer is currently active
+        // This ensures the cache is up-to-date before we sample totals
         if (GameStateService.IsRetainerActive())
         {
             var retainerId = GameStateService.GetActiveRetainerId();
@@ -222,6 +214,29 @@ public class CrystalTrackerComponent
                         _samplerService.DbService.SaveRetainerCrystals(cid, retainerId, retainerName, element, tier, retainerCount);
                     }
                 }
+            }
+        }
+
+        // Sample ALL elements and tiers (not filtered by settings)
+        // This ensures we always have complete data regardless of current filter settings
+        // Always sample total (player + cached retainer) for consistent historical data
+        for (int element = 0; element < 6; element++)
+        {
+            for (int tier = 0; tier < 3; tier++)
+            {
+                // Item IDs: Shard = 2 + element, Crystal = 8 + element, Cluster = 14 + element
+                uint itemId = (uint)(2 + element + tier * 6);
+                
+                // Get player's crystal count
+                long playerCount = 0;
+                try { playerCount = im->GetInventoryItemCount(itemId); } catch { }
+                
+                // Get cached retainer crystal totals for this element/tier
+                long cachedRetainerTotal = _samplerService.DbService.GetTotalRetainerCrystals(cid, element, tier);
+                
+                // Save the combined total (player + all cached retainers) for historical tracking
+                var variableName = GetVariableName(element, tier);
+                _samplerService.DbService.SaveSampleIfChanged(variableName, cid, playerCount + cachedRetainerTotal);
             }
         }
     }
@@ -261,6 +276,7 @@ public class CrystalTrackerComponent
         var enabledTiers = GetEnabledTiers().ToList();
 
         // Aggregate all enabled element/tier data across all characters
+        // Data already includes retainer totals (sampled together)
         foreach (var element in GetEnabledElements())
         {
             foreach (var tier in enabledTiers)
@@ -303,6 +319,7 @@ public class CrystalTrackerComponent
         var enabledTiers = GetEnabledTiers().ToList();
 
         // Aggregate all enabled element/tier data per character
+        // Data already includes retainer totals (sampled together)
         foreach (var element in GetEnabledElements())
         {
             foreach (var tier in enabledTiers)
@@ -357,6 +374,7 @@ public class CrystalTrackerComponent
         {
             var allPoints = new Dictionary<DateTime, long>();
 
+            // Data already includes retainer totals (sampled together)
             foreach (var tier in enabledTiers)
             {
                 var variableName = GetVariableName(element, tier);
@@ -402,6 +420,7 @@ public class CrystalTrackerComponent
         foreach (var element in GetEnabledElements())
         {
             // Aggregate all enabled tiers, grouped by character
+            // Data already includes retainer totals (sampled together)
             var byCharacter = new Dictionary<ulong, Dictionary<DateTime, long>>();
 
             foreach (var tier in enabledTiers)

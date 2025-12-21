@@ -9,8 +9,9 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 /// <summary>
 /// Generic component for tracking any data type.
 /// Manages sampling, persistence, and display of tracked data.
+/// Uses event-driven updates from InventoryChangeService instead of polling.
 /// </summary>
-public class DataTrackerComponent
+public class DataTrackerComponent : IDisposable
 {
     private readonly DataTrackerHelper _helper;
     private readonly CharacterPickerWidget _characterPicker;
@@ -18,10 +19,11 @@ public class DataTrackerComponent
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly TrackedDataRegistry _registry;
+    private readonly InventoryChangeService? _inventoryChangeService;
 
     private bool _pointsPopupOpen = false;
-    private DateTime _lastSampleTime = DateTime.MinValue;
-    private int _sampleIntervalMs = ConfigStatic.DefaultSamplerIntervalMs;
+    private volatile bool _pendingUpdate = true; // Start with pending to get initial sample
+    private bool _disposed = false;
 
     // Graph bounds (editable via settings)
     private float _graphMinValue = 0f;
@@ -84,12 +86,14 @@ public class DataTrackerComponent
         TrackedDataType dataType,
         SamplerService samplerService,
         ConfigurationService configService,
-        TrackedDataRegistry registry)
+        TrackedDataRegistry registry,
+        InventoryChangeService? inventoryChangeService = null)
     {
         DataType = dataType;
         _samplerService = samplerService;
         _configService = configService;
         _registry = registry;
+        _inventoryChangeService = inventoryChangeService;
 
         var definition = registry.GetDefinition(dataType);
         _graphMaxValue = definition?.MaxValue ?? 999_999_999;
@@ -114,6 +118,21 @@ public class DataTrackerComponent
             NoDataText = "No data yet.",
             FloatEpsilon = ConfigStatic.FloatEpsilon
         });
+
+        // Subscribe to inventory change events for event-driven updates
+        if (_inventoryChangeService != null)
+        {
+            _inventoryChangeService.OnValuesChanged += OnValuesChanged;
+        }
+    }
+
+    private void OnValuesChanged(IReadOnlyDictionary<TrackedDataType, long> values)
+    {
+        // Only flag update if our data type changed
+        if (values.ContainsKey(DataType))
+        {
+            _pendingUpdate = true;
+        }
     }
 
     public bool HasDb => _samplerService.HasDb;
@@ -170,22 +189,19 @@ public class DataTrackerComponent
     {
         var settings = GetSettings();
 
-        // Try to sample from the game at most once per _sampleIntervalMs.
-        try
+        // Sample when flagged by inventory change events (event-driven, not polling)
+        if (_pendingUpdate)
         {
-            _sampleIntervalMs = Math.Max(1, _samplerService.IntervalMs);
-
-            var now = DateTime.UtcNow;
-            if ((now - _lastSampleTime).TotalMilliseconds >= _sampleIntervalMs)
+            try
             {
                 // Delegate to helper for sampling and persistence
                 _helper.SampleFromGame();
-                _lastSampleTime = now;
+                _pendingUpdate = false;
             }
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug($"[DataTrackerComponent:{DataType}] Sampling error: {ex.Message}");
+            catch (Exception ex)
+            {
+                LogService.Debug($"[DataTrackerComponent:{DataType}] Sampling error: {ex.Message}");
+            }
         }
 
         // Draw the character picker widget (if not hidden)
@@ -294,5 +310,16 @@ public class DataTrackerComponent
             TimeRangeUnit.Months => now.AddMonths(-value),
             _ => DateTime.MinValue
         };
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_inventoryChangeService != null)
+        {
+            _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
+        }
     }
 }
