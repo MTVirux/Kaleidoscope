@@ -325,10 +325,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     public void ClearAllData()
     {
-        foreach (var dataType in _registry.Definitions.Keys)
-        {
-            _dbService.ClearAllData(dataType.ToString());
-        }
+        _dbService.ClearAllTables();
         _log.Information("Cleared all tracking data");
     }
 

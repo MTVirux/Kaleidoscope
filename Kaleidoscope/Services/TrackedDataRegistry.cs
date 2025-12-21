@@ -294,6 +294,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
         });
 
         // === Crystals ===
+        // Note: Individual crystal types are kept for backwards compatibility and direct API access,
+        // but the CrystalTracker tool provides unified tracking with grouping/filtering.
         Register(new TrackedDataDefinition
         {
             Type = TrackedDataType.CrystalsTotal,
@@ -302,7 +304,7 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
             EnabledByDefault = false,
-            Description = "Total count of all crystals, clusters, and shards (player + retainers)."
+            Description = "Total count of all crystals, clusters, and shards (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -312,8 +314,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Fire",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Fire shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Fire shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -323,8 +325,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Ice",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Ice shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Ice shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -334,8 +336,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Wind",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Wind shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Wind shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -345,8 +347,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Earth",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Earth shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Earth shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -356,8 +358,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Lightning",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Lightning shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Lightning shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         Register(new TrackedDataDefinition
@@ -367,8 +369,8 @@ public sealed class TrackedDataRegistry : IDisposable, IRequiredService
             ShortName = "Water",
             Category = TrackedDataCategory.Crafting,
             MaxValue = 9_999_999,
-            EnabledByDefault = true,
-            Description = "Water shards, crystals, and clusters (player + retainers)."
+            EnabledByDefault = false,
+            Description = "Water shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
         });
 
         // === Inventory Space ===

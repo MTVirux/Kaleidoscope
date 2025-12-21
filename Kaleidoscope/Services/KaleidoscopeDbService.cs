@@ -516,16 +516,46 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 cmd.CommandText = "DELETE FROM series WHERE variable = $v";
                 cmd.ExecuteNonQuery();
 
-                // Also clear character_names table
-                cmd.CommandText = "DELETE FROM character_names";
-                cmd.ExecuteNonQuery();
-
-                LogService.Info($"[KaleidoscopeDb] Cleared all data for variable '{variable}' including character names");
+                LogService.Info($"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
                 return true;
             }
             catch (Exception ex)
             {
                 LogService.Error($"[KaleidoscopeDb] ClearAllData failed: {ex.Message}", ex);
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears all data from all tables (points, series, and character_names).
+    /// </summary>
+    public bool ClearAllTables()
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return false;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                
+                cmd.CommandText = "DELETE FROM points";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM series";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM character_names";
+                cmd.ExecuteNonQuery();
+
+                LogService.Info("[KaleidoscopeDb] Cleared all data from all tables");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] ClearAllTables failed: {ex.Message}", ex);
                 return false;
             }
         }

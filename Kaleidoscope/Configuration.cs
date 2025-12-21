@@ -84,20 +84,17 @@ public class Configuration : IPluginConfiguration
         TrackedDataType.OrangeCraftersScrip,
         TrackedDataType.OrangeGatherersScrip,
         TrackedDataType.SackOfNuts,
-        TrackedDataType.Ventures,
-        // Individual crystals (player + retainers)
-        TrackedDataType.FireCrystals,
-        TrackedDataType.IceCrystals,
-        TrackedDataType.WindCrystals,
-        TrackedDataType.EarthCrystals,
-        TrackedDataType.LightningCrystals,
-        TrackedDataType.WaterCrystals
+        TrackedDataType.Ventures
+        // Individual crystals are now handled by CrystalTracker tool
     };
 
     /// <summary>
     /// Per-data-type display settings (time range, graph bounds, etc.)
     /// </summary>
     public Dictionary<TrackedDataType, DataTrackerSettings> DataTrackerSettings { get; set; } = new();
+
+    // CrystalTracker settings
+    public CrystalTrackerSettings CrystalTracker { get; set; } = new();
 }
 
 /// <summary>
@@ -119,6 +116,101 @@ public class DataTrackerSettings
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
     public float LegendWidth { get; set; } = 120f;
     public bool ShowLegend { get; set; } = true;
+}
+
+/// <summary>
+/// Crystal element types for filtering.
+/// </summary>
+public enum CrystalElement
+{
+    Fire = 0,
+    Ice = 1,
+    Wind = 2,
+    Earth = 3,
+    Lightning = 4,
+    Water = 5
+}
+
+/// <summary>
+/// Crystal tier types for filtering.
+/// </summary>
+public enum CrystalTier
+{
+    Shard = 0,
+    Crystal = 1,
+    Cluster = 2
+}
+
+/// <summary>
+/// How to group crystal data in the display.
+/// </summary>
+public enum CrystalGrouping
+{
+    /// <summary>Show total crystals as a single value.</summary>
+    None = 0,
+    /// <summary>Show separate lines/values per character.</summary>
+    ByCharacter = 1,
+    /// <summary>Show separate lines/values per element (Fire, Ice, etc.).</summary>
+    ByElement = 2,
+    /// <summary>Show separate lines/values per element per character.</summary>
+    ByCharacterAndElement = 3
+}
+
+/// <summary>
+/// Settings for the unified Crystal Tracker tool.
+/// </summary>
+public class CrystalTrackerSettings
+{
+    // Grouping
+    public CrystalGrouping Grouping { get; set; } = CrystalGrouping.ByElement;
+
+    // Tier filters (which tiers to include)
+    public bool IncludeShards { get; set; } = true;
+    public bool IncludeCrystals { get; set; } = true;
+    public bool IncludeClusters { get; set; } = true;
+
+    // Element filters (which elements to include)
+    public bool IncludeFire { get; set; } = true;
+    public bool IncludeIce { get; set; } = true;
+    public bool IncludeWind { get; set; } = true;
+    public bool IncludeEarth { get; set; } = true;
+    public bool IncludeLightning { get; set; } = true;
+    public bool IncludeWater { get; set; } = true;
+
+    // Display settings
+    public int TimeRangeValue { get; set; } = 7;
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public bool AutoScaleGraph { get; set; } = true;
+    public bool ShowValueLabel { get; set; } = false;
+    public float ValueLabelOffsetX { get; set; } = 0f;
+    public float ValueLabelOffsetY { get; set; } = 0f;
+    public float LegendWidth { get; set; } = 120f;
+    public bool ShowLegend { get; set; } = true;
+
+    /// <summary>
+    /// Gets whether a specific element is included in the filter.
+    /// </summary>
+    public bool IsElementIncluded(CrystalElement element) => element switch
+    {
+        CrystalElement.Fire => IncludeFire,
+        CrystalElement.Ice => IncludeIce,
+        CrystalElement.Wind => IncludeWind,
+        CrystalElement.Earth => IncludeEarth,
+        CrystalElement.Lightning => IncludeLightning,
+        CrystalElement.Water => IncludeWater,
+        _ => true
+    };
+
+    /// <summary>
+    /// Gets whether a specific tier is included in the filter.
+    /// </summary>
+    public bool IsTierIncluded(CrystalTier tier) => tier switch
+    {
+        CrystalTier.Shard => IncludeShards,
+        CrystalTier.Crystal => IncludeCrystals,
+        CrystalTier.Cluster => IncludeClusters,
+        _ => true
+    };
 }
 
 public class ContentLayoutState
