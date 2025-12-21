@@ -261,4 +261,9 @@ public class ToolLayoutState
     public float GridColSpan { get; set; } = 4f;
     public float GridRowSpan { get; set; } = 4f;
     public bool HasGridCoords { get; set; } = false;
+    
+    /// <summary>
+    /// List of series names that are hidden in this tool instance.
+    /// </summary>
+    public List<string> HiddenSeries { get; set; } = new();
 }

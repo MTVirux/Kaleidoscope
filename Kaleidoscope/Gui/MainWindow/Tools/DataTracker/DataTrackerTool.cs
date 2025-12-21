@@ -45,6 +45,16 @@ public class DataTrackerTool : ToolComponent
         Title = def?.ShortName ?? inner.DataType.ToString();
         Size = ConfigStatic.GilTrackerToolSize;
     }
+    
+    /// <summary>
+    /// Gets the hidden series names from the graph widget.
+    /// </summary>
+    public IReadOnlyCollection<string> HiddenSeries => _inner.HiddenSeries;
+    
+    /// <summary>
+    /// Sets the hidden series names on the graph widget.
+    /// </summary>
+    public void SetHiddenSeries(IEnumerable<string>? seriesNames) => _inner.SetHiddenSeries(seriesNames);
 
     public override void DrawContent()
     {

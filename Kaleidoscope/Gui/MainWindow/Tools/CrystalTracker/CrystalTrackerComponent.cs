@@ -57,6 +57,16 @@ public class CrystalTrackerComponent
             FloatEpsilon = ConfigStatic.FloatEpsilon
         });
     }
+    
+    /// <summary>
+    /// Gets the hidden series names from the graph widget.
+    /// </summary>
+    public IReadOnlyCollection<string> HiddenSeries => _graphWidget.HiddenSeries;
+    
+    /// <summary>
+    /// Sets the hidden series names on the graph widget.
+    /// </summary>
+    public void SetHiddenSeries(IEnumerable<string>? seriesNames) => _graphWidget.SetHiddenSeries(seriesNames);
 
     public void Draw()
     {

@@ -3,6 +3,7 @@ using Dalamud.Game.Inventory.InventoryEventArgTypes;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
+using System.Linq;
 
 namespace Kaleidoscope.Services;
 
@@ -64,7 +65,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         // Subscribe to framework update for debounced processing and currency checks
         _framework.Update += OnFrameworkUpdate;
 
-        _log.Debug("[InventoryChangeService] Initialized with IGameInventory events + currency polling");
+        _log.Debug("[Kaleidoscope] [InventoryChangeService] Initialized with IGameInventory events + currency polling");
     }
 
     private void OnDalamudInventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
@@ -72,6 +73,16 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         // Dalamud's inventory change event fired
         // This covers player inventory, armory, crystals, retainer inventories, etc.
         var hasCrystalChange = false;
+
+        try
+        {
+            var containerList = string.Join(',', events.Select(e => e.Item.ContainerType.ToString()));
+            _log.Debug($"[Kaleidoscope] [InventoryChangeService] Dalamud InventoryChanged fired: {events.Count} events; containers={containerList}");
+        }
+        catch
+        {
+            // Ignore logging failures to avoid disrupting the event flow
+        }
 
         foreach (var evt in events)
         {
@@ -93,13 +104,14 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
         if (hasCrystalChange)
         {
+            _log.Debug("[Kaleidoscope] [InventoryChangeService] Crystal container change detected");
             try
             {
                 OnCrystalsChanged?.Invoke();
             }
             catch (Exception ex)
             {
-                _log.Debug($"[InventoryChangeService] OnCrystalsChanged callback error: {ex.Message}");
+                _log.Debug($"[Kaleidoscope] [InventoryChangeService] OnCrystalsChanged callback error: {ex.Message}");
             }
         }
     }
@@ -138,6 +150,8 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         {
             _pendingInventoryUpdate = false;
             _lastEventTime = now;
+
+            _log.Debug($"[Kaleidoscope] [InventoryChangeService] Debounced inventory event processed at {now:o}");
 
             // Note: The debounced inventory update is now handled via CheckForValueChanges
             // which reads all values and fires OnValuesChanged with the complete set.
@@ -211,8 +225,19 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             {
                 try
                 {
+                    try
+                    {
+                        var changesSummary = string.Join(", ", changedValues.Select(kv => $"{kv.Key}={kv.Value}"));
+                        _log.Debug($"[Kaleidoscope] [InventoryChangeService] Detected value changes: {changesSummary}");
+                    }
+                    catch
+                    {
+                        // ignore logging failure
+                    }
+
                     if (hasCurrencyChange)
                     {
+                        _log.Debug("[Kaleidoscope] [InventoryChangeService] Currency-related value change detected");
                         OnCurrencyChanged?.Invoke();
                     }
                     
@@ -221,13 +246,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 }
                 catch (Exception ex)
                 {
-                    _log.Debug($"[InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
+                    _log.Debug($"[Kaleidoscope] [InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            _log.Debug($"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
+            _log.Debug($"[Kaleidoscope] [InventoryChangeService] CheckForValueChanges error: {ex.Message}");
         }
     }
 
@@ -238,6 +263,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     {
         _pendingInventoryUpdate = true;
         _lastValueCheck = DateTime.MinValue; // Force immediate value check
+        _log.Debug("[Kaleidoscope] [InventoryChangeService] TriggerUpdate called; forcing immediate value check");
     }
 
     /// <summary>
@@ -254,6 +280,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _framework.Update -= OnFrameworkUpdate;
         _gameInventory.InventoryChanged -= OnDalamudInventoryChanged;
 
-        _log.Debug("[InventoryChangeService] Disposed");
+        _log.Debug("[Kaleidoscope] [InventoryChangeService] Disposed");
     }
 }

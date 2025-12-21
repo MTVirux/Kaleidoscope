@@ -75,6 +75,29 @@ public class SampleGraphWidget
     private readonly GraphConfig _config;
     
     /// <summary>
+    /// Set of series names that are currently hidden.
+    /// </summary>
+    private readonly HashSet<string> _hiddenSeries = new();
+    
+    /// <summary>
+    /// Gets or sets the hidden series names.
+    /// </summary>
+    public IReadOnlyCollection<string> HiddenSeries => _hiddenSeries;
+    
+    /// <summary>
+    /// Sets the hidden series from an external collection.
+    /// </summary>
+    public void SetHiddenSeries(IEnumerable<string>? seriesNames)
+    {
+        _hiddenSeries.Clear();
+        if (seriesNames != null)
+        {
+            foreach (var name in seriesNames)
+                _hiddenSeries.Add(name);
+        }
+    }
+    
+    /// <summary>
     /// Formatter delegate for Y-axis tick labels with abbreviated notation (K, M, B).
     /// </summary>
     private static readonly unsafe ImPlotFormatter YAxisFormatter = (double value, byte* buff, int size, void* userData) =>
@@ -240,6 +263,25 @@ public class SampleGraphWidget
                     ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
                 }
 
+                // Show hover tooltip with series name and value
+                if (ImPlot.IsPlotHovered())
+                {
+                    var mousePos = ImPlot.GetPlotMousePos();
+                    var mouseX = mousePos.X;
+                    
+                    // Find the nearest sample index
+                    var nearestIdx = (int)Math.Round(mouseX);
+                    if (nearestIdx >= 0 && nearestIdx < samples.Count)
+                    {
+                        var value = samples[nearestIdx];
+                        var tooltipText = $"Gil: {FormatValue(value)}";
+                        
+                        // Draw annotation at the data point
+                        ImPlot.Annotation(nearestIdx, value, 
+                            new Vector4(0, 0, 0, 0.85f), new Vector2(10, -10), true, tooltipText);
+                    }
+                }
+
                 // Draw value label annotation if enabled
                 if (_config.ShowValueLabel && samples.Count > 0)
                 {
@@ -397,6 +439,97 @@ public class SampleGraphWidget
 
                 }
 
+                // Show hover tooltip with series name and value at mouse position
+                if (ImPlot.IsPlotHovered())
+                {
+                    var mousePos = ImPlot.GetPlotMousePos();
+                    var mouseX = mousePos.X; // Time in seconds from globalMinTime
+                    var mouseY = mousePos.Y;
+                    
+                    // Find the nearest series and value at this time position
+                    var nearestSeriesName = string.Empty;
+                    var nearestValue = 0f;
+                    var nearestColor = new Vector3(1f, 1f, 1f);
+                    var minYDistance = double.MaxValue;
+                    var foundPoint = false;
+                    var pointX = 0.0;
+                    var pointY = 0.0;
+                    
+                    for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
+                    {
+                        var (name, samples) = series[seriesIdx];
+                        if (samples == null || samples.Count == 0) continue;
+                        
+                        // Skip hidden series in hover detection
+                        if (_hiddenSeries.Contains(name)) continue;
+                        
+                        // Find value at mouseX time using interpolation
+                        float valueAtTime;
+                        double actualX;
+                        var foundInSeries = false;
+                        
+                        // Convert mouseX (time offset) to find appropriate sample
+                        for (var i = 0; i < samples.Count; i++)
+                        {
+                            var sampleTimeOffset = (samples[i].ts - globalMinTime).TotalSeconds;
+                            var nextTimeOffset = i < samples.Count - 1 
+                                ? (samples[i + 1].ts - globalMinTime).TotalSeconds 
+                                : totalTimeSpan;
+                            
+                            if (mouseX >= sampleTimeOffset && mouseX <= nextTimeOffset)
+                            {
+                                // Use the value at this point (step interpolation)
+                                valueAtTime = samples[i].value;
+                                actualX = sampleTimeOffset;
+                                foundInSeries = true;
+                                
+                                var yDistance = Math.Abs(mouseY - valueAtTime);
+                                if (yDistance < minYDistance)
+                                {
+                                    minYDistance = yDistance;
+                                    nearestSeriesName = name;
+                                    nearestValue = valueAtTime;
+                                    nearestColor = colors[seriesIdx];
+                                    pointX = mouseX;
+                                    pointY = valueAtTime;
+                                    foundPoint = true;
+                                }
+                                break;
+                            }
+                        }
+                        
+                        // Check if we're past the last sample (in the extended region)
+                        if (!foundInSeries && samples.Count > 0)
+                        {
+                            var lastSampleTime = (samples[^1].ts - globalMinTime).TotalSeconds;
+                            if (mouseX > lastSampleTime)
+                            {
+                                valueAtTime = samples[^1].value;
+                                var yDistance = Math.Abs(mouseY - valueAtTime);
+                                if (yDistance < minYDistance)
+                                {
+                                    minYDistance = yDistance;
+                                    nearestSeriesName = name;
+                                    nearestValue = valueAtTime;
+                                    nearestColor = colors[seriesIdx];
+                                    pointX = mouseX;
+                                    pointY = valueAtTime;
+                                    foundPoint = true;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (foundPoint)
+                    {
+                        var tooltipText = $"{nearestSeriesName}: {FormatValue(nearestValue)}";
+                        // Draw annotation at the data point
+                        ImPlot.Annotation(pointX, pointY, 
+                            new Vector4(nearestColor.X, nearestColor.Y, nearestColor.Z, 0.85f), 
+                            new Vector2(10, -10), true, tooltipText);
+                    }
+                }
+
                 // Draw value labels after all lines are drawn, with vertical spacing to prevent overlap
                 if (_config.ShowValueLabel)
                 {
@@ -408,6 +541,8 @@ public class SampleGraphWidget
                     {
                         var (name, samples) = series[seriesIdx];
                         if (samples == null || samples.Count == 0) continue;
+                        // Skip hidden series in value labels
+                        if (_hiddenSeries.Contains(name)) continue;
                         labels.Add((seriesIdx, name, samples[^1].value, colors[seriesIdx]));
                     }
                     
@@ -460,29 +595,77 @@ public class SampleGraphWidget
                 var (name, samples) = series[i];
                 if (samples == null || samples.Count == 0) continue;
                 
+                var isHidden = _hiddenSeries.Contains(name);
                 var color = colors[i];
                 var lastValue = samples[^1].value;
+                
+                // Use dimmed color for hidden series
+                var displayAlpha = isHidden ? 0.35f : 1f;
                 
                 // Draw colored square indicator
                 var drawList = ImGui.GetWindowDrawList();
                 var cursorPos = ImGui.GetCursorScreenPos();
                 const float indicatorSize = 10f;
-                var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 1f));
-                drawList.AddRectFilled(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, displayAlpha));
+                
+                if (isHidden)
+                {
+                    // Draw outline only for hidden series
+                    drawList.AddRect(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                }
+                else
+                {
+                    // Draw filled square for visible series
+                    drawList.AddRectFilled(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                }
+                
+                // Make the entire row clickable
+                var rowStart = cursorPos;
                 
                 // Advance cursor past the indicator
                 ImGui.Dummy(new Vector2(indicatorSize + 4f, indicatorSize));
                 ImGui.SameLine();
                 
-                // Draw name and value
+                // Draw name with dimmed text for hidden series
+                if (isHidden)
+                {
+                    ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Text, new Vector4(0.5f, 0.5f, 0.5f, 1f));
+                }
                 ImGui.TextUnformatted($"{name}");
+                if (isHidden)
+                {
+                    ImGui.PopStyleColor();
+                }
+                
+                // Make row clickable - use invisible button over the row area
+                var rowEnd = ImGui.GetCursorScreenPos();
+                ImGui.SetCursorScreenPos(rowStart);
+                if (ImGui.InvisibleButton($"##legend_toggle_{name}", new Vector2(width - 16f, indicatorSize + 2f)))
+                {
+                    ToggleSeriesVisibility(name);
+                }
+                
+                // Show tooltip on hover
                 if (ImGui.IsItemHovered())
                 {
-                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}");
+                    var statusText = isHidden ? "(hidden)" : "";
+                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)} {statusText}\nClick to toggle");
                 }
             }
         }
         ImGui.EndChild();
+    }
+    
+    /// <summary>
+    /// Toggles the visibility of a series by name.
+    /// </summary>
+    /// <param name="seriesName">The name of the series to toggle.</param>
+    private void ToggleSeriesVisibility(string seriesName)
+    {
+        if (!_hiddenSeries.Add(seriesName))
+        {
+            _hiddenSeries.Remove(seriesName);
+        }
     }
 
     private static Vector3[] GetSeriesColors(int count)

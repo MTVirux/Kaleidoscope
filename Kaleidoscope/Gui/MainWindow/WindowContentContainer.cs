@@ -352,7 +352,7 @@ public class WindowContentContainer
             foreach (var te in _tools)
             {
                 if (te?.Tool is not { } t) continue;
-                ret.Add(new ToolLayoutState
+                var state = new ToolLayoutState
                 {
                     Id = t.Id,
                     Type = t.GetType().FullName ?? t.GetType().Name,
@@ -371,7 +371,20 @@ public class WindowContentContainer
                     GridColSpan = t.GridColSpan,
                     GridRowSpan = t.GridRowSpan,
                     HasGridCoords = t.HasGridCoords,
-                });
+                };
+                
+                // Export hidden series for DataTrackerTool
+                if (t is Tools.DataTracker.DataTrackerTool dataTrackerTool)
+                {
+                    state.HiddenSeries = dataTrackerTool.HiddenSeries.ToList();
+                }
+                // Export hidden series for CrystalTrackerTool
+                else if (t is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool)
+                {
+                    state.HiddenSeries = crystalTrackerTool.HiddenSeries.ToList();
+                }
+                
+                ret.Add(state);
             }
             LogService.Debug($"ExportLayout: exported {ret.Count} tools");
             return ret;
@@ -432,6 +445,16 @@ public class WindowContentContainer
                         match.GridColSpan = entry.GridColSpan;
                         match.GridRowSpan = entry.GridRowSpan;
                         match.HasGridCoords = entry.HasGridCoords;
+                        // Apply hidden series for DataTrackerTool
+                        if (match is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
+                        {
+                            dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                        }
+                        // Apply hidden series for CrystalTrackerTool
+                        else if (match is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
+                        {
+                            crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                        }
                         if (matchIdx >= 0) matchedIndices.Add(matchIdx);
                         LogService.Debug($"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
                         continue;
@@ -464,6 +487,16 @@ public class WindowContentContainer
                                 created.HasGridCoords = entry.HasGridCoords;
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
                                 created.CustomTitle = entry.CustomTitle;
+                                // Apply hidden series for DataTrackerTool
+                                if (created is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
+                                {
+                                    dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                }
+                                // Apply hidden series for CrystalTrackerTool
+                                else if (created is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
+                                {
+                                    crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                }
                                 AddTool(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
                                 matchedIndices.Add(_tools.Count - 1);
@@ -503,6 +536,16 @@ public class WindowContentContainer
                                     cand.HasGridCoords = entry.HasGridCoords;
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
                                     cand.CustomTitle = entry.CustomTitle;
+                                    // Apply hidden series for DataTrackerTool
+                                    if (cand is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
+                                    {
+                                        dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                    }
+                                    // Apply hidden series for CrystalTrackerTool
+                                    else if (cand is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
+                                    {
+                                        crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                    }
                                     AddTool(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
                                     matchedIndices.Add(_tools.Count - 1);
@@ -565,6 +608,16 @@ public class WindowContentContainer
                                         inst.HasGridCoords = entry.HasGridCoords;
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
                                         inst.CustomTitle = entry.CustomTitle;
+                                        // Apply hidden series for DataTrackerTool
+                                        if (inst is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
+                                        {
+                                            dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                        }
+                                        // Apply hidden series for CrystalTrackerTool
+                                        else if (inst is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
+                                        {
+                                            crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                        }
                                         AddTool(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
                                         matchedIndices.Add(_tools.Count - 1);
