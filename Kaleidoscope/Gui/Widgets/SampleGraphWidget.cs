@@ -369,15 +369,17 @@ public class SampleGraphWidget
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
             var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
-            // Calculate Y-axis bounds based on all visible data
+            // Calculate Y-axis bounds based on all visible data (excluding hidden series)
             float yMin, yMax;
             if (_config.AutoScaleGraph)
             {
                 var dataMin = float.MaxValue;
                 var dataMax = float.MinValue;
-                foreach (var (_, samples) in series)
+                foreach (var (name, samples) in series)
                 {
                     if (samples == null) continue;
+                    // Skip hidden series in auto-scaling
+                    if (_hiddenSeries.Contains(name)) continue;
                     foreach (var (_, val) in samples)
                     {
                         if (val < dataMin) dataMin = val;
@@ -432,6 +434,9 @@ public class SampleGraphWidget
                 {
                     var (name, samples) = series[seriesIdx];
                     if (samples == null || samples.Count == 0) continue;
+                    
+                    // Skip hidden series - don't draw them on the chart
+                    if (_hiddenSeries.Contains(name)) continue;
 
                     // Build arrays for this series, including extension to current time
                     var pointCount = samples.Count + 1; // +1 for extension to current time
