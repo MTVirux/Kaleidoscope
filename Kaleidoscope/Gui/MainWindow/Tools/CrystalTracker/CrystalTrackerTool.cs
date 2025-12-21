@@ -85,6 +85,18 @@ public class CrystalTrackerTool : ToolComponent
             ShowSettingTooltip("Include Clusters (highest tier) in the count.", "On");
 
             ImGui.Spacing();
+            ImGui.TextUnformatted("Source Filters");
+            ImGui.Separator();
+
+            var includeRetainers = settings.IncludeRetainers;
+            if (ImGui.Checkbox("Include Retainers", ref includeRetainers))
+            {
+                settings.IncludeRetainers = includeRetainers;
+                _configService.Save();
+            }
+            ShowSettingTooltip("Include crystals from all retainer inventories. Retainer data is cached when you access each retainer.", "On");
+
+            ImGui.Spacing();
             ImGui.TextUnformatted("Element Filters");
             ImGui.Separator();
 

@@ -177,6 +177,9 @@ public class CrystalTrackerSettings
     public bool IncludeLightning { get; set; } = true;
     public bool IncludeWater { get; set; } = true;
 
+    // Source filters
+    public bool IncludeRetainers { get; set; } = true;
+
     // Display settings
     public int TimeRangeValue { get; set; } = 7;
     public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.All;

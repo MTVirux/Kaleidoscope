@@ -23,7 +23,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
 
     // Fallback timer for periodic sync (runs less frequently since we have hooks)
     private Timer? _fallbackTimer;
-    private const int FallbackIntervalSeconds = 30; // Reduced frequency since hooks handle most updates
+    private const int FallbackIntervalSeconds = 1; // Reduced frequency since hooks handle most updates
 
     private volatile bool _enabled = true;
 

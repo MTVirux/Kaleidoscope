@@ -126,4 +126,40 @@ public static unsafe class GameStateService
             return false;
         }
     }
+
+    /// <summary>
+    /// Gets the active retainer's ID, or 0 if no retainer is active.
+    /// </summary>
+    public static ulong GetActiveRetainerId()
+    {
+        try
+        {
+            var rm = RetainerManagerInstance();
+            if (rm == null || !rm->IsReady) return 0;
+            return rm->LastSelectedRetainerId;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets the active retainer's name, or null if no retainer is active.
+    /// </summary>
+    public static string? GetActiveRetainerName()
+    {
+        try
+        {
+            var rm = RetainerManagerInstance();
+            if (rm == null || !rm->IsReady) return null;
+            var retainer = rm->GetActiveRetainer();
+            if (retainer == null) return null;
+            return retainer->NameString;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

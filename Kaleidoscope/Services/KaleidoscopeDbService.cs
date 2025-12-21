@@ -87,8 +87,20 @@ CREATE TABLE IF NOT EXISTS character_names (
     name TEXT
 );
 
+CREATE TABLE IF NOT EXISTS retainer_crystals (
+    character_id INTEGER NOT NULL,
+    retainer_id INTEGER NOT NULL,
+    retainer_name TEXT,
+    element INTEGER NOT NULL,
+    tier INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (character_id, retainer_id, element, tier)
+);
+
 CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
 CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_retainer_crystals_char ON retainer_crystals(character_id);
 ";
         cmd.ExecuteNonQuery();
     }
@@ -528,7 +540,7 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
     }
 
     /// <summary>
-    /// Clears all data from all tables (points, series, and character_names).
+    /// Clears all data from all tables (points, series, character_names, and retainer_crystals).
     /// </summary>
     public bool ClearAllTables()
     {
@@ -548,6 +560,9 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = "DELETE FROM character_names";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM retainer_crystals";
                 cmd.ExecuteNonQuery();
 
                 LogService.Info("[KaleidoscopeDb] Cleared all data from all tables");
@@ -807,6 +822,159 @@ CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, time
         }
 
         return sb.ToString();
+    }
+
+    #endregion
+
+    #region Retainer Crystal Cache
+
+    /// <summary>
+    /// Saves or updates the cached crystal count for a specific retainer.
+    /// </summary>
+    public void SaveRetainerCrystals(ulong characterId, ulong retainerId, string? retainerName, int element, int tier, long count)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"INSERT OR REPLACE INTO retainer_crystals 
+                    (character_id, retainer_id, retainer_name, element, tier, count, updated_at)
+                    VALUES ($cid, $rid, $name, $elem, $tier, $count, $time)";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.Parameters.AddWithValue("$rid", (long)retainerId);
+                cmd.Parameters.AddWithValue("$name", retainerName ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$elem", element);
+                cmd.Parameters.AddWithValue("$tier", tier);
+                cmd.Parameters.AddWithValue("$count", count);
+                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SaveRetainerCrystals failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets all cached retainer crystal counts for a character.
+    /// Returns list of (retainerId, retainerName, element, tier, count).
+    /// </summary>
+    public List<(ulong retainerId, string? retainerName, int element, int tier, long count)> GetRetainerCrystals(ulong characterId)
+    {
+        var result = new List<(ulong retainerId, string? retainerName, int element, int tier, long count)>();
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"SELECT retainer_id, retainer_name, element, tier, count 
+                    FROM retainer_crystals WHERE character_id = $cid";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var retainerId = (ulong)reader.GetInt64(0);
+                    var retainerName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var element = reader.GetInt32(2);
+                    var tier = reader.GetInt32(3);
+                    var count = reader.GetInt64(4);
+                    result.Add((retainerId, retainerName, element, tier, count));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetRetainerCrystals failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets total cached crystal count for a character across all retainers for a specific element and tier.
+    /// </summary>
+    public long GetTotalRetainerCrystals(ulong characterId, int element, int tier)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"SELECT COALESCE(SUM(count), 0) FROM retainer_crystals 
+                    WHERE character_id = $cid AND element = $elem AND tier = $tier";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.Parameters.AddWithValue("$elem", element);
+                cmd.Parameters.AddWithValue("$tier", tier);
+
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value ? (long)result : 0;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetTotalRetainerCrystals failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears all cached retainer crystal data for a character.
+    /// </summary>
+    public void ClearRetainerCrystals(ulong characterId)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM retainer_crystals WHERE character_id = $cid";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] ClearRetainerCrystals failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears all cached retainer crystal data.
+    /// </summary>
+    public void ClearAllRetainerCrystals()
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM retainer_crystals";
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] ClearAllRetainerCrystals failed: {ex.Message}", ex);
+            }
+        }
     }
 
     #endregion

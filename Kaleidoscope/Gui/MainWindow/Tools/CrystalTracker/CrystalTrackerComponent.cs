@@ -153,6 +153,8 @@ public class CrystalTrackerComponent
 
     /// <summary>
     /// Samples current crystal values and persists them separately by tier.
+    /// Player crystals go to the main series for historical tracking.
+    /// Retainer crystals are cached separately per-retainer for aggregation.
     /// </summary>
     private unsafe void SampleCrystals()
     {
@@ -161,6 +163,8 @@ public class CrystalTrackerComponent
 
         var im = GameStateService.InventoryManagerInstance();
         if (im == null) return;
+
+        var includeRetainers = Settings.IncludeRetainers;
 
         // Sample ALL elements and tiers (not filtered by settings)
         // This ensures we always have complete data regardless of current filter settings
@@ -171,16 +175,42 @@ public class CrystalTrackerComponent
                 // Item IDs: Shard = 2 + element, Crystal = 8 + element, Cluster = 14 + element
                 uint itemId = (uint)(2 + element + tier * 6);
                 
-                long count = 0;
-                try { count += im->GetInventoryItemCount(itemId); } catch { }
+                // Get player's crystal count
+                long playerCount = 0;
+                try { playerCount = im->GetInventoryItemCount(itemId); } catch { }
                 
-                if (GameStateService.IsRetainerActive())
+                // Get cached retainer crystal totals for this element/tier (if enabled)
+                long cachedRetainerTotal = 0;
+                if (includeRetainers)
                 {
-                    try { count += GameStateService.GetActiveRetainerCrystalCount(im, itemId); } catch { }
+                    cachedRetainerTotal = _samplerService.DbService.GetTotalRetainerCrystals(cid, element, tier);
                 }
-
+                
+                // Save the combined total (player + all cached retainers) for historical tracking
                 var variableName = GetVariableName(element, tier);
-                _samplerService.DbService.SaveSampleIfChanged(variableName, cid, count);
+                _samplerService.DbService.SaveSampleIfChanged(variableName, cid, playerCount + cachedRetainerTotal);
+            }
+        }
+
+        // If a retainer is currently active, update their cached crystal counts
+        if (GameStateService.IsRetainerActive())
+        {
+            var retainerId = GameStateService.GetActiveRetainerId();
+            var retainerName = GameStateService.GetActiveRetainerName();
+            
+            if (retainerId != 0)
+            {
+                for (int element = 0; element < 6; element++)
+                {
+                    for (int tier = 0; tier < 3; tier++)
+                    {
+                        uint itemId = (uint)(2 + element + tier * 6);
+                        long retainerCount = 0;
+                        try { retainerCount = GameStateService.GetActiveRetainerCrystalCount(im, itemId); } catch { }
+                        
+                        _samplerService.DbService.SaveRetainerCrystals(cid, retainerId, retainerName, element, tier, retainerCount);
+                    }
+                }
             }
         }
     }
