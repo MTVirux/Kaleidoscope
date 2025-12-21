@@ -218,7 +218,8 @@ public class DataTrackerComponent : IDisposable
             settings.AutoScaleGraph,
             settings.LegendWidth,
             settings.ShowLegend,
-            settings.GraphType);
+            settings.GraphType,
+            settings.ShowXAxisTimestamps);
 
         // Calculate time cutoff if time range filtering is enabled
         DateTime? timeCutoff = null;
