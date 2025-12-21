@@ -108,25 +108,6 @@ public class DataTrackerTool : ToolComponent
                 ShowSettingTooltip("Vertical offset for the value label. Negative = up, positive = down.", "0");
             }
 
-            var showEndGap = settings.ShowEndGap;
-            if (ImGui.Checkbox("Leave gap at graph end", ref showEndGap))
-            {
-                settings.ShowEndGap = showEndGap;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Leaves empty space at the right edge of the graph so the line doesn't touch the border.", "Off");
-
-            if (showEndGap)
-            {
-                var endGapPercent = settings.EndGapPercent;
-                if (ImGui.SliderFloat("End gap %", ref endGapPercent, 1f, 25f, "%.0f%%"))
-                {
-                    settings.EndGapPercent = endGapPercent;
-                    _configService.Save();
-                }
-                ShowSettingTooltip("Percentage of graph width to leave empty at the right edge.", "5%");
-            }
-
             ImGui.Spacing();
             ImGui.TextUnformatted("Graph Settings");
             ImGui.Separator();

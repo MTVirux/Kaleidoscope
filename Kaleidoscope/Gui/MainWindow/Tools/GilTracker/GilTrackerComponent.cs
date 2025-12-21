@@ -147,8 +147,6 @@ public class GilTrackerComponent
 
             // Update graph display options from config
             _graphWidget.UpdateDisplayOptions(
-                Config.GilTrackerShowEndGap,
-                Config.GilTrackerEndGapPercent,
                 Config.GilTrackerShowValueLabel,
                 Config.GilTrackerValueLabelOffsetX,
                 Config.GilTrackerValueLabelOffsetY,

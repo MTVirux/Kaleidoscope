@@ -186,8 +186,6 @@ public class DataTrackerComponent
 
         // Update graph display options from settings
         _graphWidget.UpdateDisplayOptions(
-            settings.ShowEndGap,
-            settings.EndGapPercent,
             settings.ShowValueLabel,
             settings.ValueLabelOffsetX,
             settings.ValueLabelOffsetY,
