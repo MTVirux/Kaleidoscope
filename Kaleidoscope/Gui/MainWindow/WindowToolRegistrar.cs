@@ -43,6 +43,7 @@ public static class WindowToolRegistrar
         FilenameService filenameService, 
         SamplerService samplerService, 
         ConfigurationService configService,
+        InventoryChangeService? inventoryChangeService = null,
         TrackedDataRegistry? registry = null)
     {
         if (container == null) return;
@@ -65,7 +66,7 @@ public static class WindowToolRegistrar
                     container.RegisterTool(
                         toolId,
                         definition.DisplayName,
-                        pos => CreateDataTrackerTool(dataType, pos, samplerService, configService, registry),
+                        pos => CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, inventoryChangeService),
                         definition.Description,
                         category);
                 }
@@ -75,7 +76,7 @@ public static class WindowToolRegistrar
             container.RegisterTool(
                 ToolIds.CrystalTracker,
                 "Crystal Tracker",
-                pos => CreateCrystalTrackerTool(pos, samplerService, configService),
+                pos => CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService),
                 "Tracks shards, crystals, and clusters with grouping by character/element and filtering options",
                 "Graph");
 
@@ -110,11 +111,12 @@ public static class WindowToolRegistrar
     private static ToolComponent? CreateCrystalTrackerTool(
         Vector2 pos,
         SamplerService samplerService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        InventoryChangeService? inventoryChangeService)
     {
         try
         {
-            var component = new CrystalTrackerComponent(samplerService, configService);
+            var component = new CrystalTrackerComponent(samplerService, configService, inventoryChangeService);
             return new CrystalTrackerTool(component, configService) { Position = pos };
         }
         catch (Exception ex)
@@ -129,11 +131,12 @@ public static class WindowToolRegistrar
         Vector2 pos,
         SamplerService samplerService,
         ConfigurationService configService,
-        TrackedDataRegistry registry)
+        TrackedDataRegistry registry,
+        InventoryChangeService? inventoryChangeService)
     {
         try
         {
-            var component = new DataTrackerComponent(dataType, samplerService, configService, registry);
+            var component = new DataTrackerComponent(dataType, samplerService, configService, registry, inventoryChangeService);
             return new DataTrackerTool(component, configService) { Position = pos };
         }
         catch (Exception ex)
@@ -149,7 +152,8 @@ public static class WindowToolRegistrar
         FilenameService filenameService, 
         SamplerService samplerService, 
         ConfigurationService configService,
-        TrackedDataRegistry? registry = null)
+        TrackedDataRegistry? registry = null,
+        InventoryChangeService? inventoryChangeService = null)
     {
         try
         {
@@ -159,14 +163,14 @@ public static class WindowToolRegistrar
                 var typeName = id.Substring("DataTracker_".Length);
                 if (Enum.TryParse<TrackedDataType>(typeName, out var dataType))
                 {
-                    return CreateDataTrackerTool(dataType, pos, samplerService, configService, registry);
+                    return CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, inventoryChangeService);
                 }
             }
 
             switch (id)
             {
                 case ToolIds.CrystalTracker:
-                    return CreateCrystalTrackerTool(pos, samplerService, configService);
+                    return CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService);
 
                 case ToolIds.GilTicker:
                     // Create a helper that shares the database with the sampler

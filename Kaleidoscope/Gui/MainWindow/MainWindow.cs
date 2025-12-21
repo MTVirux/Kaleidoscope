@@ -26,6 +26,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
     private readonly TrackedDataRegistry _trackedDataRegistry;
+    private readonly InventoryChangeService _inventoryChangeService;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -89,7 +90,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
-        TrackedDataRegistry trackedDataRegistry) 
+        TrackedDataRegistry trackedDataRegistry,
+        InventoryChangeService inventoryChangeService) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -99,6 +101,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;
         _trackedDataRegistry = trackedDataRegistry;
+        _inventoryChangeService = inventoryChangeService;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -281,7 +284,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _trackedDataRegistry);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();

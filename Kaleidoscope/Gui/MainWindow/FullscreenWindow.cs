@@ -21,6 +21,7 @@ public sealed class FullscreenWindow : Window
     private readonly SamplerService _samplerService;
     private readonly StateService _stateService;
     private readonly TrackedDataRegistry _trackedDataRegistry;
+    private readonly InventoryChangeService _inventoryChangeService;
     private readonly WindowContentContainer _contentContainer;
 
     // Reference to WindowService for window coordination (set after construction due to circular dependency)
@@ -41,13 +42,16 @@ public sealed class FullscreenWindow : Window
         SamplerService samplerService,
         FilenameService filenameService,
         StateService stateService,
-        TrackedDataRegistry trackedDataRegistry) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        TrackedDataRegistry trackedDataRegistry,
+        InventoryChangeService inventoryChangeService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
         _filenameService = filenameService;
         _samplerService = samplerService;
         _stateService = stateService;
+        _trackedDataRegistry = trackedDataRegistry;
+        _inventoryChangeService = inventoryChangeService;
         _trackedDataRegistry = trackedDataRegistry;
 
         // Create a content container similar to the main window so HUD tools
@@ -67,7 +71,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _trackedDataRegistry);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry);
 
             AddDefaultTools();
             ApplyInitialLayout();
