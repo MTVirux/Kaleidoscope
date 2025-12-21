@@ -1,4 +1,4 @@
-using ECommons.DalamudServices;
+using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Newtonsoft.Json.Linq;
 using OtterGui.Services;
@@ -15,6 +15,7 @@ namespace Kaleidoscope.Services;
 /// </remarks>
 public sealed class AutoRetainerIpcService : IService
 {
+    private readonly IDalamudPluginInterface _pluginInterface;
     private ICallGateSubscriber<List<ulong>>? _getRegisteredCIDs;
     private ICallGateSubscriber<ulong, object?>? _getOfflineCharacterData;
     
@@ -25,8 +26,9 @@ public sealed class AutoRetainerIpcService : IService
     /// <summary>
     /// Creates and initializes the AutoRetainer IPC service.
     /// </summary>
-    public AutoRetainerIpcService()
+    public AutoRetainerIpcService(IDalamudPluginInterface pluginInterface)
     {
+        _pluginInterface = pluginInterface;
         Initialize();
     }
 
@@ -36,8 +38,8 @@ public sealed class AutoRetainerIpcService : IService
         
         try
         {
-            _getRegisteredCIDs = Svc.PluginInterface.GetIpcSubscriber<List<ulong>>("AutoRetainer.GetRegisteredCIDs");
-            _getOfflineCharacterData = Svc.PluginInterface.GetIpcSubscriber<ulong, object?>("AutoRetainer.GetOfflineCharacterData");
+            _getRegisteredCIDs = _pluginInterface.GetIpcSubscriber<List<ulong>>("AutoRetainer.GetRegisteredCIDs");
+            _getOfflineCharacterData = _pluginInterface.GetIpcSubscriber<ulong, object?>("AutoRetainer.GetOfflineCharacterData");
             
             // Test if AutoRetainer is available by trying to call the IPC
             try

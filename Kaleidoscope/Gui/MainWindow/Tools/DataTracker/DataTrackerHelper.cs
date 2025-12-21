@@ -1,4 +1,3 @@
-using ECommons.DalamudServices;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
@@ -65,7 +64,7 @@ public class DataTrackerHelper : ICharacterDataSource
     /// </summary>
     public void PushSample(float value, ulong? sampleCharacterId = null)
     {
-        var cid = sampleCharacterId ?? Svc.PlayerState.ContentId;
+        var cid = sampleCharacterId ?? GameStateService.PlayerContentId;
         if (cid == 0) return;
 
         try

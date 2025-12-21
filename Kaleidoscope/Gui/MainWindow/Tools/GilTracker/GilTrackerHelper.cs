@@ -1,4 +1,3 @@
-using ECommons.DalamudServices;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
 
@@ -57,7 +56,7 @@ public class GilTrackerHelper : ICharacterDataSource
         /// </summary>
         public void PushSample(float value, ulong? sampleCharacterId = null)
         {
-            var cid = sampleCharacterId ?? Svc.PlayerState.ContentId;
+            var cid = sampleCharacterId ?? GameStateService.PlayerContentId;
             if (cid == 0) return;
 
             try
@@ -571,7 +570,7 @@ public class GilTrackerHelper : ICharacterDataSource
         {
             try
             {
-                var cid = SelectedCharacterId == 0 ? Svc.PlayerState.ContentId : SelectedCharacterId;
+                var cid = SelectedCharacterId == 0 ? GameStateService.PlayerContentId : SelectedCharacterId;
                 if (cid == 0) return;
 
                 _dbService.ClearCharacterData("Gil", cid);
@@ -633,12 +632,12 @@ public class GilTrackerHelper : ICharacterDataSource
 
                 // Resolve to local player if needed
                 if (cid == 0 && SelectedCharacterId == 0)
-                    cid = Svc.PlayerState.ContentId;
+                    cid = GameStateService.PlayerContentId;
 
                 var csvContent = _dbService.ExportToCsv("Gil", cid == 0 ? null : cid);
                 if (string.IsNullOrEmpty(csvContent)) return null;
 
-                var saveDir = ECommons.DalamudServices.Svc.PluginInterface.GetPluginConfigDirectory();
+                var saveDir = FilenameService.Instance?.ConfigDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 
                 string fileName;
                 if (cid == 0)
@@ -672,7 +671,7 @@ public class GilTrackerHelper : ICharacterDataSource
             var cid = characterId ?? SelectedCharacterId;
 
         if (cid == 0 && SelectedCharacterId == 0)
-            cid = Svc.PlayerState.ContentId;
+            cid = GameStateService.PlayerContentId;
 
         if (cid == 0)
         {
