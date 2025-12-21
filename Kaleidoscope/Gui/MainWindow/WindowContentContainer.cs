@@ -1094,6 +1094,8 @@ public class WindowContentContainer
                     ImGui.Separator();
                 }
                 t.DrawContent();
+                // Capture focus state before ending child - must be called inside BeginChild/EndChild block
+                var isChildFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows);
                 ImGui.EndChild();
 
                 var min = ImGui.GetItemRectMin();
@@ -1119,6 +1121,9 @@ public class WindowContentContainer
                             break;
                         }
                     }
+                    
+                    // Only allow starting new drag/resize if this tool's window is focused
+                    var canInteract = isChildFocused || te.Dragging || te.Resizing;
 
                     // Define interaction regions
                     var io = ImGui.GetIO();
@@ -1135,10 +1140,10 @@ public class WindowContentContainer
                     // Dragging via mouse drag when hovering the child (title area)
                     // Prioritize resize over drag - don't allow drag start if mouse is over resize handle
                     var isMouseOverTitle = mouse.X >= titleMin.X && mouse.X <= titleMax.X && mouse.Y >= titleMin.Y && mouse.Y <= titleMax.Y;
-                    var canStartDrag = isMouseOverTitle && !isMouseOverHandle;
+                    var canStartDrag = isMouseOverTitle && !isMouseOverHandle && canInteract;
 
                     // Start drag only when clicking the title (not resize handle), but continue dragging while mouse is down
-                    // Block starting new drags if main window is being moved/resized or another tool is being interacted with
+                    // Block starting new drags if main window is being moved/resized, another tool is being interacted with, or this tool is not focused
                     if ((canStartDrag || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging) && (!anotherToolInteracting || te.Dragging) && !te.Resizing)
                     {
                         if (!te.Dragging && !mainWindowInteracting)
@@ -1206,9 +1211,12 @@ public class WindowContentContainer
                         te.Dragging = false;
                     }
 
+                    // Only allow starting resize if the tool is focused
+                    var canStartResize = isMouseOverHandle && canInteract;
+
                     // Start resize when clicking the handle, but continue resizing while mouse is down
-                    // Block starting new resizes if main window is being moved/resized or another tool is being interacted with
-                    if ((isMouseOverHandle || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing) && (!anotherToolInteracting || te.Resizing))
+                    // Block starting new resizes if main window is being moved/resized, another tool is being interacted with, or this tool is not focused
+                    if ((canStartResize || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing) && (!anotherToolInteracting || te.Resizing))
                     {
                         if (!te.Resizing && !mainWindowInteracting)
                         {
