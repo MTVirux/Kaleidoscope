@@ -341,8 +341,8 @@ public class SampleGraphWidget
                 // Format Y-axis with thousand separators
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
                 
-                // Setup legend at the top-right
-                ImPlot.SetupLegend(ImPlotLocation.NorthEast, ImPlotLegendFlags.Outside);
+                // Setup legend at the top-right with horizontal layout for many series
+                ImPlot.SetupLegend(ImPlotLocation.NorthEast, ImPlotLegendFlags.Outside | ImPlotLegendFlags.Horizontal);
                 
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
