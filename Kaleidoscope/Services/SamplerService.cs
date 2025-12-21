@@ -1,14 +1,16 @@
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Models;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Background service that periodically samples game data (e.g., gil) and persists it via KaleidoscopeDbService.
+/// Background service that samples game data (currencies, inventories) and persists it via KaleidoscopeDbService.
+/// Uses event-driven hooks for real-time updates with a fallback periodic sync.
 /// </summary>
 /// <remarks>
-/// This follows the InventoryTools pattern for background services that need to
-/// periodically poll game state and persist data.
+/// Primary: Reacts to inventory/currency change events from InventoryChangeService.
+/// Fallback: Periodic timer sync to catch any missed updates (runs less frequently).
 /// </remarks>
 public sealed class SamplerService : IDisposable, IRequiredService
 {
@@ -16,10 +18,14 @@ public sealed class SamplerService : IDisposable, IRequiredService
     private readonly FilenameService _filenames;
     private readonly ConfigurationService _configService;
     private readonly KaleidoscopeDbService _dbService;
+    private readonly TrackedDataRegistry _registry;
+    private readonly InventoryChangeService _inventoryChangeService;
 
-    private Timer? _timer;
+    // Fallback timer for periodic sync (runs less frequently since we have hooks)
+    private Timer? _fallbackTimer;
+    private const int FallbackIntervalSeconds = 30; // Reduced frequency since hooks handle most updates
+
     private volatile bool _enabled = true;
-    private int _intervalSeconds = 1;
 
     /// <summary>
     /// Gets or sets whether sampling is enabled.
@@ -31,17 +37,15 @@ public sealed class SamplerService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Gets or sets the sampling interval in milliseconds.
+    /// Gets or sets the fallback sampling interval in milliseconds.
+    /// This is only used for periodic sync, not the primary event-driven updates.
     /// </summary>
     public int IntervalMs
     {
-        get => _intervalSeconds * 1000;
+        get => FallbackIntervalSeconds * 1000;
         set
         {
-            if (value <= 0) value = ConfigStatic.DefaultSamplerIntervalMs;
-            var sec = (value + 999) / 1000;
-            _intervalSeconds = sec;
-            _timer?.Change(TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+            // Interval is now fixed for fallback; this property kept for config compatibility
         }
     }
 
@@ -50,14 +54,27 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     public KaleidoscopeDbService DbService => _dbService;
 
+    /// <summary>
+    /// Gets the tracked data registry.
+    /// </summary>
+    public TrackedDataRegistry Registry => _registry;
+
     private readonly AutoRetainerIpcService _arIpc;
 
-    public SamplerService(IPluginLog log, FilenameService filenames, ConfigurationService configService, AutoRetainerIpcService arIpc)
+    public SamplerService(
+        IPluginLog log,
+        FilenameService filenames,
+        ConfigurationService configService,
+        AutoRetainerIpcService arIpc,
+        TrackedDataRegistry registry,
+        InventoryChangeService inventoryChangeService)
     {
         _log = log;
         _filenames = filenames;
         _configService = configService;
         _arIpc = arIpc;
+        _registry = registry;
+        _inventoryChangeService = inventoryChangeService;
 
         // Create the database service
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath);
@@ -67,12 +84,17 @@ public sealed class SamplerService : IDisposable, IRequiredService
 
         // Load initial values from config
         _enabled = configService.SamplerConfig.SamplerEnabled;
-        _intervalSeconds = Math.Max(1, configService.SamplerConfig.SamplerIntervalMs / 1000);
 
         // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
 
-        StartTimer();
+        // Subscribe to inventory change events (primary update mechanism)
+        _inventoryChangeService.OnInventoryChanged += OnInventoryChanged;
+
+        // Start fallback timer for periodic sync
+        StartFallbackTimer();
+
+        _log.Information("[SamplerService] Initialized with event-driven hooks + fallback timer");
     }
 
     /// <summary>
@@ -137,55 +159,98 @@ public sealed class SamplerService : IDisposable, IRequiredService
         }
     }
 
-    private void StartTimer()
+    private void StartFallbackTimer()
     {
-        _timer = new Timer(OnTimerTick, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        _fallbackTimer = new Timer(OnFallbackTimerTick, null, TimeSpan.FromSeconds(FallbackIntervalSeconds), TimeSpan.FromSeconds(FallbackIntervalSeconds));
     }
 
-    private void OnTimerTick(object? state)
+    /// <summary>
+    /// Called when inventory/currency changes are detected via hooks.
+    /// This is the primary update mechanism for real-time tracking.
+    /// </summary>
+    private void OnInventoryChanged()
     {
         if (!_enabled) return;
 
         try
         {
-            var cid = GameStateService.PlayerContentId;
-            if (cid == 0) return;
-
-            uint gil = 0;
-            unsafe
-            {
-                var im = GameStateService.InventoryManagerInstance();
-                if (im != null)
-                {
-                    // Use GetInventoryItemCount(1) as primary (matches AutoRetainer approach)
-                    try { gil = (uint)im->GetInventoryItemCount(1); }
-                    catch { gil = 0; }
-                    
-                    // Fallback to GetGil() if primary returns 0
-                    if (gil == 0)
-                    {
-                        try { gil = im->GetGil(); }
-                        catch { gil = 0; }
-                    }
-                }
-            }
-
-            PersistSample(cid, gil);
+            SampleAllEnabledTypes();
         }
         catch (Exception ex)
         {
-            _log.Error($"Sampler tick error: {ex.Message}");
+            _log.Debug($"[SamplerService] OnInventoryChanged error: {ex.Message}");
         }
     }
 
-    private void PersistSample(ulong characterId, uint gil)
+    /// <summary>
+    /// Fallback timer tick - runs less frequently to catch any missed updates.
+    /// </summary>
+    private void OnFallbackTimerTick(object? state)
     {
-        // Use the database service to save the sample
-        var inserted = _dbService.SaveSampleIfChanged("Gil", characterId, (long)gil);
+        if (!_enabled) return;
+
+        try
+        {
+            SampleAllEnabledTypes();
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Sampler fallback tick error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Samples all enabled data types and persists any changes.
+    /// </summary>
+    private void SampleAllEnabledTypes()
+    {
+        var cid = GameStateService.PlayerContentId;
+        if (cid == 0) return;
+
+        // Sample all enabled data types
+        var enabledTypes = _configService.Config.EnabledTrackedDataTypes;
+        if (enabledTypes == null || enabledTypes.Count == 0)
+        {
+            // Fallback to just Gil if nothing configured
+            enabledTypes = new HashSet<TrackedDataType> { TrackedDataType.Gil };
+        }
+
+        var anyInserted = false;
+        foreach (var dataType in enabledTypes)
+        {
+            try
+            {
+                var value = _registry.GetCurrentValue(dataType);
+                if (value.HasValue)
+                {
+                    var variableName = dataType.ToString();
+                    var inserted = _dbService.SaveSampleIfChanged(variableName, cid, value.Value);
+                    if (inserted)
+                    {
+                        anyInserted = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Debug($"Failed to sample {dataType}: {ex.Message}");
+            }
+        }
+
+        if (anyInserted)
+        {
+            // Save character name on any data insert
+            TrySaveCharacterName(cid);
+        }
+    }
+
+    private void PersistSample(ulong characterId, TrackedDataType dataType, long value)
+    {
+        var variableName = dataType.ToString();
+        var inserted = _dbService.SaveSampleIfChanged(variableName, characterId, value);
 
         if (inserted)
         {
-            // Also try to save the character name if available
             TrySaveCharacterName(characterId);
         }
     }
@@ -247,12 +312,24 @@ public sealed class SamplerService : IDisposable, IRequiredService
                          && File.Exists(_filenames.DatabasePath);
 
     /// <summary>
-    /// Clears all data from the database.
+    /// Clears all data for a specific data type from the database.
+    /// </summary>
+    public void ClearAllData(TrackedDataType dataType)
+    {
+        _dbService.ClearAllData(dataType.ToString());
+        _log.Information($"Cleared all {dataType} data");
+    }
+
+    /// <summary>
+    /// Clears all data from the database (all data types).
     /// </summary>
     public void ClearAllData()
     {
-        _dbService.ClearAllData("Gil");
-        _log.Information("Cleared all GilTracker data");
+        foreach (var dataType in _registry.Definitions.Keys)
+        {
+            _dbService.ClearAllData(dataType.ToString());
+        }
+        _log.Information("Cleared all tracking data");
     }
 
     /// <summary>
@@ -260,49 +337,74 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     public int CleanUnassociatedCharacters()
     {
-        var count = _dbService.CleanUnassociatedCharacters("Gil");
+        var totalCount = 0;
+        foreach (var dataType in _registry.Definitions.Keys)
+        {
+            totalCount += _dbService.CleanUnassociatedCharacters(dataType.ToString());
+        }
+        if (totalCount > 0)
+            _log.Information($"Cleaned {totalCount} unassociated character series");
+        return totalCount;
+    }
+
+    /// <summary>
+    /// Removes data for characters without a name association for a specific data type.
+    /// </summary>
+    public int CleanUnassociatedCharacters(TrackedDataType dataType)
+    {
+        var count = _dbService.CleanUnassociatedCharacters(dataType.ToString());
         if (count > 0)
-            _log.Information($"Cleaned {count} unassociated character series");
+            _log.Information($"Cleaned {count} unassociated {dataType} character series");
         return count;
     }
 
     /// <summary>
     /// Exports data to a CSV file and returns the file path.
     /// </summary>
-    public string? ExportCsv(ulong? characterId = null)
+    public string? ExportCsv(TrackedDataType dataType, ulong? characterId = null)
     {
         var dbPath = _filenames.DatabasePath;
         if (string.IsNullOrEmpty(dbPath)) return null;
 
         try
         {
-            var csvContent = _dbService.ExportToCsv("Gil", characterId);
+            var variableName = dataType.ToString();
+            var csvContent = _dbService.ExportToCsv(variableName, characterId);
             if (string.IsNullOrEmpty(csvContent)) return null;
 
             var dir = Path.GetDirectoryName(dbPath) ?? "";
             var suffix = characterId.HasValue && characterId.Value != 0
                 ? $"-{characterId.Value}"
                 : "-all";
-            var fileName = $"giltracker{suffix}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv";
+            var fileName = $"{variableName.ToLower()}{suffix}-{DateTime.UtcNow:yyyyMMddTHHmmssZ}.csv";
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, csvContent);
-            _log.Information($"Exported data to {filePath}");
+            _log.Information($"Exported {dataType} data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export CSV: {ex.Message}");
+            _log.Error($"Failed to export {dataType} CSV: {ex.Message}");
             return null;
         }
     }
+
+    /// <summary>
+    /// Exports data to a CSV file and returns the file path (legacy Gil-only method).
+    /// </summary>
+    [Obsolete("Use ExportCsv(TrackedDataType, ulong?) instead")]
+    public string? ExportCsv(ulong? characterId = null) => ExportCsv(TrackedDataType.Gil, characterId);
 
     #endregion
 
     public void Dispose()
     {
-        _timer?.Dispose();
-        _timer = null;
+        // Unsubscribe from inventory change events
+        _inventoryChangeService.OnInventoryChanged -= OnInventoryChanged;
+
+        _fallbackTimer?.Dispose();
+        _fallbackTimer = null;
         _dbService.Dispose();
         GC.SuppressFinalize(this);
     }

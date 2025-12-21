@@ -22,6 +22,7 @@ public sealed class FullscreenWindow : Window
     private readonly SamplerService _samplerService;
     private readonly StateService _stateService;
     private readonly GilTrackerComponent _moneyTracker;
+    private readonly TrackedDataRegistry _trackedDataRegistry;
     private readonly WindowContentContainer _contentContainer;
 
     // Reference to WindowService for window coordination (set after construction due to circular dependency)
@@ -41,13 +42,15 @@ public sealed class FullscreenWindow : Window
         ConfigurationService configService,
         SamplerService samplerService,
         FilenameService filenameService,
-        StateService stateService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        StateService stateService,
+        TrackedDataRegistry trackedDataRegistry) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
         _filenameService = filenameService;
         _samplerService = samplerService;
         _stateService = stateService;
+        _trackedDataRegistry = trackedDataRegistry;
         // Use the shared gil tracker from the sampler service
         _moneyTracker = new GilTrackerComponent(filenameService, samplerService, configService);
 
@@ -68,7 +71,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _trackedDataRegistry);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -90,7 +93,8 @@ public sealed class FullscreenWindow : Window
                 new System.Numerics.Vector2(20, 50),
                 _filenameService,
                 _samplerService,
-                _configService);
+                _configService,
+                _trackedDataRegistry);
             if (gettingStarted != null)
                 _contentContainer.AddTool(gettingStarted);
         }

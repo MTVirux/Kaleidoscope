@@ -23,5 +23,7 @@ public static class DalamudServices
         services.AddDalamudService<ICondition>(pi);
         services.AddDalamudService<IObjectTable>(pi);
         services.AddDalamudService<ITextureProvider>(pi);
+        services.AddDalamudService<IGameInventory>(pi);
+        services.AddDalamudService<IAddonLifecycle>(pi);
     }
 }

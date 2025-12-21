@@ -1,4 +1,5 @@
 using Dalamud.Configuration;
+using Kaleidoscope.Models;
 
 namespace Kaleidoscope;
 
@@ -68,6 +69,45 @@ public class Configuration : IPluginConfiguration
     // GilTicker settings
     public float GilTickerScrollSpeed { get; set; } = 30f;
     public List<ulong> GilTickerDisabledCharacters { get; set; } = new();
+
+    // Data Tracking settings
+    /// <summary>
+    /// Set of enabled data types for tracking. If null or empty, defaults will be used.
+    /// </summary>
+    public HashSet<TrackedDataType> EnabledTrackedDataTypes { get; set; } = new()
+    {
+        TrackedDataType.Gil,
+        TrackedDataType.TomestonePoetics,
+        TrackedDataType.TomestoneCapped,
+        TrackedDataType.OrangeCraftersScrip,
+        TrackedDataType.OrangeGatherersScrip,
+        TrackedDataType.SackOfNuts,
+        TrackedDataType.Ventures
+    };
+
+    /// <summary>
+    /// Per-data-type display settings (time range, graph bounds, etc.)
+    /// </summary>
+    public Dictionary<TrackedDataType, DataTrackerSettings> DataTrackerSettings { get; set; } = new();
+}
+
+/// <summary>
+/// Per-data-type tracker settings.
+/// </summary>
+public class DataTrackerSettings
+{
+    public bool HideCharacterSelector { get; set; } = false;
+    public bool ShowMultipleLines { get; set; } = false;
+    public int TimeRangeValue { get; set; } = 7;
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public bool ShowEndGap { get; set; } = false;
+    public float EndGapPercent { get; set; } = 5f;
+    public bool ShowValueLabel { get; set; } = false;
+    public float ValueLabelOffsetX { get; set; } = 0f;
+    public float ValueLabelOffsetY { get; set; } = 0f;
+    public bool AutoScaleGraph { get; set; } = true;
+    public float GraphMinValue { get; set; } = 0f;
+    public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
 }
 
 public class ContentLayoutState

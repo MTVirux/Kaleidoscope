@@ -1,5 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -30,11 +31,11 @@ public class DataCategory
         ImGui.TextUnformatted("Data Management");
         ImGui.Separator();
         var hasDb = _samplerService.HasDb;
-        if (ImGui.Button("Export CSV") && hasDb)
+        if (ImGui.Button("Export Gil CSV") && hasDb)
         {
             try
             {
-                var fileName = _samplerService.ExportCsv();
+                var fileName = _samplerService.ExportCsv(TrackedDataType.Gil);
                 if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
             }
             catch (Exception ex)

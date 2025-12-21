@@ -26,6 +26,7 @@ public sealed class MainWindow : Window, IService
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
     private readonly GilTrackerComponent _moneyTracker;
+    private readonly TrackedDataRegistry _trackedDataRegistry;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -89,7 +90,8 @@ public sealed class MainWindow : Window, IService
         FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
-        GilTrackerComponent gilTrackerComponent) 
+        GilTrackerComponent gilTrackerComponent,
+        TrackedDataRegistry trackedDataRegistry) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -99,6 +101,7 @@ public sealed class MainWindow : Window, IService
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;
         _moneyTracker = gilTrackerComponent;
+        _trackedDataRegistry = trackedDataRegistry;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -271,7 +274,7 @@ public sealed class MainWindow : Window, IService
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _trackedDataRegistry);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -282,7 +285,7 @@ public sealed class MainWindow : Window, IService
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService);
+                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry);
                 if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
             }
         }
