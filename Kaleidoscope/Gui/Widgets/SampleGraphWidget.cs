@@ -281,11 +281,17 @@ public class SampleGraphWidget
         if (totalTimeSpan < 1) totalTimeSpan = 1;
 
         var xMax = totalTimeSpan;
+        var colors = GetSeriesColors(series.Count);
 
         try
         {
             var avail = ImGui.GetContentRegionAvail();
-            var plotSize = new Vector2(Math.Max(1f, avail.X), Math.Max(1f, avail.Y));
+            
+            // Reserve space for scrollable legend on the right
+            const float legendWidth = 120f;
+            const float legendPadding = 5f;
+            var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
+            var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
             // Calculate Y-axis bounds based on all visible data
             float yMin, yMax;
@@ -327,8 +333,8 @@ public class SampleGraphWidget
                 }
             }
 
-            // Configure plot flags - disable mouse position text for clean look
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText;
+            // Configure plot flags - disable legend since we draw custom scrollable one
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend;
 
             // Set up axis limits (use Once to allow user zoom/pan)
             ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
@@ -341,14 +347,9 @@ public class SampleGraphWidget
                 // Format Y-axis with thousand separators
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
                 
-                // Setup legend at the top-right with horizontal layout for many series
-                ImPlot.SetupLegend(ImPlotLocation.NorthEast, ImPlotLegendFlags.Outside | ImPlotLegendFlags.Horizontal);
-                
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
-
-                var colors = GetSeriesColors(series.Count);
 
                 // Draw each series
                 for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
@@ -395,12 +396,60 @@ public class SampleGraphWidget
 
                 ImPlot.EndPlot();
             }
+            
+            // Draw scrollable legend on the right
+            ImGui.SameLine();
+            DrawScrollableLegend(series, colors, legendWidth, avail.Y);
         }
         catch (Exception ex)
         {
             LogService.Debug($"[SampleGraphWidget] Multi-series rendering error: {ex.Message}");
             ImGui.TextUnformatted("Error rendering graph");
         }
+    }
+    
+    /// <summary>
+    /// Draws a scrollable legend for multi-series graphs.
+    /// </summary>
+    private void DrawScrollableLegend(
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series,
+        Vector3[] colors,
+        float width,
+        float height)
+    {
+        var childFlags = ImGuiChildFlags.Border;
+        var windowFlags = ImGuiWindowFlags.None;
+        
+        if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), childFlags, windowFlags))
+        {
+            for (var i = 0; i < series.Count; i++)
+            {
+                var (name, samples) = series[i];
+                if (samples == null || samples.Count == 0) continue;
+                
+                var color = colors[i];
+                var lastValue = samples[^1].value;
+                
+                // Draw colored square indicator
+                var drawList = ImGui.GetWindowDrawList();
+                var cursorPos = ImGui.GetCursorScreenPos();
+                const float indicatorSize = 10f;
+                var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 1f));
+                drawList.AddRectFilled(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                
+                // Advance cursor past the indicator
+                ImGui.Dummy(new Vector2(indicatorSize + 4f, indicatorSize));
+                ImGui.SameLine();
+                
+                // Draw name and value
+                ImGui.TextUnformatted($"{name}");
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}");
+                }
+            }
+        }
+        ImGui.EndChild();
     }
 
     private static Vector3[] GetSeriesColors(int count)
