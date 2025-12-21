@@ -150,7 +150,9 @@ public class GilTrackerComponent
                 Config.GilTrackerShowValueLabel,
                 Config.GilTrackerValueLabelOffsetX,
                 Config.GilTrackerValueLabelOffsetY,
-                Config.GilTrackerAutoScaleGraph);
+                Config.GilTrackerAutoScaleGraph,
+                Config.GilTrackerLegendWidth,
+                Config.GilTrackerShowLegend);
 
             // Calculate time cutoff if time range filtering is enabled
             DateTime? timeCutoff = null;

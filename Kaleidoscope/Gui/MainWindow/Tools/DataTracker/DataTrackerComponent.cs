@@ -189,7 +189,9 @@ public class DataTrackerComponent
             settings.ShowValueLabel,
             settings.ValueLabelOffsetX,
             settings.ValueLabelOffsetY,
-            settings.AutoScaleGraph);
+            settings.AutoScaleGraph,
+            settings.LegendWidth,
+            settings.ShowLegend);
 
         // Calculate time cutoff if time range filtering is enabled
         DateTime? timeCutoff = null;

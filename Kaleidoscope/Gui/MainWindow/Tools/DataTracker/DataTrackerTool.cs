@@ -81,6 +81,28 @@ public class DataTrackerTool : ToolComponent
             }
             ShowSettingTooltip("When viewing 'All', shows a separate line for each character instead of a combined total.", "Off");
 
+            if (showMultipleLines)
+            {
+                var showLegend = settings.ShowLegend;
+                if (ImGui.Checkbox("Show legend", ref showLegend))
+                {
+                    settings.ShowLegend = showLegend;
+                    _configService.Save();
+                }
+                ShowSettingTooltip("Shows a scrollable legend panel on the right side of the graph.", "On");
+
+                if (showLegend)
+                {
+                    var legendWidth = settings.LegendWidth;
+                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 200f, "%.0f px"))
+                    {
+                        settings.LegendWidth = legendWidth;
+                        _configService.Save();
+                    }
+                    ShowSettingTooltip("Width of the scrollable legend panel on the right side of the graph.", "120");
+                }
+            }
+
             var showValueLabel = settings.ShowValueLabel;
             if (ImGui.Checkbox("Show current value label", ref showValueLabel))
             {

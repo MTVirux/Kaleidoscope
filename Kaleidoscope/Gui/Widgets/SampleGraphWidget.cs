@@ -60,6 +60,16 @@ public class SampleGraphWidget
         /// Whether to auto-scale the Y-axis based on actual data values.
         /// </summary>
         public bool AutoScaleGraph { get; set; } = true;
+        
+        /// <summary>
+        /// Width of the scrollable legend panel in multi-series mode.
+        /// </summary>
+        public float LegendWidth { get; set; } = 120f;
+        
+        /// <summary>
+        /// Whether to show the legend panel in multi-series mode.
+        /// </summary>
+        public bool ShowLegend { get; set; } = true;
     }
 
     private readonly GraphConfig _config;
@@ -119,12 +129,14 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true)
+    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 120f, bool showLegend = true)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
         _config.ValueLabelOffsetY = valueLabelOffsetY;
         _config.AutoScaleGraph = autoScaleGraph;
+        _config.LegendWidth = legendWidth;
+        _config.ShowLegend = showLegend;
     }
 
     /// <summary>
@@ -287,9 +299,9 @@ public class SampleGraphWidget
         {
             var avail = ImGui.GetContentRegionAvail();
             
-            // Reserve space for scrollable legend on the right
-            const float legendWidth = 120f;
-            const float legendPadding = 5f;
+            // Reserve space for scrollable legend on the right (if enabled)
+            var legendWidth = _config.ShowLegend ? _config.LegendWidth : 0f;
+            var legendPadding = _config.ShowLegend ? 5f : 0f;
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
             var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
@@ -397,9 +409,12 @@ public class SampleGraphWidget
                 ImPlot.EndPlot();
             }
             
-            // Draw scrollable legend on the right
-            ImGui.SameLine();
-            DrawScrollableLegend(series, colors, legendWidth, avail.Y);
+            // Draw scrollable legend on the right (if enabled)
+            if (_config.ShowLegend)
+            {
+                ImGui.SameLine();
+                DrawScrollableLegend(series, colors, legendWidth, avail.Y);
+            }
         }
         catch (Exception ex)
         {
@@ -417,10 +432,7 @@ public class SampleGraphWidget
         float width,
         float height)
     {
-        var childFlags = ImGuiChildFlags.Border;
-        var windowFlags = ImGuiWindowFlags.None;
-        
-        if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), childFlags, windowFlags))
+        if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), true))
         {
             for (var i = 0; i < series.Count; i++)
             {

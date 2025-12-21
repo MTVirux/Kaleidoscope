@@ -65,6 +65,8 @@ public class Configuration : IPluginConfiguration
     public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
     public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
     public bool GilTrackerAutoScaleGraph { get; set; } = true;
+    public float GilTrackerLegendWidth { get; set; } = 120f;
+    public bool GilTrackerShowLegend { get; set; } = true;
 
     // GilTicker settings
     public float GilTickerScrollSpeed { get; set; } = 30f;
@@ -108,6 +110,8 @@ public class DataTrackerSettings
     public bool AutoScaleGraph { get; set; } = true;
     public float GraphMinValue { get; set; } = 0f;
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
+    public float LegendWidth { get; set; } = 120f;
+    public bool ShowLegend { get; set; } = true;
 }
 
 public class ContentLayoutState
