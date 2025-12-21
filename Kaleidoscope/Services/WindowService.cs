@@ -136,8 +136,7 @@ public sealed class WindowService : IDisposable, IRequiredService
         DetachEvents(_pluginInterface.UiBuilder);
         _windowSystem.RemoveAllWindows();
 
-        // Note: Windows derive from Dalamud.Interface.Windowing.Window which is not IDisposable.
-        // ConfigWindow implements IDisposable explicitly so we call it.
-        _configWindow?.Dispose();
+        // Dispose windows that implement IDisposable to clean up event subscriptions
+        _mainWindow?.Dispose();
     }
 }
