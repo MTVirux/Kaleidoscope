@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.ConfigWindow;
 /// <remarks>
 /// Provides a sidebar-based navigation between General, Data, Sampler, and Layouts configuration categories.
 /// </remarks>
-public sealed class ConfigWindow : Window, IDisposable
+public sealed class ConfigWindow : Window
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -108,8 +108,6 @@ public sealed class ConfigWindow : Window, IDisposable
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
-
-    public void Dispose() { }
 
     public override void PreDraw()
     {
