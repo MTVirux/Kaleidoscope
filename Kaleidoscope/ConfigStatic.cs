@@ -21,6 +21,13 @@ public static class ConfigStatic
     public const int DefaultSamplerIntervalMs = 1000;
     public const int MinSamplerIntervalMs = 1000;
 
+    // Retainer data stabilization
+    /// <summary>
+    /// Delay in milliseconds to wait after retainer state changes before reading inventory values.
+    /// This allows the game client to fully load retainer data from the server.
+    /// </summary>
+    public const int RetainerStabilizationDelayMs = 500;
+
     // UI constants
     public const float FloatEpsilon = 0.0001f;
     public const int TextInputBufferSize = 128;
@@ -30,4 +37,22 @@ public static class ConfigStatic
     // Tool component size constraints
     public const float MinToolWidth = 50f;
     // MinToolHeight is calculated dynamically based on text line height
+    
+    // Inventory change detection
+    /// <summary>Debounce interval for inventory change events.</summary>
+    public const int InventoryDebounceMs = 100;
+    /// <summary>Interval between periodic value checks.</summary>
+    public const int ValueCheckIntervalMs = 1000;
+    
+    // Crystal item ID calculation
+    /// <summary>Base item ID for elemental crystals (Fire Shard = 2).</summary>
+    public const int CrystalBaseItemId = 2;
+    /// <summary>Offset between crystal tiers (Shard=0, Crystal=6, Cluster=12).</summary>
+    public const int CrystalTierOffset = 6;
+    
+    // Grid layout
+    /// <summary>Base number of columns for grid calculations.</summary>
+    public const int BaseGridColumns = 16;
+    /// <summary>Base number of rows for grid calculations.</summary>
+    public const int BaseGridRows = 9;
 }

@@ -28,12 +28,18 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     // Debounce tracking for inventory events
     private volatile bool _pendingInventoryUpdate;
     private DateTime _lastEventTime = DateTime.MinValue;
-    private readonly TimeSpan _debounceInterval = TimeSpan.FromMilliseconds(100);
+    private readonly TimeSpan _debounceInterval = TimeSpan.FromMilliseconds(ConfigStatic.InventoryDebounceMs);
 
     // Value tracking - caches last known values to detect changes
     private readonly Dictionary<TrackedDataType, long> _lastKnownValues = new();
     private DateTime _lastValueCheck = DateTime.MinValue;
-    private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(1000); // Reduced from 500ms to 1s
+    private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(ConfigStatic.ValueCheckIntervalMs);
+
+    // Retainer state tracking - waits for data to stabilize after opening a retainer
+    private bool _wasRetainerActive = false;
+    private DateTime _retainerOpenedTime = DateTime.MinValue;
+    private readonly TimeSpan _retainerStabilizationDelay = TimeSpan.FromMilliseconds(ConfigStatic.RetainerStabilizationDelayMs);
+    private bool _isRetainerStabilizing = false;
 
     /// <summary>
     /// Event fired when any tracked inventory/currency value may have changed.
@@ -155,6 +161,43 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
             // Note: The debounced inventory update is now handled via CheckForValueChanges
             // which reads all values and fires OnValuesChanged with the complete set.
+        }
+
+        // Track retainer state changes for stabilization
+        // Use IsRetainerActive() which properly checks if a retainer inventory is open
+        var isRetainerActive = GameStateService.IsRetainerActive();
+        if (isRetainerActive != _wasRetainerActive)
+        {
+            _wasRetainerActive = isRetainerActive;
+            if (isRetainerActive)
+            {
+                // Retainer just opened - start stabilization period
+                _retainerOpenedTime = now;
+                _isRetainerStabilizing = true;
+                _log.Debug($"[Kaleidoscope] [InventoryChangeService] Retainer opened, waiting {ConfigStatic.RetainerStabilizationDelayMs}ms for data stabilization");
+            }
+            else
+            {
+                // Retainer closed - stop stabilizing and clear cache
+                _isRetainerStabilizing = false;
+                _log.Debug("[Kaleidoscope] [InventoryChangeService] Retainer closed, clearing value cache");
+                ClearValueCache();
+            }
+        }
+
+        // Check if retainer data has stabilized
+        if (_isRetainerStabilizing && now - _retainerOpenedTime >= _retainerStabilizationDelay)
+        {
+            _isRetainerStabilizing = false;
+            _log.Debug("[Kaleidoscope] [InventoryChangeService] Retainer data stabilized, resuming value checks");
+            // Clear cached values to force fresh reads with stabilized retainer data
+            ClearValueCache();
+        }
+
+        // Skip value checks while retainer data is stabilizing
+        if (_isRetainerStabilizing)
+        {
+            return;
         }
 
         // Check all tracked values periodically via direct InventoryManager reads

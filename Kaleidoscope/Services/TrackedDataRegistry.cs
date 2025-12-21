@@ -537,7 +537,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         for (uint i = 2; i <= 19; i++)
         {
             try { total += im->GetInventoryItemCount(i); }
-            catch { /* ignore */ }
+            catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get crystal {i}: {ex.Message}"); }
         }
         
         // Add retainer crystals if a retainer is currently active
@@ -546,7 +546,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             for (uint i = 2; i <= 19; i++)
             {
                 try { total += GameStateService.GetActiveRetainerCrystalCount(im, i); }
-                catch { /* ignore */ }
+                catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get retainer crystal {i}: {ex.Message}"); }
             }
         }
         
@@ -561,17 +561,27 @@ public sealed class TrackedDataRegistry : IRequiredService
     {
         long total = 0;
         
-        // Shard = 2 + element, Crystal = 8 + element, Cluster = 14 + element
-        try { total += im->GetInventoryItemCount((uint)(2 + element)); } catch { }
-        try { total += im->GetInventoryItemCount((uint)(8 + element)); } catch { }
-        try { total += im->GetInventoryItemCount((uint)(14 + element)); } catch { }
+        // Shard = base + element, Crystal = base + tier + element, Cluster = base + 2*tier + element
+        var shardId = (uint)(ConfigStatic.CrystalBaseItemId + element);
+        var crystalId = (uint)(ConfigStatic.CrystalBaseItemId + ConfigStatic.CrystalTierOffset + element);
+        var clusterId = (uint)(ConfigStatic.CrystalBaseItemId + 2 * ConfigStatic.CrystalTierOffset + element);
+        
+        try { total += im->GetInventoryItemCount(shardId); } 
+        catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get shard {shardId}: {ex.Message}"); }
+        try { total += im->GetInventoryItemCount(crystalId); } 
+        catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get crystal {crystalId}: {ex.Message}"); }
+        try { total += im->GetInventoryItemCount(clusterId); } 
+        catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get cluster {clusterId}: {ex.Message}"); }
         
         // Add retainer crystals if a retainer is currently active
         if (GameStateService.IsRetainerActive())
         {
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, (uint)(2 + element)); } catch { }
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, (uint)(8 + element)); } catch { }
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, (uint)(14 + element)); } catch { }
+            try { total += GameStateService.GetActiveRetainerCrystalCount(im, shardId); } 
+            catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get retainer shard {shardId}: {ex.Message}"); }
+            try { total += GameStateService.GetActiveRetainerCrystalCount(im, crystalId); } 
+            catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get retainer crystal {crystalId}: {ex.Message}"); }
+            try { total += GameStateService.GetActiveRetainerCrystalCount(im, clusterId); } 
+            catch (Exception ex) { LogService.Debug($"[TrackedDataRegistry] Failed to get retainer cluster {clusterId}: {ex.Message}"); }
         }
         
         return total;
