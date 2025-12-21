@@ -13,8 +13,6 @@ public static class StaticServiceManager
 {
     public static ServiceManager CreateProvider(IDalamudPluginInterface pi, Logger log, KaleidoscopePlugin plugin)
     {
-        ECommons.DalamudServices.Svc.Init(pi);
-
         var services = new ServiceManager(log)
             .AddExistingService(log)
             .AddExistingService(plugin)
