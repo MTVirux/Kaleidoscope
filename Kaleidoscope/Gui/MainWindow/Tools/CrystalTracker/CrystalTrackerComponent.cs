@@ -96,7 +96,8 @@ public class CrystalTrackerComponent
             settings.ValueLabelOffsetY,
             settings.AutoScaleGraph,
             settings.LegendWidth,
-            settings.ShowLegend);
+            settings.ShowLegend,
+            settings.GraphType);
 
         // Calculate time cutoff
         DateTime? timeCutoff = null;

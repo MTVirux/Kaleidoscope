@@ -15,6 +15,7 @@ public class DataTrackerTool : ToolComponent
     private readonly ConfigurationService _configService;
 
     private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
+    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
 
     private Configuration Config => _configService.Config;
 
@@ -143,6 +144,14 @@ public class DataTrackerTool : ToolComponent
             ImGui.Spacing();
             ImGui.TextUnformatted("Graph Settings");
             ImGui.Separator();
+
+            var graphType = (int)settings.GraphType;
+            if (ImGui.Combo("Graph type", ref graphType, GraphTypeNames, GraphTypeNames.Length))
+            {
+                settings.GraphType = (GraphType)graphType;
+                _configService.Save();
+            }
+            ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
 
             var autoScale = settings.AutoScaleGraph;
             if (ImGui.Checkbox("Auto-scale graph", ref autoScale))

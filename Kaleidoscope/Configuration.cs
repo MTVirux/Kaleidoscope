@@ -25,6 +25,21 @@ public enum TimeRangeUnit
     All = 5
 }
 
+/// <summary>
+/// Graph visualization type for time-series data.
+/// </summary>
+public enum GraphType
+{
+    /// <summary>Filled area chart - good for showing volume over time.</summary>
+    Area = 0,
+    /// <summary>Simple line chart.</summary>
+    Line = 1,
+    /// <summary>Step/stairs chart - shows discrete value changes.</summary>
+    Stairs = 2,
+    /// <summary>Vertical bar chart.</summary>
+    Bars = 3
+}
+
 public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
@@ -116,6 +131,7 @@ public class DataTrackerSettings
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
     public float LegendWidth { get; set; } = 120f;
     public bool ShowLegend { get; set; } = true;
+    public GraphType GraphType { get; set; } = GraphType.Area;
 }
 
 /// <summary>
@@ -189,6 +205,7 @@ public class CrystalTrackerSettings
     public float ValueLabelOffsetY { get; set; } = 0f;
     public float LegendWidth { get; set; } = 120f;
     public bool ShowLegend { get; set; } = true;
+    public GraphType GraphType { get; set; } = GraphType.Area;
 
     /// <summary>
     /// Gets whether a specific element is included in the filter.

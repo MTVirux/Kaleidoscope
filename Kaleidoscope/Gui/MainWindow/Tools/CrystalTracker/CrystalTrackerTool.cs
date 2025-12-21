@@ -15,6 +15,7 @@ public class CrystalTrackerTool : ToolComponent
 
     private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
     private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element" };
+    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
 
@@ -201,6 +202,14 @@ public class CrystalTrackerTool : ToolComponent
                     _configService.Save();
                 }
             }
+
+            var graphType = (int)settings.GraphType;
+            if (ImGui.Combo("Graph type", ref graphType, GraphTypeNames, GraphTypeNames.Length))
+            {
+                settings.GraphType = (GraphType)graphType;
+                _configService.Save();
+            }
+            ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
 
             var autoScale = settings.AutoScaleGraph;
             if (ImGui.Checkbox("Auto-scale graph", ref autoScale))

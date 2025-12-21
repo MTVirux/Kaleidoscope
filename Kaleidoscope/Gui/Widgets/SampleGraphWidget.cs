@@ -70,6 +70,11 @@ public class SampleGraphWidget
         /// Whether to show the legend panel in multi-series mode.
         /// </summary>
         public bool ShowLegend { get; set; } = true;
+        
+        /// <summary>
+        /// The type of graph to render (Area, Line, Stairs, Bars).
+        /// </summary>
+        public GraphType GraphType { get; set; } = GraphType.Area;
     }
 
     private readonly GraphConfig _config;
@@ -152,7 +157,7 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 120f, bool showLegend = true)
+    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 120f, bool showLegend = true, GraphType graphType = GraphType.Area)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
@@ -160,6 +165,7 @@ public class SampleGraphWidget
         _config.AutoScaleGraph = autoScaleGraph;
         _config.LegendWidth = legendWidth;
         _config.ShowLegend = showLegend;
+        _config.GraphType = graphType;
     }
 
     /// <summary>
@@ -256,11 +262,27 @@ public class SampleGraphWidget
                     yValues[i] = samples[i];
                 }
 
-                // Plot the line
+                // Plot based on configured graph type
                 fixed (double* xPtr = xValues)
                 fixed (double* yPtr = yValues)
                 {
-                    ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
+                    switch (_config.GraphType)
+                    {
+                        case GraphType.Line:
+                            ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
+                            break;
+                        case GraphType.Stairs:
+                            ImPlot.PlotStairs("Gil", xPtr, yPtr, samples.Count);
+                            break;
+                        case GraphType.Bars:
+                            ImPlot.PlotBars("Gil", xPtr, yPtr, samples.Count, 0.67);
+                            break;
+                        case GraphType.Area:
+                        default:
+                            ImPlot.PlotShaded("Gil", xPtr, yPtr, samples.Count);
+                            ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
+                            break;
+                    }
                 }
 
                 // Show hover tooltip with series name and value
@@ -426,15 +448,35 @@ public class SampleGraphWidget
                     xValues[samples.Count] = totalTimeSpan;
                     yValues[samples.Count] = samples[^1].value;
 
-                    // Set line color for this series
+                    // Set color for this series
                     var color = colors[seriesIdx];
-                    ImPlot.SetNextLineStyle(new Vector4(color.X, color.Y, color.Z, 1f), 2f);
+                    var colorVec4 = new Vector4(color.X, color.Y, color.Z, 1f);
+                    ImPlot.SetNextLineStyle(colorVec4, 2f);
+                    ImPlot.SetNextFillStyle(new Vector4(color.X, color.Y, color.Z, 0.4f));
 
-                    // Plot the line
+                    // Plot based on configured graph type
                     fixed (double* xPtr = xValues)
                     fixed (double* yPtr = yValues)
                     {
-                        ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
+                        switch (_config.GraphType)
+                        {
+                            case GraphType.Line:
+                                ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
+                                break;
+                            case GraphType.Stairs:
+                                ImPlot.PlotStairs(name, xPtr, yPtr, pointCount);
+                                break;
+                            case GraphType.Bars:
+                                // For multi-series bars, use a smaller width and offset
+                                var barWidth = totalTimeSpan / pointCount * 0.8 / series.Count;
+                                ImPlot.PlotBars(name, xPtr, yPtr, pointCount, barWidth);
+                                break;
+                            case GraphType.Area:
+                            default:
+                                ImPlot.PlotShaded(name, xPtr, yPtr, pointCount);
+                                ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
+                                break;
+                        }
                     }
 
                 }
