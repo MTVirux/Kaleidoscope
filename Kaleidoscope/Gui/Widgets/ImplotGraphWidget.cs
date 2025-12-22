@@ -41,7 +41,7 @@ public enum LegendPosition
 /// A reusable graph widget for displaying numerical sample data.
 /// Renders using ImPlot with a trading platform (Binance-style) aesthetic.
 /// </summary>
-public class SampleGraphWidget
+public class ImplotGraphWidget
 {
     // Trading platform color palette - vibrant and bright
     private static class ChartColors
@@ -460,15 +460,15 @@ public class SampleGraphWidget
 
 
     /// <summary>
-    /// Creates a new SampleGraphWidget with default configuration.
+    /// Creates a new ImplotGraphWidget with default configuration.
     /// </summary>
-    public SampleGraphWidget() : this(new GraphConfig()) { }
+    public ImplotGraphWidget() : this(new GraphConfig()) { }
 
     /// <summary>
-    /// Creates a new SampleGraphWidget with custom configuration.
+    /// Creates a new ImplotGraphWidget with custom configuration.
     /// </summary>
     /// <param name="config">The graph configuration.</param>
-    public SampleGraphWidget(GraphConfig config)
+    public ImplotGraphWidget(GraphConfig config)
     {
         _config = config ?? new GraphConfig();
     }
@@ -721,7 +721,7 @@ public class SampleGraphWidget
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[SampleGraphWidget] Graph rendering error: {ex.Message}");
+            LogService.Debug($"[ImplotGraphWidget] Graph rendering error: {ex.Message}");
             ImGui.TextUnformatted("Error rendering graph");
         }
     }
@@ -1083,7 +1083,7 @@ public class SampleGraphWidget
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[SampleGraphWidget] Multi-series rendering error: {ex.Message}");
+            LogService.Debug($"[ImplotGraphWidget] Multi-series rendering error: {ex.Message}");
             ImGui.TextUnformatted("Error rendering graph");
         }
     }

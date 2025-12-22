@@ -15,7 +15,7 @@ public class DataTrackerComponent : IDisposable
 {
     private readonly DataTrackerHelper _helper;
     private readonly CharacterPickerWidget _characterPicker;
-    private readonly SampleGraphWidget _graphWidget;
+    private readonly ImplotGraphWidget _graphWidget;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly TrackedDataRegistry _registry;
@@ -110,7 +110,7 @@ public class DataTrackerComponent : IDisposable
 
         // Initialize graph widget using current graph bounds
         var plotId = $"dataplot_{dataType}";
-        _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
+        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
         {
             MinValue = _graphMinValue,
             MaxValue = _graphMaxValue,

@@ -15,7 +15,7 @@ public class CrystalTrackerComponent : IDisposable
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly InventoryChangeService? _inventoryChangeService;
-    private readonly SampleGraphWidget _graphWidget;
+    private readonly ImplotGraphWidget _graphWidget;
 
     private volatile bool _pendingCrystalUpdate = false;
 
@@ -50,7 +50,7 @@ public class CrystalTrackerComponent : IDisposable
         _configService = configService;
         _inventoryChangeService = inventoryChangeService;
 
-        _graphWidget = new SampleGraphWidget(new SampleGraphWidget.GraphConfig
+        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
         {
             MinValue = 0,
             MaxValue = 999_999,
