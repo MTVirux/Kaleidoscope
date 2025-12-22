@@ -22,6 +22,7 @@ public sealed class ConfigWindow : Window
     private readonly AutoRetainerIpcService _arIpc;
     private readonly TrackedDataRegistry _registry;
     private readonly PriceTrackingService _priceTrackingService;
+    private readonly UniversalisWebSocketService _webSocketService;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -62,7 +63,8 @@ public sealed class ConfigWindow : Window
         SamplerService samplerService,
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
-        PriceTrackingService priceTrackingService)
+        PriceTrackingService priceTrackingService,
+        UniversalisWebSocketService webSocketService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -71,6 +73,7 @@ public sealed class ConfigWindow : Window
         _arIpc = arIpc;
         _registry = registry;
         _priceTrackingService = priceTrackingService;
+        _webSocketService = webSocketService;
 
         var lockTb = new TitleBarButton
         {
@@ -110,7 +113,7 @@ public sealed class ConfigWindow : Window
         _samplerCategory = new SamplerCategory(_samplerService, _configService, _registry);
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);
-        _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService);
+        _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }

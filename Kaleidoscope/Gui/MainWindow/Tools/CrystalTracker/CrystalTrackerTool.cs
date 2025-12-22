@@ -14,9 +14,7 @@ public class CrystalTrackerTool : ToolComponent
     private readonly CrystalTrackerComponent _inner;
     private readonly ConfigurationService _configService;
 
-    private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
     private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element", "By Tier", "By Character & Tier" };
-    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
     private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
@@ -222,10 +220,10 @@ public class CrystalTrackerTool : ToolComponent
                 }
             }
 
-            var graphType = (int)settings.GraphType;
-            if (ImGui.Combo("Graph type", ref graphType, GraphTypeNames, GraphTypeNames.Length))
+            var graphType = settings.GraphType;
+            if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
-                settings.GraphType = (GraphType)graphType;
+                settings.GraphType = graphType;
                 _configService.Save();
             }
             ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
@@ -251,18 +249,11 @@ public class CrystalTrackerTool : ToolComponent
             ImGui.Separator();
 
             var timeRangeValue = settings.TimeRangeValue;
-            var timeRangeUnit = (int)settings.TimeRangeUnit;
-
-            if (ImGui.InputInt("Range value", ref timeRangeValue, 1, 10))
+            var timeRangeUnit = settings.TimeRangeUnit;
+            if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
             {
-                if (timeRangeValue < 1) timeRangeValue = 1;
                 settings.TimeRangeValue = timeRangeValue;
-                _configService.Save();
-            }
-
-            if (ImGui.Combo("Range unit", ref timeRangeUnit, TimeRangeUnitNames, TimeRangeUnitNames.Length))
-            {
-                settings.TimeRangeUnit = (TimeRangeUnit)timeRangeUnit;
+                settings.TimeRangeUnit = timeRangeUnit;
                 _configService.Save();
             }
         }

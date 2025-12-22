@@ -1,3 +1,4 @@
+using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
@@ -51,7 +52,8 @@ public static class WindowToolRegistrar
         TrackedDataRegistry? registry = null,
         UniversalisWebSocketService? webSocketService = null,
         PriceTrackingService? priceTrackingService = null,
-        ItemDataService? itemDataService = null)
+        ItemDataService? itemDataService = null,
+        IDataManager? dataManager = null)
     {
         if (container == null) return;
 
@@ -121,7 +123,7 @@ public static class WindowToolRegistrar
                 container.RegisterTool(
                     ToolIds.TopItems,
                     "Top Items",
-                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService),
+                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager),
                     "Shows the most valuable items in character inventories",
                     "Price Tracking");
             }
@@ -218,11 +220,17 @@ public static class WindowToolRegistrar
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
         ConfigurationService configService,
-        ItemDataService itemDataService)
+        ItemDataService itemDataService,
+        IDataManager? dataManager)
     {
         try
         {
-            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService) { Position = pos };
+            if (dataManager == null)
+            {
+                LogService.Debug("CreateTopItemsTool: IDataManager is null, tool will have limited functionality");
+                return null;
+            }
+            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService, dataManager) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -241,7 +249,8 @@ public static class WindowToolRegistrar
         InventoryChangeService? inventoryChangeService = null,
         UniversalisWebSocketService? webSocketService = null,
         PriceTrackingService? priceTrackingService = null,
-        ItemDataService? itemDataService = null)
+        ItemDataService? itemDataService = null,
+        IDataManager? dataManager = null)
     {
         try
         {
@@ -280,8 +289,8 @@ public static class WindowToolRegistrar
                     return null;
 
                 case ToolIds.TopItems:
-                    if (priceTrackingService != null && itemDataService != null)
-                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService);
+                    if (priceTrackingService != null && itemDataService != null && dataManager != null)
+                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager);
                     return null;
 
                 default:

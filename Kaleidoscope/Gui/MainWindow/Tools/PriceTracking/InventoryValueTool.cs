@@ -1,8 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Bindings.ImPlot;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using ImPlot = Dalamud.Bindings.ImPlot.ImPlot;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 
@@ -17,87 +16,16 @@ public class InventoryValueTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
-
-    private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
-    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
+    private readonly ImplotGraphWidget _graphWidget;
 
     // Character selection (0 = all)
     private ulong _selectedCharacterId = 0;
     private string[] _characterNames = Array.Empty<string>();
     private ulong[] _characterIds = Array.Empty<ulong>();
     private int _selectedCharacterIndex = 0;
-    
-    // Hidden series tracking
-    private readonly HashSet<string> _hiddenSeries = new();
 
     private InventoryValueSettings Settings => _configService.Config.InventoryValue;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
-
-    // Trading platform color palette
-    private static class ChartColors
-    {
-        public static readonly Vector4 PlotBackground = new(0.08f, 0.09f, 0.10f, 1f);
-        public static readonly Vector4 Bullish = new(0.20f, 0.90f, 0.40f, 1f);
-        public static readonly Vector4 Neutral = new(1.0f, 0.85f, 0.0f, 1f);
-        public static readonly Vector4 GridLine = new(0.18f, 0.20f, 0.22f, 0.6f);
-    }
-
-    /// <summary>
-    /// Formatter delegate for X-axis tick labels with time values.
-    /// </summary>
-    private static readonly unsafe ImPlotFormatter XAxisTimeFormatter = (double value, byte* buff, int size, void* userData) =>
-    {
-        // value is seconds from the start time, userData contains the start time ticks
-        var startTicks = (long)userData;
-        var startTime = new DateTime(startTicks);
-        var time = startTime.AddSeconds(value).ToLocalTime();
-        var formatted = time.ToString("M/d HH:mm");
-        var len = Math.Min(formatted.Length, size - 1);
-        for (var i = 0; i < len; i++)
-            buff[i] = (byte)formatted[i];
-        buff[len] = 0;
-        return len;
-    };
-
-    /// <summary>
-    /// Formatter delegate for Y-axis tick labels with abbreviated notation (K, M, B).
-    /// </summary>
-    private static readonly unsafe ImPlotFormatter YAxisFormatter = (double value, byte* buff, int size, void* userData) =>
-    {
-        var formatted = FormatAbbreviated(value);
-        var len = Math.Min(formatted.Length, size - 1);
-        for (var i = 0; i < len; i++)
-            buff[i] = (byte)formatted[i];
-        buff[len] = 0;
-        return len;
-    };
-
-    /// <summary>
-    /// Formats a number with abbreviated notation (K, M, B).
-    /// </summary>
-    private static string FormatAbbreviated(double value)
-    {
-        return value switch
-        {
-            >= 1_000_000_000 => $"{value / 1_000_000_000:0.##}B",
-            >= 1_000_000 => $"{value / 1_000_000:0.##}M",
-            >= 1_000 => $"{value / 1_000:0.##}K",
-            _ => $"{value:0.##}"
-        };
-    }
-
-    // Color palette for multi-character mode
-    private static readonly Vector4[] SeriesColors = new[]
-    {
-        new Vector4(0.20f, 0.90f, 0.40f, 1f),  // Green
-        new Vector4(0.3f, 0.7f, 0.9f, 1f),     // Blue
-        new Vector4(0.9f, 0.5f, 0.2f, 1f),     // Orange
-        new Vector4(0.9f, 0.3f, 0.5f, 1f),     // Pink
-        new Vector4(0.7f, 0.4f, 0.9f, 1f),     // Purple
-        new Vector4(0.9f, 0.9f, 0.3f, 1f),     // Yellow
-        new Vector4(0.4f, 0.9f, 0.9f, 1f),     // Cyan
-        new Vector4(0.9f, 0.3f, 0.3f, 1f),     // Red
-    };
 
     public InventoryValueTool(
         PriceTrackingService priceTrackingService,
@@ -110,6 +38,19 @@ public class InventoryValueTool : ToolComponent
 
         Title = "Inventory Value";
         Size = new Vector2(400, 300);
+
+        // Initialize graph widget
+        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
+        {
+            PlotId = "inventory_value_plot",
+            NoDataText = "No value history data",
+            AutoScaleGraph = true,
+            ShowValueLabel = true,
+            ShowXAxisTimestamps = true,
+            ShowCrosshair = true,
+            ShowGridLines = true,
+            ShowCurrentPriceLine = true
+        });
         
         RefreshCharacterList();
     }
@@ -201,22 +142,31 @@ public class InventoryValueTool : ToolComponent
     private void DrawGraph()
     {
         var settings = Settings;
-        var availableSize = ImGui.GetContentRegionAvail();
         
         // Get time range
         var timeRange = GetTimeRange();
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : DateTime.MinValue;
 
-        // Get data
-        List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data;
-        Dictionary<ulong, List<(DateTime, long)>>? perCharacterData = null;
+        // Update graph widget display options from settings
+        _graphWidget.UpdateDisplayOptions(
+            showValueLabel: true,
+            autoScaleGraph: settings.AutoScaleGraph,
+            legendWidth: settings.LegendWidth,
+            showLegend: settings.ShowLegend,
+            graphType: settings.GraphType,
+            showXAxisTimestamps: true,
+            showCrosshair: true,
+            showGridLines: true,
+            showCurrentPriceLine: true,
+            legendPosition: LegendPosition.Outside);
 
         if (_selectedCharacterId == 0 && settings.ShowMultipleLines)
         {
-            // Multi-character mode
-            perCharacterData = new();
+            // Multi-character mode - show each character as a separate line
             var allData = DbService.GetAllInventoryValueHistory();
             
+            // Group data by character
+            var perCharacterData = new Dictionary<ulong, List<(DateTime ts, float value)>>();
             foreach (var entry in allData)
             {
                 if (startTime != DateTime.MinValue && entry.Timestamp < startTime)
@@ -225,262 +175,88 @@ public class InventoryValueTool : ToolComponent
                 if (!perCharacterData.ContainsKey(entry.CharacterId))
                     perCharacterData[entry.CharacterId] = new();
                 
-                perCharacterData[entry.CharacterId].Add((entry.Timestamp, entry.TotalValue));
+                var value = settings.IncludeGil ? entry.TotalValue : entry.ItemValue;
+                perCharacterData[entry.CharacterId].Add((entry.Timestamp, value));
             }
             
-            data = new(); // Not used in multi-line mode
-        }
-        else if (_selectedCharacterId == 0)
-        {
-            // All characters combined - aggregate all history data
-            var allData = DbService.GetAllInventoryValueHistory();
-            var aggregated = allData
-                .GroupBy(e => e.Timestamp)
-                .Select(g => (
-                    Timestamp: g.Key, 
-                    TotalValue: g.Sum(x => x.TotalValue),
-                    GilValue: g.Sum(x => x.GilValue),
-                    ItemValue: g.Sum(x => x.ItemValue)))
-                .OrderBy(x => x.Timestamp)
+            // Convert to the format expected by ImplotGraphWidget
+            var series = perCharacterData
+                .Select(kvp => (
+                    name: GetCharacterDisplayName(kvp.Key),
+                    samples: (IReadOnlyList<(DateTime ts, float value)>)kvp.Value
+                ))
                 .ToList();
             
-            if (startTime != DateTime.MinValue)
+            _graphWidget.DrawMultipleSeries(series);
+        }
+        else
+        {
+            // Single line mode (either single character or all aggregated)
+            List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data;
+            
+            if (_selectedCharacterId == 0)
             {
-                data = aggregated.Where(d => d.Timestamp >= startTime).ToList();
+                // All characters combined - aggregate all history data
+                var allData = DbService.GetAllInventoryValueHistory();
+                var aggregated = allData
+                    .GroupBy(e => e.Timestamp)
+                    .Select(g => (
+                        Timestamp: g.Key, 
+                        TotalValue: g.Sum(x => x.TotalValue),
+                        GilValue: g.Sum(x => x.GilValue),
+                        ItemValue: g.Sum(x => x.ItemValue)))
+                    .OrderBy(x => x.Timestamp)
+                    .ToList();
+                
+                if (startTime != DateTime.MinValue)
+                {
+                    data = aggregated.Where(d => d.Timestamp >= startTime).ToList();
+                }
+                else
+                {
+                    data = aggregated;
+                }
             }
             else
             {
-                data = aggregated;
+                // Single character
+                data = DbService.GetInventoryValueHistory(_selectedCharacterId);
+                
+                if (startTime != DateTime.MinValue)
+                {
+                    data = data.Where(d => d.Timestamp >= startTime).ToList();
+                }
             }
-        }
-        else
-        {
-            data = DbService.GetInventoryValueHistory(_selectedCharacterId);
             
-            if (startTime != DateTime.MinValue)
+            // Convert to timestamped series format for the widget
+            var samples = data
+                .Select(d => (
+                    ts: d.Timestamp, 
+                    value: (float)(settings.IncludeGil ? d.TotalValue : d.ItemValue)
+                ))
+                .ToList();
+            
+            // Use DrawMultipleSeries with single series for consistent time-based rendering
+            if (samples.Count > 0)
             {
-                data = data.Where(d => d.Timestamp >= startTime).ToList();
-            }
-        }
-
-        // Calculate graph area
-        float legendWidth = settings.ShowMultipleLines && settings.ShowLegend ? settings.LegendWidth : 0;
-        var graphWidth = availableSize.X - legendWidth - 10;
-        var graphHeight = availableSize.Y - 5;
-
-        if (graphWidth <= 0 || graphHeight <= 0) return;
-
-        // Draw legend if multi-line mode
-        if (perCharacterData != null && settings.ShowLegend)
-        {
-            DrawLegend(perCharacterData, legendWidth, graphHeight);
-            ImGui.SameLine();
-        }
-
-        // Draw the plot
-        if (perCharacterData != null)
-        {
-            DrawMultiLineGraph(perCharacterData, graphWidth, graphHeight);
-        }
-        else
-        {
-            DrawSingleLineGraph(data, graphWidth, graphHeight, settings.IncludeGil);
-        }
-    }
-
-    private void DrawLegend(Dictionary<ulong, List<(DateTime, long)>> perCharacterData, float width, float height)
-    {
-        if (ImGui.BeginChild("##ValueLegend", new Vector2(width, height), false))
-        {
-            int colorIdx = 0;
-            foreach (var (charId, points) in perCharacterData)
-            {
-                var charName = GetCharacterDisplayName(charId);
-                var color = SeriesColors[colorIdx % SeriesColors.Length];
-                var isHidden = _hiddenSeries.Contains(charName);
-
-                // Colored bullet
-                ImGui.TextColored(isHidden ? new Vector4(0.5f, 0.5f, 0.5f, 1f) : color, "●");
-                ImGui.SameLine();
-                
-                var clicked = ImGui.Selectable(charName, false);
-                if (clicked)
+                var seriesName = _selectedCharacterId == 0 ? "Total Value" : GetCharacterDisplayName(_selectedCharacterId);
+                var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>
                 {
-                    if (isHidden)
-                        _hiddenSeries.Remove(charName);
-                    else
-                        _hiddenSeries.Add(charName);
-                }
-
-                colorIdx++;
+                    (seriesName, samples)
+                };
+                _graphWidget.DrawMultipleSeries(series);
             }
-            ImGui.EndChild();
-        }
-    }
-
-    private unsafe void DrawMultiLineGraph(Dictionary<ulong, List<(DateTime, long)>> perCharacterData, float width, float height)
-    {
-        if (!ImPlot.BeginPlot("##InventoryValuePlot", new Vector2(width, height)))
-            return;
-
-        try
-        {
-            var settings = Settings;
-
-            // Find global min time for X-axis reference
-            DateTime globalMinTime = DateTime.MaxValue;
-            foreach (var (_, points) in perCharacterData)
+            else
             {
-                if (points.Count > 0 && points[0].Item1 < globalMinTime)
-                    globalMinTime = points[0].Item1;
-            }
-            if (globalMinTime == DateTime.MaxValue)
-                globalMinTime = DateTime.UtcNow;
-
-            // Setup axes with formatters
-            ImPlot.SetupAxes("", "", ImPlotAxisFlags.None, ImPlotAxisFlags.None);
-            ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
-            ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
-
-            int colorIdx = 0;
-            foreach (var (charId, points) in perCharacterData)
-            {
-                if (points.Count == 0) continue;
-
-                var charName = GetCharacterDisplayName(charId);
-                if (_hiddenSeries.Contains(charName))
-                {
-                    colorIdx++;
-                    continue;
-                }
-
-                var color = SeriesColors[colorIdx % SeriesColors.Length];
-                // X values are seconds from the global min time
-                var xValues = points.Select(p => (p.Item1 - globalMinTime).TotalSeconds).ToArray();
-                var yValues = points.Select(p => (double)p.Item2).ToArray();
-
-                ImPlot.SetNextLineStyle(color);
-                
-                switch (settings.GraphType)
-                {
-                    case GraphType.Line:
-                        ImPlot.PlotLine(charName, ref xValues[0], ref yValues[0], points.Count);
-                        break;
-                    case GraphType.Stairs:
-                        ImPlot.PlotStairs(charName, ref xValues[0], ref yValues[0], points.Count);
-                        break;
-                    case GraphType.Bars:
-                        ImPlot.PlotBars(charName, ref xValues[0], ref yValues[0], points.Count, 100);
-                        break;
-                    default: // Area
-                        ImPlot.PlotShaded(charName, ref xValues[0], ref yValues[0], points.Count);
-                        break;
-                }
-
-                colorIdx++;
-            }
-        }
-        finally
-        {
-            ImPlot.EndPlot();
-        }
-    }
-
-    private unsafe void DrawSingleLineGraph(List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data, 
-        float width, float height, bool includeGil)
-    {
-        if (!ImPlot.BeginPlot("##InventoryValuePlot", new Vector2(width, height)))
-            return;
-
-        try
-        {
-            if (data.Count == 0)
-            {
-                ImPlot.EndPlot();
                 ImGui.TextDisabled("No value history data");
-                return;
             }
-
-            var settings = Settings;
-
-            // Find global min time for X-axis reference
-            var globalMinTime = data.Count > 0 ? data[0].Timestamp : DateTime.UtcNow;
-
-            // Prepare data - X values are seconds from the global min time
-            var xValues = data.Select(d => (d.Timestamp - globalMinTime).TotalSeconds).ToArray();
-            var yValues = data.Select(d => (double)(includeGil ? d.TotalValue : d.ItemValue)).ToArray();
-
-            // Setup axes with formatters
-            ImPlot.SetupAxes("", "", ImPlotAxisFlags.None, ImPlotAxisFlags.None);
-            ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
-            ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
-
-            if (settings.AutoScaleGraph && yValues.Length > 0)
-            {
-                var minY = yValues.Min() * 0.9;
-                var maxY = yValues.Max() * 1.1;
-                ImPlot.SetupAxisLimits(ImAxis.Y1, minY, maxY, ImPlotCond.Always);
-            }
-
-            ImPlot.SetNextLineStyle(ChartColors.Bullish);
-            ImPlot.SetNextFillStyle(new Vector4(ChartColors.Bullish.X, ChartColors.Bullish.Y, ChartColors.Bullish.Z, 0.3f));
-
-            switch (settings.GraphType)
-            {
-                case GraphType.Line:
-                    ImPlot.PlotLine("Value", ref xValues[0], ref yValues[0], data.Count);
-                    break;
-                case GraphType.Stairs:
-                    ImPlot.PlotStairs("Value", ref xValues[0], ref yValues[0], data.Count);
-                    break;
-                case GraphType.Bars:
-                    ImPlot.PlotBars("Value", ref xValues[0], ref yValues[0], data.Count, 100);
-                    break;
-                default: // Area
-                    ImPlot.PlotShaded("Value", ref xValues[0], ref yValues[0], data.Count);
-                    break;
-            }
-
-            // Current value label
-            if (yValues.Length > 0)
-            {
-                var lastValue = yValues[^1];
-                var valueStr = FormatGil((long)lastValue);
-                
-                // Draw annotation at the last point
-                ImPlot.Annotation(xValues[^1], lastValue, ChartColors.Neutral, new Vector2(10, -10), false, valueStr);
-            }
-        }
-        finally
-        {
-            ImPlot.EndPlot();
         }
     }
 
     private TimeSpan? GetTimeRange()
     {
         var settings = Settings;
-        return settings.TimeRangeUnit switch
-        {
-            TimeRangeUnit.Minutes => TimeSpan.FromMinutes(settings.TimeRangeValue),
-            TimeRangeUnit.Hours => TimeSpan.FromHours(settings.TimeRangeValue),
-            TimeRangeUnit.Days => TimeSpan.FromDays(settings.TimeRangeValue),
-            TimeRangeUnit.Weeks => TimeSpan.FromDays(settings.TimeRangeValue * 7),
-            TimeRangeUnit.Months => TimeSpan.FromDays(settings.TimeRangeValue * 30),
-            TimeRangeUnit.All => null,
-            _ => null
-        };
-    }
-
-    private static string FormatGil(long amount)
-    {
-        if (amount >= 1_000_000_000)
-            return $"{amount / 1_000_000_000.0:F2}B";
-        if (amount >= 1_000_000)
-            return $"{amount / 1_000_000.0:F1}M";
-        if (amount >= 1_000)
-            return $"{amount / 1_000.0:F1}K";
-        return amount.ToString("N0");
+        return TimeRangeSelectorWidget.GetTimeSpan(settings.TimeRangeValue, settings.TimeRangeUnit);
     }
 
     public override bool HasSettings => true;
@@ -543,10 +319,10 @@ public class InventoryValueTool : ToolComponent
             ImGui.TextUnformatted("Graph Settings");
             ImGui.Separator();
 
-            var graphType = (int)settings.GraphType;
-            if (ImGui.Combo("Graph type", ref graphType, GraphTypeNames, GraphTypeNames.Length))
+            var graphType = settings.GraphType;
+            if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
-                settings.GraphType = (GraphType)graphType;
+                settings.GraphType = graphType;
                 _configService.Save();
             }
             ShowSettingTooltip("Visual style for the graph.", "Area");
@@ -564,18 +340,11 @@ public class InventoryValueTool : ToolComponent
             ImGui.Separator();
 
             var timeRangeValue = settings.TimeRangeValue;
-            var timeRangeUnit = (int)settings.TimeRangeUnit;
-
-            if (ImGui.InputInt("Range value", ref timeRangeValue, 1, 10))
+            var timeRangeUnit = settings.TimeRangeUnit;
+            if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
             {
-                if (timeRangeValue < 1) timeRangeValue = 1;
                 settings.TimeRangeValue = timeRangeValue;
-                _configService.Save();
-            }
-
-            if (ImGui.Combo("Range unit", ref timeRangeUnit, TimeRangeUnitNames, TimeRangeUnitNames.Length))
-            {
-                settings.TimeRangeUnit = (TimeRangeUnit)timeRangeUnit;
+                settings.TimeRangeUnit = timeRangeUnit;
                 _configService.Save();
             }
 

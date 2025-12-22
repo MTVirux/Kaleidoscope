@@ -15,8 +15,6 @@ public class DataTrackerTool : ToolComponent
     private readonly DataTrackerComponent _inner;
     private readonly ConfigurationService _configService;
 
-    private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
-    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
     private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
 
     private Configuration Config => _configService.Config;
@@ -168,10 +166,10 @@ public class DataTrackerTool : ToolComponent
             ImGui.TextUnformatted("Graph Settings");
             ImGui.Separator();
 
-            var graphType = (int)settings.GraphType;
-            if (ImGui.Combo("Graph type", ref graphType, GraphTypeNames, GraphTypeNames.Length))
+            var graphType = settings.GraphType;
+            if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
-                settings.GraphType = (GraphType)graphType;
+                settings.GraphType = graphType;
                 _configService.Save();
             }
             ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
@@ -197,22 +195,15 @@ public class DataTrackerTool : ToolComponent
             ImGui.Separator();
 
             var timeRangeValue = settings.TimeRangeValue;
-            var timeRangeUnit = (int)settings.TimeRangeUnit;
+            var timeRangeUnit = settings.TimeRangeUnit;
 
-            if (ImGui.InputInt("Range value", ref timeRangeValue, 1, 10))
+            if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
             {
-                if (timeRangeValue < 1) timeRangeValue = 1;
                 settings.TimeRangeValue = timeRangeValue;
+                settings.TimeRangeUnit = timeRangeUnit;
                 _configService.Save();
             }
-            ShowSettingTooltip("Number of time units to display.", "7");
-
-            if (ImGui.Combo("Range unit", ref timeRangeUnit, TimeRangeUnitNames, TimeRangeUnitNames.Length))
-            {
-                settings.TimeRangeUnit = (TimeRangeUnit)timeRangeUnit;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Time unit for the display range.", "All");
+            ShowSettingTooltip("Time range to display on the graph.", "7 Days");
         }
         catch (Exception ex)
         {

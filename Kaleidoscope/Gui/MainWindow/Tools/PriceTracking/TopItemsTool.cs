@@ -1,6 +1,8 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 
@@ -16,6 +18,7 @@ public class TopItemsTool : ToolComponent
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
+    private readonly ItemPickerWidget _itemPicker;
 
     // Cached data
     private List<(int ItemId, long Quantity, long Value, string Name)> _topItems = new();
@@ -38,12 +41,16 @@ public class TopItemsTool : ToolComponent
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
         ConfigurationService configService,
-        ItemDataService itemDataService)
+        ItemDataService itemDataService,
+        IDataManager dataManager)
     {
         _priceTrackingService = priceTrackingService;
         _samplerService = samplerService;
         _configService = configService;
         _itemDataService = itemDataService;
+
+        // Create item picker for exclusion list (marketable only since we're dealing with prices)
+        _itemPicker = new ItemPickerWidget(dataManager, itemDataService, priceTrackingService);
 
         Title = "Top Items";
         Size = new Vector2(400, 350);
@@ -96,21 +103,27 @@ public class TopItemsTool : ToolComponent
             var charId = settings.ShowAllCharacters ? (ulong?)null : 
                 (_selectedCharacterId == 0 ? (ulong?)null : _selectedCharacterId);
 
-            // Get top items
+            // Get top items (request more to account for filtering)
+            var requestCount = settings.MaxItems + settings.ExcludedItemIds.Count;
             var items = await _priceTrackingService.GetTopItemsByValueAsync(
                 charId,
-                settings.MaxItems,
+                requestCount,
                 settings.IncludeRetainers);
 
-            // Resolve item names using ItemDataService
+            // Resolve item names using ItemDataService and filter out excluded items
             var namedItems = new List<(int ItemId, long Quantity, long Value, string Name)>();
             foreach (var (itemId, qty, value) in items)
             {
+                // Skip excluded items
+                if (settings.ExcludedItemIds.Contains((uint)itemId))
+                    continue;
+
                 var name = _itemDataService.GetItemName(itemId);
                 namedItems.Add((itemId, qty, value, name));
             }
 
-            _topItems = namedItems;
+            // Limit to MaxItems after filtering
+            _topItems = namedItems.Take(settings.MaxItems).ToList();
 
             // Get gil value
             if (charId.HasValue)
@@ -193,12 +206,12 @@ public class TopItemsTool : ToolComponent
         // Totals
         if (settings.IncludeGil)
         {
-            ImGui.TextUnformatted($"Total: {FormatGil(_totalValue)} (Gil: {FormatGil(_gilValue)})");
+            ImGui.TextUnformatted($"Total: {FormatUtils.FormatGil(_totalValue)} (Gil: {FormatUtils.FormatGil(_gilValue)})");
         }
         else
         {
             var itemValue = _totalValue - _gilValue;
-            ImGui.TextUnformatted($"Item Value: {FormatGil(itemValue)}");
+            ImGui.TextUnformatted($"Item Value: {FormatUtils.FormatGil(itemValue)}");
         }
 
         // Refresh button
@@ -252,7 +265,7 @@ public class TopItemsTool : ToolComponent
         ImGui.SameLine();
         ImGui.TextUnformatted("Gil");
         ImGui.SameLine(ImGui.GetContentRegionAvail().X - 150);
-        ImGui.TextUnformatted($"{FormatGil(_gilValue)} ({percentage:F1}%)");
+        ImGui.TextUnformatted($"{FormatUtils.FormatGil(_gilValue)} ({percentage:F1}%)");
     }
 
     private void DrawItemRow(int rank, (int ItemId, long Quantity, long Value, string Name) item)
@@ -275,7 +288,7 @@ public class TopItemsTool : ToolComponent
 
         // Value and percentage (right-aligned)
         ImGui.SameLine(ImGui.GetContentRegionAvail().X - 120);
-        ImGui.TextUnformatted($"{FormatGil(item.Value)} ({percentage:F1}%)");
+        ImGui.TextUnformatted($"{FormatUtils.FormatGil(item.Value)} ({percentage:F1}%)");
     }
 
     private static Vector4 HsvToRgb(float h, float s, float v)
@@ -299,17 +312,6 @@ public class TopItemsTool : ToolComponent
         }
 
         return new Vector4(r, g, b, 1f);
-    }
-
-    private static string FormatGil(long amount)
-    {
-        if (amount >= 1_000_000_000)
-            return $"{amount / 1_000_000_000.0:F2}B";
-        if (amount >= 1_000_000)
-            return $"{amount / 1_000_000.0:F1}M";
-        if (amount >= 1_000)
-            return $"{amount / 1_000.0:F1}K";
-        return amount.ToString("N0");
     }
 
     public override bool HasSettings => true;
@@ -378,6 +380,64 @@ public class TopItemsTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Only show items worth at least this much gil.", "0");
+
+            // Item exclusion section
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Excluded Items");
+            ImGui.Separator();
+
+            // Item picker for adding exclusions
+            ImGui.TextDisabled("Add item to exclude:");
+            if (_itemPicker.Draw("##ExcludeItemPicker", marketableOnly: true, width: 250))
+            {
+                if (_itemPicker.SelectedItemId.HasValue)
+                {
+                    settings.ExcludedItemIds.Add(_itemPicker.SelectedItemId.Value);
+                    _configService.Save();
+                    _itemPicker.ClearSelection();
+                    _ = Task.Run(RefreshTopItemsAsync);
+                }
+            }
+            ShowSettingTooltip("Select an item to exclude from the top items list.", "");
+
+            // Show current exclusions
+            if (settings.ExcludedItemIds.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextDisabled($"Currently excluded ({settings.ExcludedItemIds.Count}):");
+                
+                uint? itemToRemove = null;
+                foreach (var itemId in settings.ExcludedItemIds)
+                {
+                    var itemName = _itemDataService.GetItemName(itemId);
+                    ImGui.BulletText(itemName);
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"X##{itemId}"))
+                    {
+                        itemToRemove = itemId;
+                    }
+                }
+
+                // Remove outside iteration to avoid collection modification
+                if (itemToRemove.HasValue)
+                {
+                    settings.ExcludedItemIds.Remove(itemToRemove.Value);
+                    _configService.Save();
+                    _ = Task.Run(RefreshTopItemsAsync);
+                }
+
+                // Clear all button
+                if (ImGui.Button("Clear All Exclusions"))
+                {
+                    settings.ExcludedItemIds.Clear();
+                    _configService.Save();
+                    _ = Task.Run(RefreshTopItemsAsync);
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("No items excluded");
+            }
 
             // Refresh button
             ImGui.Spacing();

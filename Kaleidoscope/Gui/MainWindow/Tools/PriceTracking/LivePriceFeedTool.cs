@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 
@@ -16,6 +17,10 @@ public class LivePriceFeedTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
+
+    // World selection widget for filtering
+    private WorldSelectionWidget? _worldSelectionWidget;
+    private bool _worldSelectionWidgetInitialized = false;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
 
@@ -84,11 +89,17 @@ public class LivePriceFeedTool : ToolComponent
         var settings = Settings;
         var entries = _webSocketService.LiveFeed.ToList();
 
-        // Apply filters
-        if (settings.FilterWorldId > 0)
+        // Apply world filter based on scope mode
+        if (settings.FilterScopeMode != PriceTrackingScopeMode.All)
         {
-            entries = entries.Where(e => e.WorldId == settings.FilterWorldId).ToList();
+            var effectiveWorldIds = GetEffectiveFilterWorldIds();
+            if (effectiveWorldIds.Count > 0)
+            {
+                entries = entries.Where(e => effectiveWorldIds.Contains(e.WorldId)).ToList();
+            }
         }
+
+        // Apply item filter
         if (settings.FilterItemId > 0)
         {
             entries = entries.Where(e => e.ItemId == settings.FilterItemId).ToList();
@@ -162,23 +173,14 @@ public class LivePriceFeedTool : ToolComponent
         // Format: [Time] [Event] ItemName x Qty @ Price (World)
         var timeStr = entry.ReceivedAt.ToLocalTime().ToString("HH:mm:ss");
         var hqStr = entry.IsHq ? " HQ" : "";
-        var priceStr = FormatGil(entry.PricePerUnit);
-        var totalStr = FormatGil(entry.Total);
+        var priceStr = FormatUtils.FormatGil(entry.PricePerUnit);
+        var totalStr = FormatUtils.FormatGil(entry.Total);
 
         ImGui.TextDisabled(timeStr);
         ImGui.SameLine();
         ImGui.TextColored(eventColor, eventIcon);
         ImGui.SameLine();
         ImGui.TextUnformatted($"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
-    }
-
-    private static string FormatGil(long amount)
-    {
-        if (amount >= 1_000_000)
-            return $"{amount / 1_000_000.0:F1}M";
-        if (amount >= 1_000)
-            return $"{amount / 1_000.0:F1}K";
-        return amount.ToString("N0");
     }
 
     public override bool HasSettings => true;
@@ -239,13 +241,8 @@ public class LivePriceFeedTool : ToolComponent
             ImGui.TextUnformatted("Filters");
             ImGui.Separator();
 
-            // World filter
-            var filterWorld = settings.FilterWorldId;
-            if (ImGui.InputInt("Filter by World ID (0 = all)", ref filterWorld))
-            {
-                settings.FilterWorldId = filterWorld;
-                _configService.Save();
-            }
+            // World filter using full WorldSelectionWidget
+            DrawWorldFilterWidget(settings);
 
             // Item filter
             var filterItem = settings.FilterItemId;
@@ -259,6 +256,150 @@ public class LivePriceFeedTool : ToolComponent
         {
             LogService.Debug($"[LivePriceFeedTool] Settings error: {ex.Message}");
         }
+    }
+
+    private void DrawWorldFilterWidget(LivePriceFeedSettings settings)
+    {
+        var worldData = _priceTrackingService.WorldData;
+
+        if (worldData == null || worldData.DataCenters.Count == 0)
+        {
+            ImGui.TextDisabled("World data not loaded...");
+            return;
+        }
+
+        // Create widget if needed
+        if (_worldSelectionWidget == null)
+        {
+            _worldSelectionWidget = new WorldSelectionWidget(worldData, "LiveFeedWorldFilter");
+            _worldSelectionWidget.Width = 250f;
+            _worldSelectionWidget.MaxPopupHeight = 250f;
+        }
+
+        // Initialize widget from settings on first draw
+        if (!_worldSelectionWidgetInitialized)
+        {
+            _worldSelectionWidget.InitializeFrom(
+                settings.FilterRegions,
+                settings.FilterDataCenters,
+                settings.FilterWorldIds);
+
+            // Set the mode based on current scope mode
+            _worldSelectionWidget.Mode = settings.FilterScopeMode switch
+            {
+                PriceTrackingScopeMode.ByRegion => WorldSelectionMode.Regions,
+                PriceTrackingScopeMode.ByDataCenter => WorldSelectionMode.DataCenters,
+                PriceTrackingScopeMode.ByWorld => WorldSelectionMode.Worlds,
+                _ => WorldSelectionMode.Worlds
+            };
+
+            _worldSelectionWidgetInitialized = true;
+        }
+
+        // "All" checkbox to disable filtering entirely
+        var filterAll = settings.FilterScopeMode == PriceTrackingScopeMode.All;
+        if (ImGui.Checkbox("Show all worlds", ref filterAll))
+        {
+            settings.FilterScopeMode = filterAll ? PriceTrackingScopeMode.All : PriceTrackingScopeMode.ByWorld;
+            _configService.Save();
+        }
+        ShowSettingTooltip("When enabled, shows events from all worlds without filtering.", "On");
+
+        // Only show world selection widget if not "All"
+        if (!filterAll)
+        {
+            if (_worldSelectionWidget.Draw("Filter Worlds##LiveFeedFilter"))
+            {
+                // Sync widget selections back to settings
+                settings.FilterRegions.Clear();
+                foreach (var r in _worldSelectionWidget.SelectedRegions)
+                    settings.FilterRegions.Add(r);
+
+                settings.FilterDataCenters.Clear();
+                foreach (var dc in _worldSelectionWidget.SelectedDataCenters)
+                    settings.FilterDataCenters.Add(dc);
+
+                settings.FilterWorldIds.Clear();
+                foreach (var w in _worldSelectionWidget.SelectedWorldIds)
+                    settings.FilterWorldIds.Add(w);
+
+                // Update scope mode based on widget mode
+                settings.FilterScopeMode = _worldSelectionWidget.Mode switch
+                {
+                    WorldSelectionMode.Regions => PriceTrackingScopeMode.ByRegion,
+                    WorldSelectionMode.DataCenters => PriceTrackingScopeMode.ByDataCenter,
+                    WorldSelectionMode.Worlds => PriceTrackingScopeMode.ByWorld,
+                    _ => PriceTrackingScopeMode.ByWorld
+                };
+
+                _configService.Save();
+            }
+
+            // Show warning if nothing selected
+            var hasSelection = _worldSelectionWidget.Mode switch
+            {
+                WorldSelectionMode.Regions => _worldSelectionWidget.SelectedRegions.Count > 0,
+                WorldSelectionMode.DataCenters => _worldSelectionWidget.SelectedDataCenters.Count > 0,
+                WorldSelectionMode.Worlds => _worldSelectionWidget.SelectedWorldIds.Count > 0,
+                _ => false
+            };
+
+            if (!hasSelection)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), "No worlds selected - no events will be shown!");
+            }
+        }
+
+        ImGui.Spacing();
+    }
+
+    /// <summary>
+    /// Gets the effective world IDs to filter by based on current settings.
+    /// </summary>
+    private HashSet<int> GetEffectiveFilterWorldIds()
+    {
+        var settings = Settings;
+        var worldData = _priceTrackingService.WorldData;
+
+        if (worldData == null) return new HashSet<int>();
+
+        var result = new HashSet<int>();
+
+        switch (settings.FilterScopeMode)
+        {
+            case PriceTrackingScopeMode.ByRegion:
+                foreach (var region in settings.FilterRegions)
+                {
+                    foreach (var dc in worldData.GetDataCentersForRegion(region))
+                    {
+                        if (dc.Worlds != null)
+                        {
+                            foreach (var wid in dc.Worlds)
+                                result.Add(wid);
+                        }
+                    }
+                }
+                break;
+
+            case PriceTrackingScopeMode.ByDataCenter:
+                foreach (var dcName in settings.FilterDataCenters)
+                {
+                    var dc = worldData.DataCenters.FirstOrDefault(d => d.Name == dcName);
+                    if (dc?.Worlds != null)
+                    {
+                        foreach (var wid in dc.Worlds)
+                            result.Add(wid);
+                    }
+                }
+                break;
+
+            case PriceTrackingScopeMode.ByWorld:
+                foreach (var wid in settings.FilterWorldIds)
+                    result.Add(wid);
+                break;
+        }
+
+        return result;
     }
 
     public override void Dispose()

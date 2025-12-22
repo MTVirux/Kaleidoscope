@@ -30,6 +30,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
+    private readonly IDataManager _dataManager;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -97,7 +98,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         InventoryChangeService inventoryChangeService,
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
-        ItemDataService itemDataService) 
+        ItemDataService itemDataService,
+        IDataManager dataManager) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -111,6 +113,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
+        _dataManager = dataManager;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -293,7 +296,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -304,7 +307,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService, _itemDataService);
+                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
                 if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
             }
         }

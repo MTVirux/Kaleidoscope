@@ -1713,6 +1713,40 @@ CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_hist
     }
 
     /// <summary>
+    /// Clears all price tracking data (item_prices, price_history, inventory_value_history).
+    /// </summary>
+    public bool ClearAllPriceData()
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return false;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+
+                cmd.CommandText = "DELETE FROM item_prices";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM price_history";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM inventory_value_history";
+                cmd.ExecuteNonQuery();
+
+                LogService.Info("[KaleidoscopeDb] Cleared all price tracking data");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] ClearAllPriceData failed: {ex.Message}", ex);
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Cleans up old price history data based on retention settings.
     /// </summary>
     public int CleanupOldPriceData(int retentionDays)

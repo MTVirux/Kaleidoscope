@@ -90,8 +90,17 @@ public class LivePriceFeedSettings
     /// <summary>Whether to auto-scroll to latest entry.</summary>
     public bool AutoScroll { get; set; } = true;
 
-    /// <summary>Filter by world ID (0 = all).</summary>
-    public int FilterWorldId { get; set; } = 0;
+    /// <summary>World filter scope mode (All, ByRegion, ByDataCenter, ByWorld).</summary>
+    public PriceTrackingScopeMode FilterScopeMode { get; set; } = PriceTrackingScopeMode.All;
+
+    /// <summary>Selected region names for filtering.</summary>
+    public HashSet<string> FilterRegions { get; set; } = new();
+
+    /// <summary>Selected data center names for filtering.</summary>
+    public HashSet<string> FilterDataCenters { get; set; } = new();
+
+    /// <summary>Selected world IDs for filtering.</summary>
+    public HashSet<int> FilterWorldIds { get; set; } = new();
 
     /// <summary>Filter by item ID (0 = all).</summary>
     public int FilterItemId { get; set; } = 0;
@@ -155,4 +164,7 @@ public class TopItemsSettings
 
     /// <summary>Whether to group by item (combining quantities) or show individual stacks.</summary>
     public bool GroupByItem { get; set; } = true;
+
+    /// <summary>Item IDs to exclude from the top items list.</summary>
+    public HashSet<uint> ExcludedItemIds { get; set; } = new();
 }

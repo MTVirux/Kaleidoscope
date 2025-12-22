@@ -667,6 +667,39 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
+    /// <summary>
+    /// Resets all Universalis data - clears price cache and database tables.
+    /// </summary>
+    public bool ResetAllData()
+    {
+        try
+        {
+            _log.Debug("[PriceTracking] Resetting all Universalis data...");
+
+            // Clear in-memory cache
+            _priceCache.Clear();
+
+            // Clear database tables
+            var result = DbService.ClearAllPriceData();
+
+            if (result)
+            {
+                _log.Info("[PriceTracking] All Universalis data has been reset");
+            }
+            else
+            {
+                _log.Warning("[PriceTracking] Failed to reset Universalis data");
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"[PriceTracking] Error resetting data: {ex.Message}");
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         _disposed = true;

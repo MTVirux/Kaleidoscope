@@ -25,6 +25,7 @@ public sealed class FullscreenWindow : Window
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
+    private readonly IDataManager _dataManager;
     private readonly WindowContentContainer _contentContainer;
 
     // Reference to WindowService for window coordination (set after construction due to circular dependency)
@@ -49,7 +50,8 @@ public sealed class FullscreenWindow : Window
         InventoryChangeService inventoryChangeService,
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
-        ItemDataService itemDataService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        ItemDataService itemDataService,
+        IDataManager dataManager) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
@@ -62,6 +64,7 @@ public sealed class FullscreenWindow : Window
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
+        _dataManager = dataManager;
         _priceTrackingService = priceTrackingService;
 
         // Create a content container similar to the main window so HUD tools
@@ -81,7 +84,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -108,7 +111,8 @@ public sealed class FullscreenWindow : Window
                 _inventoryChangeService,
                 _webSocketService,
                 _priceTrackingService,
-                _itemDataService);
+                _itemDataService,
+                _dataManager);
             if (gettingStarted != null)
                 _contentContainer.AddTool(gettingStarted);
         }
