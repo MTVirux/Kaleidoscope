@@ -191,7 +191,7 @@ public class CrystalTrackerComponent : IDisposable
     /// <summary>
     /// Samples current crystal values and persists them separately by tier.
     /// Always samples total (player + cached retainer) for consistent historical tracking.
-    /// Retainer crystals are also cached separately per-retainer when a retainer is open.
+    /// Retainer inventories are cached automatically by InventoryCacheService.
     /// </summary>
     private unsafe void SampleCrystals()
     {
@@ -200,29 +200,6 @@ public class CrystalTrackerComponent : IDisposable
 
         var im = GameStateService.InventoryManagerInstance();
         if (im == null) return;
-
-        // First, update retainer cache if a retainer is currently active
-        // This ensures the cache is up-to-date before we sample totals
-        if (GameStateService.IsRetainerActive())
-        {
-            var retainerId = GameStateService.GetActiveRetainerId();
-            var retainerName = GameStateService.GetActiveRetainerName();
-            
-            if (retainerId != 0)
-            {
-                for (int element = 0; element < 6; element++)
-                {
-                    for (int tier = 0; tier < 3; tier++)
-                    {
-                        uint itemId = (uint)(2 + element + tier * 6);
-                        long retainerCount = 0;
-                        try { retainerCount = GameStateService.GetActiveRetainerCrystalCount(im, itemId); } catch { }
-                        
-                        _samplerService.DbService.SaveRetainerCrystals(cid, retainerId, retainerName, element, tier, retainerCount);
-                    }
-                }
-            }
-        }
 
         // Sample ALL elements and tiers (not filtered by settings)
         // This ensures we always have complete data regardless of current filter settings
@@ -238,7 +215,7 @@ public class CrystalTrackerComponent : IDisposable
                 long playerCount = 0;
                 try { playerCount = im->GetInventoryItemCount(itemId); } catch { }
                 
-                // Get cached retainer crystal totals for this element/tier
+                // Get cached retainer crystal totals for this element/tier (from inventory cache)
                 long cachedRetainerTotal = _samplerService.DbService.GetTotalRetainerCrystals(cid, element, tier);
                 
                 // Save the combined total (player + all cached retainers) for historical tracking
