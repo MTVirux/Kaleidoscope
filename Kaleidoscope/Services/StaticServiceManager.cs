@@ -37,6 +37,8 @@ public static class StaticServiceManager
             .AddSingleton<LayoutEditingService>()
             .AddSingleton<AutoRetainerIpcService>()
             .AddSingleton<UniversalisService>()
+            .AddSingleton<UniversalisWebSocketService>()
+            .AddSingleton<PriceTrackingService>()
             .AddSingleton<TrackedDataRegistry>()
             .AddSingleton<InventoryChangeService>()
             .AddSingleton<SamplerService>()

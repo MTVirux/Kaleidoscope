@@ -27,6 +27,8 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly LayoutEditingService _layoutEditingService;
     private readonly TrackedDataRegistry _trackedDataRegistry;
     private readonly InventoryChangeService _inventoryChangeService;
+    private readonly UniversalisWebSocketService _webSocketService;
+    private readonly PriceTrackingService _priceTrackingService;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -91,7 +93,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         StateService stateService,
         LayoutEditingService layoutEditingService,
         TrackedDataRegistry trackedDataRegistry,
-        InventoryChangeService inventoryChangeService) 
+        InventoryChangeService inventoryChangeService,
+        UniversalisWebSocketService webSocketService,
+        PriceTrackingService priceTrackingService) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -102,6 +106,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         _layoutEditingService = layoutEditingService;
         _trackedDataRegistry = trackedDataRegistry;
         _inventoryChangeService = inventoryChangeService;
+        _webSocketService = webSocketService;
+        _priceTrackingService = priceTrackingService;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -284,7 +290,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -295,7 +301,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry);
+                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService);
                 if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
             }
         }

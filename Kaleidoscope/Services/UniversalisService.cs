@@ -11,19 +11,30 @@ namespace Kaleidoscope.Services;
 /// Provides access to item prices, listings, sale history, and market statistics.
 /// </summary>
 /// <remarks>
-/// Rate limits: 25 req/s (50 req/s burst), max 8 simultaneous connections per IP.
+/// Rate limits: Limited to 10 req/s to be conservative with Universalis API.
 /// See: https://docs.universalis.app
 /// </remarks>
 public sealed class UniversalisService : IService, IDisposable
 {
-    private const string BaseUrl = "https://universalis.app/api/v2";
+    private const string BaseUrl = "https://universalis.app/api/v2/";
     private const string UserAgent = "Kaleidoscope-FFXIV-Plugin";
+    private const int MaxRequestsPerSecond = 10;
     
     private readonly HttpClient _httpClient;
     private readonly IPluginLog _log;
     private readonly IObjectTable _objectTable;
     private readonly ConfigurationService _configService;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly SemaphoreSlim _rateLimitSemaphore = new(MaxRequestsPerSecond, MaxRequestsPerSecond);
+    private readonly Queue<DateTime> _requestTimestamps = new();
+    private readonly object _rateLimitLock = new();
+
+    // Cached static data - only fetched once per plugin session
+    private List<int>? _cachedMarketableItems;
+    private List<UniversalisWorld>? _cachedWorlds;
+    private List<UniversalisDataCenter>? _cachedDataCenters;
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private volatile bool _disposed;
 
     private Configuration Config => _configService.Config;
 
@@ -48,7 +59,51 @@ public sealed class UniversalisService : IService, IDisposable
             PropertyNameCaseInsensitive = true
         };
 
-        _log.Debug("UniversalisService initialized");
+        _log.Debug($"UniversalisService initialized with rate limit of {MaxRequestsPerSecond} req/s");
+    }
+
+    /// <summary>
+    /// Waits for rate limit before making a request. Uses a sliding window approach.
+    /// </summary>
+    private async Task WaitForRateLimitAsync(CancellationToken cancellationToken)
+    {
+        // Clean up old timestamps and check if we need to wait
+        TimeSpan waitTime;
+        lock (_rateLimitLock)
+        {
+            var now = DateTime.UtcNow;
+            var windowStart = now.AddSeconds(-1);
+            
+            // Remove timestamps older than 1 second
+            while (_requestTimestamps.Count > 0 && _requestTimestamps.Peek() < windowStart)
+            {
+                _requestTimestamps.Dequeue();
+            }
+            
+            // If we're at the limit, calculate wait time
+            if (_requestTimestamps.Count >= MaxRequestsPerSecond)
+            {
+                var oldestInWindow = _requestTimestamps.Peek();
+                waitTime = oldestInWindow.AddSeconds(1) - now;
+            }
+            else
+            {
+                waitTime = TimeSpan.Zero;
+            }
+        }
+        
+        // Wait outside the lock if needed
+        if (waitTime > TimeSpan.Zero)
+        {
+            _log.Debug($"UniversalisService: Rate limiting, waiting {waitTime.TotalMilliseconds:F0}ms");
+            await Task.Delay(waitTime, cancellationToken);
+        }
+        
+        // Record this request timestamp
+        lock (_rateLimitLock)
+        {
+            _requestTimestamps.Enqueue(DateTime.UtcNow);
+        }
     }
 
     /// <summary>
@@ -219,7 +274,7 @@ public sealed class UniversalisService : IService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var queryParams = BuildQueryParams(listings, entries, hqOnly);
-        var url = $"/{Uri.EscapeDataString(worldOrDc)}/{itemId}{queryParams}";
+        var url = $"{Uri.EscapeDataString(worldOrDc)}/{itemId}{queryParams}";
 
         return await GetAsync<MarketBoardData>(url, cancellationToken);
     }
@@ -252,7 +307,7 @@ public sealed class UniversalisService : IService, IDisposable
 
         var queryParams = BuildQueryParams(listings, entries, hqOnly);
         var itemIdsStr = string.Join(",", itemIdList);
-        var url = $"/{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}{queryParams}";
+        var url = $"{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}{queryParams}";
 
         return await GetAsync<MarketBoardMultiData>(url, cancellationToken);
     }
@@ -270,7 +325,7 @@ public sealed class UniversalisService : IService, IDisposable
         uint itemId,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/aggregated/{Uri.EscapeDataString(worldOrDc)}/{itemId}";
+        var url = $"aggregated/{Uri.EscapeDataString(worldOrDc)}/{itemId}";
         return await GetAsync<AggregatedMarketData>(url, cancellationToken);
     }
 
@@ -295,7 +350,7 @@ public sealed class UniversalisService : IService, IDisposable
         }
 
         var itemIdsStr = string.Join(",", itemIdList);
-        var url = $"/aggregated/{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}";
+        var url = $"aggregated/{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}";
         return await GetAsync<AggregatedMarketData>(url, cancellationToken);
     }
 
@@ -314,7 +369,7 @@ public sealed class UniversalisService : IService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var queryParams = entriesToReturn.HasValue ? $"?entriesToReturn={entriesToReturn.Value}" : "";
-        var url = $"/history/{Uri.EscapeDataString(worldOrDc)}/{itemId}{queryParams}";
+        var url = $"history/{Uri.EscapeDataString(worldOrDc)}/{itemId}{queryParams}";
         return await GetAsync<MarketHistory>(url, cancellationToken);
     }
 
@@ -328,18 +383,40 @@ public sealed class UniversalisService : IService, IDisposable
         string world,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/tax-rates?world={Uri.EscapeDataString(world)}";
+        var url = $"tax-rates?world={Uri.EscapeDataString(world)}";
         return await GetAsync<TaxRates>(url, cancellationToken);
     }
 
     /// <summary>
     /// Gets the list of all marketable item IDs.
+    /// This data is cached for the entire plugin session.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of marketable item IDs.</returns>
     public async Task<List<int>?> GetMarketableItemsAsync(CancellationToken cancellationToken = default)
     {
-        return await GetAsync<List<int>>("/marketable", cancellationToken);
+        if (_disposed)
+            return _cachedMarketableItems;
+        
+        if (_cachedMarketableItems != null)
+            return _cachedMarketableItems;
+
+        await _cacheLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_cachedMarketableItems != null)
+                return _cachedMarketableItems;
+
+            _log.Debug("UniversalisService: Fetching and caching marketable items");
+            _cachedMarketableItems = await GetAsync<List<int>>("marketable", cancellationToken);
+            return _cachedMarketableItems;
+        }
+        finally
+        {
+            try { _cacheLock.Release(); }
+            catch (ObjectDisposedException) { /* Ignore - disposed during operation */ }
+        }
     }
 
     /// <summary>
@@ -389,6 +466,70 @@ public sealed class UniversalisService : IService, IDisposable
         return Math.Min(nq, hq);
     }
 
+    /// <summary>
+    /// Gets all available worlds from Universalis.
+    /// This data is cached for the entire plugin session.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of worlds, or null if failed.</returns>
+    public async Task<List<UniversalisWorld>?> GetWorldsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            return _cachedWorlds;
+        
+        if (_cachedWorlds != null)
+            return _cachedWorlds;
+
+        await _cacheLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_cachedWorlds != null)
+                return _cachedWorlds;
+
+            _log.Debug("UniversalisService: Fetching and caching worlds");
+            _cachedWorlds = await GetAsync<List<UniversalisWorld>>("worlds", cancellationToken);
+            return _cachedWorlds;
+        }
+        finally
+        {
+            try { _cacheLock.Release(); }
+            catch (ObjectDisposedException) { /* Ignore - disposed during operation */ }
+        }
+    }
+
+    /// <summary>
+    /// Gets all available data centers from Universalis.
+    /// This data is cached for the entire plugin session.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of data centers, or null if failed.</returns>
+    public async Task<List<UniversalisDataCenter>?> GetDataCentersAsync(CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            return _cachedDataCenters;
+        
+        if (_cachedDataCenters != null)
+            return _cachedDataCenters;
+
+        await _cacheLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_cachedDataCenters != null)
+                return _cachedDataCenters;
+
+            _log.Debug("UniversalisService: Fetching and caching data centers");
+            _cachedDataCenters = await GetAsync<List<UniversalisDataCenter>>("data-centers", cancellationToken);
+            return _cachedDataCenters;
+        }
+        finally
+        {
+            try { _cacheLock.Release(); }
+            catch (ObjectDisposedException) { /* Ignore - disposed during operation */ }
+        }
+    }
+
     private static string BuildQueryParams(int? listings, int? entries, bool? hqOnly)
     {
         var queryParams = new List<string>();
@@ -400,8 +541,14 @@ public sealed class UniversalisService : IService, IDisposable
 
     private async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken) where T : class
     {
+        if (_disposed)
+            return null;
+        
         try
         {
+            // Wait for rate limiter before making request
+            await WaitForRateLimitAsync(cancellationToken);
+
             _log.Debug($"UniversalisService: GET {url}");
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
@@ -440,7 +587,17 @@ public sealed class UniversalisService : IService, IDisposable
 
     public void Dispose()
     {
-        _httpClient.Dispose();
+        _disposed = true;
+        
+        try { _rateLimitSemaphore.Dispose(); }
+        catch (Exception) { /* Ignore disposal errors */ }
+        
+        try { _cacheLock.Dispose(); }
+        catch (Exception) { /* Ignore disposal errors */ }
+        
+        try { _httpClient.Dispose(); }
+        catch (Exception) { /* Ignore disposal errors */ }
+        
         _log.Debug("UniversalisService disposed");
     }
 }

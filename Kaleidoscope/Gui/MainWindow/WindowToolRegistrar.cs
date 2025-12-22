@@ -3,6 +3,7 @@ using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
+using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 
@@ -18,6 +19,9 @@ public static class WindowToolRegistrar
         public const string GilTicker = "GilTicker";
         public const string GettingStarted = "GettingStarted";
         public const string CrystalTracker = "CrystalTracker";
+        public const string LivePriceFeed = "LivePriceFeed";
+        public const string InventoryValue = "InventoryValue";
+        public const string TopItems = "TopItems";
         
         // Data tracker tool IDs are dynamically generated as "DataTracker_{TrackedDataType}"
         public static string DataTracker(TrackedDataType type) => $"DataTracker_{type}";
@@ -44,7 +48,9 @@ public static class WindowToolRegistrar
         SamplerService samplerService, 
         ConfigurationService configService,
         InventoryChangeService? inventoryChangeService = null,
-        TrackedDataRegistry? registry = null)
+        TrackedDataRegistry? registry = null,
+        UniversalisWebSocketService? webSocketService = null,
+        PriceTrackingService? priceTrackingService = null)
     {
         if (container == null) return;
 
@@ -83,16 +89,41 @@ public static class WindowToolRegistrar
             container.RegisterTool(
                 ToolIds.GilTicker,
                 "Gil Ticker",
-                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService, registry),
+                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
                 "Scrolling ticker of character gil values",
                 "Ticker");
 
             container.RegisterTool(
                 ToolIds.GettingStarted,
                 "Getting Started",
-                pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService, registry),
+                pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
                 "Instructions for new users",
                 "Help");
+
+            // Register price tracking tools
+            if (webSocketService != null && priceTrackingService != null)
+            {
+                container.RegisterTool(
+                    ToolIds.LivePriceFeed,
+                    "Live Price Feed",
+                    pos => CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService),
+                    "Real-time feed of Universalis market updates from the WebSocket",
+                    "Price Tracking");
+
+                container.RegisterTool(
+                    ToolIds.InventoryValue,
+                    "Inventory Value",
+                    pos => CreateInventoryValueTool(pos, priceTrackingService, samplerService, configService),
+                    "Tracks the liquid value of character inventories over time",
+                    "Price Tracking");
+
+                container.RegisterTool(
+                    ToolIds.TopItems,
+                    "Top Items",
+                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService),
+                    "Shows the most valuable items in character inventories",
+                    "Price Tracking");
+            }
         }
         catch (Exception ex)
         {
@@ -146,6 +177,57 @@ public static class WindowToolRegistrar
         }
     }
 
+    private static ToolComponent? CreateLivePriceFeedTool(
+        Vector2 pos,
+        UniversalisWebSocketService webSocketService,
+        PriceTrackingService priceTrackingService,
+        ConfigurationService configService)
+    {
+        try
+        {
+            return new LivePriceFeedTool(webSocketService, priceTrackingService, configService) { Position = pos };
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create LivePriceFeedTool", ex);
+            return null;
+        }
+    }
+
+    private static ToolComponent? CreateInventoryValueTool(
+        Vector2 pos,
+        PriceTrackingService priceTrackingService,
+        SamplerService samplerService,
+        ConfigurationService configService)
+    {
+        try
+        {
+            return new InventoryValueTool(priceTrackingService, samplerService, configService) { Position = pos };
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create InventoryValueTool", ex);
+            return null;
+        }
+    }
+
+    private static ToolComponent? CreateTopItemsTool(
+        Vector2 pos,
+        PriceTrackingService priceTrackingService,
+        SamplerService samplerService,
+        ConfigurationService configService)
+    {
+        try
+        {
+            return new TopItemsTool(priceTrackingService, samplerService, configService) { Position = pos };
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create TopItemsTool", ex);
+            return null;
+        }
+    }
+
     public static ToolComponent? CreateToolInstance(
         string id, 
         Vector2 pos, 
@@ -153,7 +235,9 @@ public static class WindowToolRegistrar
         SamplerService samplerService, 
         ConfigurationService configService,
         TrackedDataRegistry? registry = null,
-        InventoryChangeService? inventoryChangeService = null)
+        InventoryChangeService? inventoryChangeService = null,
+        UniversalisWebSocketService? webSocketService = null,
+        PriceTrackingService? priceTrackingService = null)
     {
         try
         {
@@ -180,6 +264,21 @@ public static class WindowToolRegistrar
 
                 case ToolIds.GettingStarted:
                     return new GettingStartedTool { Position = pos };
+
+                case ToolIds.LivePriceFeed:
+                    if (webSocketService != null && priceTrackingService != null)
+                        return CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService);
+                    return null;
+
+                case ToolIds.InventoryValue:
+                    if (priceTrackingService != null)
+                        return CreateInventoryValueTool(pos, priceTrackingService, samplerService, configService);
+                    return null;
+
+                case ToolIds.TopItems:
+                    if (priceTrackingService != null)
+                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService);
+                    return null;
 
                 default:
                     return null;

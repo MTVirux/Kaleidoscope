@@ -1,5 +1,6 @@
 using Dalamud.Configuration;
 using Kaleidoscope.Models;
+using Kaleidoscope.Models.Universalis;
 
 namespace Kaleidoscope;
 
@@ -144,6 +145,27 @@ public class Configuration : IPluginConfiguration
 
     // CrystalTracker settings
     public CrystalTrackerSettings CrystalTracker { get; set; } = new();
+
+    // Price Tracking settings
+    /// <summary>
+    /// Settings for the Universalis price tracking feature.
+    /// </summary>
+    public PriceTrackingSettings PriceTracking { get; set; } = new();
+
+    /// <summary>
+    /// Settings for the Live Price Feed tool.
+    /// </summary>
+    public LivePriceFeedSettings LivePriceFeed { get; set; } = new();
+
+    /// <summary>
+    /// Settings for the Inventory Value tool.
+    /// </summary>
+    public InventoryValueSettings InventoryValue { get; set; } = new();
+
+    /// <summary>
+    /// Settings for the Top Items tool.
+    /// </summary>
+    public TopItemsSettings TopItems { get; set; } = new();
 }
 
 /// <summary>

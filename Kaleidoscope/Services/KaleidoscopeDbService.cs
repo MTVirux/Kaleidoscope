@@ -120,6 +120,46 @@ CREATE INDEX IF NOT EXISTS idx_inventory_cache_char ON inventory_cache(character
 CREATE INDEX IF NOT EXISTS idx_inventory_cache_lookup ON inventory_cache(character_id, source_type, retainer_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_cache ON inventory_items(cache_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_item ON inventory_items(item_id);
+
+-- Price tracking tables
+CREATE TABLE IF NOT EXISTS item_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    world_id INTEGER NOT NULL,
+    min_price_nq INTEGER NOT NULL DEFAULT 0,
+    min_price_hq INTEGER NOT NULL DEFAULT 0,
+    avg_price_nq INTEGER NOT NULL DEFAULT 0,
+    avg_price_hq INTEGER NOT NULL DEFAULT 0,
+    sale_velocity REAL NOT NULL DEFAULT 0,
+    last_updated INTEGER NOT NULL,
+    UNIQUE (item_id, world_id)
+);
+
+CREATE TABLE IF NOT EXISTS price_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    world_id INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    min_price_nq INTEGER NOT NULL DEFAULT 0,
+    min_price_hq INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS inventory_value_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_id INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    total_value INTEGER NOT NULL DEFAULT 0,
+    gil_value INTEGER NOT NULL DEFAULT 0,
+    item_value INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_prices_item ON item_prices(item_id);
+CREATE INDEX IF NOT EXISTS idx_item_prices_world ON item_prices(world_id);
+CREATE INDEX IF NOT EXISTS idx_item_prices_lookup ON item_prices(item_id, world_id);
+CREATE INDEX IF NOT EXISTS idx_price_history_item_world ON price_history(item_id, world_id);
+CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_char ON inventory_value_history(character_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_history(timestamp);
 ";
         cmd.ExecuteNonQuery();
     }
@@ -1319,6 +1359,470 @@ CREATE INDEX IF NOT EXISTS idx_inventory_items_item ON inventory_items(item_id);
         }
 
         return result;
+    }
+
+    #endregion
+
+    #region Price Tracking Operations
+
+    /// <summary>
+    /// Saves or updates the current price for an item on a world.
+    /// </summary>
+    public void SaveItemPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, int avgPriceNq = 0, int avgPriceHq = 0, float saleVelocity = 0)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, sale_velocity, last_updated)
+                    VALUES ($iid, $wid, $mnq, $mhq, $anq, $ahq, $sv, $time)
+                    ON CONFLICT(item_id, world_id) DO UPDATE SET
+                        min_price_nq = excluded.min_price_nq,
+                        min_price_hq = excluded.min_price_hq,
+                        avg_price_nq = excluded.avg_price_nq,
+                        avg_price_hq = excluded.avg_price_hq,
+                        sale_velocity = excluded.sale_velocity,
+                        last_updated = excluded.last_updated";
+                cmd.Parameters.AddWithValue("$iid", itemId);
+                cmd.Parameters.AddWithValue("$wid", worldId);
+                cmd.Parameters.AddWithValue("$mnq", minPriceNq);
+                cmd.Parameters.AddWithValue("$mhq", minPriceHq);
+                cmd.Parameters.AddWithValue("$anq", avgPriceNq);
+                cmd.Parameters.AddWithValue("$ahq", avgPriceHq);
+                cmd.Parameters.AddWithValue("$sv", saleVelocity);
+                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SaveItemPrice failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Saves a price history point for an item.
+    /// </summary>
+    public void SavePriceHistory(int itemId, int worldId, int minPriceNq, int minPriceHq)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO price_history (item_id, world_id, timestamp, min_price_nq, min_price_hq)
+                    VALUES ($iid, $wid, $time, $mnq, $mhq)";
+                cmd.Parameters.AddWithValue("$iid", itemId);
+                cmd.Parameters.AddWithValue("$wid", worldId);
+                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                cmd.Parameters.AddWithValue("$mnq", minPriceNq);
+                cmd.Parameters.AddWithValue("$mhq", minPriceHq);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SavePriceHistory failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the current price for an item on a world.
+    /// Returns (minPriceNq, minPriceHq, lastUpdated) or null if not found.
+    /// </summary>
+    public (int MinPriceNq, int MinPriceHq, int AvgPriceNq, int AvgPriceHq, float SaleVelocity, DateTime LastUpdated)? GetItemPrice(int itemId, int worldId)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return null;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, sale_velocity, last_updated
+                    FROM item_prices
+                    WHERE item_id = $iid AND world_id = $wid";
+                cmd.Parameters.AddWithValue("$iid", itemId);
+                cmd.Parameters.AddWithValue("$wid", worldId);
+
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    return (
+                        reader.GetInt32(0),
+                        reader.GetInt32(1),
+                        reader.GetInt32(2),
+                        reader.GetInt32(3),
+                        reader.GetFloat(4),
+                        new DateTime(reader.GetInt64(5), DateTimeKind.Utc)
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetItemPrice failed: {ex.Message}", ex);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the minimum price for an item across all tracked worlds.
+    /// </summary>
+    public int? GetMinPrice(int itemId, bool preferHq = false)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return null;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                if (preferHq)
+                {
+                    cmd.CommandText = @"
+                        SELECT CASE 
+                            WHEN MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END) IS NOT NULL 
+                            THEN MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END)
+                            ELSE MIN(CASE WHEN min_price_nq > 0 THEN min_price_nq END)
+                        END
+                        FROM item_prices
+                        WHERE item_id = $iid";
+                }
+                else
+                {
+                    cmd.CommandText = @"
+                        SELECT MIN(CASE WHEN min_price_nq > 0 THEN min_price_nq WHEN min_price_hq > 0 THEN min_price_hq END)
+                        FROM item_prices
+                        WHERE item_id = $iid";
+                }
+                cmd.Parameters.AddWithValue("$iid", itemId);
+
+                var result = cmd.ExecuteScalar();
+                if (result != null && result != DBNull.Value)
+                {
+                    return Convert.ToInt32(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetMinPrice failed: {ex.Message}", ex);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all item prices for multiple items at once.
+    /// </summary>
+    public Dictionary<int, (int MinPriceNq, int MinPriceHq)> GetItemPricesBatch(IEnumerable<int> itemIds, int? worldId = null)
+    {
+        var result = new Dictionary<int, (int, int)>();
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                var itemIdList = itemIds.ToList();
+                if (itemIdList.Count == 0) return result;
+
+                using var cmd = _connection.CreateCommand();
+                
+                if (worldId.HasValue)
+                {
+                    cmd.CommandText = $@"
+                        SELECT item_id, min_price_nq, min_price_hq
+                        FROM item_prices
+                        WHERE item_id IN ({string.Join(",", itemIdList)}) AND world_id = $wid";
+                    cmd.Parameters.AddWithValue("$wid", worldId.Value);
+                }
+                else
+                {
+                    // Get minimum across all worlds
+                    cmd.CommandText = $@"
+                        SELECT item_id, 
+                               MIN(CASE WHEN min_price_nq > 0 THEN min_price_nq END) as min_nq,
+                               MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END) as min_hq
+                        FROM item_prices
+                        WHERE item_id IN ({string.Join(",", itemIdList)})
+                        GROUP BY item_id";
+                }
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var iid = reader.GetInt32(0);
+                    var mnq = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                    var mhq = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                    result[iid] = (mnq, mhq);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetItemPricesBatch failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Saves inventory value history for a character.
+    /// </summary>
+    public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
+                    VALUES ($cid, $time, $total, $gil, $item)";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                cmd.Parameters.AddWithValue("$total", totalValue);
+                cmd.Parameters.AddWithValue("$gil", gilValue);
+                cmd.Parameters.AddWithValue("$item", itemValue);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SaveInventoryValueHistory failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets inventory value history for a character.
+    /// </summary>
+    public List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetInventoryValueHistory(ulong characterId, DateTime? since = null)
+    {
+        var result = new List<(DateTime, long, long, long)>();
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                var sql = @"
+                    SELECT timestamp, total_value, gil_value, item_value
+                    FROM inventory_value_history
+                    WHERE character_id = $cid";
+                
+                if (since.HasValue)
+                {
+                    sql += " AND timestamp >= $since";
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                
+                sql += " ORDER BY timestamp ASC";
+                cmd.CommandText = sql;
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    result.Add((
+                        new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
+                        reader.GetInt64(1),
+                        reader.GetInt64(2),
+                        reader.GetInt64(3)
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetInventoryValueHistory failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets inventory value history for all characters.
+    /// </summary>
+    public List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetAllInventoryValueHistory(DateTime? since = null)
+    {
+        var result = new List<(ulong, DateTime, long, long, long)>();
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                var sql = @"
+                    SELECT character_id, timestamp, total_value, gil_value, item_value
+                    FROM inventory_value_history";
+                
+                if (since.HasValue)
+                {
+                    sql += " WHERE timestamp >= $since";
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                
+                sql += " ORDER BY timestamp ASC";
+                cmd.CommandText = sql;
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    result.Add((
+                        (ulong)reader.GetInt64(0),
+                        new DateTime(reader.GetInt64(1), DateTimeKind.Utc),
+                        reader.GetInt64(2),
+                        reader.GetInt64(3),
+                        reader.GetInt64(4)
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetAllInventoryValueHistory failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Cleans up old price history data based on retention settings.
+    /// </summary>
+    public int CleanupOldPriceData(int retentionDays)
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                var cutoffTicks = DateTime.UtcNow.AddDays(-retentionDays).Ticks;
+
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
+                cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
+                var deleted = cmd.ExecuteNonQuery();
+
+                // Also clean inventory value history
+                cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
+                deleted += cmd.ExecuteNonQuery();
+
+                if (deleted > 0)
+                {
+                    LogService.Debug($"[KaleidoscopeDb] Cleaned up {deleted} old price/value history records");
+                }
+
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] CleanupOldPriceData failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the approximate size of price data in bytes.
+    /// </summary>
+    public long GetPriceDataSize()
+    {
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT 
+                        (SELECT COUNT(*) FROM item_prices) * 50 +
+                        (SELECT COUNT(*) FROM price_history) * 30 +
+                        (SELECT COUNT(*) FROM inventory_value_history) * 40";
+                
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetPriceDataSize failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cleans up price data to fit within size limit.
+    /// </summary>
+    public int CleanupPriceDataBySize(long maxSizeBytes)
+    {
+        var currentSize = GetPriceDataSize();
+        if (currentSize <= maxSizeBytes) return 0;
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                // Delete oldest records until we're under the limit
+                var totalDeleted = 0;
+                while (currentSize > maxSizeBytes)
+                {
+                    using var cmd = _connection.CreateCommand();
+                    cmd.CommandText = @"
+                        DELETE FROM price_history 
+                        WHERE id IN (SELECT id FROM price_history ORDER BY timestamp ASC LIMIT 1000)";
+                    var deleted = cmd.ExecuteNonQuery();
+                    totalDeleted += deleted;
+
+                    if (deleted == 0) break;
+                    currentSize = GetPriceDataSize();
+                }
+
+                if (totalDeleted > 0)
+                {
+                    LogService.Debug($"[KaleidoscopeDb] Cleaned up {totalDeleted} price history records to fit size limit");
+                }
+
+                return totalDeleted;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] CleanupPriceDataBySize failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
     }
 
     #endregion
