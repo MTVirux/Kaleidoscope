@@ -2,15 +2,49 @@ using System.Globalization;
 using Dalamud.Bindings.ImPlot;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using ImGuiCol = Dalamud.Bindings.ImGui.ImGuiCol;
 
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
 /// A reusable graph widget for displaying numerical sample data.
-/// Renders using ImPlot for advanced graphing capabilities.
+/// Renders using ImPlot with a trading platform (Binance-style) aesthetic.
 /// </summary>
 public class SampleGraphWidget
 {
+    // Trading platform color palette - vibrant and bright
+    private static class ChartColors
+    {
+        // Background colors
+        public static readonly Vector4 PlotBackground = new(0.08f, 0.09f, 0.10f, 1f);
+        public static readonly Vector4 FrameBackground = new(0.06f, 0.07f, 0.08f, 1f);
+        
+        // Grid colors
+        public static readonly Vector4 GridLine = new(0.18f, 0.20f, 0.22f, 0.6f);
+        public static readonly Vector4 AxisLine = new(0.25f, 0.28f, 0.30f, 1f);
+        
+        // Price movement colors - bright and vibrant
+        public static readonly Vector4 Bullish = new(0.20f, 0.90f, 0.40f, 1f);      // Bright Green
+        public static readonly Vector4 BullishFillTop = new(0.20f, 0.90f, 0.40f, 0.60f);    // Same color, vibrant fill
+        public static readonly Vector4 BullishFillBottom = new(0.20f, 0.90f, 0.40f, 0.05f); // Same color, very transparent
+        public static readonly Vector4 Bearish = new(1.0f, 0.25f, 0.25f, 1f);       // Bright Red
+        public static readonly Vector4 BearishFillTop = new(1.0f, 0.25f, 0.25f, 0.60f);     // Same color, vibrant fill
+        public static readonly Vector4 BearishFillBottom = new(1.0f, 0.25f, 0.25f, 0.05f);  // Same color, very transparent
+        public static readonly Vector4 Neutral = new(1.0f, 0.85f, 0.0f, 1f);        // Bright Yellow
+        
+        // Crosshair and tooltip
+        public static readonly Vector4 Crosshair = new(0.55f, 0.58f, 0.62f, 0.8f);
+        public static readonly Vector4 TooltipBackground = new(0.12f, 0.14f, 0.16f, 0.95f);
+        public static readonly Vector4 TooltipBorder = new(0.30f, 0.32f, 0.35f, 1f);
+        
+        // Current price line
+        public static readonly Vector4 CurrentPriceLine = new(1.0f, 0.85f, 0.0f, 0.9f);
+        
+        // Text colors
+        public static readonly Vector4 TextPrimary = new(0.90f, 0.92f, 0.94f, 1f);
+        public static readonly Vector4 TextSecondary = new(0.55f, 0.58f, 0.62f, 1f);
+    }
+
     /// <summary>
     /// Configuration options for the graph.
     /// </summary>
@@ -80,6 +114,21 @@ public class SampleGraphWidget
         /// Whether to show X-axis time labels with timestamps.
         /// </summary>
         public bool ShowXAxisTimestamps { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to show crosshair lines on hover (trading platform style).
+        /// </summary>
+        public bool ShowCrosshair { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to show horizontal grid lines for price levels.
+        /// </summary>
+        public bool ShowGridLines { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to show the current price horizontal line.
+        /// </summary>
+        public bool ShowCurrentPriceLine { get; set; } = true;
     }
 
     private readonly GraphConfig _config;
@@ -150,6 +199,198 @@ public class SampleGraphWidget
             _ => $"{value:0.##}"
         };
     }
+    
+    /// <summary>
+    /// Applies trading platform style colors to the plot.
+    /// Must be called before BeginPlot.
+    /// </summary>
+    private static void PushChartStyle()
+    {
+        // Plot frame and background - using correct Dalamud ImPlot enum names
+        ImPlot.PushStyleColor(ImPlotCol.Bg, ChartColors.PlotBackground);
+        ImPlot.PushStyleColor(ImPlotCol.FrameBg, ChartColors.FrameBackground);
+        
+        // Line styling - bullish green by default
+        ImPlot.PushStyleColor(ImPlotCol.Line, ChartColors.Bullish);
+        ImPlot.PushStyleColor(ImPlotCol.Fill, ChartColors.BullishFillTop);
+        
+        // Crosshair
+        ImPlot.PushStyleColor(ImPlotCol.Crosshairs, ChartColors.Crosshair);
+        
+        // Style variables
+        ImPlot.PushStyleVar(ImPlotStyleVar.LineWeight, 2f);
+        ImPlot.PushStyleVar(ImPlotStyleVar.FillAlpha, 0.35f);
+    }
+    
+    /// <summary>
+    /// Pops the trading platform style colors.
+    /// Must be called after EndPlot.
+    /// </summary>
+    private static void PopChartStyle()
+    {
+        ImPlot.PopStyleVar(2);
+        ImPlot.PopStyleColor(5);
+    }
+    
+    /// <summary>
+    /// Draws a horizontal price level line with label (trading platform style).
+    /// </summary>
+    private static void DrawPriceLine(double yValue, string label, Vector4 color, float thickness = 1f, bool dashed = false)
+    {
+        var drawList = ImPlot.GetPlotDrawList();
+        var plotLimits = ImPlot.GetPlotLimits();
+        
+        // Get pixel positions
+        var p1 = ImPlot.PlotToPixels(plotLimits.X.Min, yValue);
+        var p2 = ImPlot.PlotToPixels(plotLimits.X.Max, yValue);
+        
+        var colorU32 = ImGui.GetColorU32(color);
+        
+        if (dashed)
+        {
+            // Draw dashed line
+            const float dashLength = 6f;
+            const float gapLength = 4f;
+            var totalLength = p2.X - p1.X;
+            var x = p1.X;
+            while (x < p2.X)
+            {
+                var endX = Math.Min(x + dashLength, p2.X);
+                drawList.AddLine(new Vector2(x, p1.Y), new Vector2(endX, p1.Y), colorU32, thickness);
+                x += dashLength + gapLength;
+            }
+        }
+        else
+        {
+            drawList.AddLine(p1, p2, colorU32, thickness);
+        }
+        
+        // Draw price label on the right
+        if (!string.IsNullOrEmpty(label))
+        {
+            var labelSize = ImGui.CalcTextSize(label);
+            var labelPos = new Vector2(p2.X - labelSize.X - 4, p2.Y - labelSize.Y / 2);
+            
+            // Background for label
+            var bgMin = new Vector2(labelPos.X - 4, labelPos.Y - 2);
+            var bgMax = new Vector2(p2.X, labelPos.Y + labelSize.Y + 2);
+            drawList.AddRectFilled(bgMin, bgMax, ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 0.85f)), 2f);
+            
+            // Label text
+            drawList.AddText(labelPos, ImGui.GetColorU32(new Vector4(0.1f, 0.1f, 0.1f, 1f)), label);
+        }
+    }
+    
+    /// <summary>
+    /// Draws crosshair lines at the current mouse position.
+    /// </summary>
+    private static void DrawCrosshair(double mouseX, double mouseY, float valueAtMouse)
+    {
+        var drawList = ImPlot.GetPlotDrawList();
+        var plotLimits = ImPlot.GetPlotLimits();
+        var plotPos = ImPlot.GetPlotPos();
+        var plotSize = ImPlot.GetPlotSize();
+        
+        var colorU32 = ImGui.GetColorU32(ChartColors.Crosshair);
+        
+        // Vertical line
+        var vTop = ImPlot.PlotToPixels(mouseX, plotLimits.Y.Max);
+        var vBottom = ImPlot.PlotToPixels(mouseX, plotLimits.Y.Min);
+        
+        // Draw dashed vertical line
+        const float dashLength = 4f;
+        const float gapLength = 3f;
+        var y = vTop.Y;
+        while (y < vBottom.Y)
+        {
+            var endY = Math.Min(y + dashLength, vBottom.Y);
+            drawList.AddLine(new Vector2(vTop.X, y), new Vector2(vTop.X, endY), colorU32, 1f);
+            y += dashLength + gapLength;
+        }
+        
+        // Horizontal line
+        var hLeft = ImPlot.PlotToPixels(plotLimits.X.Min, mouseY);
+        var hRight = ImPlot.PlotToPixels(plotLimits.X.Max, mouseY);
+        
+        // Draw dashed horizontal line
+        var x = hLeft.X;
+        while (x < hRight.X)
+        {
+            var endX = Math.Min(x + dashLength, hRight.X);
+            drawList.AddLine(new Vector2(x, hLeft.Y), new Vector2(endX, hLeft.Y), colorU32, 1f);
+            x += dashLength + gapLength;
+        }
+        
+        // Draw value label on Y axis
+        var valueLabel = FormatAbbreviated(valueAtMouse);
+        var labelSize = ImGui.CalcTextSize(valueLabel);
+        var labelPos = new Vector2(hRight.X - labelSize.X - 6, hRight.Y - labelSize.Y / 2);
+        
+        // Background box
+        var bgPadding = 3f;
+        drawList.AddRectFilled(
+            new Vector2(labelPos.X - bgPadding, labelPos.Y - bgPadding),
+            new Vector2(labelPos.X + labelSize.X + bgPadding, labelPos.Y + labelSize.Y + bgPadding),
+            ImGui.GetColorU32(ChartColors.TooltipBackground), 2f);
+        drawList.AddRect(
+            new Vector2(labelPos.X - bgPadding, labelPos.Y - bgPadding),
+            new Vector2(labelPos.X + labelSize.X + bgPadding, labelPos.Y + labelSize.Y + bgPadding),
+            ImGui.GetColorU32(ChartColors.TooltipBorder), 2f);
+        
+        drawList.AddText(labelPos, ImGui.GetColorU32(ChartColors.TextPrimary), valueLabel);
+    }
+    
+    /// <summary>
+    /// Draws a styled tooltip box at the given position.
+    /// </summary>
+    private static void DrawTooltipBox(Vector2 screenPos, string[] lines, Vector4 accentColor)
+    {
+        var drawList = ImPlot.GetPlotDrawList();
+        
+        // Calculate box size
+        var maxWidth = 0f;
+        var totalHeight = 0f;
+        foreach (var line in lines)
+        {
+            var size = ImGui.CalcTextSize(line);
+            maxWidth = Math.Max(maxWidth, size.X);
+            totalHeight += size.Y + 2f;
+        }
+        
+        var padding = 8f;
+        var boxWidth = maxWidth + padding * 2 + 4; // +4 for accent bar
+        var boxHeight = totalHeight + padding * 2 - 2f;
+        
+        // Offset to not overlap cursor
+        var boxPos = new Vector2(screenPos.X + 12, screenPos.Y - boxHeight / 2);
+        
+        // Background
+        drawList.AddRectFilled(
+            boxPos,
+            new Vector2(boxPos.X + boxWidth, boxPos.Y + boxHeight),
+            ImGui.GetColorU32(ChartColors.TooltipBackground), 4f);
+        
+        // Border
+        drawList.AddRect(
+            boxPos,
+            new Vector2(boxPos.X + boxWidth, boxPos.Y + boxHeight),
+            ImGui.GetColorU32(ChartColors.TooltipBorder), 4f, 0, 1f);
+        
+        // Accent bar on left
+        drawList.AddRectFilled(
+            new Vector2(boxPos.X, boxPos.Y),
+            new Vector2(boxPos.X + 3, boxPos.Y + boxHeight),
+            ImGui.GetColorU32(accentColor), 4f);
+        
+        // Text
+        var textY = boxPos.Y + padding;
+        foreach (var line in lines)
+        {
+            drawList.AddText(new Vector2(boxPos.X + padding + 4, textY), ImGui.GetColorU32(ChartColors.TextPrimary), line);
+            textY += ImGui.CalcTextSize(line).Y + 2f;
+        }
+    }
+
 
     /// <summary>
     /// Creates a new SampleGraphWidget with default configuration.
@@ -179,7 +420,18 @@ public class SampleGraphWidget
     /// <summary>
     /// Updates display options from external configuration.
     /// </summary>
-    public void UpdateDisplayOptions(bool showValueLabel, float valueLabelOffsetX = 0f, float valueLabelOffsetY = 0f, bool autoScaleGraph = true, float legendWidth = 140f, bool showLegend = true, GraphType graphType = GraphType.Area, bool showXAxisTimestamps = true)
+    public void UpdateDisplayOptions(
+        bool showValueLabel, 
+        float valueLabelOffsetX = 0f, 
+        float valueLabelOffsetY = 0f, 
+        bool autoScaleGraph = true, 
+        float legendWidth = 140f, 
+        bool showLegend = true, 
+        GraphType graphType = GraphType.Area, 
+        bool showXAxisTimestamps = true,
+        bool showCrosshair = true,
+        bool showGridLines = true,
+        bool showCurrentPriceLine = true)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
@@ -189,6 +441,9 @@ public class SampleGraphWidget
         _config.ShowLegend = showLegend;
         _config.GraphType = graphType;
         _config.ShowXAxisTimestamps = showXAxisTimestamps;
+        _config.ShowCrosshair = showCrosshair;
+        _config.ShowGridLines = showGridLines;
+        _config.ShowCurrentPriceLine = showCurrentPriceLine;
     }
 
     /// <summary>
@@ -202,14 +457,16 @@ public class SampleGraphWidget
     public float MaxValue => _config.MaxValue;
 
     /// <summary>
-    /// Draws the graph with the provided samples using ImPlot.
+    /// Draws the graph with the provided samples using ImPlot (trading platform style).
     /// </summary>
     /// <param name="samples">The sample data to plot.</param>
     public unsafe void Draw(IReadOnlyList<float> samples)
     {
         if (samples == null || samples.Count == 0)
         {
+            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
             ImGui.TextUnformatted(_config.NoDataText);
+            ImGui.PopStyleColor();
             return;
         }
 
@@ -241,8 +498,8 @@ public class SampleGraphWidget
                 {
                     dataRange = Math.Max(dataMax * 0.1f, 1f);
                 }
-                yMin = Math.Max(0f, dataMin - dataRange * 0.1f);
-                yMax = dataMax + dataRange * 0.1f;
+                yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
+                yMax = dataMax + dataRange * 0.15f;
             }
             else
             {
@@ -258,18 +515,34 @@ public class SampleGraphWidget
             // Calculate X-axis range
             var xMax = (double)samples.Count;
 
-            // Configure plot flags - hide legend, title, and mouse position text for clean look
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText;
+            // Configure plot flags - trading platform style: no clutter
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | 
+                           ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.Crosshairs;
             
-            // Set up axis limits before BeginPlot (use Once to allow user zoom/pan)
+            // Apply trading platform styling
+            PushChartStyle();
+            
+            // Set up axis limits before BeginPlot
             ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}", plotSize, plotFlags))
             {
-                // Configure axes - show Y-axis tick labels for value reference
-                ImPlot.SetupAxes("", "", ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines, ImPlotAxisFlags.NoGridLines);
+                // Configure axes - Y-axis on right side (trading style), with grid
+                var xAxisFlags = ImPlotAxisFlags.NoTickLabels;
+                var yAxisFlags = ImPlotAxisFlags.Opposite; // Right side Y-axis
+                if (_config.ShowGridLines)
+                {
+                    yAxisFlags |= ImPlotAxisFlags.AutoFit;
+                }
+                else
+                {
+                    yAxisFlags |= ImPlotAxisFlags.NoGridLines;
+                    xAxisFlags |= ImPlotAxisFlags.NoGridLines;
+                }
                 
-                // Format Y-axis with thousand separators
+                ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
+                
+                // Format Y-axis with abbreviated values
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
                 
                 // Constrain axes to prevent negative values
@@ -284,6 +557,14 @@ public class SampleGraphWidget
                     xValues[i] = i;
                     yValues[i] = samples[i];
                 }
+                
+                // Determine if trend is bullish or bearish
+                var isBullish = samples.Count < 2 || samples[^1] >= samples[0];
+                var lineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
+                var fillTopColor = isBullish ? ChartColors.BullishFillTop : ChartColors.BearishFillTop;
+                var fillBottomColor = isBullish ? ChartColors.BullishFillBottom : ChartColors.BearishFillBottom;
+                
+                ImPlot.SetNextLineStyle(lineColor, 2f);
 
                 // Plot based on configured graph type
                 fixed (double* xPtr = xValues)
@@ -298,17 +579,30 @@ public class SampleGraphWidget
                             ImPlot.PlotStairs("Gil", xPtr, yPtr, samples.Count);
                             break;
                         case GraphType.Bars:
+                            ImPlot.SetNextFillStyle(lineColor);
                             ImPlot.PlotBars("Gil", xPtr, yPtr, samples.Count, 0.67);
                             break;
                         case GraphType.Area:
                         default:
-                            ImPlot.PlotShaded("Gil", xPtr, yPtr, samples.Count);
+                            // Draw shaded area from data line down to Y=0 using ImPlot's built-in function
+                            ImPlot.SetNextFillStyle(fillTopColor);
+                            ImPlot.PlotShaded("Gil##shaded", xPtr, yPtr, samples.Count, 0.0);
+                            // Set line style again (PlotShaded consumed the previous one)
+                            ImPlot.SetNextLineStyle(lineColor, 2f);
                             ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
                             break;
                     }
                 }
+                
+                // Draw current price horizontal line
+                if (_config.ShowCurrentPriceLine && samples.Count > 0)
+                {
+                    var currentValue = samples[^1];
+                    var priceLineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
+                    DrawPriceLine(currentValue, FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
+                }
 
-                // Show hover tooltip with series name and value
+                // Show crosshair and tooltip on hover
                 if (ImPlot.IsPlotHovered())
                 {
                     var mousePos = ImPlot.GetPlotMousePos();
@@ -319,11 +613,23 @@ public class SampleGraphWidget
                     if (nearestIdx >= 0 && nearestIdx < samples.Count)
                     {
                         var value = samples[nearestIdx];
-                        var tooltipText = $"Gil: {FormatValue(value)}";
                         
-                        // Draw annotation at the data point
-                        ImPlot.Annotation(nearestIdx, value, 
-                            new Vector4(0, 0, 0, 0.85f), new Vector2(10, -10), true, tooltipText);
+                        // Draw crosshair
+                        if (_config.ShowCrosshair)
+                        {
+                            DrawCrosshair(nearestIdx, value, value);
+                        }
+                        
+                        // Draw tooltip box
+                        var screenPos = ImPlot.PlotToPixels(nearestIdx, value);
+                        var changePercent = nearestIdx > 0 ? (value - samples[nearestIdx - 1]) / samples[nearestIdx - 1] * 100 : 0;
+                        var changeSign = changePercent >= 0 ? "+" : "";
+                        var tooltipLines = new[]
+                        {
+                            $"Value: {FormatValue(value)}",
+                            $"Change: {changeSign}{changePercent:F2}%"
+                        };
+                        DrawTooltipBox(screenPos, tooltipLines, isBullish ? ChartColors.Bullish : ChartColors.Bearish);
                     }
                 }
 
@@ -333,12 +639,14 @@ public class SampleGraphWidget
                     var lastValue = samples[^1];
                     var text = FormatValue(lastValue);
                     var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
-                    ImPlot.Annotation(samples.Count - 1, lastValue, 
-                        new Vector4(0, 0, 0, 0.7f), pixOffset, true, text);
+                    var labelColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
+                    ImPlot.Annotation(samples.Count - 1, lastValue, labelColor, pixOffset, true, text);
                 }
 
                 ImPlot.EndPlot();
             }
+            
+            PopChartStyle();
         }
         catch (Exception ex)
         {
@@ -350,13 +658,16 @@ public class SampleGraphWidget
     /// <summary>
     /// Draws multiple data series overlaid on the same graph with time-aligned data.
     /// All lines extend to current time using their last recorded value.
+    /// Trading platform style with crosshairs and styled tooltips.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
     public unsafe void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
     {
         if (series == null || series.Count == 0)
         {
+            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
             ImGui.TextUnformatted(_config.NoDataText);
+            ImGui.PopStyleColor();
             return;
         }
 
@@ -372,7 +683,9 @@ public class SampleGraphWidget
 
         if (globalMinTime == DateTime.MaxValue)
         {
+            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
             ImGui.TextUnformatted(_config.NoDataText);
+            ImGui.PopStyleColor();
             return;
         }
 
@@ -421,8 +734,8 @@ public class SampleGraphWidget
                 {
                     dataRange = Math.Max(dataMax * 0.1f, 1f);
                 }
-                yMin = Math.Max(0f, dataMin - dataRange * 0.1f);
-                yMax = dataMax + dataRange * 0.1f;
+                yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
+                yMax = dataMax + dataRange * 0.15f;
             }
             else
             {
@@ -434,20 +747,31 @@ public class SampleGraphWidget
                 }
             }
 
-            // Configure plot flags - disable legend since we draw custom scrollable one
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend;
+            // Configure plot flags - trading platform style with crosshairs
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | 
+                           ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend | ImPlotFlags.Crosshairs;
+            
+            // Apply trading platform styling
+            PushChartStyle();
 
             // Set up axis limits (use Once to allow user zoom/pan)
             ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
             {
-                // Configure axes with minimal chrome - show Y-axis tick labels for value reference
-                // Optionally show X-axis time labels
+                // Configure axes - Y-axis on right (trading style), with optional grid
                 var xAxisFlags = _config.ShowXAxisTimestamps 
-                    ? ImPlotAxisFlags.NoGridLines 
-                    : ImPlotAxisFlags.NoTickLabels | ImPlotAxisFlags.NoGridLines;
-                ImPlot.SetupAxes("", "", xAxisFlags, ImPlotAxisFlags.NoGridLines);
+                    ? ImPlotAxisFlags.None 
+                    : ImPlotAxisFlags.NoTickLabels;
+                var yAxisFlags = ImPlotAxisFlags.Opposite; // Right side Y-axis
+                
+                if (!_config.ShowGridLines)
+                {
+                    xAxisFlags |= ImPlotAxisFlags.NoGridLines;
+                    yAxisFlags |= ImPlotAxisFlags.NoGridLines;
+                }
+                
+                ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
                 
                 // Format X-axis with time labels if enabled
                 if (_config.ShowXAxisTimestamps)
@@ -455,9 +779,9 @@ public class SampleGraphWidget
                     ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
                 }
                 
-                // Format Y-axis with thousand separators
+                // Format Y-axis with abbreviated values
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
-                
+
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
@@ -490,7 +814,6 @@ public class SampleGraphWidget
                     var color = colors[seriesIdx];
                     var colorVec4 = new Vector4(color.X, color.Y, color.Z, 1f);
                     ImPlot.SetNextLineStyle(colorVec4, 2f);
-                    ImPlot.SetNextFillStyle(new Vector4(color.X, color.Y, color.Z, 0.4f));
 
                     // Plot based on configured graph type
                     fixed (double* xPtr = xValues)
@@ -507,11 +830,16 @@ public class SampleGraphWidget
                             case GraphType.Bars:
                                 // For multi-series bars, use a smaller width and offset
                                 var barWidth = totalTimeSpan / pointCount * 0.8 / series.Count;
+                                ImPlot.SetNextFillStyle(colorVec4);
                                 ImPlot.PlotBars(name, xPtr, yPtr, pointCount, barWidth);
                                 break;
                             case GraphType.Area:
                             default:
-                                ImPlot.PlotShaded(name, xPtr, yPtr, pointCount);
+                                // Draw shaded area from data line down to Y=0 using ImPlot's built-in function
+                                ImPlot.SetNextFillStyle(new Vector4(color.X, color.Y, color.Z, 0.55f));
+                                ImPlot.PlotShaded($"{name}##shaded", xPtr, yPtr, pointCount, 0.0);
+                                // Set line style again (PlotShaded consumed the previous one)
+                                ImPlot.SetNextLineStyle(colorVec4, 2f);
                                 ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
                                 break;
                         }
@@ -602,11 +930,21 @@ public class SampleGraphWidget
                     
                     if (foundPoint)
                     {
-                        var tooltipText = $"{nearestSeriesName}: {FormatValue(nearestValue)}";
-                        // Draw annotation at the data point
-                        ImPlot.Annotation(pointX, pointY, 
-                            new Vector4(nearestColor.X, nearestColor.Y, nearestColor.Z, 0.85f), 
-                            new Vector2(10, -10), true, tooltipText);
+                        // Draw crosshair at the point
+                        if (_config.ShowCrosshair)
+                        {
+                            DrawCrosshair(pointX, pointY, nearestValue);
+                        }
+                        
+                        // Draw styled tooltip box
+                        var screenPos = ImPlot.PlotToPixels(pointX, pointY);
+                        var accentColor = new Vector4(nearestColor.X, nearestColor.Y, nearestColor.Z, 1f);
+                        var tooltipLines = new[]
+                        {
+                            nearestSeriesName,
+                            $"Value: {FormatValue(nearestValue)}"
+                        };
+                        DrawTooltipBox(screenPos, tooltipLines, accentColor);
                     }
                 }
 
@@ -637,13 +975,15 @@ public class SampleGraphWidget
                         // Stack labels vertically: first (highest value) at top, subsequent ones below
                         var yOffset = _config.ValueLabelOffsetY + (i * labelHeight);
                         var pixOffset = new Vector2(_config.ValueLabelOffsetX, yOffset);
-                        ImPlot.Annotation(totalTimeSpan, lastValue,
-                            new Vector4(color.X, color.Y, color.Z, 0.8f), pixOffset, true, text);
+                        var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
+                        ImPlot.Annotation(totalTimeSpan, lastValue, labelColor, pixOffset, true, text);
                     }
                 }
 
                 ImPlot.EndPlot();
             }
+            
+            PopChartStyle();
             
             // Draw scrollable legend on the right (if enabled)
             if (_config.ShowLegend)
@@ -660,7 +1000,7 @@ public class SampleGraphWidget
     }
     
     /// <summary>
-    /// Draws a scrollable legend for multi-series graphs.
+    /// Draws a scrollable legend for multi-series graphs with trading platform styling.
     /// </summary>
     private void DrawScrollableLegend(
         IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series,
@@ -668,6 +1008,12 @@ public class SampleGraphWidget
         float width,
         float height)
     {
+        // Style the legend panel with trading platform colors
+        ImGui.PushStyleColor(ImGuiCol.ChildBg, ChartColors.FrameBackground);
+        ImGui.PushStyleColor(ImGuiCol.Border, ChartColors.AxisLine);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarBg, ChartColors.PlotBackground);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrab, ChartColors.GridLine);
+        
         if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), true))
         {
             // Create sorted list of indices by series name (character name)
@@ -688,7 +1034,7 @@ public class SampleGraphWidget
                 // Use dimmed color for hidden series
                 var displayAlpha = isHidden ? 0.35f : 1f;
                 
-                // Draw colored square indicator
+                // Draw colored square indicator (rounded for modern look)
                 var drawList = ImGui.GetWindowDrawList();
                 var cursorPos = ImGui.GetCursorScreenPos();
                 const float indicatorSize = 10f;
@@ -697,12 +1043,12 @@ public class SampleGraphWidget
                 if (isHidden)
                 {
                     // Draw outline only for hidden series
-                    drawList.AddRect(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                    drawList.AddRect(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32, 2f);
                 }
                 else
                 {
-                    // Draw filled square for visible series
-                    drawList.AddRectFilled(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32);
+                    // Draw filled rounded square for visible series
+                    drawList.AddRectFilled(cursorPos, new Vector2(cursorPos.X + indicatorSize, cursorPos.Y + indicatorSize), colorU32, 2f);
                 }
                 
                 // Make the entire row clickable
@@ -712,16 +1058,11 @@ public class SampleGraphWidget
                 ImGui.Dummy(new Vector2(indicatorSize + 4f, indicatorSize));
                 ImGui.SameLine();
                 
-                // Draw name with dimmed text for hidden series
-                if (isHidden)
-                {
-                    ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Text, new Vector4(0.5f, 0.5f, 0.5f, 1f));
-                }
+                // Draw name with appropriate text color
+                var textColor = isHidden ? ChartColors.TextSecondary : ChartColors.TextPrimary;
+                ImGui.PushStyleColor(ImGuiCol.Text, textColor);
                 ImGui.TextUnformatted($"{name}");
-                if (isHidden)
-                {
-                    ImGui.PopStyleColor();
-                }
+                ImGui.PopStyleColor();
                 
                 // Make row clickable - use invisible button over the row area
                 var rowEnd = ImGui.GetCursorScreenPos();
@@ -731,15 +1072,16 @@ public class SampleGraphWidget
                     ToggleSeriesVisibility(name);
                 }
                 
-                // Show tooltip on hover
+                // Show tooltip on hover with styled content
                 if (ImGui.IsItemHovered())
                 {
-                    var statusText = isHidden ? "(hidden)" : "";
-                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)} {statusText}\nClick to toggle");
+                    var statusText = isHidden ? " (hidden)" : "";
+                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility");
                 }
             }
         }
         ImGui.EndChild();
+        ImGui.PopStyleColor(4);
     }
     
     /// <summary>
@@ -756,17 +1098,17 @@ public class SampleGraphWidget
 
     private static Vector3[] GetSeriesColors(int count)
     {
-        // Predefined distinct colors for up to 8 series
+        // Bright, vibrant color palette - easily distinguishable
         var colors = new Vector3[]
         {
-            new(0.4f, 0.8f, 0.4f),  // Green
-            new(0.4f, 0.6f, 1.0f),  // Blue
-            new(1.0f, 0.6f, 0.4f),  // Orange
-            new(0.9f, 0.4f, 0.9f),  // Magenta
-            new(1.0f, 1.0f, 0.4f),  // Yellow
-            new(0.4f, 1.0f, 1.0f),  // Cyan
-            new(1.0f, 0.4f, 0.4f),  // Red
-            new(0.8f, 0.8f, 0.8f),  // Gray
+            new(1.0f, 0.25f, 0.25f),   // Bright Red
+            new(0.25f, 0.50f, 1.0f),   // Bright Blue
+            new(0.20f, 0.90f, 0.40f),  // Bright Green
+            new(0.75f, 0.30f, 0.90f),  // Bright Purple
+            new(1.0f, 0.45f, 0.70f),   // Bright Pink
+            new(1.0f, 0.85f, 0.0f),    // Bright Yellow
+            new(1.0f, 0.55f, 0.0f),    // Bright Orange
+            new(0.0f, 0.85f, 0.85f),   // Bright Cyan
         };
 
         var result = new Vector3[count];

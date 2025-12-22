@@ -31,6 +31,7 @@ public sealed class ConfigWindow : Window
     private SamplerCategory? _samplerCategory;
     private LayoutsCategory? _layoutsCategory;
     private WindowsCategory? _windowsCategory;
+    private UniversalisCategory? _universalisCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -42,6 +43,7 @@ public sealed class ConfigWindow : Window
         public const int Sampler = 2;
         public const int Layouts = 3;
         public const int Windows = 4;
+        public const int Universalis = 5;
     }
 
     /// <summary>
@@ -105,6 +107,7 @@ public sealed class ConfigWindow : Window
         _samplerCategory = new SamplerCategory(_samplerService, _configService, _registry);
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);
+        _universalisCategory = new UniversalisCategory(_configService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -143,6 +146,7 @@ public sealed class ConfigWindow : Window
         if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
         if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
         if (ImGui.Selectable("Windows", _selectedTab == 4)) _selectedTab = 4;
+        if (ImGui.Selectable("Universalis", _selectedTab == 5)) _selectedTab = 5;
         ImGui.EndChild();
 
         ImGui.SameLine();
@@ -165,6 +169,9 @@ public sealed class ConfigWindow : Window
                 break;
             case TabIndex.Windows:
                 _windowsCategory?.Draw();
+                break;
+            case TabIndex.Universalis:
+                _universalisCategory?.Draw();
                 break;
         }
         ImGui.EndChild();

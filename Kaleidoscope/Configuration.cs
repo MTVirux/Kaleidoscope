@@ -40,6 +40,19 @@ public enum GraphType
     Bars = 3
 }
 
+/// <summary>
+/// Scope for Universalis market data queries.
+/// </summary>
+public enum UniversalisScope
+{
+    /// <summary>Query data for a specific world only.</summary>
+    World = 0,
+    /// <summary>Query data for the entire data center.</summary>
+    DataCenter = 1,
+    /// <summary>Query data for the entire region.</summary>
+    Region = 2
+}
+
 public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
@@ -86,6 +99,27 @@ public class Configuration : IPluginConfiguration
     // GilTicker settings
     public float GilTickerScrollSpeed { get; set; } = 30f;
     public List<ulong> GilTickerDisabledCharacters { get; set; } = new();
+
+    // Universalis Integration settings
+    /// <summary>
+    /// The scope for Universalis market data queries (World, DataCenter, or Region).
+    /// </summary>
+    public UniversalisScope UniversalisQueryScope { get; set; } = UniversalisScope.DataCenter;
+
+    /// <summary>
+    /// Override world name for Universalis queries. If empty, uses current character's world.
+    /// </summary>
+    public string UniversalisWorldOverride { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Override data center name for Universalis queries. If empty, uses current character's DC.
+    /// </summary>
+    public string UniversalisDataCenterOverride { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Override region name for Universalis queries. If empty, uses current character's region.
+    /// </summary>
+    public string UniversalisRegionOverride { get; set; } = string.Empty;
 
     // Data Tracking settings
     /// <summary>
