@@ -70,6 +70,26 @@ public class InventoryValueTool : ToolComponent
         RefreshCharacterList();
     }
 
+    /// <summary>
+    /// Gets a display name for the provided character ID.
+    /// Checks database first, then runtime lookup, then falls back to ID.
+    /// </summary>
+    private string GetCharacterDisplayName(ulong characterId)
+    {
+        // Try database first (most reliable for historical data)
+        var storedName = DbService.GetCharacterName(characterId);
+        if (!string.IsNullOrEmpty(storedName))
+            return storedName;
+
+        // Try runtime lookup for currently-loaded characters
+        var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
+        if (!string.IsNullOrEmpty(runtimeName))
+            return runtimeName;
+
+        // Fallback to ID
+        return $"Character {characterId}";
+    }
+
     private void RefreshCharacterList()
     {
         try
@@ -231,7 +251,7 @@ public class InventoryValueTool : ToolComponent
             int colorIdx = 0;
             foreach (var (charId, points) in perCharacterData)
             {
-                var charName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(charId) ?? $"Char {charId}";
+                var charName = GetCharacterDisplayName(charId);
                 var color = SeriesColors[colorIdx % SeriesColors.Length];
                 var isHidden = _hiddenSeries.Contains(charName);
 
@@ -272,7 +292,7 @@ public class InventoryValueTool : ToolComponent
             {
                 if (points.Count == 0) continue;
 
-                var charName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(charId) ?? $"Char {charId}";
+                var charName = GetCharacterDisplayName(charId);
                 if (_hiddenSeries.Contains(charName))
                 {
                     colorIdx++;
