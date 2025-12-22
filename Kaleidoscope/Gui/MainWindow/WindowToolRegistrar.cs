@@ -50,7 +50,8 @@ public static class WindowToolRegistrar
         InventoryChangeService? inventoryChangeService = null,
         TrackedDataRegistry? registry = null,
         UniversalisWebSocketService? webSocketService = null,
-        PriceTrackingService? priceTrackingService = null)
+        PriceTrackingService? priceTrackingService = null,
+        ItemDataService? itemDataService = null)
     {
         if (container == null) return;
 
@@ -101,12 +102,12 @@ public static class WindowToolRegistrar
                 "Help");
 
             // Register price tracking tools
-            if (webSocketService != null && priceTrackingService != null)
+            if (webSocketService != null && priceTrackingService != null && itemDataService != null)
             {
                 container.RegisterTool(
                     ToolIds.LivePriceFeed,
                     "Live Price Feed",
-                    pos => CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService),
+                    pos => CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService, itemDataService),
                     "Real-time feed of Universalis market updates from the WebSocket",
                     "Price Tracking");
 
@@ -120,7 +121,7 @@ public static class WindowToolRegistrar
                 container.RegisterTool(
                     ToolIds.TopItems,
                     "Top Items",
-                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService),
+                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService),
                     "Shows the most valuable items in character inventories",
                     "Price Tracking");
             }
@@ -181,11 +182,12 @@ public static class WindowToolRegistrar
         Vector2 pos,
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ItemDataService itemDataService)
     {
         try
         {
-            return new LivePriceFeedTool(webSocketService, priceTrackingService, configService) { Position = pos };
+            return new LivePriceFeedTool(webSocketService, priceTrackingService, configService, itemDataService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -215,11 +217,12 @@ public static class WindowToolRegistrar
         Vector2 pos,
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ItemDataService itemDataService)
     {
         try
         {
-            return new TopItemsTool(priceTrackingService, samplerService, configService) { Position = pos };
+            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -237,7 +240,8 @@ public static class WindowToolRegistrar
         TrackedDataRegistry? registry = null,
         InventoryChangeService? inventoryChangeService = null,
         UniversalisWebSocketService? webSocketService = null,
-        PriceTrackingService? priceTrackingService = null)
+        PriceTrackingService? priceTrackingService = null,
+        ItemDataService? itemDataService = null)
     {
         try
         {
@@ -266,8 +270,8 @@ public static class WindowToolRegistrar
                     return new GettingStartedTool { Position = pos };
 
                 case ToolIds.LivePriceFeed:
-                    if (webSocketService != null && priceTrackingService != null)
-                        return CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService);
+                    if (webSocketService != null && priceTrackingService != null && itemDataService != null)
+                        return CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService, itemDataService);
                     return null;
 
                 case ToolIds.InventoryValue:
@@ -276,8 +280,8 @@ public static class WindowToolRegistrar
                     return null;
 
                 case ToolIds.TopItems:
-                    if (priceTrackingService != null)
-                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService);
+                    if (priceTrackingService != null && itemDataService != null)
+                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService);
                     return null;
 
                 default:

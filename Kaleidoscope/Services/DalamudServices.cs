@@ -26,5 +26,6 @@ public static class DalamudServices
         services.AddDalamudService<IGameInventory>(pi);
         services.AddDalamudService<IAddonLifecycle>(pi);
         services.AddDalamudService<IPlayerState>(pi);
+        services.AddDalamudService<IDataManager>(pi);
     }
 }

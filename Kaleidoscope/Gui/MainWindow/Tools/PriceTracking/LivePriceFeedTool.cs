@@ -15,6 +15,7 @@ public class LivePriceFeedTool : ToolComponent
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
+    private readonly ItemDataService _itemDataService;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
 
@@ -24,11 +25,13 @@ public class LivePriceFeedTool : ToolComponent
     public LivePriceFeedTool(
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ItemDataService itemDataService)
     {
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _configService = configService;
+        _itemDataService = itemDataService;
 
         Title = "Live Price Feed";
         Size = new Vector2(450, 300);
@@ -92,15 +95,15 @@ public class LivePriceFeedTool : ToolComponent
         }
         if (!settings.ShowListingsAdd)
         {
-            entries = entries.Where(e => e.EventType != "listings/add").ToList();
+            entries = entries.Where(e => e.EventType != "Listing Added").ToList();
         }
         if (!settings.ShowListingsRemove)
         {
-            entries = entries.Where(e => e.EventType != "listings/remove").ToList();
+            entries = entries.Where(e => e.EventType != "Listing Removed").ToList();
         }
         if (!settings.ShowSales)
         {
-            entries = entries.Where(e => e.EventType != "sales/add").ToList();
+            entries = entries.Where(e => e.EventType != "Sale").ToList();
         }
 
         // Limit entries
@@ -136,24 +139,27 @@ public class LivePriceFeedTool : ToolComponent
         // Get world name
         var worldName = _priceTrackingService.WorldData?.GetWorldName(entry.WorldId) ?? $"World {entry.WorldId}";
         
+        // Get item name
+        var itemName = _itemDataService.GetItemName(entry.ItemId);
+        
         // Event type color
         var eventColor = entry.EventType switch
         {
-            "listings/add" => new Vector4(0.3f, 0.9f, 0.3f, 1f),    // Green for new listings
-            "listings/remove" => new Vector4(0.9f, 0.6f, 0.3f, 1f), // Orange for removed
-            "sales/add" => new Vector4(0.3f, 0.7f, 0.9f, 1f),       // Blue for sales
+            "Listing Added" => new Vector4(0.3f, 0.9f, 0.3f, 1f),    // Green for new listings
+            "Listing Removed" => new Vector4(0.9f, 0.6f, 0.3f, 1f), // Orange for removed
+            "Sale" => new Vector4(0.3f, 0.7f, 0.9f, 1f),            // Blue for sales
             _ => new Vector4(0.7f, 0.7f, 0.7f, 1f)
         };
 
         var eventIcon = entry.EventType switch
         {
-            "listings/add" => "+",
-            "listings/remove" => "-",
-            "sales/add" => "$",
+            "Listing Added" => "+",
+            "Listing Removed" => "-",
+            "Sale" => "$",
             _ => "?"
         };
 
-        // Format: [Time] [Event] ItemId x Qty @ Price (World)
+        // Format: [Time] [Event] ItemName x Qty @ Price (World)
         var timeStr = entry.ReceivedAt.ToLocalTime().ToString("HH:mm:ss");
         var hqStr = entry.IsHq ? " HQ" : "";
         var priceStr = FormatGil(entry.PricePerUnit);
@@ -163,7 +169,7 @@ public class LivePriceFeedTool : ToolComponent
         ImGui.SameLine();
         ImGui.TextColored(eventColor, eventIcon);
         ImGui.SameLine();
-        ImGui.TextUnformatted($"Item #{entry.ItemId}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
+        ImGui.TextUnformatted($"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
     }
 
     private static string FormatGil(long amount)

@@ -15,6 +15,7 @@ public class TopItemsTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
+    private readonly ItemDataService _itemDataService;
 
     // Cached data
     private List<(int ItemId, long Quantity, long Value, string Name)> _topItems = new();
@@ -36,11 +37,13 @@ public class TopItemsTool : ToolComponent
     public TopItemsTool(
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ItemDataService itemDataService)
     {
         _priceTrackingService = priceTrackingService;
         _samplerService = samplerService;
         _configService = configService;
+        _itemDataService = itemDataService;
 
         Title = "Top Items";
         Size = new Vector2(400, 350);
@@ -99,11 +102,11 @@ public class TopItemsTool : ToolComponent
                 settings.MaxItems,
                 settings.IncludeRetainers);
 
-            // Resolve item names (best effort - we may not have Lumina access here)
+            // Resolve item names using ItemDataService
             var namedItems = new List<(int ItemId, long Quantity, long Value, string Name)>();
             foreach (var (itemId, qty, value) in items)
             {
-                var name = $"Item #{itemId}"; // Placeholder - would use Lumina to get real name
+                var name = _itemDataService.GetItemName(itemId);
                 namedItems.Add((itemId, qty, value, name));
             }
 
