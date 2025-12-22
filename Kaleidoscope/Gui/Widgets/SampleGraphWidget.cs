@@ -7,6 +7,37 @@ using ImGuiCol = Dalamud.Bindings.ImGui.ImGuiCol;
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
+/// Specifies where the legend should be positioned in the graph.
+/// </summary>
+public enum LegendPosition
+{
+    /// <summary>
+    /// Legend is drawn outside the graph area (to the right).
+    /// </summary>
+    Outside,
+    
+    /// <summary>
+    /// Legend is drawn inside the graph area (top-left corner).
+    /// </summary>
+    InsideTopLeft,
+    
+    /// <summary>
+    /// Legend is drawn inside the graph area (top-right corner).
+    /// </summary>
+    InsideTopRight,
+    
+    /// <summary>
+    /// Legend is drawn inside the graph area (bottom-left corner).
+    /// </summary>
+    InsideBottomLeft,
+    
+    /// <summary>
+    /// Legend is drawn inside the graph area (bottom-right corner).
+    /// </summary>
+    InsideBottomRight
+}
+
+/// <summary>
 /// A reusable graph widget for displaying numerical sample data.
 /// Renders using ImPlot with a trading platform (Binance-style) aesthetic.
 /// </summary>
@@ -106,6 +137,16 @@ public class SampleGraphWidget
         public bool ShowLegend { get; set; } = true;
         
         /// <summary>
+        /// The position of the legend (inside or outside the graph).
+        /// </summary>
+        public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+        
+        /// <summary>
+        /// Maximum height of the inside legend as a percentage of plot height (10-80%).
+        /// </summary>
+        public float LegendHeightPercent { get; set; } = 25f;
+        
+        /// <summary>
         /// The type of graph to render (Area, Line, Stairs, Bars).
         /// </summary>
         public GraphType GraphType { get; set; } = GraphType.Area;
@@ -137,6 +178,32 @@ public class SampleGraphWidget
     /// Set of series names that are currently hidden.
     /// </summary>
     private readonly HashSet<string> _hiddenSeries = new();
+    
+    /// <summary>
+    /// Scroll offset for the inside legend when there are too many series.
+    /// </summary>
+    private float _insideLegendScrollOffset = 0f;
+    
+    /// <summary>
+    /// Cached legend bounds from the previous frame for input blocking.
+    /// </summary>
+    private (Vector2 min, Vector2 max, bool valid) _cachedLegendBounds = (Vector2.Zero, Vector2.Zero, false);
+    
+    /// <summary>
+    /// Gets whether the mouse is currently over the inside legend (based on cached bounds).
+    /// Used to block ImPlot input when interacting with the legend.
+    /// </summary>
+    public bool IsMouseOverInsideLegend
+    {
+        get
+        {
+            if (!_cachedLegendBounds.valid || _config.LegendPosition == LegendPosition.Outside)
+                return false;
+            var mousePos = ImGui.GetMousePos();
+            return mousePos.X >= _cachedLegendBounds.min.X && mousePos.X <= _cachedLegendBounds.max.X &&
+                   mousePos.Y >= _cachedLegendBounds.min.Y && mousePos.Y <= _cachedLegendBounds.max.Y;
+        }
+    }
     
     /// <summary>
     /// Gets or sets the hidden series names.
@@ -431,7 +498,9 @@ public class SampleGraphWidget
         bool showXAxisTimestamps = true,
         bool showCrosshair = true,
         bool showGridLines = true,
-        bool showCurrentPriceLine = true)
+        bool showCurrentPriceLine = true,
+        LegendPosition legendPosition = LegendPosition.Outside,
+        float legendHeightPercent = 25f)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
@@ -444,6 +513,8 @@ public class SampleGraphWidget
         _config.ShowCrosshair = showCrosshair;
         _config.ShowGridLines = showGridLines;
         _config.ShowCurrentPriceLine = showCurrentPriceLine;
+        _config.LegendPosition = legendPosition;
+        _config.LegendHeightPercent = legendHeightPercent;
     }
 
     /// <summary>
@@ -699,9 +770,10 @@ public class SampleGraphWidget
         {
             var avail = ImGui.GetContentRegionAvail();
             
-            // Reserve space for scrollable legend on the right (if enabled)
-            var legendWidth = _config.ShowLegend ? _config.LegendWidth : 0f;
-            var legendPadding = _config.ShowLegend ? 5f : 0f;
+            // Reserve space for scrollable legend on the right (if enabled and position is Outside)
+            var useOutsideLegend = _config.ShowLegend && _config.LegendPosition == LegendPosition.Outside;
+            var legendWidth = useOutsideLegend ? _config.LegendWidth : 0f;
+            var legendPadding = useOutsideLegend ? 5f : 0f;
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
             var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
@@ -750,6 +822,12 @@ public class SampleGraphWidget
             // Configure plot flags - trading platform style with crosshairs
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | 
                            ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend | ImPlotFlags.Crosshairs;
+            
+            // Disable plot input when mouse is over the inside legend (prevents zoom/pan conflicts)
+            if (IsMouseOverInsideLegend)
+            {
+                plotFlags |= ImPlotFlags.NoInputs;
+            }
             
             // Apply trading platform styling
             PushChartStyle();
@@ -980,16 +1058,27 @@ public class SampleGraphWidget
                     }
                 }
 
+                // Draw in-graph legend if position is inside
+                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside)
+                {
+                    DrawInsideLegend(series, colors);
+                }
+                else
+                {
+                    // Invalidate cached bounds when not showing inside legend
+                    _cachedLegendBounds = (Vector2.Zero, Vector2.Zero, false);
+                }
+
                 ImPlot.EndPlot();
             }
             
             PopChartStyle();
             
-            // Draw scrollable legend on the right (if enabled)
-            if (_config.ShowLegend)
+            // Draw scrollable legend on the right (if enabled and position is Outside)
+            if (_config.ShowLegend && _config.LegendPosition == LegendPosition.Outside)
             {
                 ImGui.SameLine();
-                DrawScrollableLegend(series, colors, legendWidth, avail.Y);
+                DrawScrollableLegend(series, colors, _config.LegendWidth, avail.Y);
             }
         }
         catch (Exception ex)
@@ -1082,6 +1171,236 @@ public class SampleGraphWidget
         }
         ImGui.EndChild();
         ImGui.PopStyleColor(4);
+    }
+    
+    /// <summary>
+    /// Draws an interactive legend inside the plot area using ImPlot's draw list.
+    /// The legend is positioned based on the LegendPosition config setting.
+    /// Supports scrolling when there are too many series to fit.
+    /// </summary>
+    private void DrawInsideLegend(
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series,
+        Vector3[] colors)
+    {
+        var drawList = ImPlot.GetPlotDrawList();
+        var plotPos = ImPlot.GetPlotPos();
+        var plotSize = ImPlot.GetPlotSize();
+        
+        // Calculate legend dimensions
+        const float padding = 8f;
+        const float indicatorSize = 10f;
+        const float rowHeight = 18f;
+        const float indicatorTextGap = 6f;
+        const float scrollbarWidth = 6f;
+        
+        // Measure max text width and count valid series
+        var maxTextWidth = 0f;
+        var validSeriesCount = 0;
+        foreach (var (name, samples) in series)
+        {
+            if (samples == null || samples.Count == 0) continue;
+            var textSize = ImGui.CalcTextSize(name);
+            maxTextWidth = Math.Max(maxTextWidth, textSize.X);
+            validSeriesCount++;
+        }
+        
+        if (validSeriesCount == 0) return;
+        
+        // Calculate content height and max display height based on percentage setting
+        var contentHeight = validSeriesCount * rowHeight;
+        var maxLegendHeight = plotSize.Y * (_config.LegendHeightPercent / 100f);
+        maxLegendHeight = Math.Max(maxLegendHeight, rowHeight + padding * 2); // At least one row
+        var needsScrolling = contentHeight > maxLegendHeight - padding * 2;
+        
+        var legendWidth = padding * 2 + indicatorSize + indicatorTextGap + maxTextWidth + (needsScrolling ? scrollbarWidth + 4f : 0f);
+        var legendHeight = Math.Min(padding * 2 + contentHeight, maxLegendHeight);
+        
+        // Determine legend position based on config
+        Vector2 legendPos;
+        switch (_config.LegendPosition)
+        {
+            case LegendPosition.InsideTopRight:
+                legendPos = new Vector2(plotPos.X + plotSize.X - legendWidth - 10, plotPos.Y + 10);
+                break;
+            case LegendPosition.InsideBottomLeft:
+                legendPos = new Vector2(plotPos.X + 10, plotPos.Y + plotSize.Y - legendHeight - 10);
+                break;
+            case LegendPosition.InsideBottomRight:
+                legendPos = new Vector2(plotPos.X + plotSize.X - legendWidth - 10, plotPos.Y + plotSize.Y - legendHeight - 10);
+                break;
+            case LegendPosition.InsideTopLeft:
+            default:
+                legendPos = new Vector2(plotPos.X + 10, plotPos.Y + 10);
+                break;
+        }
+        
+        // Cache legend bounds for next frame's input blocking
+        _cachedLegendBounds = (legendPos, new Vector2(legendPos.X + legendWidth, legendPos.Y + legendHeight), true);
+        
+        // Draw legend background
+        var bgColor = ImGui.GetColorU32(new Vector4(ChartColors.FrameBackground.X, ChartColors.FrameBackground.Y, ChartColors.FrameBackground.Z, 0.85f));
+        var borderColor = ImGui.GetColorU32(ChartColors.AxisLine);
+        drawList.AddRectFilled(legendPos, new Vector2(legendPos.X + legendWidth, legendPos.Y + legendHeight), bgColor, 4f);
+        drawList.AddRect(legendPos, new Vector2(legendPos.X + legendWidth, legendPos.Y + legendHeight), borderColor, 4f);
+        
+        // Track mouse interactions
+        var mousePos = ImGui.GetMousePos();
+        var mouseInLegend = mousePos.X >= legendPos.X && mousePos.X <= legendPos.X + legendWidth &&
+                           mousePos.Y >= legendPos.Y && mousePos.Y <= legendPos.Y + legendHeight;
+        
+        // Handle mouse wheel scrolling
+        if (mouseInLegend && needsScrolling)
+        {
+            var wheel = ImGui.GetIO().MouseWheel;
+            if (wheel != 0)
+            {
+                _insideLegendScrollOffset -= wheel * rowHeight * 2f;
+            }
+        }
+        
+        // Clamp scroll offset
+        var maxScrollOffset = Math.Max(0f, contentHeight - (legendHeight - padding * 2));
+        _insideLegendScrollOffset = Math.Clamp(_insideLegendScrollOffset, 0f, maxScrollOffset);
+        
+        // Sort series by name
+        var sortedIndices = Enumerable.Range(0, series.Count)
+            .Where(i => series[i].samples != null && series[i].samples.Count > 0)
+            .OrderBy(i => series[i].name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        
+        // Calculate visible area for clipping
+        var contentAreaTop = legendPos.Y + padding;
+        var contentAreaBottom = legendPos.Y + legendHeight - padding;
+        var contentAreaRight = legendPos.X + legendWidth - padding - (needsScrolling ? scrollbarWidth + 4f : 0f);
+        
+        // Draw each legend entry (with clipping)
+        var yOffset = contentAreaTop - _insideLegendScrollOffset;
+        var visibleRowIdx = 0;
+        foreach (var i in sortedIndices)
+        {
+            var rowTop = yOffset;
+            var rowBottom = yOffset + rowHeight;
+            
+            // Skip rows that are outside the visible area
+            if (rowBottom < contentAreaTop || rowTop > contentAreaBottom)
+            {
+                yOffset += rowHeight;
+                visibleRowIdx++;
+                continue;
+            }
+            
+            var (name, samples) = series[i];
+            var isHidden = _hiddenSeries.Contains(name);
+            var color = colors[i];
+            var displayAlpha = isHidden ? 0.35f : 1f;
+            
+            // Check if mouse is over this row (only if row is visible)
+            var mouseInRow = mouseInLegend && 
+                            mousePos.Y >= Math.Max(rowTop, contentAreaTop) && 
+                            mousePos.Y < Math.Min(rowBottom, contentAreaBottom) &&
+                            rowTop >= contentAreaTop && rowBottom <= contentAreaBottom;
+            
+            // Handle click to toggle visibility
+            if (mouseInRow && ImGui.IsMouseClicked(0))
+            {
+                ToggleSeriesVisibility(name);
+            }
+            
+            // Highlight row on hover
+            if (mouseInRow)
+            {
+                var hoverColor = ImGui.GetColorU32(new Vector4(1f, 1f, 1f, 0.1f));
+                drawList.AddRectFilled(
+                    new Vector2(legendPos.X + 2, Math.Max(rowTop, contentAreaTop)), 
+                    new Vector2(contentAreaRight, Math.Min(rowBottom, contentAreaBottom)), 
+                    hoverColor, 2f);
+            }
+            
+            // Only draw content if the row is at least partially visible
+            if (rowTop >= contentAreaTop - rowHeight && rowBottom <= contentAreaBottom + rowHeight)
+            {
+                // Draw color indicator
+                var indicatorY = yOffset + (rowHeight - indicatorSize) / 2;
+                if (indicatorY >= contentAreaTop - indicatorSize && indicatorY + indicatorSize <= contentAreaBottom + indicatorSize)
+                {
+                    var indicatorPos = new Vector2(legendPos.X + padding, indicatorY);
+                    var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, displayAlpha));
+                    
+                    if (isHidden)
+                    {
+                        drawList.AddRect(indicatorPos, new Vector2(indicatorPos.X + indicatorSize, indicatorPos.Y + indicatorSize), colorU32, 2f);
+                    }
+                    else
+                    {
+                        drawList.AddRectFilled(indicatorPos, new Vector2(indicatorPos.X + indicatorSize, indicatorPos.Y + indicatorSize), colorU32, 2f);
+                    }
+                    
+                    // Draw series name
+                    var textColor = isHidden ? ChartColors.TextSecondary : ChartColors.TextPrimary;
+                    var textY = yOffset + (rowHeight - ImGui.GetTextLineHeight()) / 2;
+                    if (textY >= contentAreaTop - rowHeight && textY <= contentAreaBottom)
+                    {
+                        var textPos = new Vector2(indicatorPos.X + indicatorSize + indicatorTextGap, textY);
+                        drawList.AddText(textPos, ImGui.GetColorU32(textColor), name);
+                    }
+                }
+            }
+            
+            yOffset += rowHeight;
+            visibleRowIdx++;
+        }
+        
+        // Draw scrollbar if needed
+        if (needsScrolling)
+        {
+            var scrollTrackTop = legendPos.Y + padding;
+            var scrollTrackBottom = legendPos.Y + legendHeight - padding;
+            var scrollTrackHeight = scrollTrackBottom - scrollTrackTop;
+            var scrollTrackX = legendPos.X + legendWidth - padding - scrollbarWidth;
+            
+            // Draw track
+            var trackColor = ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.5f));
+            drawList.AddRectFilled(
+                new Vector2(scrollTrackX, scrollTrackTop),
+                new Vector2(scrollTrackX + scrollbarWidth, scrollTrackBottom),
+                trackColor, 3f);
+            
+            // Calculate thumb size and position
+            var visibleRatio = (legendHeight - padding * 2) / contentHeight;
+            var thumbHeight = Math.Max(20f, scrollTrackHeight * visibleRatio);
+            var scrollRatio = maxScrollOffset > 0 ? _insideLegendScrollOffset / maxScrollOffset : 0f;
+            var thumbTop = scrollTrackTop + scrollRatio * (scrollTrackHeight - thumbHeight);
+            
+            // Draw thumb
+            var thumbColor = ImGui.GetColorU32(ChartColors.GridLine);
+            drawList.AddRectFilled(
+                new Vector2(scrollTrackX, thumbTop),
+                new Vector2(scrollTrackX + scrollbarWidth, thumbTop + thumbHeight),
+                thumbColor, 3f);
+        }
+        
+        // Show tooltip when hovering over legend
+        if (mouseInLegend)
+        {
+            // Find which row we're hovering based on scroll position
+            var relativeY = mousePos.Y - contentAreaTop + _insideLegendScrollOffset;
+            var hoveredIdx = (int)(relativeY / rowHeight);
+            if (hoveredIdx >= 0 && hoveredIdx < sortedIndices.Count)
+            {
+                // Check if the row is actually visible
+                var rowTop = contentAreaTop - _insideLegendScrollOffset + hoveredIdx * rowHeight;
+                var rowBottom = rowTop + rowHeight;
+                if (rowTop < contentAreaBottom && rowBottom > contentAreaTop)
+                {
+                    var (name, samples) = series[sortedIndices[hoveredIdx]];
+                    var isHidden = _hiddenSeries.Contains(name);
+                    var lastValue = samples[^1].value;
+                    var statusText = isHidden ? " (hidden)" : "";
+                    var scrollHint = needsScrolling ? "\nScroll to see more" : "";
+                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility{scrollHint}");
+                }
+            }
+        }
     }
     
     /// <summary>

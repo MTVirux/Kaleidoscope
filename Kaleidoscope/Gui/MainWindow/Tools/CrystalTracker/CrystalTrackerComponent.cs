@@ -117,7 +117,9 @@ public class CrystalTrackerComponent : IDisposable
             settings.LegendWidth,
             settings.ShowLegend,
             settings.GraphType,
-            settings.ShowXAxisTimestamps);
+            settings.ShowXAxisTimestamps,
+            legendPosition: settings.LegendPosition,
+            legendHeightPercent: settings.LegendHeightPercent);
 
         // Calculate time cutoff
         DateTime? timeCutoff = null;

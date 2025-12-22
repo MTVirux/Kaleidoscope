@@ -219,7 +219,9 @@ public class DataTrackerComponent : IDisposable
             settings.LegendWidth,
             settings.ShowLegend,
             settings.GraphType,
-            settings.ShowXAxisTimestamps);
+            settings.ShowXAxisTimestamps,
+            legendPosition: settings.LegendPosition,
+            legendHeightPercent: settings.LegendHeightPercent);
 
         // Calculate time cutoff if time range filtering is enabled
         DateTime? timeCutoff = null;

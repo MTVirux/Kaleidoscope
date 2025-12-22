@@ -1,4 +1,5 @@
 using Dalamud.Configuration;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 
@@ -187,7 +188,9 @@ public class DataTrackerSettings
     public float GraphMinValue { get; set; } = 0f;
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
     public float LegendWidth { get; set; } = 140f;
+    public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     public GraphType GraphType { get; set; } = GraphType.Area;
 }
 
@@ -266,7 +269,9 @@ public class CrystalTrackerSettings
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;
     public float LegendWidth { get; set; } = 140f;
+    public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     public GraphType GraphType { get; set; } = GraphType.Area;
 
     /// <summary>
