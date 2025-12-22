@@ -42,6 +42,50 @@ public class InventoryValueTool : ToolComponent
         public static readonly Vector4 GridLine = new(0.18f, 0.20f, 0.22f, 0.6f);
     }
 
+    /// <summary>
+    /// Formatter delegate for X-axis tick labels with time values.
+    /// </summary>
+    private static readonly unsafe ImPlotFormatter XAxisTimeFormatter = (double value, byte* buff, int size, void* userData) =>
+    {
+        // value is seconds from the start time, userData contains the start time ticks
+        var startTicks = (long)userData;
+        var startTime = new DateTime(startTicks);
+        var time = startTime.AddSeconds(value).ToLocalTime();
+        var formatted = time.ToString("M/d HH:mm");
+        var len = Math.Min(formatted.Length, size - 1);
+        for (var i = 0; i < len; i++)
+            buff[i] = (byte)formatted[i];
+        buff[len] = 0;
+        return len;
+    };
+
+    /// <summary>
+    /// Formatter delegate for Y-axis tick labels with abbreviated notation (K, M, B).
+    /// </summary>
+    private static readonly unsafe ImPlotFormatter YAxisFormatter = (double value, byte* buff, int size, void* userData) =>
+    {
+        var formatted = FormatAbbreviated(value);
+        var len = Math.Min(formatted.Length, size - 1);
+        for (var i = 0; i < len; i++)
+            buff[i] = (byte)formatted[i];
+        buff[len] = 0;
+        return len;
+    };
+
+    /// <summary>
+    /// Formats a number with abbreviated notation (K, M, B).
+    /// </summary>
+    private static string FormatAbbreviated(double value)
+    {
+        return value switch
+        {
+            >= 1_000_000_000 => $"{value / 1_000_000_000:0.##}B",
+            >= 1_000_000 => $"{value / 1_000_000:0.##}M",
+            >= 1_000 => $"{value / 1_000:0.##}K",
+            _ => $"{value:0.##}"
+        };
+    }
+
     // Color palette for multi-character mode
     private static readonly Vector4[] SeriesColors = new[]
     {
@@ -274,18 +318,29 @@ public class InventoryValueTool : ToolComponent
         }
     }
 
-    private void DrawMultiLineGraph(Dictionary<ulong, List<(DateTime, long)>> perCharacterData, float width, float height)
+    private unsafe void DrawMultiLineGraph(Dictionary<ulong, List<(DateTime, long)>> perCharacterData, float width, float height)
     {
         if (!ImPlot.BeginPlot("##InventoryValuePlot", new Vector2(width, height)))
             return;
 
         try
         {
-            var now = DateTime.UtcNow;
             var settings = Settings;
 
-            // Setup axes
+            // Find global min time for X-axis reference
+            DateTime globalMinTime = DateTime.MaxValue;
+            foreach (var (_, points) in perCharacterData)
+            {
+                if (points.Count > 0 && points[0].Item1 < globalMinTime)
+                    globalMinTime = points[0].Item1;
+            }
+            if (globalMinTime == DateTime.MaxValue)
+                globalMinTime = DateTime.UtcNow;
+
+            // Setup axes with formatters
             ImPlot.SetupAxes("", "", ImPlotAxisFlags.None, ImPlotAxisFlags.None);
+            ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
+            ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
 
             int colorIdx = 0;
             foreach (var (charId, points) in perCharacterData)
@@ -300,7 +355,8 @@ public class InventoryValueTool : ToolComponent
                 }
 
                 var color = SeriesColors[colorIdx % SeriesColors.Length];
-                var xValues = points.Select(p => (now - p.Item1).TotalSeconds * -1).ToArray();
+                // X values are seconds from the global min time
+                var xValues = points.Select(p => (p.Item1 - globalMinTime).TotalSeconds).ToArray();
                 var yValues = points.Select(p => (double)p.Item2).ToArray();
 
                 ImPlot.SetNextLineStyle(color);
@@ -318,7 +374,6 @@ public class InventoryValueTool : ToolComponent
                         break;
                     default: // Area
                         ImPlot.PlotShaded(charName, ref xValues[0], ref yValues[0], points.Count);
-                        ImPlot.PlotLine(charName + "##line", ref xValues[0], ref yValues[0], points.Count);
                         break;
                 }
 
@@ -331,7 +386,7 @@ public class InventoryValueTool : ToolComponent
         }
     }
 
-    private void DrawSingleLineGraph(List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data, 
+    private unsafe void DrawSingleLineGraph(List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data, 
         float width, float height, bool includeGil)
     {
         if (!ImPlot.BeginPlot("##InventoryValuePlot", new Vector2(width, height)))
@@ -346,15 +401,19 @@ public class InventoryValueTool : ToolComponent
                 return;
             }
 
-            var now = DateTime.UtcNow;
             var settings = Settings;
 
-            // Prepare data
-            var xValues = data.Select(d => (now - d.Timestamp).TotalSeconds * -1).ToArray();
+            // Find global min time for X-axis reference
+            var globalMinTime = data.Count > 0 ? data[0].Timestamp : DateTime.UtcNow;
+
+            // Prepare data - X values are seconds from the global min time
+            var xValues = data.Select(d => (d.Timestamp - globalMinTime).TotalSeconds).ToArray();
             var yValues = data.Select(d => (double)(includeGil ? d.TotalValue : d.ItemValue)).ToArray();
 
-            // Setup axes
+            // Setup axes with formatters
             ImPlot.SetupAxes("", "", ImPlotAxisFlags.None, ImPlotAxisFlags.None);
+            ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
+            ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
 
             if (settings.AutoScaleGraph && yValues.Length > 0)
             {
@@ -379,7 +438,6 @@ public class InventoryValueTool : ToolComponent
                     break;
                 default: // Area
                     ImPlot.PlotShaded("Value", ref xValues[0], ref yValues[0], data.Count);
-                    ImPlot.PlotLine("Value##line", ref xValues[0], ref yValues[0], data.Count);
                     break;
             }
 
