@@ -57,6 +57,16 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     public event Action? OnCurrencyChanged;
 
+    /// <summary>
+    /// Event fired when a retainer's inventory has stabilized (data is ready to read).
+    /// </summary>
+    public event Action? OnRetainerInventoryReady;
+
+    /// <summary>
+    /// Event fired when the retainer is closed.
+    /// </summary>
+    public event Action? OnRetainerClosed;
+
     public InventoryChangeService(IPluginLog log, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)
     {
         _log = log;
@@ -182,6 +192,8 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 _isRetainerStabilizing = false;
                 _log.Debug("[Kaleidoscope] [InventoryChangeService] Retainer closed, clearing value cache");
                 ClearValueCache();
+                try { OnRetainerClosed?.Invoke(); }
+                catch (Exception ex) { _log.Debug($"[Kaleidoscope] [InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
             }
         }
 
@@ -192,6 +204,8 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             _log.Debug("[Kaleidoscope] [InventoryChangeService] Retainer data stabilized, resuming value checks");
             // Clear cached values to force fresh reads with stabilized retainer data
             ClearValueCache();
+            try { OnRetainerInventoryReady?.Invoke(); }
+            catch (Exception ex) { _log.Debug($"[Kaleidoscope] [InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
         }
 
         // Skip value checks while retainer data is stabilizing

@@ -40,6 +40,7 @@ public static class StaticServiceManager
             .AddSingleton<TrackedDataRegistry>()
             .AddSingleton<InventoryChangeService>()
             .AddSingleton<SamplerService>()
+            .AddSingleton<InventoryCacheService>()
             .AddSingleton<CommandService>();
 
     private static ServiceManager AddUi(this ServiceManager services)
