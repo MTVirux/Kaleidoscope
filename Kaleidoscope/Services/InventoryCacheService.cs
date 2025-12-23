@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Models.Inventory;
@@ -9,6 +10,14 @@ namespace Kaleidoscope.Services;
 /// Service for caching and tracking inventory contents for players and retainers.
 /// Scans inventory containers and persists snapshots to the database for offline access.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Optimization:</b> Inventory data for characters who are not logged in cannot change.
+/// This service maintains an in-memory cache that avoids repeated database reads for offline
+/// characters. Only the currently logged-in character's cache is invalidated when inventory
+/// changes are detected.
+/// </para>
+/// </remarks>
 public sealed class InventoryCacheService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
@@ -16,6 +25,15 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly IObjectTable _objectTable;
     private readonly IFramework _framework;
     private readonly InventoryChangeService _inventoryChangeService;
+    private readonly IClientState _clientState;
+    
+    // In-memory cache for inventory data - avoids repeated DB reads for offline characters
+    // Key: characterId, Value: list of inventory cache entries for that character
+    private readonly ConcurrentDictionary<ulong, List<InventoryCacheEntry>> _inventoryMemoryCache = new();
+    
+    // Track when the full "all characters" cache was last loaded
+    private List<InventoryCacheEntry>? _allCharactersCache;
+    private bool _allCharactersCacheDirty = true;
 
     // Player inventory containers to scan
     private static readonly InventoryType[] PlayerInventoryContainers = new[]
@@ -72,21 +90,69 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         SamplerService samplerService,
         IObjectTable objectTable,
         IFramework framework,
-        InventoryChangeService inventoryChangeService)
+        InventoryChangeService inventoryChangeService,
+        IClientState clientState)
     {
         _log = log;
         _samplerService = samplerService;
         _objectTable = objectTable;
         _framework = framework;
         _inventoryChangeService = inventoryChangeService;
+        _clientState = clientState;
 
         // Subscribe to events
         _framework.Update += OnFrameworkUpdate;
         _inventoryChangeService.OnRetainerInventoryReady += OnRetainerInventoryReady;
         _inventoryChangeService.OnRetainerClosed += OnRetainerClosed;
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
+        
+        // Subscribe to login/logout events to invalidate memory cache for the new character
+        _clientState.Login += OnLogin;
+        _clientState.Logout += OnLogout;
 
         _log.Debug("[InventoryCacheService] Initialized");
+    }
+    
+    /// <summary>
+    /// Called when a character logs in. Invalidates the memory cache for that character
+    /// since their inventory may have changed while we weren't tracking (e.g., retainer ventures).
+    /// </summary>
+    private void OnLogin()
+    {
+        var characterId = GameStateService.PlayerContentId;
+        if (characterId != 0)
+        {
+            InvalidateCharacterCache(characterId);
+            _log.Debug($"[InventoryCacheService] Character logged in, invalidated cache for {characterId}");
+        }
+    }
+    
+    /// <summary>
+    /// Called when a character logs out. Marks all-characters cache as dirty.
+    /// </summary>
+    private void OnLogout(int type, int code)
+    {
+        _allCharactersCacheDirty = true;
+    }
+    
+    /// <summary>
+    /// Invalidates the in-memory cache for a specific character.
+    /// Call this when the character's inventory may have changed.
+    /// </summary>
+    public void InvalidateCharacterCache(ulong characterId)
+    {
+        _inventoryMemoryCache.TryRemove(characterId, out _);
+        _allCharactersCacheDirty = true;
+    }
+    
+    /// <summary>
+    /// Invalidates all in-memory caches. Use sparingly.
+    /// </summary>
+    public void InvalidateAllCaches()
+    {
+        _inventoryMemoryCache.Clear();
+        _allCharactersCache = null;
+        _allCharactersCacheDirty = true;
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -127,6 +193,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private void OnValuesChanged(IReadOnlyDictionary<Models.TrackedDataType, long> changes)
     {
         // When inventory-related values change, schedule a player cache update
+        // Also invalidate the memory cache for the current character
+        var characterId = GameStateService.PlayerContentId;
+        if (characterId != 0)
+        {
+            InvalidateCharacterCache(characterId);
+        }
         _pendingPlayerCache = true;
     }
 
@@ -165,6 +237,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Save to database
             _samplerService.DbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
+            
+            // Invalidate memory cache since DB was updated
+            InvalidateCharacterCache(characterId);
 
             _log.Debug($"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
@@ -219,6 +294,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Save to database
             _samplerService.DbService.SaveInventoryCache(entry);
             _lastCachedRetainerId = retainerId;
+            
+            // Invalidate memory cache since DB was updated
+            InvalidateCharacterCache(characterId);
 
             _log.Debug($"[InventoryCacheService] Cached retainer inventory '{retainerName}': {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
@@ -327,22 +405,61 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
+    /// Gets all cached inventories for a specific character.
+    /// Uses in-memory cache for efficiency - offline characters' data is static.
+    /// </summary>
+    public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
+    {
+        if (characterId == 0) return new List<InventoryCacheEntry>();
+        
+        // Check memory cache first
+        if (_inventoryMemoryCache.TryGetValue(characterId, out var cached))
+        {
+            return cached;
+        }
+        
+        // Cache miss - load from database
+        var entries = _samplerService.DbService.GetAllInventoryCaches(characterId);
+        
+        // Store in memory cache (this data is static for offline characters)
+        _inventoryMemoryCache[characterId] = entries;
+        
+        return entries;
+    }
+    
+    /// <summary>
     /// Gets all cached inventories for the current character.
+    /// Uses in-memory cache for efficiency.
     /// </summary>
     public List<InventoryCacheEntry> GetCurrentCharacterInventories()
     {
         var characterId = GameStateService.PlayerContentId;
-        if (characterId == 0) return new List<InventoryCacheEntry>();
-        
-        return _samplerService.DbService.GetAllInventoryCaches(characterId);
+        return GetInventoriesForCharacter(characterId);
     }
 
     /// <summary>
     /// Gets all cached inventories across all characters.
+    /// Uses in-memory cache for efficiency - offline characters' data is static.
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventories()
     {
-        return _samplerService.DbService.GetAllInventoryCachesAllCharacters();
+        // If cache is valid, return it
+        if (!_allCharactersCacheDirty && _allCharactersCache != null)
+        {
+            return _allCharactersCache;
+        }
+        
+        // Cache miss or dirty - reload from database
+        _allCharactersCache = _samplerService.DbService.GetAllInventoryCachesAllCharacters();
+        _allCharactersCacheDirty = false;
+        
+        // Also populate per-character cache for individual lookups
+        foreach (var group in _allCharactersCache.GroupBy(e => e.CharacterId))
+        {
+            _inventoryMemoryCache[group.Key] = group.ToList();
+        }
+        
+        return _allCharactersCache;
     }
 
     /// <summary>
@@ -380,6 +497,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _inventoryChangeService.OnRetainerInventoryReady -= OnRetainerInventoryReady;
         _inventoryChangeService.OnRetainerClosed -= OnRetainerClosed;
         _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
+        _clientState.Login -= OnLogin;
+        _clientState.Logout -= OnLogout;
+        
+        // Clear memory caches
+        _inventoryMemoryCache.Clear();
+        _allCharactersCache = null;
 
         _log.Debug("[InventoryCacheService] Disposed");
     }
