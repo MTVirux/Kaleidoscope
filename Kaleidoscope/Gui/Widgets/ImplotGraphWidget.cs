@@ -19,13 +19,20 @@ internal sealed class GraphSeriesData
     
     /// <summary>
     /// X-axis values (either indices or seconds from start time).
+    /// Array may be larger than PointCount for pooling efficiency.
     /// </summary>
     public required double[] XValues { get; init; }
     
     /// <summary>
     /// Y-axis values corresponding to each X value.
+    /// Array may be larger than PointCount for pooling efficiency.
     /// </summary>
     public required double[] YValues { get; init; }
+    
+    /// <summary>
+    /// Actual number of valid data points (XValues/YValues may be larger for pooling).
+    /// </summary>
+    public int PointCount { get; init; }
     
     /// <summary>
     /// Color for this series (RGB).
@@ -51,22 +58,22 @@ internal sealed class PreparedGraphData
     /// <summary>
     /// Minimum X value across all visible series.
     /// </summary>
-    public double XMin { get; init; }
+    public double XMin { get; set; }
     
     /// <summary>
     /// Maximum X value across all visible series (including padding).
     /// </summary>
-    public double XMax { get; init; }
+    public double XMax { get; set; }
     
     /// <summary>
     /// Minimum Y value across all visible series.
     /// </summary>
-    public double YMin { get; init; }
+    public double YMin { get; set; }
     
     /// <summary>
     /// Maximum Y value across all visible series.
     /// </summary>
-    public double YMax { get; init; }
+    public double YMax { get; set; }
     
     /// <summary>
     /// Whether this is time-based data (true) or index-based (false).
@@ -80,8 +87,9 @@ internal sealed class PreparedGraphData
     
     /// <summary>
     /// Total time span in seconds (for time-based data).
+    /// Mutable to allow real-time updates for auto-scroll.
     /// </summary>
-    public double TotalTimeSpan { get; init; }
+    public double TotalTimeSpan { get; set; }
     
     /// <summary>
     /// Whether this graph has multiple visible series (affects legend display).
@@ -304,6 +312,22 @@ public class ImplotGraphWidget
     /// </summary>
     private bool _controlsDrawerOpen = false;
     
+    // === Performance optimization caches ===
+    /// <summary>
+    /// Cached sorted series list to avoid LINQ sorting every frame.
+    /// </summary>
+    private readonly List<GraphSeriesData> _sortedSeriesCache = new();
+    
+    /// <summary>
+    /// Cached labels for DrawValueLabels to avoid LINQ allocations.
+    /// </summary>
+    private readonly List<(string Name, float Value, Vector3 Color)> _valueLabelCache = new();
+    
+    /// <summary>
+    /// Hash of the last series collection used to invalidate caches.
+    /// </summary>
+    private int _lastSeriesHash = 0;
+    
     /// <summary>
     /// Cached controls drawer bounds from the previous frame.
     /// </summary>
@@ -313,6 +337,61 @@ public class ImplotGraphWidget
     /// Names for auto-scroll time unit buttons.
     /// </summary>
     private static readonly string[] TimeUnitNames = { "sec", "min", "hr", "day", "wk" };
+    
+    // === Array pooling for PrepareTimeBasedData ===
+    /// <summary>
+    /// Pooled arrays for X values, keyed by series name.
+    /// </summary>
+    private readonly Dictionary<string, double[]> _pooledXArrays = new();
+    
+    /// <summary>
+    /// Pooled arrays for Y values, keyed by series name.
+    /// </summary>
+    private readonly Dictionary<string, double[]> _pooledYArrays = new();
+    
+    // === PreparedGraphData caching to avoid recomputing every frame ===
+    /// <summary>
+    /// Cached prepared graph data to avoid recomputing every frame.
+    /// </summary>
+    private PreparedGraphData? _cachedPreparedData;
+    
+    /// <summary>
+    /// Reference to the last series data used to detect changes.
+    /// </summary>
+    private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _lastSeriesData;
+    
+    /// <summary>
+    /// Hash of hidden series to detect visibility changes.
+    /// </summary>
+    private int _lastHiddenSeriesHash;
+    
+    /// <summary>
+    /// Last auto-scroll enabled state for cache invalidation.
+    /// </summary>
+    private bool _lastAutoScrollEnabled;
+    
+    /// <summary>
+    /// Last time the prepared data was computed (for auto-scroll time updates).
+    /// </summary>
+    private DateTime _lastPreparedDataTime = DateTime.MinValue;
+    
+    // === Virtualized data loading ===
+    /// <summary>
+    /// The currently loaded data time range (start, end).
+    /// Used to determine if we need to request more data.
+    /// </summary>
+    private (DateTime start, DateTime end)? _loadedDataRange;
+    
+    /// <summary>
+    /// The overall data time range (earliest to latest available data).
+    /// Set by the data provider to allow proper scrollbar behavior.
+    /// </summary>
+    private (DateTime earliest, DateTime latest)? _availableDataRange;
+    
+    /// <summary>
+    /// Buffer factor for pre-loading data outside visible range (e.g., 1.5 = load 50% extra on each side).
+    /// </summary>
+    private const double LoadBufferFactor = 1.5;
     
     /// <summary>
     /// Gets whether the mouse is currently over the inside legend (based on cached bounds).
@@ -358,6 +437,30 @@ public class ImplotGraphWidget
     public event Action<bool, int, AutoScrollTimeUnit, float>? OnAutoScrollSettingsChanged;
     
     /// <summary>
+    /// Delegate for virtualized data loading.
+    /// Called when the widget needs data for a specific time window.
+    /// Parameters: (DateTime windowStart, DateTime windowEnd) - the time range to load data for
+    /// Returns: List of series data within the requested window
+    /// </summary>
+    public delegate IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? 
+        WindowedDataProvider(DateTime windowStart, DateTime windowEnd);
+    
+    /// <summary>
+    /// Optional data provider for virtualized loading.
+    /// When set, the widget will request only data within the visible window.
+    /// </summary>
+    public WindowedDataProvider? DataProvider { get; set; }
+    
+    /// <summary>
+    /// Sets the available data time range (used for proper scrollbar behavior in virtualized mode).
+    /// Call this when using DataProvider to inform the widget of the full data extent.
+    /// </summary>
+    public void SetAvailableDataRange(DateTime earliest, DateTime latest)
+    {
+        _availableDataRange = (earliest, latest);
+    }
+    
+    /// <summary>
     /// Gets or sets the hidden series names.
     /// </summary>
     public IReadOnlyCollection<string> HiddenSeries => _hiddenSeries;
@@ -373,6 +476,16 @@ public class ImplotGraphWidget
             foreach (var name in seriesNames)
                 _hiddenSeries.Add(name);
         }
+    }
+    
+    /// <summary>
+    /// Invalidates the cached prepared graph data, forcing recomputation on the next draw.
+    /// Call this when the underlying data changes.
+    /// </summary>
+    public void InvalidatePreparedDataCache()
+    {
+        _cachedPreparedData = null;
+        _lastSeriesData = null;
     }
     
     /// <summary>
@@ -751,6 +864,7 @@ public class ImplotGraphWidget
                 Name = "Value",
                 XValues = xValues,
                 YValues = yValues,
+                PointCount = samples.Count,
                 Color = color,
                 Visible = true
             }
@@ -799,17 +913,17 @@ public class ImplotGraphWidget
         // Generate colors
         var colors = GetSeriesColors(seriesData.Count);
         
-        // Build series list
+        // Build series list using pooled arrays to avoid allocations
         var series = new List<GraphSeriesData>();
         for (var i = 0; i < seriesData.Count; i++)
         {
             var (name, samples) = seriesData[i];
             if (samples == null || samples.Count == 0) continue;
             
-            // Build arrays including extension to current time
+            // Get or create pooled arrays (reuse if size matches, otherwise allocate)
             var pointCount = samples.Count + 1;
-            var xValues = new double[pointCount];
-            var yValues = new double[pointCount];
+            var xValues = GetOrCreatePooledArray(_pooledXArrays, name, pointCount);
+            var yValues = GetOrCreatePooledArray(_pooledYArrays, name, pointCount);
             
             for (var j = 0; j < samples.Count; j++)
             {
@@ -826,6 +940,7 @@ public class ImplotGraphWidget
                 Name = name,
                 XValues = xValues,
                 YValues = yValues,
+                PointCount = pointCount,
                 Color = colors[i],
                 Visible = !_hiddenSeries.Contains(name)
             });
@@ -865,6 +980,23 @@ public class ImplotGraphWidget
     }
     
     /// <summary>
+    /// Gets a pooled array from the dictionary, or creates one if it doesn't exist or is too small.
+    /// Arrays are reused across frames to avoid GC pressure.
+    /// </summary>
+    private static double[] GetOrCreatePooledArray(Dictionary<string, double[]> pool, string key, int requiredSize)
+    {
+        if (pool.TryGetValue(key, out var existing) && existing.Length >= requiredSize)
+        {
+            return existing;
+        }
+        
+        // Allocate with some headroom to reduce reallocations for growing data
+        var newArray = new double[requiredSize + 16];
+        pool[key] = newArray;
+        return newArray;
+    }
+    
+    /// <summary>
     /// Calculates Y-axis bounds from visible series data.
     /// </summary>
     private (double yMin, double yMax) CalculateYBounds(
@@ -881,7 +1013,7 @@ public class ImplotGraphWidget
             
             double? lastValueBeforeRange = null;
             
-            for (var i = 0; i < s.XValues.Length; i++)
+            for (var i = 0; i < s.PointCount; i++)
             {
                 var x = s.XValues[i];
                 var y = s.YValues[i];
@@ -947,12 +1079,17 @@ public class ImplotGraphWidget
             return;
         }
 
-        var preparedData = PrepareIndexBasedData(samples);
+        PreparedGraphData preparedData;
+        using (ProfilerService.BeginStaticChildScope("PrepareIndexData"))
+        {
+            preparedData = PrepareIndexBasedData(samples);
+        }
         DrawGraph(preparedData);
     }
 
     /// <summary>
     /// Draws multiple data series overlaid on the same graph with time-aligned data.
+    /// Uses caching to avoid recomputing prepared data every frame.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
     public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
@@ -963,8 +1100,203 @@ public class ImplotGraphWidget
             return;
         }
 
-        var preparedData = PrepareTimeBasedData(series);
-        DrawGraph(preparedData);
+        PreparedGraphData data;
+        
+        // Check if we need to recompute prepared data
+        var needsRecompute = NeedsPreparedDataRecompute(series);
+        
+        if (needsRecompute)
+        {
+            using (ProfilerService.BeginStaticChildScope("PrepareTimeData"))
+            {
+                data = PrepareTimeBasedData(series);
+            }
+            _cachedPreparedData = data;
+            _lastSeriesData = series;
+            _lastHiddenSeriesHash = ComputeHiddenSeriesHash();
+            _lastAutoScrollEnabled = _config.AutoScrollEnabled;
+            _lastPreparedDataTime = DateTime.UtcNow;
+        }
+        else
+        {
+            data = _cachedPreparedData!;
+            
+            // For auto-scroll, just update the X limits and Y bounds without reprocessing all data
+            if (_config.AutoScrollEnabled)
+            {
+                UpdateAutoScrollLimits(data);
+            }
+        }
+        
+        DrawGraph(data);
+    }
+    
+    /// <summary>
+    /// Determines if prepared graph data needs to be recomputed.
+    /// </summary>
+    private bool NeedsPreparedDataRecompute(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+    {
+        // No cache yet
+        if (_cachedPreparedData == null || _lastSeriesData == null)
+            return true;
+        
+        // Series reference changed (new data from caller)
+        if (!ReferenceEquals(series, _lastSeriesData))
+            return true;
+        
+        // Hidden series changed
+        var currentHiddenHash = ComputeHiddenSeriesHash();
+        if (currentHiddenHash != _lastHiddenSeriesHash)
+            return true;
+        
+        // Auto-scroll was just enabled/disabled
+        if (_config.AutoScrollEnabled != _lastAutoScrollEnabled)
+            return true;
+        
+        // Note: For auto-scroll mode, we DON'T recompute here.
+        // Instead, UpdateAutoScrollLimits() updates the bounds every frame.
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Computes a hash of the hidden series set for change detection.
+    /// </summary>
+    private int ComputeHiddenSeriesHash()
+    {
+        var hash = new HashCode();
+        foreach (var name in _hiddenSeries.OrderBy(n => n))
+        {
+            hash.Add(name);
+        }
+        return hash.ToHashCode();
+    }
+    
+    /// <summary>
+    /// Updates just the X limits for auto-scroll mode without reprocessing data.
+    /// This is called every frame when auto-scroll is enabled to keep "now" moving.
+    /// </summary>
+    private void UpdateAutoScrollLimits(PreparedGraphData data)
+    {
+        // Recalculate totalTimeSpan based on current time
+        var globalMaxTime = DateTime.Now;
+        var totalTimeSpan = (globalMaxTime - data.StartTime).TotalSeconds;
+        if (totalTimeSpan < 1) totalTimeSpan = 1;
+        
+        // Update the total time span in the data
+        data.TotalTimeSpan = totalTimeSpan;
+        
+        // Update the extended point for each series to current time
+        foreach (var series in data.Series)
+        {
+            if (series.PointCount > 0)
+            {
+                // The last point is the "extended to now" point - update its X value
+                series.XValues[series.PointCount - 1] = totalTimeSpan;
+            }
+        }
+        
+        // Recalculate X limits based on auto-scroll settings
+        var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+        var nowFraction = _config.AutoScrollNowPosition / 100f;
+        var leftPortion = timeRangeSeconds * nowFraction;
+        var rightPortion = timeRangeSeconds * (1f - nowFraction);
+        
+        data.XMin = totalTimeSpan - leftPortion;
+        data.XMax = totalTimeSpan + rightPortion;
+        
+        // Recalculate Y bounds for the visible X range
+        var (yMin, yMax) = CalculateYBounds(data.Series, data.XMin, data.XMax);
+        data.YMin = yMin;
+        data.YMax = yMax;
+    }
+    
+    /// <summary>
+    /// Draws the graph using virtualized data loading.
+    /// Only loads data within the visible time window, requesting more as the user scrolls.
+    /// Requires DataProvider to be set.
+    /// </summary>
+    public void DrawVirtualized()
+    {
+        if (DataProvider == null)
+        {
+            DrawNoDataMessage();
+            return;
+        }
+        
+        // Calculate the visible time window
+        var now = DateTime.UtcNow;
+        DateTime windowStart, windowEnd;
+        
+        if (_config.AutoScrollEnabled)
+        {
+            // In auto-scroll mode, calculate window from settings
+            var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+            var nowFraction = _config.AutoScrollNowPosition / 100f;
+            var leftSeconds = timeRangeSeconds * nowFraction * LoadBufferFactor;
+            var rightSeconds = timeRangeSeconds * (1f - nowFraction) * LoadBufferFactor;
+            
+            windowStart = now.AddSeconds(-leftSeconds);
+            windowEnd = now.AddSeconds(rightSeconds);
+        }
+        else
+        {
+            // Not in auto-scroll - use available data range or default
+            if (_availableDataRange.HasValue)
+            {
+                windowStart = _availableDataRange.Value.earliest;
+                windowEnd = now;
+            }
+            else
+            {
+                // Default to last 24 hours if no range info
+                windowStart = now.AddHours(-24);
+                windowEnd = now;
+            }
+        }
+        
+        // Check if we need to load new data (current data doesn't cover the window)
+        var needsNewData = !_loadedDataRange.HasValue ||
+                           windowStart < _loadedDataRange.Value.start ||
+                           windowEnd > _loadedDataRange.Value.end;
+        
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? series = null;
+        
+        if (needsNewData)
+        {
+            // Request data with buffer
+            using (ProfilerService.BeginStaticChildScope("LoadVirtualData"))
+            {
+                series = DataProvider(windowStart, windowEnd);
+            }
+            if (series != null && series.Count > 0)
+            {
+                _loadedDataRange = (windowStart, windowEnd);
+            }
+        }
+        
+        // If we have cached data and don't need new data, we still need to draw
+        // But we need the series data - for now, always request (the provider should cache)
+        if (series == null)
+        {
+            using (ProfilerService.BeginStaticChildScope("LoadVirtualData"))
+            {
+                series = DataProvider(windowStart, windowEnd);
+            }
+        }
+        
+        if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
+        {
+            DrawNoDataMessage();
+            return;
+        }
+        
+        PreparedGraphData data;
+        using (ProfilerService.BeginStaticChildScope("PrepareTimeData"))
+        {
+            data = PrepareTimeBasedData(series);
+        }
+        DrawGraph(data);
     }
     
     /// <summary>
@@ -1052,21 +1384,24 @@ public class ImplotGraphWidget
                 ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
                 
                 // Draw each series
-                foreach (var series in data.Series)
+                using (ProfilerService.BeginStaticChildScope("DrawSeries"))
                 {
-                    if (!series.Visible) continue;
-                    DrawSeries(series, data);
+                    foreach (var series in data.Series)
+                    {
+                        if (!series.Visible) continue;
+                        DrawSeries(series, data);
+                    }
                 }
                 
-                // Draw current price line for the last visible series
-                if (_config.ShowCurrentPriceLine)
+                // Draw current price line for the last visible series (only for single series)
+                if (_config.ShowCurrentPriceLine && !data.HasMultipleSeries)
                 {
                     var lastVisibleSeries = data.Series.LastOrDefault(s => s.Visible);
-                    if (lastVisibleSeries != null && lastVisibleSeries.YValues.Length > 0)
+                    if (lastVisibleSeries != null && lastVisibleSeries.PointCount > 0)
                     {
-                        var currentValue = (float)lastVisibleSeries.YValues[^1];
-                        var isBullish = lastVisibleSeries.YValues.Length < 2 || 
-                                       lastVisibleSeries.YValues[^1] >= lastVisibleSeries.YValues[0];
+                        var currentValue = (float)lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1];
+                        var isBullish = lastVisibleSeries.PointCount < 2 || 
+                                       lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1] >= lastVisibleSeries.YValues[0];
                         var priceLineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
                         DrawPriceLine(currentValue, FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
                     }
@@ -1075,7 +1410,10 @@ public class ImplotGraphWidget
                 // Draw hover effects
                 if (ImPlot.IsPlotHovered())
                 {
-                    DrawHoverEffects(data);
+                    using (ProfilerService.BeginStaticChildScope("DrawHoverEffects"))
+                    {
+                        DrawHoverEffects(data);
+                    }
                 }
                 
                 // Draw value labels
@@ -1087,7 +1425,10 @@ public class ImplotGraphWidget
                 // Draw inside legend if applicable
                 if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeries)
                 {
-                    DrawInsideLegend(data);
+                    using (ProfilerService.BeginStaticChildScope("DrawInsideLegend"))
+                    {
+                        DrawInsideLegend(data);
+                    }
                 }
                 else
                 {
@@ -1113,7 +1454,10 @@ public class ImplotGraphWidget
             if (useOutsideLegend)
             {
                 ImGui.SameLine();
-                DrawScrollableLegend(data, _config.LegendWidth, avail.Y);
+                using (ProfilerService.BeginStaticChildScope("DrawOutsideLegend"))
+                {
+                    DrawScrollableLegend(data, _config.LegendWidth, avail.Y);
+                }
             }
         }
         catch (Exception ex)
@@ -1134,7 +1478,7 @@ public class ImplotGraphWidget
         fixed (double* xPtr = series.XValues)
         fixed (double* yPtr = series.YValues)
         {
-            var count = series.XValues.Length;
+            var count = series.PointCount;
             
             switch (_config.GraphType)
             {
@@ -1168,6 +1512,7 @@ public class ImplotGraphWidget
     
     /// <summary>
     /// Draws crosshair and tooltip when hovering over the plot.
+    /// Uses binary search for time-based data to avoid O(n) linear scan.
     /// </summary>
     private void DrawHoverEffects(PreparedGraphData data)
     {
@@ -1186,36 +1531,14 @@ public class ImplotGraphWidget
         
         foreach (var series in data.Series)
         {
-            if (!series.Visible) continue;
+            if (!series.Visible || series.PointCount == 0) continue;
             
-            for (var i = 0; i < series.XValues.Length; i++)
-            {
-                var x = series.XValues[i];
-                var nextX = i < series.XValues.Length - 1 ? series.XValues[i + 1] : data.XMax;
-                
-                if (mouseX >= x && mouseX <= nextX)
-                {
-                    var value = (float)series.YValues[i];
-                    var yDistance = Math.Abs(mouseY - value);
-                    
-                    if (yDistance < minYDistance)
-                    {
-                        minYDistance = yDistance;
-                        nearestSeriesName = series.Name;
-                        nearestValue = value;
-                        nearestColor = series.Color;
-                        pointX = mouseX;
-                        pointY = value;
-                        foundPoint = true;
-                    }
-                    break;
-                }
-            }
+            // Use binary search for time-based data (X values are sorted)
+            var idx = BinarySearchNearestX(series.XValues, series.PointCount, mouseX);
             
-            // Check if past last point
-            if (series.XValues.Length > 0 && mouseX > series.XValues[^1])
+            if (idx >= 0 && idx < series.PointCount)
             {
-                var value = (float)series.YValues[^1];
+                var value = (float)series.YValues[idx];
                 var yDistance = Math.Abs(mouseY - value);
                 
                 if (yDistance < minYDistance)
@@ -1251,21 +1574,28 @@ public class ImplotGraphWidget
     
     /// <summary>
     /// Draws value labels at the end of each visible series.
+    /// Uses cached label list to avoid LINQ allocations every frame.
     /// </summary>
     private void DrawValueLabels(PreparedGraphData data)
     {
         const float labelHeight = 18f;
         
-        // Collect labels from visible series
-        var labels = data.Series
-            .Where(s => s.Visible && s.YValues.Length > 0)
-            .Select(s => (s.Name, Value: (float)s.YValues[^1], s.Color))
-            .OrderByDescending(l => l.Value)
-            .ToList();
-        
-        for (var i = 0; i < labels.Count; i++)
+        // Collect labels from visible series using cached list to avoid allocations
+        _valueLabelCache.Clear();
+        foreach (var s in data.Series)
         {
-            var (name, lastValue, color) = labels[i];
+            if (s.Visible && s.PointCount > 0)
+            {
+                _valueLabelCache.Add((s.Name, (float)s.YValues[s.PointCount - 1], s.Color));
+            }
+        }
+        
+        // Sort by value descending (in-place to avoid allocation)
+        _valueLabelCache.Sort((a, b) => b.Value.CompareTo(a.Value));
+        
+        for (var i = 0; i < _valueLabelCache.Count; i++)
+        {
+            var (name, lastValue, color) = _valueLabelCache[i];
             var text = data.HasMultipleSeries 
                 ? $"{name}: {FormatValue(lastValue)}"
                 : FormatValue(lastValue);
@@ -1285,6 +1615,7 @@ public class ImplotGraphWidget
     
     /// <summary>
     /// Draws a scrollable legend for multi-series graphs with trading platform styling.
+    /// Uses cached sorted list to avoid LINQ allocations every frame.
     /// </summary>
     private void DrawScrollableLegend(PreparedGraphData data, float width, float height)
     {
@@ -1296,15 +1627,13 @@ public class ImplotGraphWidget
         
         if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), true))
         {
-            // Create sorted list by series name
-            var sortedSeries = data.Series
-                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // Update cached sorted list only when series changes
+            UpdateSortedSeriesCache(data);
             
-            foreach (var series in sortedSeries)
+            foreach (var series in _sortedSeriesCache)
             {
                 var isHidden = !series.Visible;
-                var lastValue = series.YValues.Length > 0 ? (float)series.YValues[^1] : 0f;
+                var lastValue = series.PointCount > 0 ? (float)series.YValues[series.PointCount - 1] : 0f;
                 
                 // Use dimmed color for hidden series
                 var displayAlpha = isHidden ? 0.35f : 1f;
@@ -1445,10 +1774,8 @@ public class ImplotGraphWidget
         var maxScrollOffset = Math.Max(0f, contentHeight - (legendHeight - padding * 2));
         _insideLegendScrollOffset = Math.Clamp(_insideLegendScrollOffset, 0f, maxScrollOffset);
         
-        // Sort series by name
-        var sortedSeries = data.Series
-            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // Update cached sorted list only when series changes
+        UpdateSortedSeriesCache(data);
         
         // Calculate visible area
         var contentAreaTop = legendPos.Y + padding;
@@ -1457,7 +1784,7 @@ public class ImplotGraphWidget
         
         // Draw each legend entry
         var yOffset = contentAreaTop - _insideLegendScrollOffset;
-        foreach (var series in sortedSeries)
+        foreach (var series in _sortedSeriesCache)
         {
             var rowTop = yOffset;
             var rowBottom = yOffset + rowHeight;
@@ -1557,14 +1884,14 @@ public class ImplotGraphWidget
         {
             var relativeY = mousePos.Y - contentAreaTop + _insideLegendScrollOffset;
             var hoveredIdx = (int)(relativeY / rowHeight);
-            if (hoveredIdx >= 0 && hoveredIdx < sortedSeries.Count)
+            if (hoveredIdx >= 0 && hoveredIdx < _sortedSeriesCache.Count)
             {
                 var rowTop = contentAreaTop - _insideLegendScrollOffset + hoveredIdx * rowHeight;
                 var rowBottom = rowTop + rowHeight;
                 if (rowTop < contentAreaBottom && rowBottom > contentAreaTop)
                 {
-                    var series = sortedSeries[hoveredIdx];
-                    var lastValue = series.YValues.Length > 0 ? (float)series.YValues[^1] : 0f;
+                    var series = _sortedSeriesCache[hoveredIdx];
+                    var lastValue = series.PointCount > 0 ? (float)series.YValues[series.PointCount - 1] : 0f;
                     var statusText = !series.Visible ? " (hidden)" : "";
                     var scrollHint = needsScrolling ? "\nScroll to see more" : "";
                     ImGui.SetTooltip($"{series.Name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility{scrollHint}");
@@ -1895,6 +2222,34 @@ public class ImplotGraphWidget
             _hiddenSeries.Remove(seriesName);
         }
     }
+    
+    /// <summary>
+    /// Updates the cached sorted series list if the series data has changed.
+    /// Uses a hash of series names to detect changes without allocating.
+    /// </summary>
+    private void UpdateSortedSeriesCache(PreparedGraphData data)
+    {
+        // Compute a simple hash of the series collection
+        var hash = data.Series.Count;
+        foreach (var s in data.Series)
+        {
+            hash = HashCode.Combine(hash, s.Name);
+        }
+        
+        // Only rebuild if changed
+        if (hash != _lastSeriesHash)
+        {
+            _lastSeriesHash = hash;
+            _sortedSeriesCache.Clear();
+            _sortedSeriesCache.AddRange(data.Series);
+            _sortedSeriesCache.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            // Update visibility state from source (series objects are shared references)
+            // No action needed - we use the original series objects which have current Visible state
+        }
+    }
 
     private static Vector3[] GetSeriesColors(int count)
     {
@@ -1921,6 +2276,39 @@ public class ImplotGraphWidget
         if (Math.Abs(v - Math.Truncate(v)) < _config.FloatEpsilon)
             return ((long)v).ToString("N0", CultureInfo.InvariantCulture);
         return v.ToString("N2", CultureInfo.InvariantCulture);
+    }
+    
+    /// <summary>
+    /// Binary search to find the index of the point whose X value bracket contains the target.
+    /// Returns the index where xValues[idx] <= target < xValues[idx+1], or -1 if out of range.
+    /// For step/stair-style graphs, this returns the value that should be displayed at the target X.
+    /// </summary>
+    private static int BinarySearchNearestX(double[] xValues, int count, double target)
+    {
+        if (count == 0) return -1;
+        
+        // Handle edge cases
+        if (target < xValues[0]) return -1;
+        if (target >= xValues[count - 1]) return count - 1;
+        
+        // Binary search for the interval containing target
+        var left = 0;
+        var right = count - 1;
+        
+        while (left < right)
+        {
+            var mid = left + (right - left + 1) / 2;
+            if (xValues[mid] <= target)
+            {
+                left = mid;
+            }
+            else
+            {
+                right = mid - 1;
+            }
+        }
+        
+        return left;
     }
 
     #endregion
