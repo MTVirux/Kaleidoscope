@@ -28,6 +28,18 @@ public enum TimeRangeUnit
 }
 
 /// <summary>
+/// Time unit for auto-scroll follow mode (includes seconds for finer granularity).
+/// </summary>
+public enum AutoScrollTimeUnit
+{
+    Seconds = 0,
+    Minutes = 1,
+    Hours = 2,
+    Days = 3,
+    Weeks = 4
+}
+
+/// <summary>
 /// Graph visualization type for time-series data.
 /// </summary>
 public enum GraphType
@@ -202,6 +214,26 @@ public class DataTrackerSettings
     public bool ShowLegend { get; set; } = true;
     public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     public GraphType GraphType { get; set; } = GraphType.Area;
+    
+    // Auto-scroll settings
+    public bool AutoScrollEnabled { get; set; } = false;
+    public int AutoScrollTimeValue { get; set; } = 1;
+    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public float AutoScrollNowPosition { get; set; } = 75f;
+    public bool ShowControlsDrawer { get; set; } = true;
+    
+    /// <summary>
+    /// Calculates the auto-scroll time range in seconds from value and unit.
+    /// </summary>
+    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit switch
+    {
+        AutoScrollTimeUnit.Seconds => AutoScrollTimeValue,
+        AutoScrollTimeUnit.Minutes => AutoScrollTimeValue * 60,
+        AutoScrollTimeUnit.Hours => AutoScrollTimeValue * 3600,
+        AutoScrollTimeUnit.Days => AutoScrollTimeValue * 86400,
+        AutoScrollTimeUnit.Weeks => AutoScrollTimeValue * 604800,
+        _ => 3600
+    };
 }
 
 /// <summary>
@@ -283,6 +315,26 @@ public class CrystalTrackerSettings
     public bool ShowLegend { get; set; } = true;
     public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     public GraphType GraphType { get; set; } = GraphType.Area;
+    
+    // Auto-scroll settings
+    public bool AutoScrollEnabled { get; set; } = false;
+    public int AutoScrollTimeValue { get; set; } = 1;
+    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public float AutoScrollNowPosition { get; set; } = 75f;
+    public bool ShowControlsDrawer { get; set; } = true;
+    
+    /// <summary>
+    /// Calculates the auto-scroll time range in seconds from value and unit.
+    /// </summary>
+    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit switch
+    {
+        AutoScrollTimeUnit.Seconds => AutoScrollTimeValue,
+        AutoScrollTimeUnit.Minutes => AutoScrollTimeValue * 60,
+        AutoScrollTimeUnit.Hours => AutoScrollTimeValue * 3600,
+        AutoScrollTimeUnit.Days => AutoScrollTimeValue * 86400,
+        AutoScrollTimeUnit.Weeks => AutoScrollTimeValue * 604800,
+        _ => 3600
+    };
 
     /// <summary>
     /// Gets whether a specific element is included in the filter.

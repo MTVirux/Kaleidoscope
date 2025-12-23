@@ -54,7 +54,19 @@ public class InventoryValueTool : ToolComponent
             ShowCurrentPriceLine = true
         });
         
+        _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
+        
         RefreshCharacterList();
+    }
+    
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    {
+        var settings = Settings;
+        settings.AutoScrollEnabled = enabled;
+        settings.AutoScrollTimeValue = timeValue;
+        settings.AutoScrollTimeUnit = timeUnit;
+        settings.AutoScrollNowPosition = nowPosition;
+        _configService.Save();
     }
 
     /// <summary>
@@ -161,7 +173,12 @@ public class InventoryValueTool : ToolComponent
             showGridLines: true,
             showCurrentPriceLine: true,
             legendPosition: settings.LegendPosition,
-            legendHeightPercent: settings.LegendHeightPercent);
+            legendHeightPercent: settings.LegendHeightPercent,
+            autoScrollEnabled: settings.AutoScrollEnabled,
+            autoScrollTimeValue: settings.AutoScrollTimeValue,
+            autoScrollTimeUnit: settings.AutoScrollTimeUnit,
+            autoScrollNowPosition: settings.AutoScrollNowPosition,
+            showControlsDrawer: settings.ShowControlsDrawer);
 
         if (_selectedCharacterId == 0 && settings.ShowMultipleLines)
         {
@@ -388,6 +405,6 @@ public class InventoryValueTool : ToolComponent
 
     public override void Dispose()
     {
-        // No resources to dispose
+        _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
     }
 }

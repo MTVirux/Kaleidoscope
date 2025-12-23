@@ -16,9 +16,10 @@ public class CrystalTrackerTool : ToolComponent
 
     private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element", "By Tier", "By Character & Tier" };
     private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
+    private static readonly string[] TimeUnitNames = { "Seconds", "Minutes", "Hours", "Days", "Weeks" };
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
-
+    
     public CrystalTrackerTool(CrystalTrackerComponent inner, ConfigurationService configService)
     {
         _inner = inner;
@@ -243,6 +244,47 @@ public class CrystalTrackerTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Shows time labels on the X-axis.", "On");
+
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Auto-Scroll");
+            ImGui.Separator();
+            
+            var showControlsDrawer = settings.ShowControlsDrawer;
+            if (ImGui.Checkbox("Show controls drawer", ref showControlsDrawer))
+            {
+                settings.ShowControlsDrawer = showControlsDrawer;
+                _configService.Save();
+            }
+            ShowSettingTooltip("Shows a small toggle button in the top-right corner of the graph to access auto-scroll controls.", "On");
+            
+            var autoScrollEnabled = settings.AutoScrollEnabled;
+            if (ImGui.Checkbox("Auto-scroll enabled", ref autoScrollEnabled))
+            {
+                settings.AutoScrollEnabled = autoScrollEnabled;
+                _configService.Save();
+            }
+            ShowSettingTooltip("When enabled, the graph automatically scrolls to show the most recent data.", "Off");
+            
+            if (autoScrollEnabled)
+            {
+                ImGui.TextUnformatted("Auto-scroll time range:");
+                ImGui.SetNextItemWidth(60);
+                var timeValue = settings.AutoScrollTimeValue;
+                if (ImGui.InputInt("##autoscroll_value", ref timeValue))
+                {
+                    settings.AutoScrollTimeValue = Math.Clamp(timeValue, 1, 999);
+                    _configService.Save();
+                }
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(100);
+                var unitIndex = (int)settings.AutoScrollTimeUnit;
+                if (ImGui.Combo("##autoscroll_unit", ref unitIndex, TimeUnitNames, TimeUnitNames.Length))
+                {
+                    settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
+                    _configService.Save();
+                }
+                ShowSettingTooltip("How much time to show when auto-scrolling.", "1 Hour");
+            }
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Time Range");

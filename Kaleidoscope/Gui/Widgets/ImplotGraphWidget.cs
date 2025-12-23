@@ -170,6 +170,46 @@ public class ImplotGraphWidget
         /// Whether to show the current price horizontal line.
         /// </summary>
         public bool ShowCurrentPriceLine { get; set; } = true;
+        
+        /// <summary>
+        /// Whether auto-scroll (follow mode) is enabled.
+        /// When enabled, the graph automatically scrolls to show the most recent data.
+        /// </summary>
+        public bool AutoScrollEnabled { get; set; } = false;
+        
+        /// <summary>
+        /// The numeric value for auto-scroll time range.
+        /// </summary>
+        public int AutoScrollTimeValue { get; set; } = 1;
+        
+        /// <summary>
+        /// The unit for auto-scroll time range.
+        /// </summary>
+        public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+        
+        /// <summary>
+        /// Calculates the auto-scroll time range in seconds.
+        /// </summary>
+        public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit switch
+        {
+            AutoScrollTimeUnit.Seconds => AutoScrollTimeValue,
+            AutoScrollTimeUnit.Minutes => AutoScrollTimeValue * 60,
+            AutoScrollTimeUnit.Hours => AutoScrollTimeValue * 3600,
+            AutoScrollTimeUnit.Days => AutoScrollTimeValue * 86400,
+            AutoScrollTimeUnit.Weeks => AutoScrollTimeValue * 604800,
+            _ => 3600
+        };
+        
+        /// <summary>
+        /// Whether to show the controls drawer panel.
+        /// </summary>
+        public bool ShowControlsDrawer { get; set; } = true;
+        
+        /// <summary>
+        /// Position of "now" on the X-axis when auto-scrolling (0-100%).
+        /// 0% = now at left edge, 50% = centered, 100% = now at right edge.
+        /// </summary>
+        public float AutoScrollNowPosition { get; set; } = 75f;
     }
 
     private readonly GraphConfig _config;
@@ -190,6 +230,21 @@ public class ImplotGraphWidget
     private (Vector2 min, Vector2 max, bool valid) _cachedLegendBounds = (Vector2.Zero, Vector2.Zero, false);
     
     /// <summary>
+    /// Whether the controls drawer is currently open.
+    /// </summary>
+    private bool _controlsDrawerOpen = false;
+    
+    /// <summary>
+    /// Cached controls drawer bounds from the previous frame.
+    /// </summary>
+    private (Vector2 min, Vector2 max, bool valid) _cachedControlsDrawerBounds = (Vector2.Zero, Vector2.Zero, false);
+    
+    /// <summary>
+    /// Names for auto-scroll time unit buttons.
+    /// </summary>
+    private static readonly string[] TimeUnitNames = { "sec", "min", "hr", "day", "wk" };
+    
+    /// <summary>
     /// Gets whether the mouse is currently over the inside legend (based on cached bounds).
     /// Used to block ImPlot input when interacting with the legend.
     /// </summary>
@@ -204,6 +259,33 @@ public class ImplotGraphWidget
                    mousePos.Y >= _cachedLegendBounds.min.Y && mousePos.Y <= _cachedLegendBounds.max.Y;
         }
     }
+    
+    /// <summary>
+    /// Gets whether the mouse is currently over the controls drawer (based on cached bounds).
+    /// Used to block ImPlot input when interacting with the controls.
+    /// </summary>
+    public bool IsMouseOverControlsDrawer
+    {
+        get
+        {
+            if (!_cachedControlsDrawerBounds.valid)
+                return false;
+            var mousePos = ImGui.GetMousePos();
+            return mousePos.X >= _cachedControlsDrawerBounds.min.X && mousePos.X <= _cachedControlsDrawerBounds.max.X &&
+                   mousePos.Y >= _cachedControlsDrawerBounds.min.Y && mousePos.Y <= _cachedControlsDrawerBounds.max.Y;
+        }
+    }
+    
+    /// <summary>
+    /// Gets whether the mouse is over any overlay element (legend or controls drawer).
+    /// </summary>
+    public bool IsMouseOverOverlay => IsMouseOverInsideLegend || IsMouseOverControlsDrawer;
+    
+    /// <summary>
+    /// Event fired when auto-scroll settings are changed via the controls drawer.
+    /// Parameters: (bool autoScrollEnabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    /// </summary>
+    public event Action<bool, int, AutoScrollTimeUnit, float>? OnAutoScrollSettingsChanged;
     
     /// <summary>
     /// Gets or sets the hidden series names.
@@ -510,7 +592,12 @@ public class ImplotGraphWidget
         bool showGridLines = true,
         bool showCurrentPriceLine = true,
         LegendPosition legendPosition = LegendPosition.InsideTopLeft,
-        float legendHeightPercent = 25f)
+        float legendHeightPercent = 25f,
+        bool autoScrollEnabled = false,
+        int autoScrollTimeValue = 1,
+        AutoScrollTimeUnit autoScrollTimeUnit = AutoScrollTimeUnit.Hours,
+        float autoScrollNowPosition = 75f,
+        bool showControlsDrawer = true)
     {
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
@@ -525,6 +612,38 @@ public class ImplotGraphWidget
         _config.ShowCurrentPriceLine = showCurrentPriceLine;
         _config.LegendPosition = legendPosition;
         _config.LegendHeightPercent = legendHeightPercent;
+        _config.AutoScrollEnabled = autoScrollEnabled;
+        _config.AutoScrollTimeValue = autoScrollTimeValue;
+        _config.AutoScrollTimeUnit = autoScrollTimeUnit;
+        _config.AutoScrollNowPosition = autoScrollNowPosition;
+        _config.ShowControlsDrawer = showControlsDrawer;
+    }
+    
+    /// <summary>
+    /// Gets or sets whether auto-scroll (follow mode) is enabled.
+    /// </summary>
+    public bool AutoScrollEnabled
+    {
+        get => _config.AutoScrollEnabled;
+        set => _config.AutoScrollEnabled = value;
+    }
+    
+    /// <summary>
+    /// Gets or sets the auto-scroll time value.
+    /// </summary>
+    public int AutoScrollTimeValue
+    {
+        get => _config.AutoScrollTimeValue;
+        set => _config.AutoScrollTimeValue = value;
+    }
+    
+    /// <summary>
+    /// Gets or sets the auto-scroll time unit.
+    /// </summary>
+    public AutoScrollTimeUnit AutoScrollTimeUnit
+    {
+        get => _config.AutoScrollTimeUnit;
+        set => _config.AutoScrollTimeUnit = value;
     }
 
     /// <summary>
@@ -845,17 +964,37 @@ public class ImplotGraphWidget
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | 
                            ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend | ImPlotFlags.Crosshairs;
             
-            // Disable plot input when mouse is over the inside legend (prevents zoom/pan conflicts)
-            if (IsMouseOverInsideLegend)
+            // Disable plot input when mouse is over any overlay (legend or controls drawer)
+            if (IsMouseOverOverlay)
             {
                 plotFlags |= ImPlotFlags.NoInputs;
             }
             
             // Apply trading platform styling
             PushChartStyle();
-
-            // Set up axis limits (use Once to allow user zoom/pan)
-            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
+            
+            // Calculate X-axis limits based on auto-scroll mode
+            double xMinLimit, xMaxLimit;
+            if (_config.AutoScrollEnabled)
+            {
+                // Auto-scroll mode: X-axis is exactly timeRange wide
+                // NowPosition controls where "now" appears (0% = left, 50% = center, 100% = right)
+                var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+                var nowFraction = _config.AutoScrollNowPosition / 100f;
+                var leftPortion = timeRangeSeconds * nowFraction;
+                var rightPortion = timeRangeSeconds * (1f - nowFraction);
+                xMinLimit = totalTimeSpan - leftPortion;
+                xMaxLimit = totalTimeSpan + rightPortion;
+                // Use Always condition to force the view to follow
+                ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Always);
+            }
+            else
+            {
+                // Normal mode: show full range, allow user zoom/pan
+                xMinLimit = 0;
+                xMaxLimit = xMax;
+                ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Once);
+            }
 
             if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
             {
@@ -1097,6 +1236,17 @@ public class ImplotGraphWidget
                 {
                     // Invalidate cached bounds when not showing inside legend
                     _cachedLegendBounds = (Vector2.Zero, Vector2.Zero, false);
+                }
+                
+                // Draw controls drawer (toggle button + panel) if enabled
+                if (_config.ShowControlsDrawer)
+                {
+                    DrawControlsDrawer();
+                }
+                else
+                {
+                    // Invalidate cached bounds when not showing controls drawer
+                    _cachedControlsDrawerBounds = (Vector2.Zero, Vector2.Zero, false);
                 }
 
                 ImPlot.EndPlot();
@@ -1430,6 +1580,329 @@ public class ImplotGraphWidget
                     ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility{scrollHint}");
                 }
             }
+        }
+    }
+    
+    /// <summary>
+    /// Draws the controls drawer with toggle button and auto-scroll controls.
+    /// The drawer slides out from the bottom-right corner of the plot.
+    /// </summary>
+    private void DrawControlsDrawer()
+    {
+        var drawList = ImPlot.GetPlotDrawList();
+        var plotPos = ImPlot.GetPlotPos();
+        var plotSize = ImPlot.GetPlotSize();
+        
+        // Constants for drawer layout
+        const float toggleButtonWidth = 24f;
+        const float toggleButtonHeight = 20f;
+        const float drawerWidth = 160f;
+        const float drawerPadding = 8f;
+        const float rowHeight = 22f;
+        const float checkboxSize = 14f;
+        
+        // Calculate drawer height based on content
+        var drawerContentHeight = rowHeight; // Auto-scroll checkbox
+        if (_config.AutoScrollEnabled)
+        {
+            drawerContentHeight += rowHeight; // Value input row
+            drawerContentHeight += rowHeight; // Unit selector row
+            drawerContentHeight += rowHeight; // Position slider row
+        }
+        var drawerHeight = drawerPadding * 2 + drawerContentHeight;
+        
+        // Position toggle button at top-right corner of plot
+        var toggleButtonPos = new Vector2(
+            plotPos.X + plotSize.X - toggleButtonWidth - 10,
+            plotPos.Y + 10
+        );
+        
+        // Position drawer below the toggle button
+        var drawerPos = new Vector2(
+            toggleButtonPos.X - drawerWidth - 4 + toggleButtonWidth,
+            toggleButtonPos.Y + toggleButtonHeight + 4
+        );
+        
+        // Track mouse interactions
+        var mousePos = ImGui.GetMousePos();
+        
+        // Draw toggle button
+        var buttonBgColor = ImGui.GetColorU32(new Vector4(ChartColors.FrameBackground.X, ChartColors.FrameBackground.Y, ChartColors.FrameBackground.Z, 0.9f));
+        var buttonBorderColor = ImGui.GetColorU32(ChartColors.AxisLine);
+        var buttonHovered = mousePos.X >= toggleButtonPos.X && mousePos.X <= toggleButtonPos.X + toggleButtonWidth &&
+                           mousePos.Y >= toggleButtonPos.Y && mousePos.Y <= toggleButtonPos.Y + toggleButtonHeight;
+        
+        if (buttonHovered)
+        {
+            buttonBgColor = ImGui.GetColorU32(new Vector4(ChartColors.GridLine.X, ChartColors.GridLine.Y, ChartColors.GridLine.Z, 0.9f));
+        }
+        
+        drawList.AddRectFilled(toggleButtonPos, 
+            new Vector2(toggleButtonPos.X + toggleButtonWidth, toggleButtonPos.Y + toggleButtonHeight), 
+            buttonBgColor, 3f);
+        drawList.AddRect(toggleButtonPos, 
+            new Vector2(toggleButtonPos.X + toggleButtonWidth, toggleButtonPos.Y + toggleButtonHeight), 
+            buttonBorderColor, 3f);
+        
+        // Draw gear/settings icon (simple representation)
+        var iconColor = ImGui.GetColorU32(_controlsDrawerOpen ? ChartColors.Neutral : ChartColors.TextPrimary);
+        var iconCenter = new Vector2(toggleButtonPos.X + toggleButtonWidth / 2, toggleButtonPos.Y + toggleButtonHeight / 2);
+        var iconRadius = 6f;
+        
+        // Draw a simple gear-like symbol (circle with lines)
+        drawList.AddCircle(iconCenter, iconRadius, iconColor, 8, 1.5f);
+        drawList.AddCircleFilled(iconCenter, 2f, iconColor);
+        
+        // Handle toggle button click
+        if (buttonHovered && ImGui.IsMouseClicked(0))
+        {
+            _controlsDrawerOpen = !_controlsDrawerOpen;
+        }
+        
+        // Show tooltip for toggle button
+        if (buttonHovered)
+        {
+            ImGui.SetTooltip(_controlsDrawerOpen ? "Close controls" : "Open controls");
+        }
+        
+        // Cache bounds for input blocking - include both button and drawer if open
+        if (_controlsDrawerOpen)
+        {
+            _cachedControlsDrawerBounds = (
+                new Vector2(drawerPos.X, Math.Min(drawerPos.Y, toggleButtonPos.Y)),
+                new Vector2(toggleButtonPos.X + toggleButtonWidth, Math.Max(drawerPos.Y + drawerHeight, toggleButtonPos.Y + toggleButtonHeight)),
+                true
+            );
+        }
+        else
+        {
+            _cachedControlsDrawerBounds = (toggleButtonPos, 
+                new Vector2(toggleButtonPos.X + toggleButtonWidth, toggleButtonPos.Y + toggleButtonHeight), 
+                true);
+        }
+        
+        // Draw drawer panel if open
+        if (!_controlsDrawerOpen) return;
+        
+        var drawerBgColor = ImGui.GetColorU32(new Vector4(ChartColors.FrameBackground.X, ChartColors.FrameBackground.Y, ChartColors.FrameBackground.Z, 0.92f));
+        var drawerBorderColor = ImGui.GetColorU32(ChartColors.AxisLine);
+        
+        // Draw drawer background
+        drawList.AddRectFilled(drawerPos, 
+            new Vector2(drawerPos.X + drawerWidth, drawerPos.Y + drawerHeight), 
+            drawerBgColor, 4f);
+        drawList.AddRect(drawerPos, 
+            new Vector2(drawerPos.X + drawerWidth, drawerPos.Y + drawerHeight), 
+            drawerBorderColor, 4f);
+        
+        var contentX = drawerPos.X + drawerPadding;
+        var contentY = drawerPos.Y + drawerPadding;
+        
+        // Draw Auto-Scroll checkbox
+        var checkboxPos = new Vector2(contentX, contentY + (rowHeight - checkboxSize) / 2);
+        var checkboxHovered = mousePos.X >= checkboxPos.X && mousePos.X <= checkboxPos.X + checkboxSize &&
+                             mousePos.Y >= checkboxPos.Y && mousePos.Y <= checkboxPos.Y + checkboxSize;
+        
+        // Make the entire row clickable for the checkbox
+        var checkboxRowEnd = new Vector2(drawerPos.X + drawerWidth - drawerPadding, contentY + rowHeight);
+        var checkboxRowHovered = mousePos.X >= contentX && mousePos.X <= checkboxRowEnd.X &&
+                                mousePos.Y >= contentY && mousePos.Y <= checkboxRowEnd.Y;
+        
+        // Draw checkbox box
+        var checkboxBorderColor = checkboxRowHovered 
+            ? ImGui.GetColorU32(ChartColors.TextPrimary) 
+            : ImGui.GetColorU32(ChartColors.TextSecondary);
+        drawList.AddRect(checkboxPos, 
+            new Vector2(checkboxPos.X + checkboxSize, checkboxPos.Y + checkboxSize), 
+            checkboxBorderColor, 2f);
+        
+        // Draw checkmark if enabled
+        if (_config.AutoScrollEnabled)
+        {
+            var checkColor = ImGui.GetColorU32(ChartColors.Bullish);
+            var checkPadding = 3f;
+            // Draw a checkmark
+            drawList.AddLine(
+                new Vector2(checkboxPos.X + checkPadding, checkboxPos.Y + checkboxSize / 2),
+                new Vector2(checkboxPos.X + checkboxSize / 2, checkboxPos.Y + checkboxSize - checkPadding),
+                checkColor, 2f);
+            drawList.AddLine(
+                new Vector2(checkboxPos.X + checkboxSize / 2, checkboxPos.Y + checkboxSize - checkPadding),
+                new Vector2(checkboxPos.X + checkboxSize - checkPadding, checkboxPos.Y + checkPadding),
+                checkColor, 2f);
+        }
+        
+        // Draw checkbox label
+        var labelPos = new Vector2(checkboxPos.X + checkboxSize + 6, contentY + (rowHeight - ImGui.GetTextLineHeight()) / 2);
+        var labelColor = ImGui.GetColorU32(_config.AutoScrollEnabled ? ChartColors.TextPrimary : ChartColors.TextSecondary);
+        drawList.AddText(labelPos, labelColor, "Auto-scroll");
+        
+        // Handle checkbox click
+        if (checkboxRowHovered && ImGui.IsMouseClicked(0))
+        {
+            _config.AutoScrollEnabled = !_config.AutoScrollEnabled;
+            OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
+        }
+        
+        contentY += rowHeight;
+        
+        // Draw time range picker if auto-scroll is enabled
+        if (_config.AutoScrollEnabled)
+        {
+            // Row 1: Value input with +/- buttons
+            const float valueBoxWidth = 50f;
+            const float smallButtonWidth = 22f;
+            const float spacing = 4f;
+            
+            // Draw "-" button
+            var minusBtnPos = new Vector2(contentX, contentY + 2);
+            var minusBtnHovered = mousePos.X >= minusBtnPos.X && mousePos.X <= minusBtnPos.X + smallButtonWidth &&
+                                 mousePos.Y >= minusBtnPos.Y && mousePos.Y <= minusBtnPos.Y + rowHeight - 4;
+            var minusBtnBg = minusBtnHovered 
+                ? ImGui.GetColorU32(new Vector4(0.35f, 0.35f, 0.35f, 0.8f))
+                : ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.7f));
+            drawList.AddRectFilled(minusBtnPos, new Vector2(minusBtnPos.X + smallButtonWidth, minusBtnPos.Y + rowHeight - 4), minusBtnBg, 3f);
+            drawList.AddRect(minusBtnPos, new Vector2(minusBtnPos.X + smallButtonWidth, minusBtnPos.Y + rowHeight - 4), ImGui.GetColorU32(ChartColors.GridLine), 3f);
+            var minusText = "-";
+            var minusTextSize = ImGui.CalcTextSize(minusText);
+            drawList.AddText(new Vector2(minusBtnPos.X + (smallButtonWidth - minusTextSize.X) / 2, minusBtnPos.Y + (rowHeight - 4 - minusTextSize.Y) / 2), 
+                ImGui.GetColorU32(ChartColors.TextPrimary), minusText);
+            
+            if (minusBtnHovered && ImGui.IsMouseClicked(0) && _config.AutoScrollTimeValue > 1)
+            {
+                _config.AutoScrollTimeValue--;
+                OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
+            }
+            
+            // Draw value display box
+            var valueBoxPos = new Vector2(minusBtnPos.X + smallButtonWidth + spacing, contentY + 2);
+            drawList.AddRectFilled(valueBoxPos, new Vector2(valueBoxPos.X + valueBoxWidth, valueBoxPos.Y + rowHeight - 4), 
+                ImGui.GetColorU32(new Vector4(0.1f, 0.1f, 0.1f, 0.8f)), 3f);
+            drawList.AddRect(valueBoxPos, new Vector2(valueBoxPos.X + valueBoxWidth, valueBoxPos.Y + rowHeight - 4), 
+                ImGui.GetColorU32(ChartColors.GridLine), 3f);
+            var valueText = _config.AutoScrollTimeValue.ToString();
+            var valueTextSize = ImGui.CalcTextSize(valueText);
+            drawList.AddText(new Vector2(valueBoxPos.X + (valueBoxWidth - valueTextSize.X) / 2, valueBoxPos.Y + (rowHeight - 4 - valueTextSize.Y) / 2), 
+                ImGui.GetColorU32(ChartColors.Neutral), valueText);
+            
+            // Draw "+" button
+            var plusBtnPos = new Vector2(valueBoxPos.X + valueBoxWidth + spacing, contentY + 2);
+            var plusBtnHovered = mousePos.X >= plusBtnPos.X && mousePos.X <= plusBtnPos.X + smallButtonWidth &&
+                                mousePos.Y >= plusBtnPos.Y && mousePos.Y <= plusBtnPos.Y + rowHeight - 4;
+            var plusBtnBg = plusBtnHovered 
+                ? ImGui.GetColorU32(new Vector4(0.35f, 0.35f, 0.35f, 0.8f))
+                : ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.7f));
+            drawList.AddRectFilled(plusBtnPos, new Vector2(plusBtnPos.X + smallButtonWidth, plusBtnPos.Y + rowHeight - 4), plusBtnBg, 3f);
+            drawList.AddRect(plusBtnPos, new Vector2(plusBtnPos.X + smallButtonWidth, plusBtnPos.Y + rowHeight - 4), ImGui.GetColorU32(ChartColors.GridLine), 3f);
+            var plusText = "+";
+            var plusTextSize = ImGui.CalcTextSize(plusText);
+            drawList.AddText(new Vector2(plusBtnPos.X + (smallButtonWidth - plusTextSize.X) / 2, plusBtnPos.Y + (rowHeight - 4 - plusTextSize.Y) / 2), 
+                ImGui.GetColorU32(ChartColors.TextPrimary), plusText);
+            
+            if (plusBtnHovered && ImGui.IsMouseClicked(0) && _config.AutoScrollTimeValue < 999)
+            {
+                _config.AutoScrollTimeValue++;
+                OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
+            }
+            
+            contentY += rowHeight;
+            
+            // Row 2: Unit selector buttons
+            var unitButtonWidth = (drawerWidth - drawerPadding * 2 - spacing * (TimeUnitNames.Length - 1)) / TimeUnitNames.Length;
+            var unitButtonHeight = rowHeight - 4;
+            
+            for (var i = 0; i < TimeUnitNames.Length; i++)
+            {
+                var unitBtnPos = new Vector2(contentX + i * (unitButtonWidth + spacing), contentY + 2);
+                var isSelected = (int)_config.AutoScrollTimeUnit == i;
+                var unitBtnHovered = mousePos.X >= unitBtnPos.X && mousePos.X <= unitBtnPos.X + unitButtonWidth &&
+                                    mousePos.Y >= unitBtnPos.Y && mousePos.Y <= unitBtnPos.Y + unitButtonHeight;
+                
+                var unitBtnBg = isSelected 
+                    ? ImGui.GetColorU32(new Vector4(ChartColors.Neutral.X, ChartColors.Neutral.Y, ChartColors.Neutral.Z, 0.35f))
+                    : unitBtnHovered 
+                        ? ImGui.GetColorU32(new Vector4(0.3f, 0.3f, 0.3f, 0.6f))
+                        : ImGui.GetColorU32(new Vector4(0.15f, 0.15f, 0.15f, 0.5f));
+                var unitBtnBorder = isSelected 
+                    ? ImGui.GetColorU32(ChartColors.Neutral) 
+                    : ImGui.GetColorU32(ChartColors.GridLine);
+                
+                drawList.AddRectFilled(unitBtnPos, new Vector2(unitBtnPos.X + unitButtonWidth, unitBtnPos.Y + unitButtonHeight), unitBtnBg, 3f);
+                drawList.AddRect(unitBtnPos, new Vector2(unitBtnPos.X + unitButtonWidth, unitBtnPos.Y + unitButtonHeight), unitBtnBorder, 3f);
+                
+                var unitText = TimeUnitNames[i];
+                var unitTextSize = ImGui.CalcTextSize(unitText);
+                var unitTextColor = isSelected ? ImGui.GetColorU32(ChartColors.Neutral) : ImGui.GetColorU32(ChartColors.TextPrimary);
+                drawList.AddText(new Vector2(unitBtnPos.X + (unitButtonWidth - unitTextSize.X) / 2, unitBtnPos.Y + (unitButtonHeight - unitTextSize.Y) / 2), 
+                    unitTextColor, unitText);
+                
+                if (unitBtnHovered && ImGui.IsMouseClicked(0))
+                {
+                    _config.AutoScrollTimeUnit = (AutoScrollTimeUnit)i;
+                    OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
+                }
+            }
+            
+            contentY += rowHeight;
+            
+            // Row 3: Position slider (where "now" appears on X-axis)
+            var sliderLabelPos = new Vector2(contentX, contentY + (rowHeight - ImGui.GetTextLineHeight()) / 2);
+            drawList.AddText(sliderLabelPos, ImGui.GetColorU32(ChartColors.TextSecondary), "Position:");
+            
+            contentY += rowHeight;
+            
+            // Draw the slider track
+            const float sliderHeight = 8f;
+            var sliderTrackPos = new Vector2(contentX, contentY + (rowHeight - sliderHeight) / 2 - 4);
+            var sliderTrackWidth = drawerWidth - drawerPadding * 2;
+            
+            drawList.AddRectFilled(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight), 
+                ImGui.GetColorU32(new Vector4(0.15f, 0.15f, 0.15f, 0.8f)), 4f);
+            drawList.AddRect(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight), 
+                ImGui.GetColorU32(ChartColors.GridLine), 4f);
+            
+            // Draw filled portion
+            var fillWidth = sliderTrackWidth * (_config.AutoScrollNowPosition / 100f);
+            if (fillWidth > 0)
+            {
+                drawList.AddRectFilled(sliderTrackPos, new Vector2(sliderTrackPos.X + fillWidth, sliderTrackPos.Y + sliderHeight), 
+                    ImGui.GetColorU32(new Vector4(ChartColors.Neutral.X, ChartColors.Neutral.Y, ChartColors.Neutral.Z, 0.4f)), 4f);
+            }
+            
+            // Draw slider handle
+            const float handleWidth = 12f;
+            const float handleHeight = 16f;
+            var handleX = sliderTrackPos.X + fillWidth - handleWidth / 2;
+            handleX = Math.Clamp(handleX, sliderTrackPos.X, sliderTrackPos.X + sliderTrackWidth - handleWidth);
+            var handleY = sliderTrackPos.Y + sliderHeight / 2 - handleHeight / 2;
+            
+            var sliderHovered = mousePos.X >= sliderTrackPos.X - 5 && mousePos.X <= sliderTrackPos.X + sliderTrackWidth + 5 &&
+                               mousePos.Y >= handleY && mousePos.Y <= handleY + handleHeight;
+            
+            var handleColor = sliderHovered 
+                ? ImGui.GetColorU32(ChartColors.Neutral)
+                : ImGui.GetColorU32(new Vector4(0.6f, 0.6f, 0.6f, 1f));
+            drawList.AddRectFilled(new Vector2(handleX, handleY), new Vector2(handleX + handleWidth, handleY + handleHeight), handleColor, 3f);
+            drawList.AddRect(new Vector2(handleX, handleY), new Vector2(handleX + handleWidth, handleY + handleHeight), 
+                ImGui.GetColorU32(ChartColors.AxisLine), 3f);
+            
+            // Handle slider dragging
+            if (sliderHovered && ImGui.IsMouseDown(0))
+            {
+                var relativeX = mousePos.X - sliderTrackPos.X;
+                var newPosition = Math.Clamp(relativeX / sliderTrackWidth * 100f, 0f, 100f);
+                if (Math.Abs(newPosition - _config.AutoScrollNowPosition) > 0.5f)
+                {
+                    _config.AutoScrollNowPosition = newPosition;
+                    OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
+                }
+            }
+            
+            // Draw percentage label
+            var percentText = $"{_config.AutoScrollNowPosition:F0}%";
+            var percentTextSize = ImGui.CalcTextSize(percentText);
+            drawList.AddText(new Vector2(sliderTrackPos.X + sliderTrackWidth - percentTextSize.X, sliderTrackPos.Y + sliderHeight + 2), 
+                ImGui.GetColorU32(ChartColors.TextSecondary), percentText);
         }
     }
     

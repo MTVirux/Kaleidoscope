@@ -58,12 +58,25 @@ public class CrystalTrackerComponent : IDisposable
             NoDataText = "No crystal data yet.",
             FloatEpsilon = ConfigStatic.FloatEpsilon
         });
+        
+        // Subscribe to auto-scroll settings changes from the controls drawer
+        _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
 
         // Subscribe to inventory change events for immediate crystal updates
         if (_inventoryChangeService != null)
         {
             _inventoryChangeService.OnCrystalsChanged += OnCrystalsChanged;
         }
+    }
+    
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    {
+        var settings = _configService.Config.CrystalTracker;
+        settings.AutoScrollEnabled = enabled;
+        settings.AutoScrollTimeValue = timeValue;
+        settings.AutoScrollTimeUnit = timeUnit;
+        settings.AutoScrollNowPosition = nowPosition;
+        _configService.Save();
     }
 
     private void OnCrystalsChanged()
@@ -74,6 +87,7 @@ public class CrystalTrackerComponent : IDisposable
 
     public void Dispose()
     {
+        _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         if (_inventoryChangeService != null)
         {
             _inventoryChangeService.OnCrystalsChanged -= OnCrystalsChanged;
@@ -119,7 +133,12 @@ public class CrystalTrackerComponent : IDisposable
             settings.GraphType,
             settings.ShowXAxisTimestamps,
             legendPosition: settings.LegendPosition,
-            legendHeightPercent: settings.LegendHeightPercent);
+            legendHeightPercent: settings.LegendHeightPercent,
+            autoScrollEnabled: settings.AutoScrollEnabled,
+            autoScrollTimeValue: settings.AutoScrollTimeValue,
+            autoScrollTimeUnit: settings.AutoScrollTimeUnit,
+            autoScrollNowPosition: settings.AutoScrollNowPosition,
+            showControlsDrawer: settings.ShowControlsDrawer);
 
         // Calculate time cutoff
         DateTime? timeCutoff = null;

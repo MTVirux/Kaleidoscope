@@ -118,12 +118,25 @@ public class DataTrackerComponent : IDisposable
             NoDataText = "No data yet.",
             FloatEpsilon = ConfigStatic.FloatEpsilon
         });
+        
+        // Subscribe to auto-scroll settings changes from the controls drawer
+        _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
 
         // Subscribe to inventory change events for event-driven updates
         if (_inventoryChangeService != null)
         {
             _inventoryChangeService.OnValuesChanged += OnValuesChanged;
         }
+    }
+    
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    {
+        var settings = GetSettings();
+        settings.AutoScrollEnabled = enabled;
+        settings.AutoScrollTimeValue = timeValue;
+        settings.AutoScrollTimeUnit = timeUnit;
+        settings.AutoScrollNowPosition = nowPosition;
+        _configService.Save();
     }
 
     private void OnValuesChanged(IReadOnlyDictionary<TrackedDataType, long> values)
@@ -221,7 +234,12 @@ public class DataTrackerComponent : IDisposable
             settings.GraphType,
             settings.ShowXAxisTimestamps,
             legendPosition: settings.LegendPosition,
-            legendHeightPercent: settings.LegendHeightPercent);
+            legendHeightPercent: settings.LegendHeightPercent,
+            autoScrollEnabled: settings.AutoScrollEnabled,
+            autoScrollTimeValue: settings.AutoScrollTimeValue,
+            autoScrollTimeUnit: settings.AutoScrollTimeUnit,
+            autoScrollNowPosition: settings.AutoScrollNowPosition,
+            showControlsDrawer: settings.ShowControlsDrawer);
 
         // Calculate time cutoff if time range filtering is enabled
         DateTime? timeCutoff = null;
@@ -320,6 +338,7 @@ public class DataTrackerComponent : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         if (_inventoryChangeService != null)
         {
             _inventoryChangeService.OnValuesChanged -= OnValuesChanged;

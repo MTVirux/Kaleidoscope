@@ -147,6 +147,21 @@ public class InventoryValueSettings
 
     /// <summary>Whether to auto-scale the graph.</summary>
     public bool AutoScaleGraph { get; set; } = true;
+    
+    /// <summary>Whether auto-scroll (follow mode) is enabled.</summary>
+    public bool AutoScrollEnabled { get; set; } = false;
+    
+    /// <summary>Auto-scroll time range value.</summary>
+    public int AutoScrollTimeValue { get; set; } = 1;
+    
+    /// <summary>Auto-scroll time range unit.</summary>
+    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    
+    /// <summary>Position of "now" on X-axis (0-100%).</summary>
+    public float AutoScrollNowPosition { get; set; } = 75f;
+    
+    /// <summary>Whether to show the controls drawer.</summary>
+    public bool ShowControlsDrawer { get; set; } = true;
 }
 
 /// <summary>
