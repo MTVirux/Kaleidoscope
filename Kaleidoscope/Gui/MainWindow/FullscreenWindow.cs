@@ -62,12 +62,10 @@ public sealed class FullscreenWindow : Window
         _stateService = stateService;
         _trackedDataRegistry = trackedDataRegistry;
         _inventoryChangeService = inventoryChangeService;
-        _trackedDataRegistry = trackedDataRegistry;
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
-        _priceTrackingService = priceTrackingService;
         _profilerService = profilerService;
 
         // Create a content container similar to the main window so HUD tools
