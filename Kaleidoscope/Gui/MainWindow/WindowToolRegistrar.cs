@@ -19,6 +19,7 @@ public static class WindowToolRegistrar
     {
         public const string GilTicker = "GilTicker";
         public const string GettingStarted = "GettingStarted";
+        public const string ImPlotReference = "ImPlotReference";
         public const string CrystalTracker = "CrystalTracker";
         public const string LivePriceFeed = "LivePriceFeed";
         public const string InventoryValue = "InventoryValue";
@@ -102,6 +103,13 @@ public static class WindowToolRegistrar
                 "Getting Started",
                 pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
                 "Instructions for new users",
+                "Help");
+
+            container.RegisterTool(
+                ToolIds.ImPlotReference,
+                "Graph Controls",
+                pos => CreateToolInstance(ToolIds.ImPlotReference, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
+                "Instructions for navigating and interacting with graphs",
                 "Help");
 
             // Register price tracking tools
@@ -314,6 +322,9 @@ public static class WindowToolRegistrar
 
                 case ToolIds.GettingStarted:
                     return new GettingStartedTool { Position = pos };
+
+                case ToolIds.ImPlotReference:
+                    return new ImPlotReferenceTool { Position = pos };
 
                 case ToolIds.LivePriceFeed:
                     if (webSocketService != null && priceTrackingService != null && itemDataService != null)
