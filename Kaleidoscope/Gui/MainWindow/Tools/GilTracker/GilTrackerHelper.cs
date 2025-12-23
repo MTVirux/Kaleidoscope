@@ -7,12 +7,23 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 /// Helper class for the GilTracker UI component.
 /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
 /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
+/// Uses background loading and caching to avoid blocking the UI thread.
 /// </summary>
 public class GilTrackerHelper : ICharacterDataSource
 {
         private readonly KaleidoscopeDbService _dbService;
         private readonly int _maxSamples;
         private readonly List<float> _samples;
+        
+        // Background loading state
+        private volatile bool _needsRefresh;
+        private readonly object _cacheLock = new();
+        
+        // Cached multi-character series data
+        private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedCharacterSeries;
+        private DateTime _lastSeriesCacheTime = DateTime.MinValue;
+        private DateTime? _lastSeriesCutoffTime;
+        private const int SeriesCacheExpirySeconds = 2;
 
         public IReadOnlyList<float> Samples => _samples;
         public float LastValue { get; private set; }
@@ -22,14 +33,14 @@ public class GilTrackerHelper : ICharacterDataSource
         public ulong SelectedCharacterId { get; private set; }
         public string? DbPath => _dbService.DbPath;
 
-        public GilTrackerHelper(string? dbPath, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue)
+        public GilTrackerHelper(string? dbPath, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue, int cacheSizeMb = 8)
         {
             _maxSamples = maxSamples;
             _samples = new List<float>();
             LastValue = startingValue;
 
-            // Create or reuse database service
-            _dbService = new KaleidoscopeDbService(dbPath);
+            // Create or reuse database service with specified cache size
+            _dbService = new KaleidoscopeDbService(dbPath, cacheSizeMb);
 
             // Load saved data on initialization
             TryLoadSaved();
@@ -53,6 +64,7 @@ public class GilTrackerHelper : ICharacterDataSource
         /// <summary>
         /// Pushes a new sample value for the specified character (or current player).
         /// Only updates in-memory display if viewing that character.
+        /// Uses in-memory LastValue check to avoid blocking database reads.
         /// </summary>
         public void PushSample(float value, ulong? sampleCharacterId = null)
         {
@@ -61,15 +73,15 @@ public class GilTrackerHelper : ICharacterDataSource
 
             try
             {
-                // Check if we should persist (value changed)
-                var lastPersisted = _dbService.GetLastValueForCharacter("Gil", cid);
-                if (lastPersisted.HasValue && Math.Abs((double)lastPersisted.Value - value) < ConfigStatic.FloatEpsilon)
+                // Use in-memory LastValue to check for duplicates when viewing this character
+                // This avoids a synchronous database read on every sample
+                if (SelectedCharacterId == cid && Math.Abs(LastValue - value) < ConfigStatic.FloatEpsilon)
                 {
                     // Duplicate value, skip persistence
                     return;
                 }
 
-                // Persist the new value
+                // For other characters, let the database's SaveSampleIfChanged handle dedup
                 var inserted = _dbService.SaveSampleIfChanged("Gil", cid, (long)Math.Round(value));
 
                 if (inserted)
@@ -80,6 +92,9 @@ public class GilTrackerHelper : ICharacterDataSource
 
                     // Try to save character name
                     TrySaveCharacterName(cid);
+                    
+                    // Mark cached series as needing refresh
+                    InvalidateSeriesCache();
                 }
 
                 // Update in-memory display only when viewing this character
@@ -87,16 +102,28 @@ public class GilTrackerHelper : ICharacterDataSource
                 {
                     AddToInMemorySamples(value);
                 }
-                else if (SelectedCharacterId == 0)
+                else if (SelectedCharacterId == 0 && inserted)
                 {
-                    // If viewing aggregate, reload to include this sample
-                    try { LoadAllCharacters(); }
-                    catch (Exception ex) { LogService.Debug($"[GilTrackerHelper] LoadAllCharacters in PushSample failed: {ex.Message}"); }
+                    // If viewing aggregate and a new value was inserted, just mark for refresh
+                    // Don't reload synchronously - let the next Draw cycle handle it
+                    _needsRefresh = true;
                 }
             }
             catch (Exception ex)
             {
                 LogService.Debug($"[GilTrackerHelper] PushSample failed: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Invalidates the cached character series data.
+        /// </summary>
+        private void InvalidateSeriesCache()
+        {
+            lock (_cacheLock)
+            {
+                _cachedCharacterSeries = null;
+                _lastSeriesCacheTime = DateTime.MinValue;
             }
         }
 
@@ -233,6 +260,10 @@ public class GilTrackerHelper : ICharacterDataSource
         /// </summary>
         public void LoadForCharacter(ulong characterId)
         {
+            // Invalidate caches when switching characters
+            InvalidateSeriesCache();
+            InvalidateFilteredCache();
+            
             try
             {
                 var points = _dbService.GetPoints("Gil", characterId);
@@ -262,6 +293,10 @@ public class GilTrackerHelper : ICharacterDataSource
         /// </summary>
         public void LoadAllCharacters()
         {
+            // Invalidate caches when switching to all characters
+            InvalidateSeriesCache();
+            InvalidateFilteredCache();
+            
             try
             {
                 var allPoints = _dbService.GetAllPoints("Gil");
@@ -335,6 +370,9 @@ public class GilTrackerHelper : ICharacterDataSource
                     LastSampleTime = combined[combined.Count - 1].ts;
                 }
                 SelectedCharacterId = 0;
+                
+                // Clear the needs refresh flag since we just loaded
+                _needsRefresh = false;
             }
             catch (Exception ex)
             {
@@ -344,10 +382,46 @@ public class GilTrackerHelper : ICharacterDataSource
 
         /// <summary>
         /// Gets all character data series for multi-line display.
+        /// Uses caching to avoid repeated database queries on every frame.
         /// </summary>
         /// <param name="cutoffTime">Optional cutoff time to filter data.</param>
         /// <returns>List of character names and their sample data with timestamps.</returns>
         public IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
+        {
+            // Check if we can use cached data
+            lock (_cacheLock)
+            {
+                var now = DateTime.UtcNow;
+                var cacheValid = _cachedCharacterSeries != null 
+                    && (now - _lastSeriesCacheTime).TotalSeconds < SeriesCacheExpirySeconds
+                    && _lastSeriesCutoffTime == cutoffTime
+                    && !_needsRefresh;
+                
+                if (cacheValid)
+                {
+                    return _cachedCharacterSeries!;
+                }
+            }
+
+            // Load fresh data
+            var result = LoadCharacterSeriesFromDb(cutoffTime);
+            
+            // Update cache
+            lock (_cacheLock)
+            {
+                _cachedCharacterSeries = result;
+                _lastSeriesCacheTime = DateTime.UtcNow;
+                _lastSeriesCutoffTime = cutoffTime;
+                _needsRefresh = false;
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Loads character series data from the database.
+        /// </summary>
+        private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> LoadCharacterSeriesFromDb(DateTime? cutoffTime)
         {
             var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
 
@@ -391,18 +465,65 @@ public class GilTrackerHelper : ICharacterDataSource
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[GilTrackerHelper] GetAllCharacterSeries failed: {ex.Message}");
+                LogService.Debug($"[GilTrackerHelper] LoadCharacterSeriesFromDb failed: {ex.Message}");
             }
 
             return result;
         }
 
+        // Cached filtered samples data
+        private IReadOnlyList<float>? _cachedFilteredSamples;
+        private DateTime _lastFilteredCacheTime = DateTime.MinValue;
+        private DateTime _lastFilteredCutoffTime = DateTime.MinValue;
+        private ulong _lastFilteredCharacterId = 0;
+        private const int FilteredCacheExpirySeconds = 2;
+
         /// <summary>
         /// Gets samples filtered by a time cutoff.
+        /// Uses caching to avoid repeated database queries on every frame.
         /// </summary>
         /// <param name="cutoffTime">Only include samples after this time.</param>
         /// <returns>Filtered sample list.</returns>
         public IReadOnlyList<float> GetFilteredSamples(DateTime cutoffTime)
+        {
+            // Check if we can use cached data
+            var now = DateTime.UtcNow;
+            var cacheValid = _cachedFilteredSamples != null 
+                && (now - _lastFilteredCacheTime).TotalSeconds < FilteredCacheExpirySeconds
+                && _lastFilteredCutoffTime == cutoffTime
+                && _lastFilteredCharacterId == SelectedCharacterId
+                && !_needsRefresh;
+            
+            if (cacheValid)
+            {
+                return _cachedFilteredSamples!;
+            }
+            
+            // Load fresh data
+            var result = LoadFilteredSamplesFromDb(cutoffTime);
+            
+            // Update cache
+            _cachedFilteredSamples = result;
+            _lastFilteredCacheTime = now;
+            _lastFilteredCutoffTime = cutoffTime;
+            _lastFilteredCharacterId = SelectedCharacterId;
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Invalidates the cached filtered samples data.
+        /// </summary>
+        private void InvalidateFilteredCache()
+        {
+            _cachedFilteredSamples = null;
+            _lastFilteredCacheTime = DateTime.MinValue;
+        }
+        
+        /// <summary>
+        /// Loads filtered samples from the database.
+        /// </summary>
+        private IReadOnlyList<float> LoadFilteredSamplesFromDb(DateTime cutoffTime)
         {
             try
             {
@@ -478,7 +599,7 @@ public class GilTrackerHelper : ICharacterDataSource
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[GilTrackerHelper] GetFilteredSamples failed: {ex.Message}");
+                LogService.Debug($"[GilTrackerHelper] LoadFilteredSamplesFromDb failed: {ex.Message}");
                 return _samples;
             }
         }

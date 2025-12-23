@@ -208,7 +208,10 @@ public class DataTrackerComponent : IDisposable
             try
             {
                 // Delegate to helper for sampling and persistence
-                _helper.SampleFromGame();
+                using (ProfilerService.BeginStaticChildScope("SampleFromGame"))
+                {
+                    _helper.SampleFromGame();
+                }
                 _pendingUpdate = false;
             }
             catch (Exception ex)
@@ -251,15 +254,23 @@ public class DataTrackerComponent : IDisposable
         if (settings.ShowMultipleLines && _helper.SelectedCharacterId == 0)
         {
             // Multi-line mode: show each character as a separate line
-            var series = _helper.GetAllCharacterSeries(timeCutoff);
+            IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series;
+            using (ProfilerService.BeginStaticChildScope("GetAllCharacterSeries"))
+            {
+                series = _helper.GetAllCharacterSeries(timeCutoff);
+            }
             _graphWidget.DrawMultipleSeries(series);
         }
         else
         {
             // Single line mode
-            var samples = timeCutoff.HasValue
-                ? _helper.GetFilteredSamples(timeCutoff.Value)
-                : _helper.Samples;
+            IReadOnlyList<float> samples;
+            using (ProfilerService.BeginStaticChildScope("GetSamples"))
+            {
+                samples = timeCutoff.HasValue
+                    ? _helper.GetFilteredSamples(timeCutoff.Value)
+                    : _helper.Samples;
+            }
             _graphWidget.Draw(samples);
         }
 
