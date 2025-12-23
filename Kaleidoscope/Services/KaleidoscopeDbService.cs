@@ -52,6 +52,13 @@ public sealed class KaleidoscopeDbService : IDisposable
                 _connection = new SqliteConnection(csb.ToString());
                 _connection.Open();
 
+                // Enable foreign key constraints for CASCADE deletes
+                using (var pragmaCmd = _connection.CreateCommand())
+                {
+                    pragmaCmd.CommandText = "PRAGMA foreign_keys = ON";
+                    pragmaCmd.ExecuteNonQuery();
+                }
+
                 EnsureSchema();
             }
             catch (Exception ex)
@@ -155,6 +162,16 @@ CREATE TABLE IF NOT EXISTS inventory_value_history (
     item_value INTEGER NOT NULL DEFAULT 0
 );
 
+-- Per-item breakdown for inventory value history (enables recalculation when sales are deleted)
+CREATE TABLE IF NOT EXISTS inventory_value_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    history_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    unit_price INTEGER NOT NULL,
+    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
+);
+
 -- Individual sale records table for per-world sale tracking
 CREATE TABLE IF NOT EXISTS sale_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,6 +192,8 @@ CREATE INDEX IF NOT EXISTS idx_price_history_item_world ON price_history(item_id
 CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_char ON inventory_value_history(character_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_item ON sale_records(item_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_world ON sale_records(world_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_item_world ON sale_records(item_id, world_id);
@@ -197,6 +216,9 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         {
             // Migration: Add last_sale_nq and last_sale_hq columns to item_prices table
             MigrateAddLastSaleColumns();
+            
+            // Migration: Add inventory_value_items table for per-item value tracking
+            MigrateAddInventoryValueItemsTable();
         }
         catch (Exception ex)
         {
@@ -243,6 +265,37 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             alterCmd.CommandText = "ALTER TABLE item_prices ADD COLUMN last_sale_hq INTEGER NOT NULL DEFAULT 0";
             alterCmd.ExecuteNonQuery();
             LogService.Debug("[KaleidoscopeDb] Migration: Added last_sale_hq column to item_prices");
+        }
+    }
+
+    /// <summary>
+    /// Creates the inventory_value_items table if it doesn't exist.
+    /// </summary>
+    private void MigrateAddInventoryValueItemsTable()
+    {
+        if (_connection == null) return;
+
+        // Check if table exists
+        using var checkCmd = _connection.CreateCommand();
+        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_value_items'";
+        var exists = checkCmd.ExecuteScalar() != null;
+
+        if (!exists)
+        {
+            using var createCmd = _connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS inventory_value_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    history_id INTEGER NOT NULL,
+                    item_id INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    unit_price INTEGER NOT NULL,
+                    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
+                CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
+            createCmd.ExecuteNonQuery();
+            LogService.Debug("[KaleidoscopeDb] Migration: Created inventory_value_items table");
         }
     }
 
@@ -1781,7 +1834,13 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <summary>
     /// Saves inventory value history for a character.
     /// </summary>
-    public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue)
+    /// <param name="characterId">The character ID.</param>
+    /// <param name="totalValue">Total value (gil + items).</param>
+    /// <param name="gilValue">Gil value.</param>
+    /// <param name="itemValue">Item value.</param>
+    /// <param name="itemContributions">Optional per-item breakdown: (itemId, quantity, unitPrice).</param>
+    public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue, 
+        List<(int ItemId, long Quantity, int UnitPrice)>? itemContributions = null)
     {
         lock (_lock)
         {
@@ -1790,16 +1849,56 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
             try
             {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
-                    INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
-                    VALUES ($cid, $time, $total, $gil, $item)";
-                cmd.Parameters.AddWithValue("$cid", (long)characterId);
-                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                cmd.Parameters.AddWithValue("$total", totalValue);
-                cmd.Parameters.AddWithValue("$gil", gilValue);
-                cmd.Parameters.AddWithValue("$item", itemValue);
-                cmd.ExecuteNonQuery();
+                using var transaction = _connection.BeginTransaction();
+                
+                try
+                {
+                    // Insert the main history record
+                    using var cmd = _connection.CreateCommand();
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = @"
+                        INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
+                        VALUES ($cid, $time, $total, $gil, $item);
+                        SELECT last_insert_rowid();";
+                    cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                    cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                    cmd.Parameters.AddWithValue("$total", totalValue);
+                    cmd.Parameters.AddWithValue("$gil", gilValue);
+                    cmd.Parameters.AddWithValue("$item", itemValue);
+                    var historyId = (long)cmd.ExecuteScalar()!;
+
+                    // Insert per-item contributions if provided
+                    if (itemContributions != null && itemContributions.Count > 0)
+                    {
+                        using var itemCmd = _connection.CreateCommand();
+                        itemCmd.Transaction = transaction;
+                        itemCmd.CommandText = @"
+                            INSERT INTO inventory_value_items (history_id, item_id, quantity, unit_price)
+                            VALUES ($hid, $iid, $qty, $price)";
+                        
+                        var hidParam = itemCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                        var iidParam = itemCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                        var qtyParam = itemCmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
+                        var priceParam = itemCmd.Parameters.Add("$price", Microsoft.Data.Sqlite.SqliteType.Integer);
+                        
+                        hidParam.Value = historyId;
+                        
+                        foreach (var (itemId, quantity, unitPrice) in itemContributions)
+                        {
+                            iidParam.Value = itemId;
+                            qtyParam.Value = quantity;
+                            priceParam.Value = unitPrice;
+                            itemCmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -1908,7 +2007,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Clears all price tracking data (item_prices, price_history, inventory_value_history, sale_records).
+    /// Clears all price tracking data (item_prices, price_history, inventory_value_history, inventory_value_items, sale_records).
     /// </summary>
     public bool ClearAllPriceData()
     {
@@ -1925,6 +2024,10 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = "DELETE FROM price_history";
+                cmd.ExecuteNonQuery();
+
+                // Delete inventory_value_items first (child table), then inventory_value_history
+                cmd.CommandText = "DELETE FROM inventory_value_items";
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = "DELETE FROM inventory_value_history";
@@ -2158,7 +2261,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Deletes a specific sale record by ID and removes all inventory value history records
+    /// Deletes a specific sale record by ID and recalculates all inventory value history records
     /// that occurred after the sale's timestamp to ensure consistency.
     /// </summary>
     /// <param name="id">The ID of the sale record to delete.</param>
@@ -2177,6 +2280,26 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
                 try
                 {
+                    // First, get the item_id from the sale record we're about to delete
+                    int? saleItemId = null;
+                    using (var getItemCmd = _connection.CreateCommand())
+                    {
+                        getItemCmd.Transaction = transaction;
+                        getItemCmd.CommandText = "SELECT item_id FROM sale_records WHERE id = $id";
+                        getItemCmd.Parameters.AddWithValue("$id", id);
+                        var result = getItemCmd.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            saleItemId = Convert.ToInt32(result);
+                        }
+                    }
+
+                    if (!saleItemId.HasValue)
+                    {
+                        transaction.Rollback();
+                        return false;
+                    }
+
                     // Delete the sale record
                     using var deleteCmd = _connection.CreateCommand();
                     deleteCmd.Transaction = transaction;
@@ -2186,17 +2309,92 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
                     if (rowsAffected > 0)
                     {
-                        // Delete all inventory_value_history records after the sale timestamp
-                        // This ensures future snapshots will be recalculated without this sale's influence
-                        using var cleanupCmd = _connection.CreateCommand();
-                        cleanupCmd.Transaction = transaction;
-                        cleanupCmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp >= $timestamp";
-                        cleanupCmd.Parameters.AddWithValue("$timestamp", saleTimestamp.Ticks);
-                        var historyDeleted = cleanupCmd.ExecuteNonQuery();
-                        
-                        if (historyDeleted > 0)
+                        // Get the new latest sale price for this item (after deletion)
+                        int newPrice = 0;
+                        using (var priceCmd = _connection.CreateCommand())
                         {
-                            LogService.Debug($"[KaleidoscopeDb] Deleted {historyDeleted} inventory value history records after sale timestamp");
+                            priceCmd.Transaction = transaction;
+                            priceCmd.CommandText = @"
+                                SELECT price_per_unit FROM sale_records 
+                                WHERE item_id = $iid 
+                                ORDER BY timestamp DESC 
+                                LIMIT 1";
+                            priceCmd.Parameters.AddWithValue("$iid", saleItemId.Value);
+                            var priceResult = priceCmd.ExecuteScalar();
+                            if (priceResult != null && priceResult != DBNull.Value)
+                            {
+                                newPrice = Convert.ToInt32(priceResult);
+                            }
+                        }
+
+                        // Find all inventory_value_history records at or after the sale timestamp
+                        // that have contributions for this item
+                        var historyToUpdate = new List<(long HistoryId, long OldQuantity, int OldPrice)>();
+                        using (var findCmd = _connection.CreateCommand())
+                        {
+                            findCmd.Transaction = transaction;
+                            findCmd.CommandText = @"
+                                SELECT h.id, i.quantity, i.unit_price
+                                FROM inventory_value_history h
+                                JOIN inventory_value_items i ON i.history_id = h.id
+                                WHERE h.timestamp >= $timestamp AND i.item_id = $iid";
+                            findCmd.Parameters.AddWithValue("$timestamp", saleTimestamp.Ticks);
+                            findCmd.Parameters.AddWithValue("$iid", saleItemId.Value);
+                            
+                            using var reader = findCmd.ExecuteReader();
+                            while (reader.Read())
+                            {
+                                historyToUpdate.Add((
+                                    reader.GetInt64(0),
+                                    reader.GetInt64(1),
+                                    reader.GetInt32(2)
+                                ));
+                            }
+                        }
+
+                        // Update each affected history record
+                        if (historyToUpdate.Count > 0)
+                        {
+                            using var updateHistoryCmd = _connection.CreateCommand();
+                            updateHistoryCmd.Transaction = transaction;
+                            updateHistoryCmd.CommandText = @"
+                                UPDATE inventory_value_history 
+                                SET item_value = item_value - $oldContrib + $newContrib,
+                                    total_value = total_value - $oldContrib + $newContrib
+                                WHERE id = $hid";
+                            
+                            var hidParam = updateHistoryCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                            var oldContribParam = updateHistoryCmd.Parameters.Add("$oldContrib", Microsoft.Data.Sqlite.SqliteType.Integer);
+                            var newContribParam = updateHistoryCmd.Parameters.Add("$newContrib", Microsoft.Data.Sqlite.SqliteType.Integer);
+
+                            using var updateItemCmd = _connection.CreateCommand();
+                            updateItemCmd.Transaction = transaction;
+                            updateItemCmd.CommandText = @"
+                                UPDATE inventory_value_items 
+                                SET unit_price = $newPrice
+                                WHERE history_id = $hid AND item_id = $iid";
+                            
+                            var itemHidParam = updateItemCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                            var newPriceParam = updateItemCmd.Parameters.Add("$newPrice", Microsoft.Data.Sqlite.SqliteType.Integer);
+                            var iidParam = updateItemCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                            iidParam.Value = saleItemId.Value;
+                            newPriceParam.Value = newPrice;
+
+                            foreach (var (historyId, quantity, oldPrice) in historyToUpdate)
+                            {
+                                var oldContribution = quantity * oldPrice;
+                                var newContribution = quantity * newPrice;
+
+                                hidParam.Value = historyId;
+                                oldContribParam.Value = oldContribution;
+                                newContribParam.Value = newContribution;
+                                updateHistoryCmd.ExecuteNonQuery();
+
+                                itemHidParam.Value = historyId;
+                                updateItemCmd.ExecuteNonQuery();
+                            }
+
+                            LogService.Debug($"[KaleidoscopeDb] Recalculated {historyToUpdate.Count} inventory value history records for item {saleItemId.Value} (new price: {newPrice})");
                         }
                     }
 

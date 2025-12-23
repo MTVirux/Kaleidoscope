@@ -195,7 +195,7 @@ public class TopItemsTool : ToolComponent
             // Get gil value
             if (charId.HasValue)
             {
-                var (total, gil, item) = await _priceTrackingService.CalculateInventoryValueAsync(charId.Value, settings.IncludeRetainers);
+                var (total, gil, item, _) = await _priceTrackingService.CalculateInventoryValueAsync(charId.Value, settings.IncludeRetainers);
                 _totalValue = total;
                 _gilValue = gil;
             }
@@ -208,7 +208,7 @@ public class TopItemsTool : ToolComponent
                 
                 foreach (var cid in allChars)
                 {
-                    var (total, gil, item) = await _priceTrackingService.CalculateInventoryValueAsync(cid, settings.IncludeRetainers);
+                    var (total, gil, item, _) = await _priceTrackingService.CalculateInventoryValueAsync(cid, settings.IncludeRetainers);
                     totalGil += gil;
                     totalValue += total;
                 }

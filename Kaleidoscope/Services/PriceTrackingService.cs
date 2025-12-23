@@ -457,16 +457,18 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>
     /// Calculates the liquid value of a character's inventory.
     /// </summary>
-    public async Task<(long TotalValue, long GilValue, long ItemValue)> CalculateInventoryValueAsync(ulong characterId, bool includeRetainers = true)
+    /// <returns>Tuple of (TotalValue, GilValue, ItemValue, ItemContributions).</returns>
+    public async Task<(long TotalValue, long GilValue, long ItemValue, List<(int ItemId, long Quantity, int UnitPrice)> ItemContributions)> CalculateInventoryValueAsync(ulong characterId, bool includeRetainers = true)
     {
         var caches = DbService.GetAllInventoryCaches(characterId);
         if (caches.Count == 0)
         {
-            return (0, 0, 0);
+            return (0, 0, 0, new List<(int, long, int)>());
         }
 
         long gilValue = 0;
         long itemValue = 0;
+        var itemContributions = new List<(int ItemId, long Quantity, int UnitPrice)>();
 
         // Collect all unique item IDs
         var itemQuantities = new Dictionary<int, long>();
@@ -508,11 +510,14 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     // Use last sale NQ price first, then HQ if no NQ
                     var unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
                     itemValue += unitPrice * quantity;
+                    
+                    // Record the contribution for historical tracking
+                    itemContributions.Add((itemId, quantity, unitPrice));
                 }
             }
         }
 
-        return (gilValue + itemValue, gilValue, itemValue);
+        return (gilValue + itemValue, gilValue, itemValue, itemContributions);
     }
 
     /// <summary>
@@ -531,8 +536,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             foreach (var charId in characterIds)
             {
-                var (total, gil, item) = await CalculateInventoryValueAsync(charId, _configService.Config.InventoryValue.IncludeRetainers);
-                DbService.SaveInventoryValueHistory(charId, total, gil, item);
+                var (total, gil, item, contributions) = await CalculateInventoryValueAsync(charId, _configService.Config.InventoryValue.IncludeRetainers);
+                DbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
             }
 
             _log.Debug($"[PriceTracking] Saved value snapshots for {characterIds.Count} characters");
