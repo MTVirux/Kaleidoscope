@@ -35,7 +35,11 @@ public class InventoryValueTool : ToolComponent
     private TimeRangeUnit _cachedTimeRangeUnit;
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
     private bool _cacheIsDirty = true;
-    private const double CacheValiditySeconds = 0.5; // Refresh cache every 500ms max
+    private const double CacheValiditySeconds = 2.0; // Refresh cache every 2 seconds max
+    
+    // Change detection - track DB state to avoid unnecessary reprocessing
+    private long _cachedDbRecordCount;
+    private long? _cachedDbMaxTimestamp;
 
     private InventoryValueSettings Settings => _configService.Config.InventoryValue;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
@@ -99,9 +103,23 @@ public class InventoryValueTool : ToolComponent
             return true;
         }
         
-        // Check if cache is stale
+        // Check if cache is stale (time-based)
         var elapsed = (DateTime.UtcNow - _lastCacheTime).TotalSeconds;
-        return elapsed > CacheValiditySeconds;
+        if (elapsed < CacheValiditySeconds)
+            return false; // Cache is still fresh time-wise
+        
+        // Time-based cache expired - check if DB actually changed to avoid reprocessing
+        var characterIdForStats = _selectedCharacterId == 0 ? (ulong?)null : _selectedCharacterId;
+        var (recordCount, maxTimestamp) = DbService.GetInventoryValueHistoryStats(characterIdForStats);
+        
+        if (recordCount == _cachedDbRecordCount && maxTimestamp == _cachedDbMaxTimestamp)
+        {
+            // DB hasn't changed - just update last cache time and skip full refresh
+            _lastCacheTime = DateTime.UtcNow;
+            return false;
+        }
+        
+        return true;
     }
 
     /// <summary>
@@ -165,7 +183,10 @@ public class InventoryValueTool : ToolComponent
             DrawCharacterSelector();
 
             // Graph
-            DrawGraph();
+            using (ProfilerService.BeginStaticChildScope("DrawGraph"))
+            {
+                DrawGraph();
+            }
         }
         catch (Exception ex)
         {
@@ -214,7 +235,10 @@ public class InventoryValueTool : ToolComponent
         // Refresh cache if needed
         if (NeedsCacheRefresh())
         {
-            RefreshCachedData(settings);
+            using (ProfilerService.BeginStaticChildScope("RefreshCachedData"))
+            {
+                RefreshCachedData(settings);
+            }
         }
         
         // Draw from cache
@@ -242,6 +266,10 @@ public class InventoryValueTool : ToolComponent
         _cachedTimeRangeUnit = settings.TimeRangeUnit;
         _cacheIsDirty = false;
         
+        // Update DB stats cache for change detection
+        var characterIdForStats = _selectedCharacterId == 0 ? (ulong?)null : _selectedCharacterId;
+        (_cachedDbRecordCount, _cachedDbMaxTimestamp) = DbService.GetInventoryValueHistoryStats(characterIdForStats);
+        
         // Get time range
         var timeRange = GetTimeRange();
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
@@ -251,7 +279,7 @@ public class InventoryValueTool : ToolComponent
             // Multi-character mode - show each character as a separate line
             var allData = DbService.GetAllInventoryValueHistory(startTime);
             
-            // Group data by character
+            // Group data by character using direct dictionary iteration to avoid LINQ overhead
             var perCharacterData = new Dictionary<ulong, List<(DateTime ts, float value)>>();
             foreach (var entry in allData)
             {
@@ -265,13 +293,13 @@ public class InventoryValueTool : ToolComponent
                 list.Add((entry.Timestamp, value));
             }
             
-            // Convert to the format expected by ImplotGraphWidget
-            _cachedSeriesData = perCharacterData
-                .Select(kvp => (
-                    name: GetCharacterDisplayName(kvp.Key),
-                    samples: (IReadOnlyList<(DateTime ts, float value)>)kvp.Value
-                ))
-                .ToList();
+            // Convert to the format expected by ImplotGraphWidget - preallocate list capacity
+            var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>(perCharacterData.Count);
+            foreach (var kvp in perCharacterData)
+            {
+                seriesList.Add((GetCharacterDisplayName(kvp.Key), kvp.Value));
+            }
+            _cachedSeriesData = seriesList;
         }
         else
         {
@@ -280,41 +308,26 @@ public class InventoryValueTool : ToolComponent
             
             if (_selectedCharacterId == 0)
             {
-                // All characters combined - aggregate all history data
-                var allData = DbService.GetAllInventoryValueHistory(startTime);
-                data = allData
-                    .GroupBy(e => e.Timestamp)
-                    .Select(g => (
-                        Timestamp: g.Key, 
-                        TotalValue: g.Sum(x => x.TotalValue),
-                        GilValue: g.Sum(x => x.GilValue),
-                        ItemValue: g.Sum(x => x.ItemValue)))
-                    .OrderBy(x => x.Timestamp)
-                    .ToList();
+                // All characters combined - use SQL aggregation instead of LINQ GroupBy
+                data = DbService.GetAggregatedInventoryValueHistory(startTime);
             }
             else
             {
-                // Single character
-                data = DbService.GetInventoryValueHistory(_selectedCharacterId);
-                
-                if (startTime.HasValue)
-                {
-                    data = data.Where(d => d.Timestamp >= startTime.Value).ToList();
-                }
+                // Single character - pass startTime to DB query directly
+                data = DbService.GetInventoryValueHistory(_selectedCharacterId, startTime);
             }
             
-            // Convert to timestamped series format for the widget
-            var samples = data
-                .Select(d => (
-                    ts: d.Timestamp, 
-                    value: (float)(settings.IncludeGil ? d.TotalValue : d.ItemValue)
-                ))
-                .ToList();
+            // Convert to timestamped series format for the widget - preallocate capacity
+            var samples = new List<(DateTime ts, float value)>(data.Count);
+            foreach (var d in data)
+            {
+                samples.Add((d.Timestamp, settings.IncludeGil ? d.TotalValue : d.ItemValue));
+            }
             
             if (samples.Count > 0)
             {
                 var seriesName = _selectedCharacterId == 0 ? "Total Value" : GetCharacterDisplayName(_selectedCharacterId);
-                _cachedSeriesData = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>
+                _cachedSeriesData = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>(1)
                 {
                     (seriesName, samples)
                 };
@@ -440,13 +453,6 @@ public class InventoryValueTool : ToolComponent
             {
                 _cacheIsDirty = true;
                 _configService.Save();
-            }
-
-            // Refresh character list button
-            ImGui.Spacing();
-            if (ImGui.Button("Refresh Character List"))
-            {
-                RefreshCharacterList();
             }
         }
         catch (Exception ex)

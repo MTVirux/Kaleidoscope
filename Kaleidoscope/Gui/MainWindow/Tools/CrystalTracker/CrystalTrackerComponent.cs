@@ -28,7 +28,7 @@ public class CrystalTrackerComponent : IDisposable
     private List<float>? _cachedSingleSeriesData;
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedMultiSeriesData;
     private bool _cacheIsDirty = true;
-    private const double CacheValiditySeconds = 0.5; // Refresh cache every 500ms max
+    private const double CacheValiditySeconds = 2.0; // Refresh cache every 2 seconds max (data changes trigger immediate refresh via _cacheIsDirty)
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
 
@@ -197,9 +197,16 @@ public class CrystalTrackerComponent : IDisposable
         // Check if we need to refresh the cache
         var needsRefresh = NeedsCacheRefresh();
 
-        // Calculate time cutoff
+        // Calculate time cutoff based on auto-scroll settings for efficient queries
         DateTime? timeCutoff = null;
-        if (settings.TimeRangeUnit != TimeRangeUnit.All)
+        if (settings.AutoScrollEnabled)
+        {
+            // Only load data within the visible time window + buffer
+            var timeRangeSeconds = settings.AutoScrollTimeUnit.ToSeconds(settings.AutoScrollTimeValue);
+            var bufferSeconds = timeRangeSeconds * 2; // 2x buffer for smooth scrolling
+            timeCutoff = DateTime.UtcNow.AddSeconds(-bufferSeconds);
+        }
+        else if (settings.TimeRangeUnit != TimeRangeUnit.All)
         {
             timeCutoff = CalculateTimeCutoff(settings);
         }
@@ -210,7 +217,10 @@ public class CrystalTrackerComponent : IDisposable
             // Refresh cache if needed
             if (needsRefresh)
             {
-                RefreshCachedData(settings, timeCutoff);
+                using (ProfilerService.BeginStaticChildScope("RefreshCache"))
+                {
+                    RefreshCachedData(settings, timeCutoff);
+                }
             }
             
             // Draw from cache
@@ -218,7 +228,10 @@ public class CrystalTrackerComponent : IDisposable
             {
                 if (_cachedSingleSeriesData != null && _cachedSingleSeriesData.Count > 0)
                 {
-                    _graphWidget.Draw(_cachedSingleSeriesData);
+                    using (ProfilerService.BeginStaticChildScope("DrawSingleSeries"))
+                    {
+                        _graphWidget.Draw(_cachedSingleSeriesData);
+                    }
                 }
                 else
                 {
@@ -229,7 +242,10 @@ public class CrystalTrackerComponent : IDisposable
             {
                 if (_cachedMultiSeriesData != null && _cachedMultiSeriesData.Count > 0)
                 {
-                    _graphWidget.DrawMultipleSeries(_cachedMultiSeriesData);
+                    using (ProfilerService.BeginStaticChildScope("DrawMultiSeries"))
+                    {
+                        _graphWidget.DrawMultipleSeries(_cachedMultiSeriesData);
+                    }
                 }
                 else
                 {
@@ -258,8 +274,17 @@ public class CrystalTrackerComponent : IDisposable
         _cacheIsDirty = false;
         
         // Fetch all crystal data in one batch query
-        var allCrystalData = _samplerService.DbService.GetAllPointsBatch("Crystal_", timeCutoff);
-        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allCrystalData;
+        using (ProfilerService.BeginStaticChildScope("DbQuery"))
+        {
+            allCrystalData = _samplerService.DbService.GetAllPointsBatch("Crystal_", timeCutoff);
+        }
+        
+        IReadOnlyDictionary<ulong, string?> characterNames;
+        using (ProfilerService.BeginStaticChildScope("CharacterNames"))
+        {
+            characterNames = _samplerService.DbService.GetAllCharacterNamesDict();
+        }
         
         // Prepare cached data based on grouping mode
         switch (settings.Grouping)
@@ -364,7 +389,7 @@ public class CrystalTrackerComponent : IDisposable
     private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacter(
         Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
         CrystalTrackerSettings settings,
-        Dictionary<ulong, string?> characterNames)
+        IReadOnlyDictionary<ulong, string?> characterNames)
     {
         var characterData = new Dictionary<ulong, Dictionary<DateTime, long>>();
         
@@ -449,7 +474,7 @@ public class CrystalTrackerComponent : IDisposable
     private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacterAndElement(
         Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
         CrystalTrackerSettings settings,
-        Dictionary<ulong, string?> characterNames)
+        IReadOnlyDictionary<ulong, string?> characterNames)
     {
         // Key: (charId, element)
         var data = new Dictionary<(ulong, int), Dictionary<DateTime, long>>();
@@ -538,7 +563,7 @@ public class CrystalTrackerComponent : IDisposable
     private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacterAndTier(
         Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
         CrystalTrackerSettings settings,
-        Dictionary<ulong, string?> characterNames)
+        IReadOnlyDictionary<ulong, string?> characterNames)
     {
         // Key: (charId, tier)
         var data = new Dictionary<(ulong, int), Dictionary<DateTime, long>>();
