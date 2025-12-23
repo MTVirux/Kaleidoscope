@@ -139,7 +139,7 @@ public class ImplotGraphWidget
         /// <summary>
         /// The position of the legend (inside or outside the graph).
         /// </summary>
-        public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+        public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
         
         /// <summary>
         /// Maximum height of the inside legend as a percentage of plot height (10-80%).
@@ -509,7 +509,7 @@ public class ImplotGraphWidget
         bool showCrosshair = true,
         bool showGridLines = true,
         bool showCurrentPriceLine = true,
-        LegendPosition legendPosition = LegendPosition.Outside,
+        LegendPosition legendPosition = LegendPosition.InsideTopLeft,
         float legendHeightPercent = 25f)
     {
         _config.ShowValueLabel = showValueLabel;
@@ -593,8 +593,10 @@ public class ImplotGraphWidget
                 yMax = yMin + 1f;
             }
 
-            // Calculate X-axis range
-            var xMax = (double)samples.Count;
+            // Calculate X-axis range with right padding (5% of data range)
+            var xDataMax = (double)samples.Count;
+            var xPadding = Math.Max(xDataMax * 0.05, 1.0); // At least 1 unit padding
+            var xMax = xDataMax + xPadding;
 
             // Configure plot flags - trading platform style: no clutter
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | 
@@ -629,6 +631,14 @@ public class ImplotGraphWidget
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
+
+                // Plot invisible dummy points at padded extents for auto-fit on double-click
+                // This ensures auto-fit includes our desired padding
+                var dummyX = stackalloc double[2] { 0, xMax };
+                var dummyY = stackalloc double[2] { yMin > 0 ? yMin : 0, yMax };
+                ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
+                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0); // Invisible
+                ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
 
                 // Convert samples to arrays for plotting
                 var xValues = new double[samples.Count];
@@ -773,7 +783,9 @@ public class ImplotGraphWidget
         var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
         if (totalTimeSpan < 1) totalTimeSpan = 1;
 
-        var xMax = totalTimeSpan;
+        // Add right padding (5% of time range)
+        var xPadding = Math.Max(totalTimeSpan * 0.05, 1.0); // At least 1 second padding
+        var xMax = totalTimeSpan + xPadding;
         var colors = GetSeriesColors(series.Count);
 
         try
@@ -873,6 +885,14 @@ public class ImplotGraphWidget
                 // Constrain axes to prevent negative values
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
+
+                // Plot invisible dummy points at padded extents for auto-fit on double-click
+                // This ensures auto-fit includes our desired padding
+                var dummyX = stackalloc double[2] { 0, xMax };
+                var dummyY = stackalloc double[2] { yMin > 0 ? yMin : 0, yMax };
+                ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
+                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0); // Invisible
+                ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
 
                 // Draw each series
                 for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
