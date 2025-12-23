@@ -7,6 +7,89 @@ using ImGuiCol = Dalamud.Bindings.ImGui.ImGuiCol;
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
+/// Represents a single data series for graph rendering.
+/// Abstracts over both index-based and time-based data sources.
+/// </summary>
+internal sealed class GraphSeriesData
+{
+    /// <summary>
+    /// Display name for this series (used in legends and tooltips).
+    /// </summary>
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// X-axis values (either indices or seconds from start time).
+    /// </summary>
+    public required double[] XValues { get; init; }
+    
+    /// <summary>
+    /// Y-axis values corresponding to each X value.
+    /// </summary>
+    public required double[] YValues { get; init; }
+    
+    /// <summary>
+    /// Color for this series (RGB).
+    /// </summary>
+    public Vector3 Color { get; init; } = new(1f, 1f, 1f);
+    
+    /// <summary>
+    /// Whether this series should be rendered (not hidden by user).
+    /// </summary>
+    public bool Visible { get; init; } = true;
+}
+
+/// <summary>
+/// Prepared data for graph rendering, including computed bounds and all series.
+/// </summary>
+internal sealed class PreparedGraphData
+{
+    /// <summary>
+    /// All series to render.
+    /// </summary>
+    public required IReadOnlyList<GraphSeriesData> Series { get; init; }
+    
+    /// <summary>
+    /// Minimum X value across all visible series.
+    /// </summary>
+    public double XMin { get; init; }
+    
+    /// <summary>
+    /// Maximum X value across all visible series (including padding).
+    /// </summary>
+    public double XMax { get; init; }
+    
+    /// <summary>
+    /// Minimum Y value across all visible series.
+    /// </summary>
+    public double YMin { get; init; }
+    
+    /// <summary>
+    /// Maximum Y value across all visible series.
+    /// </summary>
+    public double YMax { get; init; }
+    
+    /// <summary>
+    /// Whether this is time-based data (true) or index-based (false).
+    /// </summary>
+    public bool IsTimeBased { get; init; }
+    
+    /// <summary>
+    /// For time-based data: the reference start time for X-axis formatting.
+    /// </summary>
+    public DateTime StartTime { get; init; }
+    
+    /// <summary>
+    /// Total time span in seconds (for time-based data).
+    /// </summary>
+    public double TotalTimeSpan { get; init; }
+    
+    /// <summary>
+    /// Whether this graph has multiple visible series (affects legend display).
+    /// </summary>
+    public bool HasMultipleSeries => Series.Count(s => s.Visible) > 1;
+}
+
+/// <summary>
 /// Specifies where the legend should be positioned in the graph.
 /// </summary>
 public enum LegendPosition
@@ -641,371 +724,306 @@ public class ImplotGraphWidget
     /// </summary>
     public float MaxValue => _config.MaxValue;
 
+    #region Data Preparation
+
     /// <summary>
-    /// Draws the graph with the provided samples using ImPlot (trading platform style).
+    /// Prepares index-based sample data for rendering.
     /// </summary>
-    /// <param name="samples">The sample data to plot.</param>
-    public unsafe void Draw(IReadOnlyList<float> samples)
+    private PreparedGraphData PrepareIndexBasedData(IReadOnlyList<float> samples)
     {
-        if (samples == null || samples.Count == 0)
+        var xValues = new double[samples.Count];
+        var yValues = new double[samples.Count];
+        for (var i = 0; i < samples.Count; i++)
         {
-            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
-            ImGui.TextUnformatted(_config.NoDataText);
-            ImGui.PopStyleColor();
-            return;
+            xValues[i] = i;
+            yValues[i] = samples[i];
         }
-
-        try
+        
+        // Determine color based on trend
+        var isBullish = samples.Count < 2 || samples[^1] >= samples[0];
+        var color = isBullish ? new Vector3(ChartColors.Bullish.X, ChartColors.Bullish.Y, ChartColors.Bullish.Z)
+                              : new Vector3(ChartColors.Bearish.X, ChartColors.Bearish.Y, ChartColors.Bearish.Z);
+        
+        var series = new List<GraphSeriesData>
         {
-            var avail = ImGui.GetContentRegionAvail();
-            var plotSize = new Vector2(Math.Max(1f, avail.X), Math.Max(1f, avail.Y));
-
-            // Calculate Y-axis bounds with auto-scaling
-            float yMin, yMax;
+            new()
             {
-                var dataMin = float.MaxValue;
-                var dataMax = float.MinValue;
-                foreach (var val in samples)
-                {
-                    if (val < dataMin) dataMin = val;
-                    if (val > dataMax) dataMax = val;
-                }
-                
-                if (dataMin == float.MaxValue || dataMax == float.MinValue)
-                {
-                    dataMin = 0;
-                    dataMax = 100;
-                }
-
-                var dataRange = dataMax - dataMin;
-                if (dataRange < _config.FloatEpsilon)
-                {
-                    dataRange = Math.Max(dataMax * 0.1f, 1f);
-                }
-                yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
-                yMax = dataMax + dataRange * 0.15f;
+                Name = "Value",
+                XValues = xValues,
+                YValues = yValues,
+                Color = color,
+                Visible = true
             }
-
-            if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
-            {
-                yMax = yMin + 1f;
-            }
-
-            // Calculate X-axis range with right padding (5% of data range)
-            var xDataMax = (double)samples.Count;
-            var xPadding = Math.Max(xDataMax * 0.05, 1.0); // At least 1 unit padding
-            var xMax = xDataMax + xPadding;
-
-            // Configure plot flags - trading platform style: no clutter
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | 
-                           ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.Crosshairs;
-            
-            // Apply trading platform styling
-            PushChartStyle();
-            
-            // Set up axis limits before BeginPlot
-            ImPlot.SetNextAxesLimits(0, xMax, yMin, yMax, ImPlotCond.Once);
-
-            if (ImPlot.BeginPlot($"##{_config.PlotId}", plotSize, plotFlags))
-            {
-                // Configure axes - Y-axis on right side (trading style), with grid
-                var xAxisFlags = ImPlotAxisFlags.NoTickLabels;
-                var yAxisFlags = ImPlotAxisFlags.Opposite; // Right side Y-axis
-                if (_config.ShowGridLines)
-                {
-                    yAxisFlags |= ImPlotAxisFlags.AutoFit;
-                }
-                else
-                {
-                    yAxisFlags |= ImPlotAxisFlags.NoGridLines;
-                    xAxisFlags |= ImPlotAxisFlags.NoGridLines;
-                }
-                
-                ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
-                
-                // Format Y-axis with abbreviated values
-                ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
-                
-                // Constrain axes to prevent negative values
-                ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
-                ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
-
-                // Plot invisible dummy points at padded extents for auto-fit on double-click
-                // This ensures auto-fit includes our desired padding
-                var dummyX = stackalloc double[2] { 0, xMax };
-                var dummyY = stackalloc double[2] { yMin > 0 ? yMin : 0, yMax };
-                ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
-                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0); // Invisible
-                ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
-
-                // Convert samples to arrays for plotting
-                var xValues = new double[samples.Count];
-                var yValues = new double[samples.Count];
-                for (var i = 0; i < samples.Count; i++)
-                {
-                    xValues[i] = i;
-                    yValues[i] = samples[i];
-                }
-                
-                // Determine if trend is bullish or bearish
-                var isBullish = samples.Count < 2 || samples[^1] >= samples[0];
-                var lineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
-                var fillTopColor = isBullish ? ChartColors.BullishFillTop : ChartColors.BearishFillTop;
-                var fillBottomColor = isBullish ? ChartColors.BullishFillBottom : ChartColors.BearishFillBottom;
-                
-                ImPlot.SetNextLineStyle(lineColor, 2f);
-
-                // Plot based on configured graph type
-                fixed (double* xPtr = xValues)
-                fixed (double* yPtr = yValues)
-                {
-                    switch (_config.GraphType)
-                    {
-                        case GraphType.Line:
-                            ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
-                            break;
-                        case GraphType.Stairs:
-                            ImPlot.PlotStairs("Gil", xPtr, yPtr, samples.Count);
-                            break;
-                        case GraphType.Bars:
-                            ImPlot.SetNextFillStyle(lineColor);
-                            ImPlot.PlotBars("Gil", xPtr, yPtr, samples.Count, 0.67);
-                            break;
-                        case GraphType.Area:
-                        default:
-                            // Draw shaded area from data line down to Y=0 using ImPlot's built-in function
-                            ImPlot.SetNextFillStyle(fillTopColor);
-                            ImPlot.PlotShaded("Gil##shaded", xPtr, yPtr, samples.Count, 0.0);
-                            // Set line style again (PlotShaded consumed the previous one)
-                            ImPlot.SetNextLineStyle(lineColor, 2f);
-                            ImPlot.PlotLine("Gil", xPtr, yPtr, samples.Count);
-                            break;
-                    }
-                }
-                
-                // Draw current price horizontal line
-                if (_config.ShowCurrentPriceLine && samples.Count > 0)
-                {
-                    var currentValue = samples[^1];
-                    var priceLineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
-                    DrawPriceLine(currentValue, FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
-                }
-
-                // Show crosshair and tooltip on hover
-                if (ImPlot.IsPlotHovered())
-                {
-                    var mousePos = ImPlot.GetPlotMousePos();
-                    var mouseX = mousePos.X;
-                    
-                    // Find the nearest sample index
-                    var nearestIdx = (int)Math.Round(mouseX);
-                    if (nearestIdx >= 0 && nearestIdx < samples.Count)
-                    {
-                        var value = samples[nearestIdx];
-                        
-                        // Draw crosshair
-                        if (_config.ShowCrosshair)
-                        {
-                            DrawCrosshair(nearestIdx, value, value);
-                        }
-                        
-                        // Draw tooltip box
-                        var screenPos = ImPlot.PlotToPixels(nearestIdx, value);
-                        var changePercent = nearestIdx > 0 ? (value - samples[nearestIdx - 1]) / samples[nearestIdx - 1] * 100 : 0;
-                        var changeSign = changePercent >= 0 ? "+" : "";
-                        var tooltipLines = new[]
-                        {
-                            $"Value: {FormatValue(value)}",
-                            $"Change: {changeSign}{changePercent:F2}%"
-                        };
-                        DrawTooltipBox(screenPos, tooltipLines, isBullish ? ChartColors.Bullish : ChartColors.Bearish);
-                    }
-                }
-
-                // Draw value label annotation if enabled
-                if (_config.ShowValueLabel && samples.Count > 0)
-                {
-                    var lastValue = samples[^1];
-                    var text = FormatValue(lastValue);
-                    var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
-                    var labelColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
-                    ImPlot.Annotation(samples.Count - 1, lastValue, labelColor, pixOffset, true, text);
-                }
-
-                ImPlot.EndPlot();
-            }
-            
-            PopChartStyle();
-        }
-        catch (Exception ex)
+        };
+        
+        // Calculate bounds
+        var (yMin, yMax) = CalculateYBounds(series, 0, double.MaxValue);
+        var xDataMax = (double)samples.Count;
+        var xPadding = Math.Max(xDataMax * 0.05, 1.0);
+        
+        return new PreparedGraphData
         {
-            LogService.Debug($"[ImplotGraphWidget] Graph rendering error: {ex.Message}");
-            ImGui.TextUnformatted("Error rendering graph");
-        }
+            Series = series,
+            XMin = 0,
+            XMax = xDataMax + xPadding,
+            YMin = yMin,
+            YMax = yMax,
+            IsTimeBased = false,
+            StartTime = DateTime.MinValue,
+            TotalTimeSpan = xDataMax
+        };
     }
-
+    
     /// <summary>
-    /// Draws multiple data series overlaid on the same graph with time-aligned data.
-    /// All lines extend to current time using their last recorded value.
-    /// Trading platform style with crosshairs and styled tooltips.
+    /// Prepares time-based multi-series data for rendering.
     /// </summary>
-    /// <param name="series">List of data series with names and timestamped values.</param>
-    public unsafe void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+    private PreparedGraphData PrepareTimeBasedData(
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> seriesData)
     {
-        if (series == null || series.Count == 0)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
-            ImGui.TextUnformatted(_config.NoDataText);
-            ImGui.PopStyleColor();
-            return;
-        }
-
-        // Find global time range across all series
+        // Find global time range
         var globalMinTime = DateTime.MaxValue;
         var globalMaxTime = DateTime.Now;
-
-        foreach (var (_, samples) in series)
+        
+        foreach (var (_, samples) in seriesData)
         {
             if (samples == null || samples.Count == 0) continue;
             if (samples[0].ts < globalMinTime) globalMinTime = samples[0].ts;
         }
-
+        
         if (globalMinTime == DateTime.MaxValue)
+            globalMinTime = DateTime.Now.AddHours(-1);
+        
+        var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
+        if (totalTimeSpan < 1) totalTimeSpan = 1;
+        
+        // Generate colors
+        var colors = GetSeriesColors(seriesData.Count);
+        
+        // Build series list
+        var series = new List<GraphSeriesData>();
+        for (var i = 0; i < seriesData.Count; i++)
         {
-            ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
-            ImGui.TextUnformatted(_config.NoDataText);
-            ImGui.PopStyleColor();
+            var (name, samples) = seriesData[i];
+            if (samples == null || samples.Count == 0) continue;
+            
+            // Build arrays including extension to current time
+            var pointCount = samples.Count + 1;
+            var xValues = new double[pointCount];
+            var yValues = new double[pointCount];
+            
+            for (var j = 0; j < samples.Count; j++)
+            {
+                xValues[j] = (samples[j].ts - globalMinTime).TotalSeconds;
+                yValues[j] = samples[j].value;
+            }
+            
+            // Extend to current time with last value
+            xValues[samples.Count] = totalTimeSpan;
+            yValues[samples.Count] = samples[^1].value;
+            
+            series.Add(new GraphSeriesData
+            {
+                Name = name,
+                XValues = xValues,
+                YValues = yValues,
+                Color = colors[i],
+                Visible = !_hiddenSeries.Contains(name)
+            });
+        }
+        
+        // Calculate X limits based on auto-scroll mode
+        double xMin, xMax;
+        if (_config.AutoScrollEnabled)
+        {
+            var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+            var nowFraction = _config.AutoScrollNowPosition / 100f;
+            var leftPortion = timeRangeSeconds * nowFraction;
+            var rightPortion = timeRangeSeconds * (1f - nowFraction);
+            xMin = totalTimeSpan - leftPortion;
+            xMax = totalTimeSpan + rightPortion;
+        }
+        else
+        {
+            xMin = 0;
+            xMax = totalTimeSpan + Math.Max(totalTimeSpan * 0.05, 1.0);
+        }
+        
+        // Calculate Y bounds for visible series (considering visible X range for auto-scroll)
+        var (yMinCalc, yMaxCalc) = CalculateYBounds(series, xMin, xMax);
+        
+        return new PreparedGraphData
+        {
+            Series = series,
+            XMin = xMin,
+            XMax = xMax,
+            YMin = yMinCalc,
+            YMax = yMaxCalc,
+            IsTimeBased = true,
+            StartTime = globalMinTime,
+            TotalTimeSpan = totalTimeSpan
+        };
+    }
+    
+    /// <summary>
+    /// Calculates Y-axis bounds from visible series data.
+    /// </summary>
+    private (double yMin, double yMax) CalculateYBounds(
+        IReadOnlyList<GraphSeriesData> series, 
+        double xMinVisible, 
+        double xMaxVisible)
+    {
+        var dataMin = double.MaxValue;
+        var dataMax = double.MinValue;
+        
+        foreach (var s in series)
+        {
+            if (!s.Visible) continue;
+            
+            double? lastValueBeforeRange = null;
+            
+            for (var i = 0; i < s.XValues.Length; i++)
+            {
+                var x = s.XValues[i];
+                var y = s.YValues[i];
+                
+                if (_config.AutoScrollEnabled)
+                {
+                    if (x < xMinVisible)
+                    {
+                        lastValueBeforeRange = y;
+                        continue;
+                    }
+                    if (x > xMaxVisible) continue;
+                }
+                
+                if (y < dataMin) dataMin = y;
+                if (y > dataMax) dataMax = y;
+            }
+            
+            // Include last value before visible range for proper bounds
+            if (_config.AutoScrollEnabled && lastValueBeforeRange.HasValue)
+            {
+                if (lastValueBeforeRange.Value < dataMin) dataMin = lastValueBeforeRange.Value;
+                if (lastValueBeforeRange.Value > dataMax) dataMax = lastValueBeforeRange.Value;
+            }
+        }
+        
+        if (dataMin == double.MaxValue || dataMax == double.MinValue)
+        {
+            dataMin = 0;
+            dataMax = 100;
+        }
+        
+        var dataRange = dataMax - dataMin;
+        if (dataRange < _config.FloatEpsilon)
+        {
+            dataRange = Math.Max(dataMax * 0.1, 1.0);
+        }
+        
+        var yMin = Math.Max(0, dataMin - dataRange * 0.15);
+        var yMax = dataMax + dataRange * 0.15;
+        
+        if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
+        {
+            yMax = yMin + 1;
+        }
+        
+        return (yMin, yMax);
+    }
+
+    #endregion
+
+    #region Public Draw Methods
+
+    /// <summary>
+    /// Draws the graph with the provided samples using ImPlot (trading platform style).
+    /// </summary>
+    /// <param name="samples">The sample data to plot.</param>
+    public void Draw(IReadOnlyList<float> samples)
+    {
+        if (samples == null || samples.Count == 0)
+        {
+            DrawNoDataMessage();
             return;
         }
 
-        var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
-        if (totalTimeSpan < 1) totalTimeSpan = 1;
+        var preparedData = PrepareIndexBasedData(samples);
+        DrawGraph(preparedData);
+    }
 
-        // Add right padding (5% of time range)
-        var xPadding = Math.Max(totalTimeSpan * 0.05, 1.0); // At least 1 second padding
-        var xMax = totalTimeSpan + xPadding;
-        var colors = GetSeriesColors(series.Count);
+    /// <summary>
+    /// Draws multiple data series overlaid on the same graph with time-aligned data.
+    /// </summary>
+    /// <param name="series">List of data series with names and timestamped values.</param>
+    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+    {
+        if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
+        {
+            DrawNoDataMessage();
+            return;
+        }
 
+        var preparedData = PrepareTimeBasedData(series);
+        DrawGraph(preparedData);
+    }
+    
+    /// <summary>
+    /// Displays the "no data" message.
+    /// </summary>
+    private void DrawNoDataMessage()
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, ChartColors.TextSecondary);
+        ImGui.TextUnformatted(_config.NoDataText);
+        ImGui.PopStyleColor();
+    }
+
+    #endregion
+
+    #region Unified Graph Rendering
+
+    /// <summary>
+    /// Core graph drawing method used by both Draw() and DrawMultipleSeries().
+    /// </summary>
+    private unsafe void DrawGraph(PreparedGraphData data)
+    {
         try
         {
             var avail = ImGui.GetContentRegionAvail();
             
-            // Reserve space for scrollable legend on the right (if enabled and position is Outside)
-            var useOutsideLegend = _config.ShowLegend && _config.LegendPosition == LegendPosition.Outside;
+            // Reserve space for outside legend if needed
+            var useOutsideLegend = _config.ShowLegend && 
+                                   _config.LegendPosition == LegendPosition.Outside && 
+                                   data.HasMultipleSeries;
             var legendWidth = useOutsideLegend ? _config.LegendWidth : 0f;
             var legendPadding = useOutsideLegend ? 5f : 0f;
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
             var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
-            // Calculate X-axis limits first (needed to filter visible data for Y-axis auto-scaling)
-            double xMinLimit, xMaxLimit;
-            if (_config.AutoScrollEnabled)
-            {
-                // Auto-scroll mode: X-axis is exactly timeRange wide
-                // NowPosition controls where "now" appears (0% = left, 50% = center, 100% = right)
-                var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
-                var nowFraction = _config.AutoScrollNowPosition / 100f;
-                var leftPortion = timeRangeSeconds * nowFraction;
-                var rightPortion = timeRangeSeconds * (1f - nowFraction);
-                xMinLimit = totalTimeSpan - leftPortion;
-                xMaxLimit = totalTimeSpan + rightPortion;
-            }
-            else
-            {
-                // Normal mode: show full range, allow user zoom/pan
-                xMinLimit = 0;
-                xMaxLimit = xMax;
-            }
-
-            // Calculate Y-axis bounds based on visible data (excluding hidden series)
-            // When auto-scrolling, only consider data points within the visible time range
-            float yMin, yMax;
-            {
-                var dataMin = float.MaxValue;
-                var dataMax = float.MinValue;
-                foreach (var (name, samples) in series)
-                {
-                    if (samples == null) continue;
-                    // Skip hidden series in auto-scaling
-                    if (_hiddenSeries.Contains(name)) continue;
-                    
-                    // Track last value before visible range for proper Y bounds
-                    float? lastValueBeforeRange = null;
-                    
-                    foreach (var (ts, val) in samples)
-                    {
-                        var xPos = (ts - globalMinTime).TotalSeconds;
-                        
-                        // When auto-scrolling, only consider data within visible X range
-                        if (_config.AutoScrollEnabled)
-                        {
-                            if (xPos < xMinLimit)
-                            {
-                                // Track last value before visible range (used for line extension)
-                                lastValueBeforeRange = val;
-                                continue;
-                            }
-                            if (xPos > xMaxLimit) continue;
-                        }
-                        
-                        if (val < dataMin) dataMin = val;
-                        if (val > dataMax) dataMax = val;
-                    }
-                    
-                    // Include the last value before visible range (line extends from there)
-                    if (_config.AutoScrollEnabled && lastValueBeforeRange.HasValue)
-                    {
-                        if (lastValueBeforeRange.Value < dataMin) dataMin = lastValueBeforeRange.Value;
-                        if (lastValueBeforeRange.Value > dataMax) dataMax = lastValueBeforeRange.Value;
-                    }
-                }
-
-                if (dataMin == float.MaxValue || dataMax == float.MinValue)
-                {
-                    dataMin = 0;
-                    dataMax = 100;
-                }
-
-                var dataRange = dataMax - dataMin;
-                if (dataRange < _config.FloatEpsilon)
-                {
-                    dataRange = Math.Max(dataMax * 0.1f, 1f);
-                }
-                yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
-                yMax = dataMax + dataRange * 0.15f;
-            }
-
-            // Configure plot flags - trading platform style with crosshairs
-            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | 
-                           ImPlotFlags.NoMouseText | ImPlotFlags.NoLegend | ImPlotFlags.Crosshairs;
+            // Configure plot flags
+            var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoLegend | ImPlotFlags.NoMenus | 
+                           ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.Crosshairs;
             
-            // Disable plot input when mouse is over any overlay (legend or controls drawer)
             if (IsMouseOverOverlay)
             {
                 plotFlags |= ImPlotFlags.NoInputs;
             }
             
-            // Apply trading platform styling
+            // Apply styling
             PushChartStyle();
             
-            // Set axis limits based on mode
-            if (_config.AutoScrollEnabled)
-            {
-                // Use Always condition to force the view to follow
-                ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Always);
-            }
-            else
-            {
-                ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Once);
-            }
+            // Set axis limits
+            var plotCondition = _config.AutoScrollEnabled ? ImPlotCond.Always : ImPlotCond.Once;
+            ImPlot.SetNextAxesLimits(data.XMin, data.XMax, data.YMin, data.YMax, plotCondition);
 
-            if (ImPlot.BeginPlot($"##{_config.PlotId}_multi", plotSize, plotFlags))
+            var plotId = data.HasMultipleSeries ? $"##{_config.PlotId}_multi" : $"##{_config.PlotId}";
+            
+            if (ImPlot.BeginPlot(plotId, plotSize, plotFlags))
             {
-                // Configure axes - Y-axis on right (trading style), with optional grid
-                var xAxisFlags = _config.ShowXAxisTimestamps 
+                // Configure axes
+                var xAxisFlags = data.IsTimeBased && _config.ShowXAxisTimestamps 
                     ? ImPlotAxisFlags.None 
                     : ImPlotAxisFlags.NoTickLabels;
-                var yAxisFlags = ImPlotAxisFlags.Opposite; // Right side Y-axis
+                var yAxisFlags = ImPlotAxisFlags.Opposite;
                 
                 if (!_config.ShowGridLines)
                 {
@@ -1015,270 +1033,260 @@ public class ImplotGraphWidget
                 
                 ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
                 
-                // Format X-axis with time labels if enabled
-                if (_config.ShowXAxisTimestamps)
+                // Format axes
+                if (data.IsTimeBased && _config.ShowXAxisTimestamps)
                 {
-                    ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)(long)globalMinTime.Ticks);
+                    ImPlot.SetupAxisFormat(ImAxis.X1, XAxisTimeFormatter, (void*)data.StartTime.Ticks);
                 }
-                
-                // Format Y-axis with abbreviated values
                 ImPlot.SetupAxisFormat(ImAxis.Y1, YAxisFormatter);
-
-                // Constrain axes to prevent negative values
+                
+                // Constrain axes
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
                 ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
-
-                // Plot invisible dummy points at padded extents for auto-fit on double-click
-                // This ensures auto-fit includes our desired padding
-                var dummyX = stackalloc double[2] { 0, xMax };
-                var dummyY = stackalloc double[2] { yMin > 0 ? yMin : 0, yMax };
+                
+                // Plot dummy points for auto-fit padding
+                var dummyX = stackalloc double[2] { 0, data.XMax };
+                var dummyY = stackalloc double[2] { data.YMin > 0 ? data.YMin : 0, data.YMax };
                 ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
-                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0); // Invisible
+                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0);
                 ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
-
+                
                 // Draw each series
-                for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
+                foreach (var series in data.Series)
                 {
-                    var (name, samples) = series[seriesIdx];
-                    if (samples == null || samples.Count == 0) continue;
-                    
-                    // Skip hidden series - don't draw them on the chart
-                    if (_hiddenSeries.Contains(name)) continue;
-
-                    // Build arrays for this series, including extension to current time
-                    var pointCount = samples.Count + 1; // +1 for extension to current time
-                    var xValues = new double[pointCount];
-                    var yValues = new double[pointCount];
-
-                    for (var i = 0; i < samples.Count; i++)
-                    {
-                        xValues[i] = (samples[i].ts - globalMinTime).TotalSeconds;
-                        yValues[i] = samples[i].value;
-                    }
-
-                    // Extend to current time with last value
-                    xValues[samples.Count] = totalTimeSpan;
-                    yValues[samples.Count] = samples[^1].value;
-
-                    // Set color for this series
-                    var color = colors[seriesIdx];
-                    var colorVec4 = new Vector4(color.X, color.Y, color.Z, 1f);
-                    ImPlot.SetNextLineStyle(colorVec4, 2f);
-
-                    // Plot based on configured graph type
-                    fixed (double* xPtr = xValues)
-                    fixed (double* yPtr = yValues)
-                    {
-                        switch (_config.GraphType)
-                        {
-                            case GraphType.Line:
-                                ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
-                                break;
-                            case GraphType.Stairs:
-                                ImPlot.PlotStairs(name, xPtr, yPtr, pointCount);
-                                break;
-                            case GraphType.Bars:
-                                // For multi-series bars, use a smaller width and offset
-                                var barWidth = totalTimeSpan / pointCount * 0.8 / series.Count;
-                                ImPlot.SetNextFillStyle(colorVec4);
-                                ImPlot.PlotBars(name, xPtr, yPtr, pointCount, barWidth);
-                                break;
-                            case GraphType.Area:
-                            default:
-                                // Draw shaded area from data line down to Y=0 using ImPlot's built-in function
-                                ImPlot.SetNextFillStyle(new Vector4(color.X, color.Y, color.Z, 0.55f));
-                                ImPlot.PlotShaded($"{name}##shaded", xPtr, yPtr, pointCount, 0.0);
-                                // Set line style again (PlotShaded consumed the previous one)
-                                ImPlot.SetNextLineStyle(colorVec4, 2f);
-                                ImPlot.PlotLine(name, xPtr, yPtr, pointCount);
-                                break;
-                        }
-                    }
-
+                    if (!series.Visible) continue;
+                    DrawSeries(series, data);
                 }
-
-                // Show hover tooltip with series name and value at mouse position
+                
+                // Draw current price line for the last visible series
+                if (_config.ShowCurrentPriceLine)
+                {
+                    var lastVisibleSeries = data.Series.LastOrDefault(s => s.Visible);
+                    if (lastVisibleSeries != null && lastVisibleSeries.YValues.Length > 0)
+                    {
+                        var currentValue = (float)lastVisibleSeries.YValues[^1];
+                        var isBullish = lastVisibleSeries.YValues.Length < 2 || 
+                                       lastVisibleSeries.YValues[^1] >= lastVisibleSeries.YValues[0];
+                        var priceLineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
+                        DrawPriceLine(currentValue, FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
+                    }
+                }
+                
+                // Draw hover effects
                 if (ImPlot.IsPlotHovered())
                 {
-                    var mousePos = ImPlot.GetPlotMousePos();
-                    var mouseX = mousePos.X; // Time in seconds from globalMinTime
-                    var mouseY = mousePos.Y;
-                    
-                    // Find the nearest series and value at this time position
-                    var nearestSeriesName = string.Empty;
-                    var nearestValue = 0f;
-                    var nearestColor = new Vector3(1f, 1f, 1f);
-                    var minYDistance = double.MaxValue;
-                    var foundPoint = false;
-                    var pointX = 0.0;
-                    var pointY = 0.0;
-                    
-                    for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
-                    {
-                        var (name, samples) = series[seriesIdx];
-                        if (samples == null || samples.Count == 0) continue;
-                        
-                        // Skip hidden series in hover detection
-                        if (_hiddenSeries.Contains(name)) continue;
-                        
-                        // Find value at mouseX time using interpolation
-                        float valueAtTime;
-                        double actualX;
-                        var foundInSeries = false;
-                        
-                        // Convert mouseX (time offset) to find appropriate sample
-                        for (var i = 0; i < samples.Count; i++)
-                        {
-                            var sampleTimeOffset = (samples[i].ts - globalMinTime).TotalSeconds;
-                            var nextTimeOffset = i < samples.Count - 1 
-                                ? (samples[i + 1].ts - globalMinTime).TotalSeconds 
-                                : totalTimeSpan;
-                            
-                            if (mouseX >= sampleTimeOffset && mouseX <= nextTimeOffset)
-                            {
-                                // Use the value at this point (step interpolation)
-                                valueAtTime = samples[i].value;
-                                actualX = sampleTimeOffset;
-                                foundInSeries = true;
-                                
-                                var yDistance = Math.Abs(mouseY - valueAtTime);
-                                if (yDistance < minYDistance)
-                                {
-                                    minYDistance = yDistance;
-                                    nearestSeriesName = name;
-                                    nearestValue = valueAtTime;
-                                    nearestColor = colors[seriesIdx];
-                                    pointX = mouseX;
-                                    pointY = valueAtTime;
-                                    foundPoint = true;
-                                }
-                                break;
-                            }
-                        }
-                        
-                        // Check if we're past the last sample (in the extended region)
-                        if (!foundInSeries && samples.Count > 0)
-                        {
-                            var lastSampleTime = (samples[^1].ts - globalMinTime).TotalSeconds;
-                            if (mouseX > lastSampleTime)
-                            {
-                                valueAtTime = samples[^1].value;
-                                var yDistance = Math.Abs(mouseY - valueAtTime);
-                                if (yDistance < minYDistance)
-                                {
-                                    minYDistance = yDistance;
-                                    nearestSeriesName = name;
-                                    nearestValue = valueAtTime;
-                                    nearestColor = colors[seriesIdx];
-                                    pointX = mouseX;
-                                    pointY = valueAtTime;
-                                    foundPoint = true;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (foundPoint)
-                    {
-                        // Draw crosshair at the point
-                        if (_config.ShowCrosshair)
-                        {
-                            DrawCrosshair(pointX, pointY, nearestValue);
-                        }
-                        
-                        // Draw styled tooltip box
-                        var screenPos = ImPlot.PlotToPixels(pointX, pointY);
-                        var accentColor = new Vector4(nearestColor.X, nearestColor.Y, nearestColor.Z, 1f);
-                        var tooltipLines = new[]
-                        {
-                            nearestSeriesName,
-                            $"Value: {FormatValue(nearestValue)}"
-                        };
-                        DrawTooltipBox(screenPos, tooltipLines, accentColor);
-                    }
+                    DrawHoverEffects(data);
                 }
-
-                // Draw value labels after all lines are drawn, with vertical spacing to prevent overlap
+                
+                // Draw value labels
                 if (_config.ShowValueLabel)
                 {
-                    const float labelHeight = 18f; // Approximate height of each label
-                    
-                    // Collect all labels with their values for sorting
-                    var labels = new List<(int idx, string name, float value, Vector3 color)>();
-                    for (var seriesIdx = 0; seriesIdx < series.Count; seriesIdx++)
-                    {
-                        var (name, samples) = series[seriesIdx];
-                        if (samples == null || samples.Count == 0) continue;
-                        // Skip hidden series in value labels
-                        if (_hiddenSeries.Contains(name)) continue;
-                        labels.Add((seriesIdx, name, samples[^1].value, colors[seriesIdx]));
-                    }
-                    
-                    // Sort by value descending so higher values get higher positions
-                    labels.Sort((a, b) => b.value.CompareTo(a.value));
-                    
-                    // Draw labels with vertical offset based on sorted position
-                    for (var i = 0; i < labels.Count; i++)
-                    {
-                        var (_, labelName, lastValue, color) = labels[i];
-                        var text = $"{labelName}: {FormatValue(lastValue)}";
-                        // Stack labels vertically: first (highest value) at top, subsequent ones below
-                        var yOffset = _config.ValueLabelOffsetY + (i * labelHeight);
-                        var pixOffset = new Vector2(_config.ValueLabelOffsetX, yOffset);
-                        var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
-                        ImPlot.Annotation(totalTimeSpan, lastValue, labelColor, pixOffset, true, text);
-                    }
+                    DrawValueLabels(data);
                 }
-
-                // Draw in-graph legend if position is inside
-                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside)
+                
+                // Draw inside legend if applicable
+                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeries)
                 {
-                    DrawInsideLegend(series, colors);
+                    DrawInsideLegend(data);
                 }
                 else
                 {
-                    // Invalidate cached bounds when not showing inside legend
                     _cachedLegendBounds = (Vector2.Zero, Vector2.Zero, false);
                 }
                 
-                // Draw controls drawer (toggle button + panel) if enabled
+                // Draw controls drawer
                 if (_config.ShowControlsDrawer)
                 {
                     DrawControlsDrawer();
                 }
                 else
                 {
-                    // Invalidate cached bounds when not showing controls drawer
                     _cachedControlsDrawerBounds = (Vector2.Zero, Vector2.Zero, false);
                 }
-
+                
                 ImPlot.EndPlot();
             }
             
             PopChartStyle();
             
-            // Draw scrollable legend on the right (if enabled and position is Outside)
-            if (_config.ShowLegend && _config.LegendPosition == LegendPosition.Outside)
+            // Draw outside legend
+            if (useOutsideLegend)
             {
                 ImGui.SameLine();
-                DrawScrollableLegend(series, colors, _config.LegendWidth, avail.Y);
+                DrawScrollableLegend(data, _config.LegendWidth, avail.Y);
             }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ImplotGraphWidget] Multi-series rendering error: {ex.Message}");
+            LogService.Debug($"[ImplotGraphWidget] Graph rendering error: {ex.Message}");
             ImGui.TextUnformatted("Error rendering graph");
         }
     }
     
     /// <summary>
+    /// Draws a single series on the plot.
+    /// </summary>
+    private unsafe void DrawSeries(GraphSeriesData series, PreparedGraphData data)
+    {
+        var colorVec4 = new Vector4(series.Color.X, series.Color.Y, series.Color.Z, 1f);
+        ImPlot.SetNextLineStyle(colorVec4, 2f);
+        
+        fixed (double* xPtr = series.XValues)
+        fixed (double* yPtr = series.YValues)
+        {
+            var count = series.XValues.Length;
+            
+            switch (_config.GraphType)
+            {
+                case GraphType.Line:
+                    ImPlot.PlotLine(series.Name, xPtr, yPtr, count);
+                    break;
+                    
+                case GraphType.Stairs:
+                    ImPlot.PlotStairs(series.Name, xPtr, yPtr, count);
+                    break;
+                    
+                case GraphType.Bars:
+                    var barWidth = data.HasMultipleSeries 
+                        ? data.TotalTimeSpan / count * 0.8 / data.Series.Count(s => s.Visible)
+                        : 0.67;
+                    ImPlot.SetNextFillStyle(colorVec4);
+                    ImPlot.PlotBars(series.Name, xPtr, yPtr, count, barWidth);
+                    break;
+                    
+                case GraphType.Area:
+                default:
+                    var fillAlpha = data.HasMultipleSeries ? 0.55f : 0.60f;
+                    ImPlot.SetNextFillStyle(new Vector4(series.Color.X, series.Color.Y, series.Color.Z, fillAlpha));
+                    ImPlot.PlotShaded($"{series.Name}##shaded", xPtr, yPtr, count, 0.0);
+                    ImPlot.SetNextLineStyle(colorVec4, 2f);
+                    ImPlot.PlotLine(series.Name, xPtr, yPtr, count);
+                    break;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Draws crosshair and tooltip when hovering over the plot.
+    /// </summary>
+    private void DrawHoverEffects(PreparedGraphData data)
+    {
+        var mousePos = ImPlot.GetPlotMousePos();
+        var mouseX = mousePos.X;
+        var mouseY = mousePos.Y;
+        
+        // Find nearest point across all visible series
+        string nearestSeriesName = string.Empty;
+        float nearestValue = 0f;
+        var nearestColor = new Vector3(1f, 1f, 1f);
+        var minYDistance = double.MaxValue;
+        var foundPoint = false;
+        var pointX = 0.0;
+        var pointY = 0.0;
+        
+        foreach (var series in data.Series)
+        {
+            if (!series.Visible) continue;
+            
+            for (var i = 0; i < series.XValues.Length; i++)
+            {
+                var x = series.XValues[i];
+                var nextX = i < series.XValues.Length - 1 ? series.XValues[i + 1] : data.XMax;
+                
+                if (mouseX >= x && mouseX <= nextX)
+                {
+                    var value = (float)series.YValues[i];
+                    var yDistance = Math.Abs(mouseY - value);
+                    
+                    if (yDistance < minYDistance)
+                    {
+                        minYDistance = yDistance;
+                        nearestSeriesName = series.Name;
+                        nearestValue = value;
+                        nearestColor = series.Color;
+                        pointX = mouseX;
+                        pointY = value;
+                        foundPoint = true;
+                    }
+                    break;
+                }
+            }
+            
+            // Check if past last point
+            if (series.XValues.Length > 0 && mouseX > series.XValues[^1])
+            {
+                var value = (float)series.YValues[^1];
+                var yDistance = Math.Abs(mouseY - value);
+                
+                if (yDistance < minYDistance)
+                {
+                    minYDistance = yDistance;
+                    nearestSeriesName = series.Name;
+                    nearestValue = value;
+                    nearestColor = series.Color;
+                    pointX = mouseX;
+                    pointY = value;
+                    foundPoint = true;
+                }
+            }
+        }
+        
+        if (foundPoint)
+        {
+            if (_config.ShowCrosshair)
+            {
+                DrawCrosshair(pointX, pointY, nearestValue);
+            }
+            
+            var screenPos = ImPlot.PlotToPixels(pointX, pointY);
+            var accentColor = new Vector4(nearestColor.X, nearestColor.Y, nearestColor.Z, 1f);
+            
+            var tooltipLines = data.HasMultipleSeries
+                ? new[] { nearestSeriesName, $"Value: {FormatValue(nearestValue)}" }
+                : new[] { $"Value: {FormatValue(nearestValue)}" };
+            
+            DrawTooltipBox(screenPos, tooltipLines, accentColor);
+        }
+    }
+    
+    /// <summary>
+    /// Draws value labels at the end of each visible series.
+    /// </summary>
+    private void DrawValueLabels(PreparedGraphData data)
+    {
+        const float labelHeight = 18f;
+        
+        // Collect labels from visible series
+        var labels = data.Series
+            .Where(s => s.Visible && s.YValues.Length > 0)
+            .Select(s => (s.Name, Value: (float)s.YValues[^1], s.Color))
+            .OrderByDescending(l => l.Value)
+            .ToList();
+        
+        for (var i = 0; i < labels.Count; i++)
+        {
+            var (name, lastValue, color) = labels[i];
+            var text = data.HasMultipleSeries 
+                ? $"{name}: {FormatValue(lastValue)}"
+                : FormatValue(lastValue);
+            
+            var yOffset = _config.ValueLabelOffsetY + (i * labelHeight);
+            var pixOffset = new Vector2(_config.ValueLabelOffsetX, yOffset);
+            var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
+            
+            var xPos = data.IsTimeBased ? data.TotalTimeSpan : data.XMax - (data.XMax - data.XMin) * 0.05;
+            ImPlot.Annotation(xPos, lastValue, labelColor, pixOffset, true, text);
+        }
+    }
+
+    #endregion
+
+    #region Legend Drawing
+    
+    /// <summary>
     /// Draws a scrollable legend for multi-series graphs with trading platform styling.
     /// </summary>
-    private void DrawScrollableLegend(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series,
-        Vector3[] colors,
-        float width,
-        float height)
+    private void DrawScrollableLegend(PreparedGraphData data, float width, float height)
     {
         // Style the legend panel with trading platform colors
         ImGui.PushStyleColor(ImGuiCol.ChildBg, ChartColors.FrameBackground);
@@ -1288,20 +1296,15 @@ public class ImplotGraphWidget
         
         if (ImGui.BeginChild($"##{_config.PlotId}_legend", new Vector2(width, height), true))
         {
-            // Create sorted list of indices by series name (character name)
-            var sortedIndices = Enumerable.Range(0, series.Count)
-                .OrderBy(i => series[i].name, StringComparer.OrdinalIgnoreCase)
+            // Create sorted list by series name
+            var sortedSeries = data.Series
+                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             
-            for (var idx = 0; idx < sortedIndices.Count; idx++)
+            foreach (var series in sortedSeries)
             {
-                var i = sortedIndices[idx];
-                var (name, samples) = series[i];
-                if (samples == null || samples.Count == 0) continue;
-                
-                var isHidden = _hiddenSeries.Contains(name);
-                var color = colors[i];
-                var lastValue = samples[^1].value;
+                var isHidden = !series.Visible;
+                var lastValue = series.YValues.Length > 0 ? (float)series.YValues[^1] : 0f;
                 
                 // Use dimmed color for hidden series
                 var displayAlpha = isHidden ? 0.35f : 1f;
@@ -1310,7 +1313,7 @@ public class ImplotGraphWidget
                 var drawList = ImGui.GetWindowDrawList();
                 var cursorPos = ImGui.GetCursorScreenPos();
                 const float indicatorSize = 10f;
-                var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, displayAlpha));
+                var colorU32 = ImGui.GetColorU32(new Vector4(series.Color.X, series.Color.Y, series.Color.Z, displayAlpha));
                 
                 if (isHidden)
                 {
@@ -1333,22 +1336,22 @@ public class ImplotGraphWidget
                 // Draw name with appropriate text color
                 var textColor = isHidden ? ChartColors.TextSecondary : ChartColors.TextPrimary;
                 ImGui.PushStyleColor(ImGuiCol.Text, textColor);
-                ImGui.TextUnformatted($"{name}");
+                ImGui.TextUnformatted($"{series.Name}");
                 ImGui.PopStyleColor();
                 
                 // Make row clickable - use invisible button over the row area
                 var rowEnd = ImGui.GetCursorScreenPos();
                 ImGui.SetCursorScreenPos(rowStart);
-                if (ImGui.InvisibleButton($"##legend_toggle_{name}", new Vector2(width - 16f, indicatorSize + 2f)))
+                if (ImGui.InvisibleButton($"##legend_toggle_{series.Name}", new Vector2(width - 16f, indicatorSize + 2f)))
                 {
-                    ToggleSeriesVisibility(name);
+                    ToggleSeriesVisibility(series.Name);
                 }
                 
                 // Show tooltip on hover with styled content
                 if (ImGui.IsItemHovered())
                 {
                     var statusText = isHidden ? " (hidden)" : "";
-                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility");
+                    ImGui.SetTooltip($"{series.Name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility");
                 }
             }
         }
@@ -1359,11 +1362,9 @@ public class ImplotGraphWidget
     /// <summary>
     /// Draws an interactive legend inside the plot area using ImPlot's draw list.
     /// The legend is positioned based on the LegendPosition config setting.
-    /// Supports scrolling when there are too many series to fit.
+    /// Supports scrolling when there are too many series.
     /// </summary>
-    private void DrawInsideLegend(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series,
-        Vector3[] colors)
+    private void DrawInsideLegend(PreparedGraphData data)
     {
         var drawList = ImPlot.GetPlotDrawList();
         var plotPos = ImPlot.GetPlotPos();
@@ -1379,26 +1380,25 @@ public class ImplotGraphWidget
         // Measure max text width and count valid series
         var maxTextWidth = 0f;
         var validSeriesCount = 0;
-        foreach (var (name, samples) in series)
+        foreach (var series in data.Series)
         {
-            if (samples == null || samples.Count == 0) continue;
-            var textSize = ImGui.CalcTextSize(name);
+            var textSize = ImGui.CalcTextSize(series.Name);
             maxTextWidth = Math.Max(maxTextWidth, textSize.X);
             validSeriesCount++;
         }
         
         if (validSeriesCount == 0) return;
         
-        // Calculate content height and max display height based on percentage setting
+        // Calculate content height and max display height
         var contentHeight = validSeriesCount * rowHeight;
         var maxLegendHeight = plotSize.Y * (_config.LegendHeightPercent / 100f);
-        maxLegendHeight = Math.Max(maxLegendHeight, rowHeight + padding * 2); // At least one row
+        maxLegendHeight = Math.Max(maxLegendHeight, rowHeight + padding * 2);
         var needsScrolling = contentHeight > maxLegendHeight - padding * 2;
         
         var legendWidth = padding * 2 + indicatorSize + indicatorTextGap + maxTextWidth + (needsScrolling ? scrollbarWidth + 4f : 0f);
         var legendHeight = Math.Min(padding * 2 + contentHeight, maxLegendHeight);
         
-        // Determine legend position based on config
+        // Determine legend position
         Vector2 legendPos;
         switch (_config.LegendPosition)
         {
@@ -1417,7 +1417,7 @@ public class ImplotGraphWidget
                 break;
         }
         
-        // Cache legend bounds for next frame's input blocking
+        // Cache legend bounds
         _cachedLegendBounds = (legendPos, new Vector2(legendPos.X + legendWidth, legendPos.Y + legendHeight), true);
         
         // Draw legend background
@@ -1446,38 +1446,33 @@ public class ImplotGraphWidget
         _insideLegendScrollOffset = Math.Clamp(_insideLegendScrollOffset, 0f, maxScrollOffset);
         
         // Sort series by name
-        var sortedIndices = Enumerable.Range(0, series.Count)
-            .Where(i => series[i].samples != null && series[i].samples.Count > 0)
-            .OrderBy(i => series[i].name, StringComparer.OrdinalIgnoreCase)
+        var sortedSeries = data.Series
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         
-        // Calculate visible area for clipping
+        // Calculate visible area
         var contentAreaTop = legendPos.Y + padding;
         var contentAreaBottom = legendPos.Y + legendHeight - padding;
         var contentAreaRight = legendPos.X + legendWidth - padding - (needsScrolling ? scrollbarWidth + 4f : 0f);
         
-        // Draw each legend entry (with clipping)
+        // Draw each legend entry
         var yOffset = contentAreaTop - _insideLegendScrollOffset;
-        var visibleRowIdx = 0;
-        foreach (var i in sortedIndices)
+        foreach (var series in sortedSeries)
         {
             var rowTop = yOffset;
             var rowBottom = yOffset + rowHeight;
             
-            // Skip rows that are outside the visible area
+            // Skip rows outside visible area
             if (rowBottom < contentAreaTop || rowTop > contentAreaBottom)
             {
                 yOffset += rowHeight;
-                visibleRowIdx++;
                 continue;
             }
             
-            var (name, samples) = series[i];
-            var isHidden = _hiddenSeries.Contains(name);
-            var color = colors[i];
+            var isHidden = !series.Visible;
             var displayAlpha = isHidden ? 0.35f : 1f;
             
-            // Check if mouse is over this row (only if row is visible)
+            // Check if mouse is over this row
             var mouseInRow = mouseInLegend && 
                             mousePos.Y >= Math.Max(rowTop, contentAreaTop) && 
                             mousePos.Y < Math.Min(rowBottom, contentAreaBottom) &&
@@ -1486,7 +1481,7 @@ public class ImplotGraphWidget
             // Handle click to toggle visibility
             if (mouseInRow && ImGui.IsMouseClicked(0))
             {
-                ToggleSeriesVisibility(name);
+                ToggleSeriesVisibility(series.Name);
             }
             
             // Highlight row on hover
@@ -1499,15 +1494,14 @@ public class ImplotGraphWidget
                     hoverColor, 2f);
             }
             
-            // Only draw content if the row is at least partially visible
+            // Draw content if visible
             if (rowTop >= contentAreaTop - rowHeight && rowBottom <= contentAreaBottom + rowHeight)
             {
-                // Draw color indicator
                 var indicatorY = yOffset + (rowHeight - indicatorSize) / 2;
                 if (indicatorY >= contentAreaTop - indicatorSize && indicatorY + indicatorSize <= contentAreaBottom + indicatorSize)
                 {
                     var indicatorPos = new Vector2(legendPos.X + padding, indicatorY);
-                    var colorU32 = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, displayAlpha));
+                    var colorU32 = ImGui.GetColorU32(new Vector4(series.Color.X, series.Color.Y, series.Color.Z, displayAlpha));
                     
                     if (isHidden)
                     {
@@ -1524,13 +1518,12 @@ public class ImplotGraphWidget
                     if (textY >= contentAreaTop - rowHeight && textY <= contentAreaBottom)
                     {
                         var textPos = new Vector2(indicatorPos.X + indicatorSize + indicatorTextGap, textY);
-                        drawList.AddText(textPos, ImGui.GetColorU32(textColor), name);
+                        drawList.AddText(textPos, ImGui.GetColorU32(textColor), series.Name);
                     }
                 }
             }
             
             yOffset += rowHeight;
-            visibleRowIdx++;
         }
         
         // Draw scrollbar if needed
@@ -1541,20 +1534,17 @@ public class ImplotGraphWidget
             var scrollTrackHeight = scrollTrackBottom - scrollTrackTop;
             var scrollTrackX = legendPos.X + legendWidth - padding - scrollbarWidth;
             
-            // Draw track
             var trackColor = ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.5f));
             drawList.AddRectFilled(
                 new Vector2(scrollTrackX, scrollTrackTop),
                 new Vector2(scrollTrackX + scrollbarWidth, scrollTrackBottom),
                 trackColor, 3f);
             
-            // Calculate thumb size and position
             var visibleRatio = (legendHeight - padding * 2) / contentHeight;
             var thumbHeight = Math.Max(20f, scrollTrackHeight * visibleRatio);
             var scrollRatio = maxScrollOffset > 0 ? _insideLegendScrollOffset / maxScrollOffset : 0f;
             var thumbTop = scrollTrackTop + scrollRatio * (scrollTrackHeight - thumbHeight);
             
-            // Draw thumb
             var thumbColor = ImGui.GetColorU32(ChartColors.GridLine);
             drawList.AddRectFilled(
                 new Vector2(scrollTrackX, thumbTop),
@@ -1562,33 +1552,34 @@ public class ImplotGraphWidget
                 thumbColor, 3f);
         }
         
-        // Show tooltip when hovering over legend
+        // Show tooltip
         if (mouseInLegend)
         {
-            // Find which row we're hovering based on scroll position
             var relativeY = mousePos.Y - contentAreaTop + _insideLegendScrollOffset;
             var hoveredIdx = (int)(relativeY / rowHeight);
-            if (hoveredIdx >= 0 && hoveredIdx < sortedIndices.Count)
+            if (hoveredIdx >= 0 && hoveredIdx < sortedSeries.Count)
             {
-                // Check if the row is actually visible
                 var rowTop = contentAreaTop - _insideLegendScrollOffset + hoveredIdx * rowHeight;
                 var rowBottom = rowTop + rowHeight;
                 if (rowTop < contentAreaBottom && rowBottom > contentAreaTop)
                 {
-                    var (name, samples) = series[sortedIndices[hoveredIdx]];
-                    var isHidden = _hiddenSeries.Contains(name);
-                    var lastValue = samples[^1].value;
-                    var statusText = isHidden ? " (hidden)" : "";
+                    var series = sortedSeries[hoveredIdx];
+                    var lastValue = series.YValues.Length > 0 ? (float)series.YValues[^1] : 0f;
+                    var statusText = !series.Visible ? " (hidden)" : "";
                     var scrollHint = needsScrolling ? "\nScroll to see more" : "";
-                    ImGui.SetTooltip($"{name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility{scrollHint}");
+                    ImGui.SetTooltip($"{series.Name}: {FormatValue(lastValue)}{statusText}\nClick to toggle visibility{scrollHint}");
                 }
             }
         }
     }
-    
+
+    #endregion
+
+    #region Controls Drawer
+
     /// <summary>
     /// Draws the controls drawer with toggle button and auto-scroll controls.
-    /// The drawer slides out from the bottom-right corner of the plot.
+    /// The drawer slides out from the top-right corner of the plot.
     /// </summary>
     private void DrawControlsDrawer()
     {
@@ -1647,12 +1638,11 @@ public class ImplotGraphWidget
             new Vector2(toggleButtonPos.X + toggleButtonWidth, toggleButtonPos.Y + toggleButtonHeight), 
             buttonBorderColor, 3f);
         
-        // Draw gear/settings icon (simple representation)
+        // Draw gear/settings icon
         var iconColor = ImGui.GetColorU32(_controlsDrawerOpen ? ChartColors.Neutral : ChartColors.TextPrimary);
         var iconCenter = new Vector2(toggleButtonPos.X + toggleButtonWidth / 2, toggleButtonPos.Y + toggleButtonHeight / 2);
         var iconRadius = 6f;
         
-        // Draw a simple gear-like symbol (circle with lines)
         drawList.AddCircle(iconCenter, iconRadius, iconColor, 8, 1.5f);
         drawList.AddCircleFilled(iconCenter, 2f, iconColor);
         
@@ -1662,13 +1652,13 @@ public class ImplotGraphWidget
             _controlsDrawerOpen = !_controlsDrawerOpen;
         }
         
-        // Show tooltip for toggle button
+        // Show tooltip
         if (buttonHovered)
         {
             ImGui.SetTooltip(_controlsDrawerOpen ? "Close controls" : "Open controls");
         }
         
-        // Cache bounds for input blocking - include both button and drawer if open
+        // Cache bounds for input blocking
         if (_controlsDrawerOpen)
         {
             _cachedControlsDrawerBounds = (
@@ -1684,13 +1674,11 @@ public class ImplotGraphWidget
                 true);
         }
         
-        // Draw drawer panel if open
         if (!_controlsDrawerOpen) return;
         
         var drawerBgColor = ImGui.GetColorU32(new Vector4(ChartColors.FrameBackground.X, ChartColors.FrameBackground.Y, ChartColors.FrameBackground.Z, 0.92f));
         var drawerBorderColor = ImGui.GetColorU32(ChartColors.AxisLine);
         
-        // Draw drawer background
         drawList.AddRectFilled(drawerPos, 
             new Vector2(drawerPos.X + drawerWidth, drawerPos.Y + drawerHeight), 
             drawerBgColor, 4f);
@@ -1703,15 +1691,10 @@ public class ImplotGraphWidget
         
         // Draw Auto-Scroll checkbox
         var checkboxPos = new Vector2(contentX, contentY + (rowHeight - checkboxSize) / 2);
-        var checkboxHovered = mousePos.X >= checkboxPos.X && mousePos.X <= checkboxPos.X + checkboxSize &&
-                             mousePos.Y >= checkboxPos.Y && mousePos.Y <= checkboxPos.Y + checkboxSize;
-        
-        // Make the entire row clickable for the checkbox
         var checkboxRowEnd = new Vector2(drawerPos.X + drawerWidth - drawerPadding, contentY + rowHeight);
         var checkboxRowHovered = mousePos.X >= contentX && mousePos.X <= checkboxRowEnd.X &&
                                 mousePos.Y >= contentY && mousePos.Y <= checkboxRowEnd.Y;
         
-        // Draw checkbox box
         var checkboxBorderColor = checkboxRowHovered 
             ? ImGui.GetColorU32(ChartColors.TextPrimary) 
             : ImGui.GetColorU32(ChartColors.TextSecondary);
@@ -1719,12 +1702,10 @@ public class ImplotGraphWidget
             new Vector2(checkboxPos.X + checkboxSize, checkboxPos.Y + checkboxSize), 
             checkboxBorderColor, 2f);
         
-        // Draw checkmark if enabled
         if (_config.AutoScrollEnabled)
         {
             var checkColor = ImGui.GetColorU32(ChartColors.Bullish);
             var checkPadding = 3f;
-            // Draw a checkmark
             drawList.AddLine(
                 new Vector2(checkboxPos.X + checkPadding, checkboxPos.Y + checkboxSize / 2),
                 new Vector2(checkboxPos.X + checkboxSize / 2, checkboxPos.Y + checkboxSize - checkPadding),
@@ -1735,12 +1716,10 @@ public class ImplotGraphWidget
                 checkColor, 2f);
         }
         
-        // Draw checkbox label
         var labelPos = new Vector2(checkboxPos.X + checkboxSize + 6, contentY + (rowHeight - ImGui.GetTextLineHeight()) / 2);
         var labelColor = ImGui.GetColorU32(_config.AutoScrollEnabled ? ChartColors.TextPrimary : ChartColors.TextSecondary);
         drawList.AddText(labelPos, labelColor, "Auto-scroll");
         
-        // Handle checkbox click
         if (checkboxRowHovered && ImGui.IsMouseClicked(0))
         {
             _config.AutoScrollEnabled = !_config.AutoScrollEnabled;
@@ -1749,10 +1728,8 @@ public class ImplotGraphWidget
         
         contentY += rowHeight;
         
-        // Draw time range picker if auto-scroll is enabled
         if (_config.AutoScrollEnabled)
         {
-            // Row 1: Value input with +/- buttons
             const float valueBoxWidth = 50f;
             const float smallButtonWidth = 22f;
             const float spacing = 4f;
@@ -1777,7 +1754,7 @@ public class ImplotGraphWidget
                 OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
             }
             
-            // Draw value display box
+            // Value box
             var valueBoxPos = new Vector2(minusBtnPos.X + smallButtonWidth + spacing, contentY + 2);
             drawList.AddRectFilled(valueBoxPos, new Vector2(valueBoxPos.X + valueBoxWidth, valueBoxPos.Y + rowHeight - 4), 
                 ImGui.GetColorU32(new Vector4(0.1f, 0.1f, 0.1f, 0.8f)), 3f);
@@ -1788,7 +1765,7 @@ public class ImplotGraphWidget
             drawList.AddText(new Vector2(valueBoxPos.X + (valueBoxWidth - valueTextSize.X) / 2, valueBoxPos.Y + (rowHeight - 4 - valueTextSize.Y) / 2), 
                 ImGui.GetColorU32(ChartColors.Neutral), valueText);
             
-            // Draw "+" button
+            // "+" button
             var plusBtnPos = new Vector2(valueBoxPos.X + valueBoxWidth + spacing, contentY + 2);
             var plusBtnHovered = mousePos.X >= plusBtnPos.X && mousePos.X <= plusBtnPos.X + smallButtonWidth &&
                                 mousePos.Y >= plusBtnPos.Y && mousePos.Y <= plusBtnPos.Y + rowHeight - 4;
@@ -1810,7 +1787,7 @@ public class ImplotGraphWidget
             
             contentY += rowHeight;
             
-            // Row 2: Unit selector buttons
+            // Unit selector buttons
             var unitButtonWidth = (drawerWidth - drawerPadding * 2 - spacing * (TimeUnitNames.Length - 1)) / TimeUnitNames.Length;
             var unitButtonHeight = rowHeight - 4;
             
@@ -1848,13 +1825,12 @@ public class ImplotGraphWidget
             
             contentY += rowHeight;
             
-            // Row 3: Position slider (where "now" appears on X-axis)
+            // Position slider
             var sliderLabelPos = new Vector2(contentX, contentY + (rowHeight - ImGui.GetTextLineHeight()) / 2);
             drawList.AddText(sliderLabelPos, ImGui.GetColorU32(ChartColors.TextSecondary), "Position:");
             
             contentY += rowHeight;
             
-            // Draw the slider track
             const float sliderHeight = 8f;
             var sliderTrackPos = new Vector2(contentX, contentY + (rowHeight - sliderHeight) / 2 - 4);
             var sliderTrackWidth = drawerWidth - drawerPadding * 2;
@@ -1864,7 +1840,6 @@ public class ImplotGraphWidget
             drawList.AddRect(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight), 
                 ImGui.GetColorU32(ChartColors.GridLine), 4f);
             
-            // Draw filled portion
             var fillWidth = sliderTrackWidth * (_config.AutoScrollNowPosition / 100f);
             if (fillWidth > 0)
             {
@@ -1872,7 +1847,6 @@ public class ImplotGraphWidget
                     ImGui.GetColorU32(new Vector4(ChartColors.Neutral.X, ChartColors.Neutral.Y, ChartColors.Neutral.Z, 0.4f)), 4f);
             }
             
-            // Draw slider handle
             const float handleWidth = 12f;
             const float handleHeight = 16f;
             var handleX = sliderTrackPos.X + fillWidth - handleWidth / 2;
@@ -1889,7 +1863,6 @@ public class ImplotGraphWidget
             drawList.AddRect(new Vector2(handleX, handleY), new Vector2(handleX + handleWidth, handleY + handleHeight), 
                 ImGui.GetColorU32(ChartColors.AxisLine), 3f);
             
-            // Handle slider dragging
             if (sliderHovered && ImGui.IsMouseDown(0))
             {
                 var relativeX = mousePos.X - sliderTrackPos.X;
@@ -1901,18 +1874,20 @@ public class ImplotGraphWidget
                 }
             }
             
-            // Draw percentage label
             var percentText = $"{_config.AutoScrollNowPosition:F0}%";
             var percentTextSize = ImGui.CalcTextSize(percentText);
             drawList.AddText(new Vector2(sliderTrackPos.X + sliderTrackWidth - percentTextSize.X, sliderTrackPos.Y + sliderHeight + 2), 
                 ImGui.GetColorU32(ChartColors.TextSecondary), percentText);
         }
     }
+
+    #endregion
+
+    #region Utilities
     
     /// <summary>
     /// Toggles the visibility of a series by name.
     /// </summary>
-    /// <param name="seriesName">The name of the series to toggle.</param>
     private void ToggleSeriesVisibility(string seriesName)
     {
         if (!_hiddenSeries.Add(seriesName))
@@ -1923,7 +1898,6 @@ public class ImplotGraphWidget
 
     private static Vector3[] GetSeriesColors(int count)
     {
-        // Bright, vibrant color palette - easily distinguishable
         var colors = new Vector3[]
         {
             new(1.0f, 0.25f, 0.25f),   // Bright Red
@@ -1948,4 +1922,6 @@ public class ImplotGraphWidget
             return ((long)v).ToString("N0", CultureInfo.InvariantCulture);
         return v.ToString("N2", CultureInfo.InvariantCulture);
     }
+
+    #endregion
 }
