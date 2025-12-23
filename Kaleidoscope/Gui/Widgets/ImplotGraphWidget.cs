@@ -1,5 +1,8 @@
 using System.Globalization;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Bindings.ImPlot;
+using Kaleidoscope.Interfaces;
+using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using ImGuiCol = Dalamud.Bindings.ImGui.ImGuiCol;
@@ -131,8 +134,9 @@ public enum LegendPosition
 /// <summary>
 /// A reusable graph widget for displaying numerical sample data.
 /// Renders using ImPlot with a trading platform (Binance-style) aesthetic.
+/// Implements ISettingsProvider to expose graph settings for automatic inclusion in tool settings.
 /// </summary>
-public class ImplotGraphWidget
+public class ImplotGraphWidget : ISettingsProvider
 {
     // Trading platform color palette - vibrant and bright
     private static class ChartColors
@@ -291,6 +295,39 @@ public class ImplotGraphWidget
     }
 
     private readonly GraphConfig _config;
+    
+    // === ISettingsProvider implementation fields ===
+    
+    /// <summary>
+    /// Optional bound settings object for automatic settings synchronization.
+    /// When set, the widget will read and write settings from this object.
+    /// </summary>
+    private IGraphWidgetSettings? _boundSettings;
+    
+    /// <summary>
+    /// Callback invoked when a setting is changed via DrawSettings().
+    /// </summary>
+    private Action? _onSettingsChanged;
+    
+    /// <summary>
+    /// Display name for this component's settings section.
+    /// </summary>
+    private string _settingsName = "Graph Settings";
+    
+    /// <summary>
+    /// Whether to show legend settings in DrawSettings (requires multi-series mode).
+    /// </summary>
+    private bool _showLegendSettings = true;
+    
+    /// <summary>
+    /// Display names for legend positions.
+    /// </summary>
+    private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
+    
+    /// <summary>
+    /// Display names for auto-scroll time units.
+    /// </summary>
+    private static readonly string[] AutoScrollTimeUnitNames = { "Seconds", "Minutes", "Hours", "Days", "Weeks" };
     
     /// <summary>
     /// Set of series names that are currently hidden.
@@ -836,6 +873,303 @@ public class ImplotGraphWidget
     /// Gets the current maximum Y-axis value.
     /// </summary>
     public float MaxValue => _config.MaxValue;
+
+    #region ISettingsProvider Implementation
+    
+    /// <inheritdoc />
+    public bool HasSettings => true;
+    
+    /// <inheritdoc />
+    public string SettingsName => _settingsName;
+    
+    /// <summary>
+    /// Binds the widget to an IGraphWidgetSettings object for automatic synchronization.
+    /// When bound, the widget will read settings from this object and update it when settings change.
+    /// </summary>
+    /// <param name="settings">The settings object to bind to (must implement IGraphWidgetSettings).</param>
+    /// <param name="onSettingsChanged">Optional callback invoked when a setting changes.</param>
+    /// <param name="settingsName">Optional custom name for the settings section.</param>
+    /// <param name="showLegendSettings">Whether to show legend settings (set false for single-series tools).</param>
+    public void BindSettings(
+        IGraphWidgetSettings settings,
+        Action? onSettingsChanged = null,
+        string? settingsName = null,
+        bool showLegendSettings = true)
+    {
+        _boundSettings = settings;
+        _onSettingsChanged = onSettingsChanged;
+        if (settingsName != null) _settingsName = settingsName;
+        _showLegendSettings = showLegendSettings;
+        
+        // Sync config from bound settings
+        SyncFromBoundSettings();
+    }
+    
+    /// <summary>
+    /// Synchronizes the internal config from the bound settings object.
+    /// Call this when the bound settings change externally.
+    /// </summary>
+    public void SyncFromBoundSettings()
+    {
+        if (_boundSettings == null) return;
+        
+        _config.LegendWidth = _boundSettings.LegendWidth;
+        _config.LegendHeightPercent = _boundSettings.LegendHeightPercent;
+        _config.ShowLegend = _boundSettings.ShowLegend;
+        _config.LegendPosition = _boundSettings.LegendPosition;
+        _config.GraphType = _boundSettings.GraphType;
+        _config.ShowXAxisTimestamps = _boundSettings.ShowXAxisTimestamps;
+        _config.ShowCrosshair = _boundSettings.ShowCrosshair;
+        _config.ShowGridLines = _boundSettings.ShowGridLines;
+        _config.ShowCurrentPriceLine = _boundSettings.ShowCurrentPriceLine;
+        _config.ShowValueLabel = _boundSettings.ShowValueLabel;
+        _config.ValueLabelOffsetX = _boundSettings.ValueLabelOffsetX;
+        _config.ValueLabelOffsetY = _boundSettings.ValueLabelOffsetY;
+        _config.AutoScrollEnabled = _boundSettings.AutoScrollEnabled;
+        _config.AutoScrollTimeValue = _boundSettings.AutoScrollTimeValue;
+        _config.AutoScrollTimeUnit = _boundSettings.AutoScrollTimeUnit;
+        _config.AutoScrollNowPosition = _boundSettings.AutoScrollNowPosition;
+        _config.ShowControlsDrawer = _boundSettings.ShowControlsDrawer;
+    }
+    
+    /// <inheritdoc />
+    public bool DrawSettings()
+    {
+        if (_boundSettings == null)
+        {
+            ImGui.TextDisabled("No settings bound to this graph widget.");
+            return false;
+        }
+        
+        var changed = false;
+        var settings = _boundSettings;
+        
+        // Legend settings (only if enabled and multi-series)
+        if (_showLegendSettings)
+        {
+            var showLegend = settings.ShowLegend;
+            if (ImGui.Checkbox("Show legend", ref showLegend))
+            {
+                settings.ShowLegend = showLegend;
+                _config.ShowLegend = showLegend;
+                changed = true;
+            }
+            ShowSettingsTooltip("Shows a legend panel with series names and values.");
+            
+            if (showLegend)
+            {
+                var legendPosition = (int)settings.LegendPosition;
+                if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
+                {
+                    settings.LegendPosition = (LegendPosition)legendPosition;
+                    _config.LegendPosition = settings.LegendPosition;
+                    changed = true;
+                }
+                ShowSettingsTooltip("Where to display the legend: outside the graph or inside at a corner.");
+                
+                if (settings.LegendPosition == LegendPosition.Outside)
+                {
+                    var legendWidth = settings.LegendWidth;
+                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
+                    {
+                        settings.LegendWidth = legendWidth;
+                        _config.LegendWidth = legendWidth;
+                        changed = true;
+                    }
+                    ShowSettingsTooltip("Width of the scrollable legend panel.");
+                }
+                else
+                {
+                    var legendHeight = settings.LegendHeightPercent;
+                    if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
+                    {
+                        settings.LegendHeightPercent = legendHeight;
+                        _config.LegendHeightPercent = legendHeight;
+                        changed = true;
+                    }
+                    ShowSettingsTooltip("Maximum height of the inside legend as a percentage of the graph height.");
+                }
+            }
+            
+            ImGui.Spacing();
+        }
+        
+        // Value label settings
+        var showValueLabel = settings.ShowValueLabel;
+        if (ImGui.Checkbox("Show current value label", ref showValueLabel))
+        {
+            settings.ShowValueLabel = showValueLabel;
+            _config.ShowValueLabel = showValueLabel;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows the current value as a small label near the latest data point.");
+        
+        if (showValueLabel)
+        {
+            var labelOffsetX = settings.ValueLabelOffsetX;
+            if (ImGui.SliderFloat("Label X offset", ref labelOffsetX, -100f, 100f, "%.0f"))
+            {
+                settings.ValueLabelOffsetX = labelOffsetX;
+                _config.ValueLabelOffsetX = labelOffsetX;
+                changed = true;
+            }
+            ShowSettingsTooltip("Horizontal offset for the value label. Negative = left, positive = right.");
+            
+            var labelOffsetY = settings.ValueLabelOffsetY;
+            if (ImGui.SliderFloat("Label Y offset", ref labelOffsetY, -50f, 50f, "%.0f"))
+            {
+                settings.ValueLabelOffsetY = labelOffsetY;
+                _config.ValueLabelOffsetY = labelOffsetY;
+                changed = true;
+            }
+            ShowSettingsTooltip("Vertical offset for the value label. Negative = up, positive = down.");
+        }
+        
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Graph Style");
+        ImGui.Separator();
+        
+        // Graph type
+        var graphType = settings.GraphType;
+        if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
+        {
+            settings.GraphType = graphType;
+            _config.GraphType = graphType;
+            changed = true;
+        }
+        ShowSettingsTooltip("The visual style for the graph (Area, Line, Stairs, Bars).");
+        
+        // X-axis timestamps
+        var showXAxisTimestamps = settings.ShowXAxisTimestamps;
+        if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
+        {
+            settings.ShowXAxisTimestamps = showXAxisTimestamps;
+            _config.ShowXAxisTimestamps = showXAxisTimestamps;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows time labels on the X-axis.");
+        
+        // Crosshair
+        var showCrosshair = settings.ShowCrosshair;
+        if (ImGui.Checkbox("Show crosshair", ref showCrosshair))
+        {
+            settings.ShowCrosshair = showCrosshair;
+            _config.ShowCrosshair = showCrosshair;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows crosshair lines when hovering over the graph.");
+        
+        // Grid lines
+        var showGridLines = settings.ShowGridLines;
+        if (ImGui.Checkbox("Show grid lines", ref showGridLines))
+        {
+            settings.ShowGridLines = showGridLines;
+            _config.ShowGridLines = showGridLines;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows horizontal grid lines for easier value reading.");
+        
+        // Current price line
+        var showCurrentPriceLine = settings.ShowCurrentPriceLine;
+        if (ImGui.Checkbox("Show current price line", ref showCurrentPriceLine))
+        {
+            settings.ShowCurrentPriceLine = showCurrentPriceLine;
+            _config.ShowCurrentPriceLine = showCurrentPriceLine;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows a horizontal line at the current value.");
+        
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Auto-Scroll");
+        ImGui.Separator();
+        
+        // Controls drawer
+        var showControlsDrawer = settings.ShowControlsDrawer;
+        if (ImGui.Checkbox("Show controls drawer", ref showControlsDrawer))
+        {
+            settings.ShowControlsDrawer = showControlsDrawer;
+            _config.ShowControlsDrawer = showControlsDrawer;
+            changed = true;
+        }
+        ShowSettingsTooltip("Shows a small toggle button in the top-right corner to access auto-scroll controls.");
+        
+        // Auto-scroll enabled
+        var autoScrollEnabled = settings.AutoScrollEnabled;
+        if (ImGui.Checkbox("Auto-scroll enabled", ref autoScrollEnabled))
+        {
+            settings.AutoScrollEnabled = autoScrollEnabled;
+            _config.AutoScrollEnabled = autoScrollEnabled;
+            changed = true;
+        }
+        ShowSettingsTooltip("When enabled, the graph automatically scrolls to show the most recent data.");
+        
+        if (autoScrollEnabled)
+        {
+            ImGui.TextUnformatted("Auto-scroll time range:");
+            ImGui.SetNextItemWidth(60);
+            var timeValue = settings.AutoScrollTimeValue;
+            if (ImGui.InputInt("##autoscroll_value", ref timeValue))
+            {
+                settings.AutoScrollTimeValue = Math.Clamp(timeValue, 1, 999);
+                _config.AutoScrollTimeValue = settings.AutoScrollTimeValue;
+                changed = true;
+            }
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(100);
+            var unitIndex = (int)settings.AutoScrollTimeUnit;
+            if (ImGui.Combo("##autoscroll_unit", ref unitIndex, AutoScrollTimeUnitNames, AutoScrollTimeUnitNames.Length))
+            {
+                settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
+                _config.AutoScrollTimeUnit = settings.AutoScrollTimeUnit;
+                changed = true;
+            }
+            ShowSettingsTooltip("How much time to show when auto-scrolling.");
+            
+            var nowPosition = settings.AutoScrollNowPosition;
+            if (ImGui.SliderFloat("Now position", ref nowPosition, 0f, 100f, "%.0f %%"))
+            {
+                settings.AutoScrollNowPosition = nowPosition;
+                _config.AutoScrollNowPosition = nowPosition;
+                changed = true;
+            }
+            ShowSettingsTooltip("Position of 'now' on the X-axis. 0% = left edge, 100% = right edge.");
+        }
+        
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Time Range");
+        ImGui.Separator();
+        
+        var timeRangeValue = settings.TimeRangeValue;
+        var timeRangeUnit = settings.TimeRangeUnit;
+        if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
+        {
+            settings.TimeRangeValue = timeRangeValue;
+            settings.TimeRangeUnit = timeRangeUnit;
+            changed = true;
+        }
+        ShowSettingsTooltip("Time range to display on the graph.");
+        
+        if (changed)
+        {
+            _onSettingsChanged?.Invoke();
+        }
+        
+        return changed;
+    }
+    
+    /// <summary>
+    /// Shows a tooltip for a setting if the item is hovered.
+    /// </summary>
+    private static void ShowSettingsTooltip(string description)
+    {
+        if (!ImGui.IsItemHovered()) return;
+        
+        ImGui.BeginTooltip();
+        ImGui.TextUnformatted(description);
+        ImGui.EndTooltip();
+    }
+    
+    #endregion
 
     #region Data Preparation
 
