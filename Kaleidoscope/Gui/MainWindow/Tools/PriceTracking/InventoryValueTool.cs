@@ -46,7 +46,6 @@ public class InventoryValueTool : ToolComponent
         {
             PlotId = "inventory_value_plot",
             NoDataText = "No value history data",
-            AutoScaleGraph = true,
             ShowValueLabel = true,
             ShowXAxisTimestamps = true,
             ShowCrosshair = true,
@@ -164,7 +163,6 @@ public class InventoryValueTool : ToolComponent
         // Update graph widget display options from settings
         _graphWidget.UpdateDisplayOptions(
             showValueLabel: true,
-            autoScaleGraph: settings.AutoScaleGraph,
             legendWidth: settings.LegendWidth,
             showLegend: settings.ShowLegend,
             graphType: settings.GraphType,
@@ -368,14 +366,6 @@ public class InventoryValueTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Visual style for the graph.", "Area");
-
-            var autoScale = settings.AutoScaleGraph;
-            if (ImGui.Checkbox("Auto-scale graph", ref autoScale))
-            {
-                settings.AutoScaleGraph = autoScale;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Automatically scale the Y-axis to fit the data.", "On");
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Time Range");

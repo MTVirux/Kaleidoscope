@@ -228,7 +228,6 @@ public class DataTrackerComponent : IDisposable
             settings.ShowValueLabel,
             settings.ValueLabelOffsetX,
             settings.ValueLabelOffsetY,
-            settings.AutoScaleGraph,
             settings.LegendWidth,
             settings.ShowLegend,
             settings.GraphType,

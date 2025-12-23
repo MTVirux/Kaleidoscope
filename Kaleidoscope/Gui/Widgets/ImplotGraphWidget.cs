@@ -120,11 +120,6 @@ public class ImplotGraphWidget
         /// Y offset for the value label position (negative = up, positive = down).
         /// </summary>
         public float ValueLabelOffsetY { get; set; } = 0f;
-
-        /// <summary>
-        /// Whether to auto-scale the Y-axis based on actual data values.
-        /// </summary>
-        public bool AutoScaleGraph { get; set; } = true;
         
         /// <summary>
         /// Width of the scrollable legend panel in multi-series mode.
@@ -583,7 +578,6 @@ public class ImplotGraphWidget
         bool showValueLabel, 
         float valueLabelOffsetX = 0f, 
         float valueLabelOffsetY = 0f, 
-        bool autoScaleGraph = true, 
         float legendWidth = 140f, 
         bool showLegend = true, 
         GraphType graphType = GraphType.Area, 
@@ -602,7 +596,6 @@ public class ImplotGraphWidget
         _config.ShowValueLabel = showValueLabel;
         _config.ValueLabelOffsetX = valueLabelOffsetX;
         _config.ValueLabelOffsetY = valueLabelOffsetY;
-        _config.AutoScaleGraph = autoScaleGraph;
         _config.LegendWidth = legendWidth;
         _config.ShowLegend = showLegend;
         _config.GraphType = graphType;
@@ -675,9 +668,8 @@ public class ImplotGraphWidget
             var avail = ImGui.GetContentRegionAvail();
             var plotSize = new Vector2(Math.Max(1f, avail.X), Math.Max(1f, avail.Y));
 
-            // Calculate Y-axis bounds
+            // Calculate Y-axis bounds with auto-scaling
             float yMin, yMax;
-            if (_config.AutoScaleGraph)
             {
                 var dataMin = float.MaxValue;
                 var dataMax = float.MinValue;
@@ -700,11 +692,6 @@ public class ImplotGraphWidget
                 }
                 yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
                 yMax = dataMax + dataRange * 0.15f;
-            }
-            else
-            {
-                yMin = _config.MinValue;
-                yMax = _config.MaxValue;
             }
 
             if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
@@ -918,9 +905,29 @@ public class ImplotGraphWidget
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
             var plotSize = new Vector2(plotWidth, Math.Max(1f, avail.Y));
 
-            // Calculate Y-axis bounds based on all visible data (excluding hidden series)
+            // Calculate X-axis limits first (needed to filter visible data for Y-axis auto-scaling)
+            double xMinLimit, xMaxLimit;
+            if (_config.AutoScrollEnabled)
+            {
+                // Auto-scroll mode: X-axis is exactly timeRange wide
+                // NowPosition controls where "now" appears (0% = left, 50% = center, 100% = right)
+                var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+                var nowFraction = _config.AutoScrollNowPosition / 100f;
+                var leftPortion = timeRangeSeconds * nowFraction;
+                var rightPortion = timeRangeSeconds * (1f - nowFraction);
+                xMinLimit = totalTimeSpan - leftPortion;
+                xMaxLimit = totalTimeSpan + rightPortion;
+            }
+            else
+            {
+                // Normal mode: show full range, allow user zoom/pan
+                xMinLimit = 0;
+                xMaxLimit = xMax;
+            }
+
+            // Calculate Y-axis bounds based on visible data (excluding hidden series)
+            // When auto-scrolling, only consider data points within the visible time range
             float yMin, yMax;
-            if (_config.AutoScaleGraph)
             {
                 var dataMin = float.MaxValue;
                 var dataMax = float.MinValue;
@@ -929,10 +936,35 @@ public class ImplotGraphWidget
                     if (samples == null) continue;
                     // Skip hidden series in auto-scaling
                     if (_hiddenSeries.Contains(name)) continue;
-                    foreach (var (_, val) in samples)
+                    
+                    // Track last value before visible range for proper Y bounds
+                    float? lastValueBeforeRange = null;
+                    
+                    foreach (var (ts, val) in samples)
                     {
+                        var xPos = (ts - globalMinTime).TotalSeconds;
+                        
+                        // When auto-scrolling, only consider data within visible X range
+                        if (_config.AutoScrollEnabled)
+                        {
+                            if (xPos < xMinLimit)
+                            {
+                                // Track last value before visible range (used for line extension)
+                                lastValueBeforeRange = val;
+                                continue;
+                            }
+                            if (xPos > xMaxLimit) continue;
+                        }
+                        
                         if (val < dataMin) dataMin = val;
                         if (val > dataMax) dataMax = val;
+                    }
+                    
+                    // Include the last value before visible range (line extends from there)
+                    if (_config.AutoScrollEnabled && lastValueBeforeRange.HasValue)
+                    {
+                        if (lastValueBeforeRange.Value < dataMin) dataMin = lastValueBeforeRange.Value;
+                        if (lastValueBeforeRange.Value > dataMax) dataMax = lastValueBeforeRange.Value;
                     }
                 }
 
@@ -950,15 +982,6 @@ public class ImplotGraphWidget
                 yMin = Math.Max(0f, dataMin - dataRange * 0.15f);
                 yMax = dataMax + dataRange * 0.15f;
             }
-            else
-            {
-                yMin = _config.MinValue;
-                yMax = _config.MaxValue;
-                if (Math.Abs(yMax - yMin) < _config.FloatEpsilon)
-                {
-                    yMax = yMin + 1f;
-                }
-            }
 
             // Configure plot flags - trading platform style with crosshairs
             var plotFlags = ImPlotFlags.NoTitle | ImPlotFlags.NoMenus | ImPlotFlags.NoBoxSelect | 
@@ -973,26 +996,14 @@ public class ImplotGraphWidget
             // Apply trading platform styling
             PushChartStyle();
             
-            // Calculate X-axis limits based on auto-scroll mode
-            double xMinLimit, xMaxLimit;
+            // Set axis limits based on mode
             if (_config.AutoScrollEnabled)
             {
-                // Auto-scroll mode: X-axis is exactly timeRange wide
-                // NowPosition controls where "now" appears (0% = left, 50% = center, 100% = right)
-                var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
-                var nowFraction = _config.AutoScrollNowPosition / 100f;
-                var leftPortion = timeRangeSeconds * nowFraction;
-                var rightPortion = timeRangeSeconds * (1f - nowFraction);
-                xMinLimit = totalTimeSpan - leftPortion;
-                xMaxLimit = totalTimeSpan + rightPortion;
                 // Use Always condition to force the view to follow
                 ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Always);
             }
             else
             {
-                // Normal mode: show full range, allow user zoom/pan
-                xMinLimit = 0;
-                xMaxLimit = xMax;
                 ImPlot.SetNextAxesLimits(xMinLimit, xMaxLimit, yMin, yMax, ImPlotCond.Once);
             }
 

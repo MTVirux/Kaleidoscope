@@ -116,7 +116,6 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerShowValueLabel { get; set; } = false;
     public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
     public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
-    public bool GilTrackerAutoScaleGraph { get; set; } = true;
     public float GilTrackerLegendWidth { get; set; } = 120f;
     public bool GilTrackerShowLegend { get; set; } = true;
 
@@ -206,7 +205,6 @@ public class DataTrackerSettings
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;
-    public bool AutoScaleGraph { get; set; } = true;
     public float GraphMinValue { get; set; } = 0f;
     public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
     public float LegendWidth { get; set; } = 140f;
@@ -306,7 +304,6 @@ public class CrystalTrackerSettings
     public int TimeRangeValue { get; set; } = 7;
     public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
     public bool ShowXAxisTimestamps { get; set; } = true;
-    public bool AutoScaleGraph { get; set; } = true;
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;

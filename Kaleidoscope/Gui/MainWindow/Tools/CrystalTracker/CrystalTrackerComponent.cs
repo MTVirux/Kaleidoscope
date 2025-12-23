@@ -127,7 +127,6 @@ public class CrystalTrackerComponent : IDisposable
             settings.ShowValueLabel,
             settings.ValueLabelOffsetX,
             settings.ValueLabelOffsetY,
-            settings.AutoScaleGraph,
             settings.LegendWidth,
             settings.ShowLegend,
             settings.GraphType,

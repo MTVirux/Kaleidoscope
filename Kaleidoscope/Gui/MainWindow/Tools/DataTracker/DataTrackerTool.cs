@@ -176,14 +176,6 @@ public class DataTrackerTool : ToolComponent
             }
             ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
 
-            var autoScale = settings.AutoScaleGraph;
-            if (ImGui.Checkbox("Auto-scale graph", ref autoScale))
-            {
-                settings.AutoScaleGraph = autoScale;
-                _configService.Save();
-            }
-            ShowSettingTooltip("Automatically scales the graph Y-axis to fit the data range.", "On");
-
             var showXAxisTimestamps = settings.ShowXAxisTimestamps;
             if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
             {

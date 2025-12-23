@@ -144,9 +144,6 @@ public class InventoryValueSettings
 
     /// <summary>Graph type for visualization.</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;
-
-    /// <summary>Whether to auto-scale the graph.</summary>
-    public bool AutoScaleGraph { get; set; } = true;
     
     /// <summary>Whether auto-scroll (follow mode) is enabled.</summary>
     public bool AutoScrollEnabled { get; set; } = false;
