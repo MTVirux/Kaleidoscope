@@ -148,8 +148,10 @@ public sealed class ConfigWindow : Window
     public override void Draw()
     {
         // Check if CTRL+ALT are held while this window is focused for profiler access
+        // Or if developer mode is permanently enabled
         var io = ImGui.GetIO();
-        var showProfiler = io.KeyCtrl && io.KeyAlt && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        var showProfiler = Config.DeveloperModeEnabled || 
+            (io.KeyCtrl && io.KeyAlt && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows));
 
         // Sidebar layout: left navigation, right content
         var sidebarWidth = 160f;

@@ -28,6 +28,22 @@ public class ProfilerCategory
         ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer Tool - CTRL+ALT to access");
         ImGui.Spacing();
 
+        // Keep developer mode enabled checkbox
+        var devModeEnabled = _configService.Config.DeveloperModeEnabled;
+        if (ImGui.Checkbox("Keep Developer Mode Enabled", ref devModeEnabled))
+        {
+            _configService.Config.DeveloperModeEnabled = devModeEnabled;
+            _configService.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("When enabled, the Developer section stays visible without holding CTRL+ALT");
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         // Enable/disable checkbox
         var enabled = _profilerService.IsEnabled;
         if (ImGui.Checkbox("Enable Profiling", ref enabled))

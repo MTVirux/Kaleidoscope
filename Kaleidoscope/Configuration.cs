@@ -69,6 +69,11 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ProfilerEnabled { get; set; } = false;
 
+    /// <summary>
+    /// Whether developer mode stays visible without holding CTRL+ALT.
+    /// </summary>
+    public bool DeveloperModeEnabled { get; set; } = false;
+
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
     public Vector2 ConfigWindowPos { get; set; } = new(100, 100);
