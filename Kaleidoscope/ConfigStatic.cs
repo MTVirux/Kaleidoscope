@@ -56,3 +56,25 @@ public static class ConfigStatic
     /// <summary>Base number of rows for grid calculations.</summary>
     public const int BaseGridRows = 9;
 }
+
+/// <summary>
+/// Extension methods for configuration enums.
+/// </summary>
+public static class ConfigExtensions
+{
+    /// <summary>
+    /// Converts an auto-scroll time value and unit to total seconds.
+    /// </summary>
+    /// <param name="unit">The time unit.</param>
+    /// <param name="value">The numeric value.</param>
+    /// <returns>The total time in seconds.</returns>
+    public static double ToSeconds(this AutoScrollTimeUnit unit, int value) => unit switch
+    {
+        AutoScrollTimeUnit.Seconds => value,
+        AutoScrollTimeUnit.Minutes => value * 60,
+        AutoScrollTimeUnit.Hours => value * 3600,
+        AutoScrollTimeUnit.Days => value * 86400,
+        AutoScrollTimeUnit.Weeks => value * 604800,
+        _ => 3600
+    };
+}

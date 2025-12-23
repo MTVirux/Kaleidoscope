@@ -185,15 +185,7 @@ public class ImplotGraphWidget
         /// <summary>
         /// Calculates the auto-scroll time range in seconds.
         /// </summary>
-        public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit switch
-        {
-            AutoScrollTimeUnit.Seconds => AutoScrollTimeValue,
-            AutoScrollTimeUnit.Minutes => AutoScrollTimeValue * 60,
-            AutoScrollTimeUnit.Hours => AutoScrollTimeValue * 3600,
-            AutoScrollTimeUnit.Days => AutoScrollTimeValue * 86400,
-            AutoScrollTimeUnit.Weeks => AutoScrollTimeValue * 604800,
-            _ => 3600
-        };
+        public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit.ToSeconds(AutoScrollTimeValue);
         
         /// <summary>
         /// Whether to show the controls drawer panel.
