@@ -199,7 +199,8 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             var s = new SamplerConfig
             {
                 SamplerEnabled = SamplerConfig.SamplerEnabled,
-                SamplerIntervalMs = SamplerConfig.SamplerIntervalMs
+                SamplerIntervalMs = SamplerConfig.SamplerIntervalMs,
+                DatabaseCacheSizeMb = SamplerConfig.DatabaseCacheSizeMb
             };
             ConfigManager.Save("sampler.json", s);
 

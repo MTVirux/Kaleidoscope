@@ -12,18 +12,40 @@ namespace Kaleidoscope.Services;
 /// This service is intentionally not marked with IService because it is created
 /// manually by SamplerService to share the database connection. If you need to use
 /// this service directly, inject SamplerService and access its DbService property.
+/// 
+/// Uses WAL mode with a separate read-only connection for better concurrent read performance.
+/// The write connection uses a lock to ensure single-writer semantics.
+/// The read connection can operate concurrently with writes due to WAL mode.
 /// </remarks>
 public sealed class KaleidoscopeDbService : IDisposable
 {
-    private readonly object _lock = new();
+    private readonly object _writeLock = new();
+    private readonly object _readLock = new();
     private readonly string? _dbPath;
     private SqliteConnection? _connection;
+    private SqliteConnection? _readConnection;
+    
+    // Character name cache to avoid repeated DB queries
+    private Dictionary<ulong, string?>? _characterNameCache;
+    private DateTime _characterNameCacheTime = DateTime.MinValue;
+    private const double CharacterNameCacheExpirySeconds = 30.0; // Cache for 30 seconds
+    
+    // Cache size in KB (negative value for SQLite PRAGMA)
+    private readonly int _cacheSizeKb;
 
     public string? DbPath => _dbPath;
 
-    public KaleidoscopeDbService(string? dbPath)
+    /// <summary>
+    /// Creates a new database service with the specified cache size.
+    /// </summary>
+    /// <param name="dbPath">Path to the SQLite database file.</param>
+    /// <param name="cacheSizeMb">Cache size in megabytes (1-64). Default is 8 MB.</param>
+    public KaleidoscopeDbService(string? dbPath, int cacheSizeMb = 8)
     {
         _dbPath = dbPath;
+        // Clamp to reasonable range and convert to KB
+        cacheSizeMb = Math.Clamp(cacheSizeMb, 1, 64);
+        _cacheSizeKb = cacheSizeMb * 1000; // Convert MB to KB (approximate)
         EnsureConnection();
     }
 
@@ -33,7 +55,7 @@ public sealed class KaleidoscopeDbService : IDisposable
     {
         if (string.IsNullOrEmpty(_dbPath)) return;
 
-        lock (_lock)
+        lock (_writeLock)
         {
             if (_connection != null) return;
 
@@ -52,6 +74,14 @@ public sealed class KaleidoscopeDbService : IDisposable
                 _connection = new SqliteConnection(csb.ToString());
                 _connection.Open();
 
+                // Enable WAL mode for better concurrent read performance
+                // WAL allows readers to continue while a write is in progress
+                using (var walCmd = _connection.CreateCommand())
+                {
+                    walCmd.CommandText = "PRAGMA journal_mode = WAL";
+                    walCmd.ExecuteNonQuery();
+                }
+
                 // Enable foreign key constraints for CASCADE deletes
                 using (var pragmaCmd = _connection.CreateCommand())
                 {
@@ -59,13 +89,64 @@ public sealed class KaleidoscopeDbService : IDisposable
                     pragmaCmd.ExecuteNonQuery();
                 }
 
+                // Optimize synchronous mode for WAL - NORMAL is safe and faster than FULL
+                using (var syncCmd = _connection.CreateCommand())
+                {
+                    syncCmd.CommandText = "PRAGMA synchronous = NORMAL";
+                    syncCmd.ExecuteNonQuery();
+                }
+
+                // Set cache size for better read performance (negative = KB)
+                using (var cacheCmd = _connection.CreateCommand())
+                {
+                    cacheCmd.CommandText = $"PRAGMA cache_size = -{_cacheSizeKb}";
+                    cacheCmd.ExecuteNonQuery();
+                }
+
                 EnsureSchema();
+                
+                // Initialize read-only connection for concurrent reads
+                EnsureReadConnection();
             }
             catch (Exception ex)
             {
                 LogService.Error($"[KaleidoscopeDb] Failed to initialize database: {ex.Message}", ex);
                 _connection = null;
             }
+        }
+    }
+
+    /// <summary>
+    /// Ensures the read-only connection is initialized.
+    /// Uses a separate connection for reads to allow concurrent access with WAL mode.
+    /// </summary>
+    private void EnsureReadConnection()
+    {
+        if (string.IsNullOrEmpty(_dbPath)) return;
+        if (_readConnection != null) return;
+
+        try
+        {
+            var csb = new SqliteConnectionStringBuilder
+            {
+                DataSource = _dbPath,
+                Mode = SqliteOpenMode.ReadOnly
+            };
+
+            _readConnection = new SqliteConnection(csb.ToString());
+            _readConnection.Open();
+
+            // Set read connection cache size (same as write connection)
+            using (var cacheCmd = _readConnection.CreateCommand())
+            {
+                cacheCmd.CommandText = $"PRAGMA cache_size = -{_cacheSizeKb}";
+                cacheCmd.ExecuteNonQuery();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[KaleidoscopeDb] Failed to initialize read connection: {ex.Message}");
+            _readConnection = null;
         }
     }
 
@@ -122,7 +203,9 @@ CREATE TABLE IF NOT EXISTS inventory_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
+CREATE INDEX IF NOT EXISTS idx_series_variable ON series(variable);
 CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_points_series_timestamp_value ON points(series_id, timestamp DESC, value);
 CREATE INDEX IF NOT EXISTS idx_inventory_cache_char ON inventory_cache(character_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_cache_lookup ON inventory_cache(character_id, source_type, retainer_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_cache ON inventory_items(cache_id);
@@ -311,7 +394,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (string.IsNullOrEmpty(_dbPath)) return null;
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return null;
@@ -353,7 +436,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public long? GetLastValue(long seriesId)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             if (_connection == null) return null;
 
@@ -382,7 +465,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public long? GetLastValueForCharacter(string variable, ulong characterId)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return null;
@@ -416,7 +499,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public bool InsertPoint(long seriesId, long value, DateTime? timestamp = null)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             if (_connection == null) return false;
 
@@ -461,7 +544,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<(DateTime, long)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -496,19 +579,21 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     /// <summary>
     /// Gets all points across all characters for a variable.
+    /// Uses the read connection for better concurrent performance.
     /// </summary>
     public List<(ulong characterId, DateTime timestamp, long value)> GetAllPoints(string variable)
     {
         var result = new List<(ulong, DateTime, long)>();
 
-        lock (_lock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            // Fall back to write connection if read connection not available
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
                     JOIN series s ON p.series_id = s.id
                     WHERE s.variable = $v
@@ -537,29 +622,42 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <summary>
     /// Gets all points for multiple variables in a single batch query.
     /// More efficient than calling GetAllPoints multiple times.
+    /// Always includes the latest point for each series regardless of time filter.
     /// </summary>
     /// <param name="variablePrefix">Variable name prefix to match (e.g., "Crystal_" to get all crystal variables)</param>
-    /// <param name="since">Optional: only get points after this timestamp</param>
+    /// <param name="since">Optional: only get points after this timestamp (latest point per series always included)</param>
     /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variablePrefix, DateTime? since = null)
     {
         var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
 
-        lock (_lock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            // Fall back to write connection if read connection not available
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 
                 if (since.HasValue)
                 {
-                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable LIKE $prefix AND p.timestamp >= $since
-                        ORDER BY s.variable, p.timestamp ASC";
+                    // Optimized query: First compute max timestamp per series in a CTE,
+                    // then fetch points >= since OR at max timestamp in single pass
+                    cmd.CommandText = @"
+                        WITH series_max AS (
+                            SELECT s.id AS series_id, s.variable, s.character_id, MAX(p.timestamp) AS max_ts
+                            FROM series s
+                            JOIN points p ON p.series_id = s.id
+                            WHERE s.variable LIKE $prefix
+                            GROUP BY s.id
+                        )
+                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
+                        FROM series_max sm
+                        JOIN points p ON p.series_id = sm.series_id
+                        WHERE p.timestamp >= $since OR p.timestamp = sm.max_ts
+                        ORDER BY sm.variable, p.timestamp";
                     cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
                     cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
                 }
@@ -598,6 +696,126 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
         return result;
     }
+    
+    /// <summary>
+    /// Gets points within a specific time window for multiple variables.
+    /// Optimized for virtualized/windowed loading - only fetches visible data.
+    /// For each series, also includes the latest point BEFORE the window for line continuity.
+    /// </summary>
+    /// <param name="variablePrefix">Variable name prefix to match (e.g., "Crystal_")</param>
+    /// <param name="windowStart">Start of the visible time window</param>
+    /// <param name="windowEnd">End of the visible time window</param>
+    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsInWindow(
+        string variablePrefix, DateTime windowStart, DateTime windowEnd)
+    {
+        var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
+
+        lock (_readLock)
+        {
+            // Fall back to write connection if read connection not available
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                // First, get all points within the window
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    WITH series_match AS (
+                        SELECT id, variable, character_id FROM series WHERE variable LIKE $prefix
+                    ),
+                    -- Get the latest point before window for each series (for line continuity)
+                    last_before AS (
+                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
+                        FROM series_match sm
+                        JOIN points p ON p.series_id = sm.id
+                        WHERE p.timestamp < $windowStart
+                        GROUP BY sm.id
+                        HAVING p.timestamp = MAX(p.timestamp)
+                    ),
+                    -- Get all points within the window
+                    in_window AS (
+                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
+                        FROM series_match sm
+                        JOIN points p ON p.series_id = sm.id
+                        WHERE p.timestamp >= $windowStart AND p.timestamp <= $windowEnd
+                    )
+                    SELECT * FROM last_before
+                    UNION ALL
+                    SELECT * FROM in_window
+                    ORDER BY variable, timestamp ASC";
+                
+                cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                cmd.Parameters.AddWithValue("$windowStart", windowStart.Ticks);
+                cmd.Parameters.AddWithValue("$windowEnd", windowEnd.Ticks);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var variable = reader.GetString(0);
+                    var charId = (ulong)reader.GetInt64(1);
+                    var ticks = reader.GetInt64(2);
+                    var value = reader.GetInt64(3);
+                    
+                    if (charId == 0) continue;
+                    
+                    if (!result.TryGetValue(variable, out var list))
+                    {
+                        list = new List<(ulong, DateTime, long)>();
+                        result[variable] = list;
+                    }
+                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetPointsInWindow failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+    
+    /// <summary>
+    /// Gets the time range of available data for a variable prefix.
+    /// Useful for determining scroll bounds without loading all data.
+    /// </summary>
+    /// <param name="variablePrefix">Variable name prefix to match</param>
+    /// <returns>Tuple of (earliest timestamp, latest timestamp), or null if no data</returns>
+    public (DateTime earliest, DateTime latest)? GetDataTimeRange(string variablePrefix)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return null;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT MIN(p.timestamp), MAX(p.timestamp)
+                    FROM points p
+                    JOIN series s ON p.series_id = s.id
+                    WHERE s.variable LIKE $prefix";
+                cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read() && !reader.IsDBNull(0) && !reader.IsDBNull(1))
+                {
+                    var earliest = new DateTime(reader.GetInt64(0), DateTimeKind.Utc);
+                    var latest = new DateTime(reader.GetInt64(1), DateTimeKind.Utc);
+                    return (earliest, latest);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetDataTimeRange failed: {ex.Message}");
+            }
+        }
+
+        return null;
+    }
 
     #endregion
 
@@ -610,7 +828,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<ulong>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -645,7 +863,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (string.IsNullOrEmpty(name)) return false;
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -657,6 +875,9 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.Parameters.AddWithValue("$c", (long)characterId);
                 cmd.Parameters.AddWithValue("$n", name);
                 cmd.ExecuteNonQuery();
+                
+                // Invalidate cache so next lookup gets fresh data
+                InvalidateCharacterNameCache();
                 return true;
             }
             catch (Exception ex)
@@ -669,50 +890,41 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     /// <summary>
     /// Gets the stored name for a character.
+    /// Uses cached data if available to avoid repeated DB queries.
     /// </summary>
     public string? GetCharacterName(ulong characterId)
     {
-        lock (_lock)
-        {
-            EnsureConnection();
-            if (_connection == null) return null;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "SELECT name FROM character_names WHERE character_id = $c LIMIT 1";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                var result = cmd.ExecuteScalar();
-
-                if (result != null && result != DBNull.Value)
-                    return result as string;
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogService.Debug($"[KaleidoscopeDb] GetCharacterName failed: {ex.Message}");
-                return null;
-            }
-        }
+        // Try cache first
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var cachedName))
+            return cachedName;
+        
+        return null;
     }
-
+    
     /// <summary>
-    /// Gets all stored character name mappings.
+    /// Gets or refreshes the character name cache.
     /// </summary>
-    public List<(ulong characterId, string? name)> GetAllCharacterNames()
+    private Dictionary<ulong, string?> GetCharacterNameCache()
     {
-        var result = new List<(ulong, string?)>();
-
-        lock (_lock)
+        var now = DateTime.UtcNow;
+        if (_characterNameCache != null && (now - _characterNameCacheTime).TotalSeconds < CharacterNameCacheExpirySeconds)
+        {
+            return _characterNameCache;
+        }
+        
+        // Refresh cache
+        var newCache = new Dictionary<ulong, string?>();
+        
+        lock (_writeLock)
         {
             EnsureConnection();
-            if (_connection == null) return result;
+            if (_connection == null) return newCache;
 
             try
             {
                 using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name FROM character_names ORDER BY character_id";
+                cmd.CommandText = "SELECT character_id, name FROM character_names";
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -720,16 +932,54 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     var cid = reader.GetInt64(0);
                     var name = reader.IsDBNull(1) ? null : reader.GetString(1);
                     if (cid != 0)
-                        result.Add(((ulong)cid, name));
+                        newCache[(ulong)cid] = name;
                 }
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetAllCharacterNames failed: {ex.Message}");
+                LogService.Debug($"[KaleidoscopeDb] GetCharacterNameCache failed: {ex.Message}");
             }
         }
+        
+        _characterNameCache = newCache;
+        _characterNameCacheTime = now;
+        return newCache;
+    }
+    
+    /// <summary>
+    /// Invalidates the character name cache.
+    /// Call this after saving or updating character names.
+    /// </summary>
+    public void InvalidateCharacterNameCache()
+    {
+        _characterNameCache = null;
+        _characterNameCacheTime = DateTime.MinValue;
+    }
 
+    /// <summary>
+    /// Gets all stored character name mappings.
+    /// Uses cached data to avoid repeated DB queries.
+    /// </summary>
+    public List<(ulong characterId, string? name)> GetAllCharacterNames()
+    {
+        var cache = GetCharacterNameCache();
+        var result = new List<(ulong, string?)>(cache.Count);
+        
+        foreach (var kvp in cache)
+        {
+            result.Add((kvp.Key, kvp.Value));
+        }
+        
         return result;
+    }
+    
+    /// <summary>
+    /// Gets all stored character name mappings as a dictionary.
+    /// Returns the cached dictionary directly to avoid allocations.
+    /// </summary>
+    public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
+    {
+        return GetCharacterNameCache();
     }
 
     #endregion
@@ -741,7 +991,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public bool ClearCharacterData(string variable, ulong characterId)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -772,7 +1022,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public bool ClearAllData(string variable)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -803,7 +1053,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public bool ClearAllTables()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -844,7 +1094,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public int CleanUnassociatedCharacters(string variable)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -910,7 +1160,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public void MigrateStoredNames()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1032,7 +1282,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var sb = new StringBuilder();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return sb.ToString();
@@ -1111,7 +1361,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public long GetRetainerItemCount(ulong characterId, uint itemId)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -1148,7 +1398,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (entry == null) return;
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1251,7 +1501,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         Models.Inventory.InventorySourceType sourceType, 
         ulong retainerId = 0)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return null;
@@ -1326,7 +1576,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<Models.Inventory.InventoryCacheEntry>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -1408,7 +1658,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<Models.Inventory.InventoryCacheEntry>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -1486,7 +1736,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public void DeleteInventoryCache(ulong characterId, Models.Inventory.InventorySourceType sourceType, ulong retainerId = 0)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1516,7 +1766,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new Dictionary<uint, long>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -1570,7 +1820,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public void SaveItemPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, int avgPriceNq = 0, int avgPriceHq = 0, int lastSaleNq = 0, int lastSaleHq = 0, float saleVelocity = 0)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1610,11 +1860,80 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
+    /// Saves multiple item prices in a single transaction for better performance.
+    /// Reduces lock contention by batching writes together.
+    /// </summary>
+    public void SaveItemPricesBatch(IEnumerable<(int ItemId, int WorldId, int MinPriceNq, int MinPriceHq, int LastSaleNq, int LastSaleHq)> prices)
+    {
+        var priceList = prices.ToList();
+        if (priceList.Count == 0) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var transaction = _connection.BeginTransaction();
+                try
+                {
+                    using var cmd = _connection.CreateCommand();
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = @"
+                        INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, last_sale_nq, last_sale_hq, sale_velocity, last_updated)
+                        VALUES ($iid, $wid, $mnq, $mhq, 0, 0, $lsnq, $lshq, 0, $time)
+                        ON CONFLICT(item_id, world_id) DO UPDATE SET
+                            min_price_nq = excluded.min_price_nq,
+                            min_price_hq = excluded.min_price_hq,
+                            last_sale_nq = excluded.last_sale_nq,
+                            last_sale_hq = excluded.last_sale_hq,
+                            last_updated = excluded.last_updated";
+
+                    var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var mnqParam = cmd.Parameters.Add("$mnq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var mhqParam = cmd.Parameters.Add("$mhq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var lsnqParam = cmd.Parameters.Add("$lsnq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var lshqParam = cmd.Parameters.Add("$lshq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
+
+                    var now = DateTime.UtcNow.Ticks;
+
+                    foreach (var (itemId, worldId, minNq, minHq, lastNq, lastHq) in priceList)
+                    {
+                        iidParam.Value = itemId;
+                        widParam.Value = worldId;
+                        mnqParam.Value = minNq;
+                        mhqParam.Value = minHq;
+                        lsnqParam.Value = lastNq;
+                        lshqParam.Value = lastHq;
+                        timeParam.Value = now;
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                    LogService.Debug($"[KaleidoscopeDb] Batch saved {priceList.Count} item prices");
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SaveItemPricesBatch failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
     /// Saves a price history point for an item.
     /// </summary>
     public void SavePriceHistory(int itemId, int worldId, int minPriceNq, int minPriceHq)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1645,7 +1964,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public (int MinPriceNq, int MinPriceHq, int AvgPriceNq, int AvgPriceHq, float SaleVelocity, DateTime LastUpdated)? GetItemPrice(int itemId, int worldId)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return null;
@@ -1687,7 +2006,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public int? GetMinPrice(int itemId, bool preferHq = false)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return null;
@@ -1738,7 +2057,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -1796,7 +2115,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new Dictionary<int, (int MinPrice, int WorldId, DateTime LastUpdated)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -1861,7 +2180,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         foreach (var id in itemIdList)
             staleItems.Add(id);
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return staleItems;
@@ -1907,7 +2226,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue, 
         List<(int ItemId, long Quantity, int UnitPrice)>? itemContributions = null)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -1979,7 +2298,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<(DateTime, long, long, long)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -2029,7 +2348,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<(ulong, DateTime, long, long, long)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -2072,11 +2391,97 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
+    /// Gets inventory value history aggregated across all characters (summed by timestamp) directly in SQL.
+    /// More efficient than fetching all data and grouping in C#.
+    /// </summary>
+    public List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetAggregatedInventoryValueHistory(DateTime? since = null)
+    {
+        var result = new List<(DateTime, long, long, long)>();
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                var sql = @"
+                    SELECT timestamp, SUM(total_value), SUM(gil_value), SUM(item_value)
+                    FROM inventory_value_history";
+                
+                if (since.HasValue)
+                {
+                    sql += " WHERE timestamp >= $since";
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                
+                sql += " GROUP BY timestamp ORDER BY timestamp ASC";
+                cmd.CommandText = sql;
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    result.Add((
+                        new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
+                        reader.GetInt64(1),
+                        reader.GetInt64(2),
+                        reader.GetInt64(3)
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetAggregatedInventoryValueHistory failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets the latest timestamp and total record count from inventory_value_history.
+    /// Used for cache invalidation detection.
+    /// </summary>
+    public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStats(ulong? characterId = null)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return (0, null);
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                var whereClause = characterId.HasValue ? " WHERE character_id = $cid" : "";
+                cmd.CommandText = $"SELECT COUNT(*), MAX(timestamp) FROM inventory_value_history{whereClause}";
+                
+                if (characterId.HasValue)
+                    cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
+
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    var count = reader.GetInt64(0);
+                    var maxTs = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
+                    return (count, maxTs);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetInventoryValueHistoryStats failed: {ex.Message}", ex);
+            }
+        }
+
+        return (0, null);
+    }
+
+    /// <summary>
     /// Clears all price tracking data (item_prices, price_history, inventory_value_history, inventory_value_items, sale_records).
     /// </summary>
     public bool ClearAllPriceData()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -2119,7 +2524,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public void SaveSaleRecord(int itemId, int worldId, int pricePerUnit, int quantity, bool isHq, int total, string? buyerName = null)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return;
@@ -2158,7 +2563,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -2236,7 +2641,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         var result = new List<(long, int, int, int, bool, int, DateTime, string?)>();
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return result;
@@ -2304,7 +2709,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <returns>True if the record was deleted, false otherwise.</returns>
     public bool DeleteSaleRecord(long id)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -2334,7 +2739,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <returns>True if the record was deleted, false otherwise.</returns>
     public bool DeleteSaleRecordWithHistoryCleanup(long id, DateTime saleTimestamp)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return false;
@@ -2485,7 +2890,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public int GetSaleRecordCount()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -2512,7 +2917,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public int CleanupOldPriceData(int retentionDays)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -2554,7 +2959,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     public long GetPriceDataSize()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -2588,7 +2993,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         var currentSize = GetPriceDataSize();
         if (currentSize <= maxSizeBytes) return 0;
 
-        lock (_lock)
+        lock (_writeLock)
         {
             EnsureConnection();
             if (_connection == null) return 0;
@@ -2638,12 +3043,20 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     public void Dispose()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             _connection?.Close();
             _connection?.Dispose();
             _connection = null;
         }
+        
+        lock (_readLock)
+        {
+            _readConnection?.Close();
+            _readConnection?.Dispose();
+            _readConnection = null;
+        }
+        
         GC.SuppressFinalize(this);
     }
 }

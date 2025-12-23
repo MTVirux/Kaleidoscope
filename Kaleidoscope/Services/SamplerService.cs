@@ -77,8 +77,9 @@ public sealed class SamplerService : IDisposable, IRequiredService
         _registry = registry;
         _inventoryChangeService = inventoryChangeService;
 
-        // Create the database service
-        _dbService = new KaleidoscopeDbService(filenames.DatabasePath);
+        // Create the database service with configured cache size
+        var cacheSizeMb = configService.SamplerConfig.DatabaseCacheSizeMb;
+        _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
 
         // Initialize background work queue (unbounded, single consumer)
         _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
