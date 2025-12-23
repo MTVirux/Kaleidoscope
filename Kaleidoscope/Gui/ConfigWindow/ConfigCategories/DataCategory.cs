@@ -13,6 +13,7 @@ public class DataCategory
 {
     private readonly SamplerService _samplerService;
     private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly ConfigurationService _configService;
 
     private bool _clearDbOpen = false;
     private bool _sanitizeDbOpen = false;
@@ -20,14 +21,18 @@ public class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(SamplerService samplerService, AutoRetainerIpcService autoRetainerIpc)
+    public DataCategory(SamplerService samplerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
     {
         _samplerService = samplerService;
         _autoRetainerIpc = autoRetainerIpc;
+        _configService = configService;
     }
 
     public void Draw()
     {
+        DrawDatabaseSettings();
+        
+        ImGui.Spacing();
         ImGui.TextUnformatted("Data Management");
         ImGui.Separator();
         var hasDb = _samplerService.HasDb;
@@ -194,5 +199,38 @@ public class DataCategory
             }
             ImGui.EndPopup();
         }
+    }
+
+    private void DrawDatabaseSettings()
+    {
+        ImGui.TextUnformatted("Database Settings");
+        ImGui.Separator();
+        
+        var config = _configService.SamplerConfig;
+        var cacheSizeMb = config.DatabaseCacheSizeMb;
+        
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.SliderInt("Cache Size (MB)", ref cacheSizeMb, 1, 64))
+        {
+            config.DatabaseCacheSizeMb = cacheSizeMb;
+            _configService.Save();
+        }
+        
+        ImGui.SameLine();
+        ImGui.TextDisabled("(?)");
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.BeginTooltip();
+            ImGui.TextUnformatted("SQLite page cache stored in RAM.");
+            ImGui.TextUnformatted("Higher values improve read performance.");
+            ImGui.TextUnformatted("Each connection uses this amount (2 connections total).");
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Recommended: 4-16 MB");
+            ImGui.TextUnformatted("Requires plugin reload to take effect.");
+            ImGui.EndTooltip();
+        }
+        
+        ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
+            $"Current: {cacheSizeMb * 2} MB total (2 connections × {cacheSizeMb} MB)");
     }
 }

@@ -58,7 +58,10 @@ public class ItemSalesHistoryTool : ToolComponent
             ImGui.Separator();
             DrawFilters();
             ImGui.Separator();
-            DrawSalesHistory();
+            using (ProfilerService.BeginStaticChildScope("DrawSalesHistory"))
+            {
+                DrawSalesHistory();
+            }
         }
         catch (Exception ex)
         {

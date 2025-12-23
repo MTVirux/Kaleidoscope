@@ -53,7 +53,10 @@ public class LivePriceFeedTool : ToolComponent
             ImGui.Separator();
 
             // Feed list
-            DrawFeed();
+            using (ProfilerService.BeginStaticChildScope("DrawFeed"))
+            {
+                DrawFeed();
+            }
         }
         catch (Exception ex)
         {

@@ -114,7 +114,7 @@ public sealed class ConfigWindow : Window
 
         // Create category renderers
         _generalCategory = new GeneralCategory(_configService);
-        _dataCategory = new DataCategory(_samplerService, _arIpc);
+        _dataCategory = new DataCategory(_samplerService, _arIpc, _configService);
         _samplerCategory = new SamplerCategory(_samplerService, _configService, _registry);
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);

@@ -201,20 +201,28 @@ public class TopItemsTool : ToolComponent
             }
             else
             {
-                // Calculate for all characters
-                long totalGil = 0;
-                long totalValue = 0;
-                var allChars = DbService.GetAllCharacterNames().Select(c => c.characterId).Distinct();
+                // Calculate for all characters in parallel for better CPU utilization
+                var allChars = DbService.GetAllCharacterNames().Select(c => c.characterId).Distinct().ToList();
                 
-                foreach (var cid in allChars)
+                if (allChars.Count > 0)
                 {
-                    var (total, gil, item, _) = await _priceTrackingService.CalculateInventoryValueAsync(cid, settings.IncludeRetainers);
-                    totalGil += gil;
-                    totalValue += total;
-                }
+                    var includeRetainers = settings.IncludeRetainers;
+                    var tasks = allChars.Select(async cid =>
+                    {
+                        var (total, gil, item, _) = await _priceTrackingService.CalculateInventoryValueAsync(cid, includeRetainers);
+                        return (total, gil);
+                    }).ToList();
 
-                _gilValue = totalGil;
-                _totalValue = totalValue;
+                    var results = await Task.WhenAll(tasks);
+                    
+                    _gilValue = results.Sum(r => r.gil);
+                    _totalValue = results.Sum(r => r.total);
+                }
+                else
+                {
+                    _gilValue = 0;
+                    _totalValue = 0;
+                }
             }
 
             _lastRefresh = DateTime.UtcNow;
@@ -241,12 +249,18 @@ public class TopItemsTool : ToolComponent
             }
 
             // Header with character selector and totals
-            DrawHeader();
+            using (ProfilerService.BeginStaticChildScope("DrawHeader"))
+            {
+                DrawHeader();
+            }
 
             ImGui.Separator();
 
             // Items list
-            DrawItemsList();
+            using (ProfilerService.BeginStaticChildScope("DrawItemsList"))
+            {
+                DrawItemsList();
+            }
 
             // Draw the item details popup (if open)
             _itemDetailsPopup.Draw();
@@ -781,11 +795,6 @@ public class TopItemsTool : ToolComponent
             if (ImGui.Button("Refresh Now"))
             {
                 _ = Task.Run(RefreshTopItemsAsync);
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("Refresh Character List"))
-            {
-                RefreshCharacterList();
             }
         }
         catch (Exception ex)
