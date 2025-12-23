@@ -72,6 +72,16 @@ public class PriceTrackingSettings
 
     /// <summary>Interval in hours for refreshing price data from API.</summary>
     public int ApiRefreshIntervalHours { get; set; } = 6;
+
+    // WebSocket Channel Subscriptions
+    /// <summary>Whether to subscribe to listings/add events (new listings).</summary>
+    public bool SubscribeListingsAdd { get; set; } = true;
+
+    /// <summary>Whether to subscribe to listings/remove events (removed listings).</summary>
+    public bool SubscribeListingsRemove { get; set; } = true;
+
+    /// <summary>Whether to subscribe to sales/add events (completed sales).</summary>
+    public bool SubscribeSalesAdd { get; set; } = true;
 }
 
 /// <summary>

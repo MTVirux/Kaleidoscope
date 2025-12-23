@@ -627,32 +627,48 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     {
         if (_disposed) return;
         
-        // Subscribe to all events for configured scope
+        // Subscribe to events for configured scope, respecting channel settings
         var settings = Settings;
+
+        // Check if any channels are enabled
+        if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
+        {
+            _log.Verbose("[UniversalisWebSocket] No channels enabled, skipping subscription");
+            return;
+        }
 
         switch (settings.ScopeMode)
         {
             case PriceTrackingScopeMode.All:
-                await SubscribeAsync("listings/add");
-                await SubscribeAsync("listings/remove");
-                await SubscribeAsync("sales/add");
+                if (settings.SubscribeListingsAdd)
+                    await SubscribeAsync("listings/add");
+                if (settings.SubscribeListingsRemove)
+                    await SubscribeAsync("listings/remove");
+                if (settings.SubscribeSalesAdd)
+                    await SubscribeAsync("sales/add");
                 break;
 
             case PriceTrackingScopeMode.ByWorld:
                 foreach (var worldId in settings.SelectedWorldIds)
                 {
-                    await SubscribeAsync($"listings/add{{world={worldId}}}");
-                    await SubscribeAsync($"listings/remove{{world={worldId}}}");
-                    await SubscribeAsync($"sales/add{{world={worldId}}}");
+                    if (settings.SubscribeListingsAdd)
+                        await SubscribeAsync($"listings/add{{world={worldId}}}");
+                    if (settings.SubscribeListingsRemove)
+                        await SubscribeAsync($"listings/remove{{world={worldId}}}");
+                    if (settings.SubscribeSalesAdd)
+                        await SubscribeAsync($"sales/add{{world={worldId}}}");
                 }
                 break;
 
             // For DC and Region, we'd need to resolve to world IDs
             // This would require fetching world data first
             default:
-                await SubscribeAsync("listings/add");
-                await SubscribeAsync("listings/remove");
-                await SubscribeAsync("sales/add");
+                if (settings.SubscribeListingsAdd)
+                    await SubscribeAsync("listings/add");
+                if (settings.SubscribeListingsRemove)
+                    await SubscribeAsync("listings/remove");
+                if (settings.SubscribeSalesAdd)
+                    await SubscribeAsync("sales/add");
                 break;
         }
     }
@@ -711,6 +727,19 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         {
             _log.Warning($"[UniversalisWebSocket] Failed to unsubscribe from {channel}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Clears all subscribed channels (does not send unsubscribe messages).
+    /// Call this before reconnecting to reset channel state.
+    /// </summary>
+    public void ClearSubscribedChannels()
+    {
+        lock (_channelLock)
+        {
+            _subscribedChannels.Clear();
+        }
+        _log.Verbose("[UniversalisWebSocket] Cleared all subscribed channels");
     }
 
     private async Task ResubscribeChannelsAsync()

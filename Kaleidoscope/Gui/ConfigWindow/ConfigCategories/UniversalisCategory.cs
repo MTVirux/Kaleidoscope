@@ -308,6 +308,62 @@ public class UniversalisCategory
 
         ImGui.Spacing();
 
+        // Channel Subscriptions sub-section
+        ImGui.TextUnformatted("Channel Subscriptions");
+        ImGui.Spacing();
+        ImGui.TextWrapped("Select which WebSocket events to subscribe to. Disabling channels reduces network traffic but limits available data.");
+        ImGui.Spacing();
+
+        var subscribeListingsAdd = settings.SubscribeListingsAdd;
+        if (ImGui.Checkbox("Listings Added##SubscribeListingsAdd", ref subscribeListingsAdd))
+        {
+            settings.SubscribeListingsAdd = subscribeListingsAdd;
+            _configService.Save();
+            // Reconnect to apply changes
+            if (_priceTrackingService != null && settings.Enabled)
+            {
+                _ = _priceTrackingService.ReconnectWebSocketAsync();
+            }
+        }
+        ImGui.SameLine();
+        HelpMarker("Receive notifications when new listings are added to the market board.");
+
+        var subscribeListingsRemove = settings.SubscribeListingsRemove;
+        if (ImGui.Checkbox("Listings Removed##SubscribeListingsRemove", ref subscribeListingsRemove))
+        {
+            settings.SubscribeListingsRemove = subscribeListingsRemove;
+            _configService.Save();
+            // Reconnect to apply changes
+            if (_priceTrackingService != null && settings.Enabled)
+            {
+                _ = _priceTrackingService.ReconnectWebSocketAsync();
+            }
+        }
+        ImGui.SameLine();
+        HelpMarker("Receive notifications when listings are removed from the market board.");
+
+        var subscribeSalesAdd = settings.SubscribeSalesAdd;
+        if (ImGui.Checkbox("Sales##SubscribeSalesAdd", ref subscribeSalesAdd))
+        {
+            settings.SubscribeSalesAdd = subscribeSalesAdd;
+            _configService.Save();
+            // Reconnect to apply changes
+            if (_priceTrackingService != null && settings.Enabled)
+            {
+                _ = _priceTrackingService.ReconnectWebSocketAsync();
+            }
+        }
+        ImGui.SameLine();
+        HelpMarker("Receive notifications when items are sold on the market board.");
+
+        // Show warning if no channels are selected
+        if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.3f, 1f), "Warning: No channels selected - no real-time data will be received!");
+        }
+
+        ImGui.Spacing();
+
         var autoFetch = settings.AutoFetchInventoryPrices;
         if (ImGui.Checkbox("Auto-fetch inventory prices on startup##AutoFetch", ref autoFetch))
         {
