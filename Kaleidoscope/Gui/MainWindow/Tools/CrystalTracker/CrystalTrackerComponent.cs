@@ -18,6 +18,17 @@ public class CrystalTrackerComponent : IDisposable
     private readonly ImplotGraphWidget _graphWidget;
 
     private volatile bool _pendingCrystalUpdate = false;
+    
+    // Caching fields for optimization
+    private DateTime _lastCacheTime = DateTime.MinValue;
+    private CrystalGrouping _cachedGrouping;
+    private TimeRangeUnit _cachedTimeRangeUnit;
+    private int _cachedTimeRangeValue;
+    private int _cachedFilterHash;
+    private List<float>? _cachedSingleSeriesData;
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedMultiSeriesData;
+    private bool _cacheIsDirty = true;
+    private const double CacheValiditySeconds = 0.5; // Refresh cache every 500ms max
 
     private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
 
@@ -83,6 +94,50 @@ public class CrystalTrackerComponent : IDisposable
     {
         // Flag that crystals have changed - will be processed on next Draw()
         _pendingCrystalUpdate = true;
+        _cacheIsDirty = true;
+    }
+    
+    /// <summary>
+    /// Calculates a hash of current filter settings to detect changes.
+    /// </summary>
+    private int CalculateFilterHash()
+    {
+        var settings = Settings;
+        var hash = HashCode.Combine(
+            settings.IncludeShards,
+            settings.IncludeCrystals,
+            settings.IncludeClusters,
+            settings.IncludeFire,
+            settings.IncludeIce,
+            settings.IncludeWind);
+        return HashCode.Combine(hash,
+            settings.IncludeEarth,
+            settings.IncludeLightning,
+            settings.IncludeWater);
+    }
+    
+    /// <summary>
+    /// Checks if the cache needs to be refreshed.
+    /// </summary>
+    private bool NeedsCacheRefresh()
+    {
+        if (_cacheIsDirty) return true;
+        
+        var settings = Settings;
+        var currentFilterHash = CalculateFilterHash();
+        
+        // Check if settings changed
+        if (_cachedGrouping != settings.Grouping ||
+            _cachedTimeRangeUnit != settings.TimeRangeUnit ||
+            _cachedTimeRangeValue != settings.TimeRangeValue ||
+            _cachedFilterHash != currentFilterHash)
+        {
+            return true;
+        }
+        
+        // Check if cache is stale
+        var elapsed = (DateTime.UtcNow - _lastCacheTime).TotalSeconds;
+        return elapsed > CacheValiditySeconds;
     }
 
     public void Dispose()
@@ -139,6 +194,9 @@ public class CrystalTrackerComponent : IDisposable
             autoScrollNowPosition: settings.AutoScrollNowPosition,
             showControlsDrawer: settings.ShowControlsDrawer);
 
+        // Check if we need to refresh the cache
+        var needsRefresh = NeedsCacheRefresh();
+
         // Calculate time cutoff
         DateTime? timeCutoff = null;
         if (settings.TimeRangeUnit != TimeRangeUnit.All)
@@ -149,26 +207,34 @@ public class CrystalTrackerComponent : IDisposable
         // Get and draw data based on grouping mode
         try
         {
-            switch (settings.Grouping)
+            // Refresh cache if needed
+            if (needsRefresh)
             {
-                case CrystalGrouping.None:
-                    DrawTotalCrystals(timeCutoff);
-                    break;
-                case CrystalGrouping.ByCharacter:
-                    DrawByCharacter(timeCutoff);
-                    break;
-                case CrystalGrouping.ByElement:
-                    DrawByElement(timeCutoff);
-                    break;
-                case CrystalGrouping.ByCharacterAndElement:
-                    DrawByCharacterAndElement(timeCutoff);
-                    break;
-                case CrystalGrouping.ByTier:
-                    DrawByTier(timeCutoff);
-                    break;
-                case CrystalGrouping.ByCharacterAndTier:
-                    DrawByCharacterAndTier(timeCutoff);
-                    break;
+                RefreshCachedData(settings, timeCutoff);
+            }
+            
+            // Draw from cache
+            if (settings.Grouping == CrystalGrouping.None)
+            {
+                if (_cachedSingleSeriesData != null && _cachedSingleSeriesData.Count > 0)
+                {
+                    _graphWidget.Draw(_cachedSingleSeriesData);
+                }
+                else
+                {
+                    ImGui.TextUnformatted("No crystal data yet.");
+                }
+            }
+            else
+            {
+                if (_cachedMultiSeriesData != null && _cachedMultiSeriesData.Count > 0)
+                {
+                    _graphWidget.DrawMultipleSeries(_cachedMultiSeriesData);
+                }
+                else
+                {
+                    ImGui.TextUnformatted("No crystal data yet.");
+                }
             }
         }
         catch (Exception ex)
@@ -176,6 +242,341 @@ public class CrystalTrackerComponent : IDisposable
             LogService.Debug($"[CrystalTrackerComponent] Draw error: {ex.Message}");
             ImGui.TextUnformatted("Error loading crystal data.");
         }
+    }
+    
+    /// <summary>
+    /// Refreshes the cached data from the database using a single batch query.
+    /// </summary>
+    private void RefreshCachedData(CrystalTrackerSettings settings, DateTime? timeCutoff)
+    {
+        // Update cache tracking
+        _lastCacheTime = DateTime.UtcNow;
+        _cachedGrouping = settings.Grouping;
+        _cachedTimeRangeUnit = settings.TimeRangeUnit;
+        _cachedTimeRangeValue = settings.TimeRangeValue;
+        _cachedFilterHash = CalculateFilterHash();
+        _cacheIsDirty = false;
+        
+        // Fetch all crystal data in one batch query
+        var allCrystalData = _samplerService.DbService.GetAllPointsBatch("Crystal_", timeCutoff);
+        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
+        
+        // Prepare cached data based on grouping mode
+        switch (settings.Grouping)
+        {
+            case CrystalGrouping.None:
+                _cachedSingleSeriesData = PrepareTotalCrystals(allCrystalData, settings);
+                _cachedMultiSeriesData = null;
+                break;
+            case CrystalGrouping.ByCharacter:
+                _cachedMultiSeriesData = PrepareByCharacter(allCrystalData, settings, characterNames);
+                _cachedSingleSeriesData = null;
+                break;
+            case CrystalGrouping.ByElement:
+                _cachedMultiSeriesData = PrepareByElement(allCrystalData, settings);
+                _cachedSingleSeriesData = null;
+                break;
+            case CrystalGrouping.ByCharacterAndElement:
+                _cachedMultiSeriesData = PrepareByCharacterAndElement(allCrystalData, settings, characterNames);
+                _cachedSingleSeriesData = null;
+                break;
+            case CrystalGrouping.ByTier:
+                _cachedMultiSeriesData = PrepareByTier(allCrystalData, settings);
+                _cachedSingleSeriesData = null;
+                break;
+            case CrystalGrouping.ByCharacterAndTier:
+                _cachedMultiSeriesData = PrepareByCharacterAndTier(allCrystalData, settings, characterNames);
+                _cachedSingleSeriesData = null;
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Parses a crystal variable name to extract element and tier indices.
+    /// </summary>
+    private static bool TryParseVariableName(string variableName, out int element, out int tier)
+    {
+        element = -1;
+        tier = -1;
+        
+        // Format: Crystal_{Element}_{Tier}
+        if (!variableName.StartsWith("Crystal_")) return false;
+        
+        var parts = variableName.Split('_');
+        if (parts.Length != 3) return false;
+        
+        element = Array.IndexOf(ElementNames, parts[1]);
+        tier = Array.IndexOf(TierNames, parts[2]);
+        
+        return element >= 0 && tier >= 0;
+    }
+    
+    /// <summary>
+    /// Checks if a given element/tier combination is enabled in settings.
+    /// </summary>
+    private static bool IsEnabled(CrystalTrackerSettings settings, int element, int tier)
+    {
+        // Check tier filter
+        var tierEnabled = tier switch
+        {
+            0 => settings.IncludeShards,
+            1 => settings.IncludeCrystals,
+            2 => settings.IncludeClusters,
+            _ => false
+        };
+        if (!tierEnabled) return false;
+        
+        // Check element filter
+        return settings.IsElementIncluded((CrystalElement)element);
+    }
+    
+    /// <summary>
+    /// Prepares aggregated total data from batch query results.
+    /// </summary>
+    private static List<float> PrepareTotalCrystals(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings)
+    {
+        var allPoints = new Dictionary<DateTime, long>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            foreach (var (_, ts, value) in points)
+            {
+                if (!allPoints.ContainsKey(ts))
+                    allPoints[ts] = 0;
+                allPoints[ts] += value;
+            }
+        }
+        
+        return allPoints
+            .OrderBy(p => p.Key)
+            .Select(p => (float)p.Value)
+            .ToList();
+    }
+    
+    /// <summary>
+    /// Prepares per-character series data from batch query results.
+    /// </summary>
+    private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacter(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings,
+        Dictionary<ulong, string?> characterNames)
+    {
+        var characterData = new Dictionary<ulong, Dictionary<DateTime, long>>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            foreach (var (charId, ts, value) in points)
+            {
+                if (!characterData.TryGetValue(charId, out var charPoints))
+                {
+                    charPoints = new Dictionary<DateTime, long>();
+                    characterData[charId] = charPoints;
+                }
+                
+                if (!charPoints.ContainsKey(ts))
+                    charPoints[ts] = 0;
+                charPoints[ts] += value;
+            }
+        }
+        
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        foreach (var (charId, points) in characterData)
+        {
+            var name = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
+            var samples = points
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+            series.Add((name, samples));
+        }
+        
+        return series;
+    }
+    
+    /// <summary>
+    /// Prepares per-element series data from batch query results.
+    /// </summary>
+    private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByElement(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings)
+    {
+        var elementData = new Dictionary<int, Dictionary<DateTime, long>>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            if (!elementData.TryGetValue(element, out var elemPoints))
+            {
+                elemPoints = new Dictionary<DateTime, long>();
+                elementData[element] = elemPoints;
+            }
+            
+            foreach (var (_, ts, value) in points)
+            {
+                if (!elemPoints.ContainsKey(ts))
+                    elemPoints[ts] = 0;
+                elemPoints[ts] += value;
+            }
+        }
+        
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        foreach (var (element, points) in elementData.OrderBy(e => e.Key))
+        {
+            var samples = points
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+            if (samples.Count > 0)
+                series.Add((ElementNames[element], samples));
+        }
+        
+        return series;
+    }
+    
+    /// <summary>
+    /// Prepares per-character-per-element series data from batch query results.
+    /// </summary>
+    private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacterAndElement(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings,
+        Dictionary<ulong, string?> characterNames)
+    {
+        // Key: (charId, element)
+        var data = new Dictionary<(ulong, int), Dictionary<DateTime, long>>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            foreach (var (charId, ts, value) in points)
+            {
+                var key = (charId, element);
+                if (!data.TryGetValue(key, out var keyPoints))
+                {
+                    keyPoints = new Dictionary<DateTime, long>();
+                    data[key] = keyPoints;
+                }
+                
+                if (!keyPoints.ContainsKey(ts))
+                    keyPoints[ts] = 0;
+                keyPoints[ts] += value;
+            }
+        }
+        
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        foreach (var ((charId, element), points) in data.OrderBy(k => k.Key.Item2))
+        {
+            var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
+            var seriesName = $"{charName} - {ElementNames[element]}";
+            var samples = points
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+            if (samples.Count > 0)
+                series.Add((seriesName, samples));
+        }
+        
+        return series;
+    }
+    
+    /// <summary>
+    /// Prepares per-tier series data from batch query results.
+    /// </summary>
+    private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByTier(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings)
+    {
+        var tierData = new Dictionary<int, Dictionary<DateTime, long>>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            if (!tierData.TryGetValue(tier, out var tierPoints))
+            {
+                tierPoints = new Dictionary<DateTime, long>();
+                tierData[tier] = tierPoints;
+            }
+            
+            foreach (var (_, ts, value) in points)
+            {
+                if (!tierPoints.ContainsKey(ts))
+                    tierPoints[ts] = 0;
+                tierPoints[ts] += value;
+            }
+        }
+        
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        foreach (var (tier, points) in tierData.OrderBy(t => t.Key))
+        {
+            var samples = points
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+            if (samples.Count > 0)
+                series.Add((TierNames[tier], samples));
+        }
+        
+        return series;
+    }
+    
+    /// <summary>
+    /// Prepares per-character-per-tier series data from batch query results.
+    /// </summary>
+    private static List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> PrepareByCharacterAndTier(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> allData,
+        CrystalTrackerSettings settings,
+        Dictionary<ulong, string?> characterNames)
+    {
+        // Key: (charId, tier)
+        var data = new Dictionary<(ulong, int), Dictionary<DateTime, long>>();
+        
+        foreach (var (variableName, points) in allData)
+        {
+            if (!TryParseVariableName(variableName, out var element, out var tier)) continue;
+            if (!IsEnabled(settings, element, tier)) continue;
+            
+            foreach (var (charId, ts, value) in points)
+            {
+                var key = (charId, tier);
+                if (!data.TryGetValue(key, out var keyPoints))
+                {
+                    keyPoints = new Dictionary<DateTime, long>();
+                    data[key] = keyPoints;
+                }
+                
+                if (!keyPoints.ContainsKey(ts))
+                    keyPoints[ts] = 0;
+                keyPoints[ts] += value;
+            }
+        }
+        
+        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        foreach (var ((charId, tier), points) in data.OrderBy(k => k.Key.Item2))
+        {
+            var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
+            var seriesName = $"{charName} - {TierNames[tier]}";
+            var samples = points
+                .OrderBy(p => p.Key)
+                .Select(p => (p.Key, (float)p.Value))
+                .ToList();
+            if (samples.Count > 0)
+                series.Add((seriesName, samples));
+        }
+        
+        return series;
     }
 
     /// <summary>
@@ -268,303 +669,6 @@ public class CrystalTrackerComponent : IDisposable
         if (settings.IncludeShards) yield return 0;
         if (settings.IncludeCrystals) yield return 1;
         if (settings.IncludeClusters) yield return 2;
-    }
-
-    /// <summary>
-    /// Draws a single total line for all crystals.
-    /// Aggregates across enabled elements and tiers.
-    /// </summary>
-    private void DrawTotalCrystals(DateTime? timeCutoff)
-    {
-        var allPoints = new Dictionary<DateTime, long>();
-        var enabledTiers = GetEnabledTiers().ToList();
-
-        // Aggregate all enabled element/tier data across all characters
-        // Data already includes retainer totals (sampled together)
-        foreach (var element in GetEnabledElements())
-        {
-            foreach (var tier in enabledTiers)
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (_, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!allPoints.ContainsKey(ts))
-                        allPoints[ts] = 0;
-                    allPoints[ts] += value;
-                }
-            }
-        }
-
-        if (allPoints.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        var samples = allPoints
-            .OrderBy(p => p.Key)
-            .Select(p => (float)p.Value)
-            .ToList();
-
-        _graphWidget.Draw(samples);
-    }
-
-    /// <summary>
-    /// Draws separate lines per character (all elements combined).
-    /// </summary>
-    private void DrawByCharacter(DateTime? timeCutoff)
-    {
-        var characterData = new Dictionary<ulong, Dictionary<DateTime, long>>();
-        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
-        var enabledTiers = GetEnabledTiers().ToList();
-
-        // Aggregate all enabled element/tier data per character
-        // Data already includes retainer totals (sampled together)
-        foreach (var element in GetEnabledElements())
-        {
-            foreach (var tier in enabledTiers)
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (charId, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!characterData.ContainsKey(charId))
-                        characterData[charId] = new Dictionary<DateTime, long>();
-
-                    if (!characterData[charId].ContainsKey(ts))
-                        characterData[charId][ts] = 0;
-                    characterData[charId][ts] += value;
-                }
-            }
-        }
-
-        // Convert to series format
-        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
-        foreach (var (charId, points) in characterData)
-        {
-            var name = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
-            var samples = points
-                .OrderBy(p => p.Key)
-                .Select(p => (p.Key, (float)p.Value))
-                .ToList();
-            series.Add((name, samples));
-        }
-
-        if (series.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        _graphWidget.DrawMultipleSeries(series);
-    }
-
-    /// <summary>
-    /// Draws separate lines per element (all characters combined).
-    /// </summary>
-    private void DrawByElement(DateTime? timeCutoff)
-    {
-        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
-        var enabledTiers = GetEnabledTiers().ToList();
-
-        foreach (var element in GetEnabledElements())
-        {
-            var allPoints = new Dictionary<DateTime, long>();
-
-            // Data already includes retainer totals (sampled together)
-            foreach (var tier in enabledTiers)
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (_, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!allPoints.ContainsKey(ts))
-                        allPoints[ts] = 0;
-                    allPoints[ts] += value;
-                }
-            }
-
-            var samples = allPoints
-                .OrderBy(p => p.Key)
-                .Select(p => (p.Key, (float)p.Value))
-                .ToList();
-
-            if (samples.Count > 0)
-                series.Add((ElementNames[element], samples));
-        }
-
-        if (series.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        _graphWidget.DrawMultipleSeries(series);
-    }
-
-    /// <summary>
-    /// Draws separate lines per element per character.
-    /// </summary>
-    private void DrawByCharacterAndElement(DateTime? timeCutoff)
-    {
-        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
-        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
-        var enabledTiers = GetEnabledTiers().ToList();
-
-        foreach (var element in GetEnabledElements())
-        {
-            // Aggregate all enabled tiers, grouped by character
-            // Data already includes retainer totals (sampled together)
-            var byCharacter = new Dictionary<ulong, Dictionary<DateTime, long>>();
-
-            foreach (var tier in enabledTiers)
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (charId, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!byCharacter.ContainsKey(charId))
-                        byCharacter[charId] = new Dictionary<DateTime, long>();
-
-                    if (!byCharacter[charId].ContainsKey(ts))
-                        byCharacter[charId][ts] = 0;
-                    byCharacter[charId][ts] += value;
-                }
-            }
-
-            foreach (var (charId, charPoints) in byCharacter)
-            {
-                var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
-                var seriesName = $"{charName} - {ElementNames[element]}";
-                var samples = charPoints
-                    .OrderBy(p => p.Key)
-                    .Select(p => (p.Key, (float)p.Value))
-                    .ToList();
-
-                if (samples.Count > 0)
-                    series.Add((seriesName, samples));
-            }
-        }
-
-        if (series.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        _graphWidget.DrawMultipleSeries(series);
-    }
-
-    /// <summary>
-    /// Draws separate lines per tier (Shard, Crystal, Cluster).
-    /// </summary>
-    private void DrawByTier(DateTime? timeCutoff)
-    {
-        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
-
-        foreach (var tier in GetEnabledTiers())
-        {
-            var allPoints = new Dictionary<DateTime, long>();
-
-            // Aggregate all enabled elements for this tier
-            foreach (var element in GetEnabledElements())
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (_, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!allPoints.ContainsKey(ts))
-                        allPoints[ts] = 0;
-                    allPoints[ts] += value;
-                }
-            }
-
-            var samples = allPoints
-                .OrderBy(p => p.Key)
-                .Select(p => (p.Key, (float)p.Value))
-                .ToList();
-
-            if (samples.Count > 0)
-                series.Add((TierNames[tier], samples));
-        }
-
-        if (series.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        _graphWidget.DrawMultipleSeries(series);
-    }
-
-    /// <summary>
-    /// Draws separate lines per tier per character.
-    /// </summary>
-    private void DrawByCharacterAndTier(DateTime? timeCutoff)
-    {
-        var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
-        var characterNames = _samplerService.DbService.GetAllCharacterNames().ToDictionary(c => c.characterId, c => c.name);
-
-        foreach (var tier in GetEnabledTiers())
-        {
-            // Aggregate all enabled elements, grouped by character
-            var byCharacter = new Dictionary<ulong, Dictionary<DateTime, long>>();
-
-            foreach (var element in GetEnabledElements())
-            {
-                var variableName = GetVariableName(element, tier);
-                var points = _samplerService.DbService.GetAllPoints(variableName);
-
-                foreach (var (charId, ts, value) in points)
-                {
-                    if (timeCutoff.HasValue && ts < timeCutoff.Value) continue;
-
-                    if (!byCharacter.ContainsKey(charId))
-                        byCharacter[charId] = new Dictionary<DateTime, long>();
-
-                    if (!byCharacter[charId].ContainsKey(ts))
-                        byCharacter[charId][ts] = 0;
-                    byCharacter[charId][ts] += value;
-                }
-            }
-
-            foreach (var (charId, charPoints) in byCharacter)
-            {
-                var charName = characterNames.TryGetValue(charId, out var n) ? n ?? $"CID:{charId}" : $"CID:{charId}";
-                var seriesName = $"{charName} - {TierNames[tier]}";
-                var samples = charPoints
-                    .OrderBy(p => p.Key)
-                    .Select(p => (p.Key, (float)p.Value))
-                    .ToList();
-
-                if (samples.Count > 0)
-                    series.Add((seriesName, samples));
-            }
-        }
-
-        if (series.Count == 0)
-        {
-            ImGui.TextUnformatted("No crystal data yet.");
-            return;
-        }
-
-        _graphWidget.DrawMultipleSeries(series);
     }
 
     private static DateTime CalculateTimeCutoff(CrystalTrackerSettings settings)

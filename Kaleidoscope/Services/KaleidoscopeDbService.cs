@@ -534,6 +534,71 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         return result;
     }
 
+    /// <summary>
+    /// Gets all points for multiple variables in a single batch query.
+    /// More efficient than calling GetAllPoints multiple times.
+    /// </summary>
+    /// <param name="variablePrefix">Variable name prefix to match (e.g., "Crystal_" to get all crystal variables)</param>
+    /// <param name="since">Optional: only get points after this timestamp</param>
+    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variablePrefix, DateTime? since = null)
+    {
+        var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
+
+        lock (_lock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                
+                if (since.HasValue)
+                {
+                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable LIKE $prefix AND p.timestamp >= $since
+                        ORDER BY s.variable, p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                else
+                {
+                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable LIKE $prefix
+                        ORDER BY s.variable, p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                }
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var variable = reader.GetString(0);
+                    var charId = (ulong)reader.GetInt64(1);
+                    var ticks = reader.GetInt64(2);
+                    var value = reader.GetInt64(3);
+                    
+                    if (charId == 0) continue;
+                    
+                    if (!result.TryGetValue(variable, out var list))
+                    {
+                        list = new List<(ulong, DateTime, long)>();
+                        result[variable] = list;
+                    }
+                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetAllPointsBatch failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
     #endregion
 
     #region Character Operations

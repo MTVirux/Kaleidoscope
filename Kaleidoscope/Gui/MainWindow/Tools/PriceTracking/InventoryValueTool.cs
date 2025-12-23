@@ -25,6 +25,17 @@ public class InventoryValueTool : ToolComponent
     private string[] _characterNames = Array.Empty<string>();
     private ulong[] _characterIds = Array.Empty<ulong>();
     private int _selectedCharacterIndex = 0;
+    
+    // Caching fields for optimization
+    private DateTime _lastCacheTime = DateTime.MinValue;
+    private ulong _cachedCharacterId;
+    private bool _cachedShowMultipleLines;
+    private bool _cachedIncludeGil;
+    private int _cachedTimeRangeValue;
+    private TimeRangeUnit _cachedTimeRangeUnit;
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
+    private bool _cacheIsDirty = true;
+    private const double CacheValiditySeconds = 0.5; // Refresh cache every 500ms max
 
     private InventoryValueSettings Settings => _configService.Config.InventoryValue;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
@@ -66,6 +77,31 @@ public class InventoryValueTool : ToolComponent
         settings.AutoScrollTimeUnit = timeUnit;
         settings.AutoScrollNowPosition = nowPosition;
         _configService.Save();
+        _cacheIsDirty = true;
+    }
+    
+    /// <summary>
+    /// Checks if the cache needs to be refreshed.
+    /// </summary>
+    private bool NeedsCacheRefresh()
+    {
+        if (_cacheIsDirty) return true;
+        
+        var settings = Settings;
+        
+        // Check if settings changed
+        if (_cachedCharacterId != _selectedCharacterId ||
+            _cachedShowMultipleLines != settings.ShowMultipleLines ||
+            _cachedIncludeGil != settings.IncludeGil ||
+            _cachedTimeRangeValue != settings.TimeRangeValue ||
+            _cachedTimeRangeUnit != settings.TimeRangeUnit)
+        {
+            return true;
+        }
+        
+        // Check if cache is stale
+        var elapsed = (DateTime.UtcNow - _lastCacheTime).TotalSeconds;
+        return elapsed > CacheValiditySeconds;
     }
 
     /// <summary>
@@ -149,16 +185,13 @@ public class InventoryValueTool : ToolComponent
         if (ImGui.Combo("##CharSelector", ref _selectedCharacterIndex, _characterNames, _characterNames.Length))
         {
             _selectedCharacterId = _characterIds[_selectedCharacterIndex];
+            _cacheIsDirty = true;
         }
     }
 
     private void DrawGraph()
     {
         var settings = Settings;
-        
-        // Get time range
-        var timeRange = GetTimeRange();
-        var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : DateTime.MinValue;
 
         // Update graph widget display options from settings
         _graphWidget.UpdateDisplayOptions(
@@ -178,34 +211,67 @@ public class InventoryValueTool : ToolComponent
             autoScrollNowPosition: settings.AutoScrollNowPosition,
             showControlsDrawer: settings.ShowControlsDrawer);
 
+        // Refresh cache if needed
+        if (NeedsCacheRefresh())
+        {
+            RefreshCachedData(settings);
+        }
+        
+        // Draw from cache
+        if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
+        {
+            _graphWidget.DrawMultipleSeries(_cachedSeriesData);
+        }
+        else
+        {
+            ImGui.TextDisabled("No value history data");
+        }
+    }
+    
+    /// <summary>
+    /// Refreshes the cached data from the database.
+    /// </summary>
+    private void RefreshCachedData(InventoryValueSettings settings)
+    {
+        // Update cache tracking
+        _lastCacheTime = DateTime.UtcNow;
+        _cachedCharacterId = _selectedCharacterId;
+        _cachedShowMultipleLines = settings.ShowMultipleLines;
+        _cachedIncludeGil = settings.IncludeGil;
+        _cachedTimeRangeValue = settings.TimeRangeValue;
+        _cachedTimeRangeUnit = settings.TimeRangeUnit;
+        _cacheIsDirty = false;
+        
+        // Get time range
+        var timeRange = GetTimeRange();
+        var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
+
         if (_selectedCharacterId == 0 && settings.ShowMultipleLines)
         {
             // Multi-character mode - show each character as a separate line
-            var allData = DbService.GetAllInventoryValueHistory();
+            var allData = DbService.GetAllInventoryValueHistory(startTime);
             
             // Group data by character
             var perCharacterData = new Dictionary<ulong, List<(DateTime ts, float value)>>();
             foreach (var entry in allData)
             {
-                if (startTime != DateTime.MinValue && entry.Timestamp < startTime)
-                    continue;
-
-                if (!perCharacterData.ContainsKey(entry.CharacterId))
-                    perCharacterData[entry.CharacterId] = new();
+                if (!perCharacterData.TryGetValue(entry.CharacterId, out var list))
+                {
+                    list = new List<(DateTime ts, float value)>();
+                    perCharacterData[entry.CharacterId] = list;
+                }
                 
                 var value = settings.IncludeGil ? entry.TotalValue : entry.ItemValue;
-                perCharacterData[entry.CharacterId].Add((entry.Timestamp, value));
+                list.Add((entry.Timestamp, value));
             }
             
             // Convert to the format expected by ImplotGraphWidget
-            var series = perCharacterData
+            _cachedSeriesData = perCharacterData
                 .Select(kvp => (
                     name: GetCharacterDisplayName(kvp.Key),
                     samples: (IReadOnlyList<(DateTime ts, float value)>)kvp.Value
                 ))
                 .ToList();
-            
-            _graphWidget.DrawMultipleSeries(series);
         }
         else
         {
@@ -215,8 +281,8 @@ public class InventoryValueTool : ToolComponent
             if (_selectedCharacterId == 0)
             {
                 // All characters combined - aggregate all history data
-                var allData = DbService.GetAllInventoryValueHistory();
-                var aggregated = allData
+                var allData = DbService.GetAllInventoryValueHistory(startTime);
+                data = allData
                     .GroupBy(e => e.Timestamp)
                     .Select(g => (
                         Timestamp: g.Key, 
@@ -225,24 +291,15 @@ public class InventoryValueTool : ToolComponent
                         ItemValue: g.Sum(x => x.ItemValue)))
                     .OrderBy(x => x.Timestamp)
                     .ToList();
-                
-                if (startTime != DateTime.MinValue)
-                {
-                    data = aggregated.Where(d => d.Timestamp >= startTime).ToList();
-                }
-                else
-                {
-                    data = aggregated;
-                }
             }
             else
             {
                 // Single character
                 data = DbService.GetInventoryValueHistory(_selectedCharacterId);
                 
-                if (startTime != DateTime.MinValue)
+                if (startTime.HasValue)
                 {
-                    data = data.Where(d => d.Timestamp >= startTime).ToList();
+                    data = data.Where(d => d.Timestamp >= startTime.Value).ToList();
                 }
             }
             
@@ -254,19 +311,17 @@ public class InventoryValueTool : ToolComponent
                 ))
                 .ToList();
             
-            // Use DrawMultipleSeries with single series for consistent time-based rendering
             if (samples.Count > 0)
             {
                 var seriesName = _selectedCharacterId == 0 ? "Total Value" : GetCharacterDisplayName(_selectedCharacterId);
-                var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>
+                _cachedSeriesData = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>
                 {
                     (seriesName, samples)
                 };
-                _graphWidget.DrawMultipleSeries(series);
             }
             else
             {
-                ImGui.TextDisabled("No value history data");
+                _cachedSeriesData = null;
             }
         }
     }
@@ -284,6 +339,7 @@ public class InventoryValueTool : ToolComponent
         try
         {
             var settings = Settings;
+            var settingsChanged = false;
 
             ImGui.TextUnformatted("Inventory Value Settings");
             ImGui.Separator();
@@ -292,7 +348,7 @@ public class InventoryValueTool : ToolComponent
             if (ImGui.Checkbox("Include retainer inventories", ref includeRetainers))
             {
                 settings.IncludeRetainers = includeRetainers;
-                _configService.Save();
+                settingsChanged = true;
             }
             ShowSettingTooltip("Include items from retainer inventories in the value calculation.", "On");
 
@@ -300,7 +356,7 @@ public class InventoryValueTool : ToolComponent
             if (ImGui.Checkbox("Include gil", ref includeGil))
             {
                 settings.IncludeGil = includeGil;
-                _configService.Save();
+                settingsChanged = true;
             }
             ShowSettingTooltip("Include character and retainer gil in the total value.", "On");
 
@@ -308,7 +364,7 @@ public class InventoryValueTool : ToolComponent
             if (ImGui.Checkbox("Show multiple lines (per character)", ref showMultipleLines))
             {
                 settings.ShowMultipleLines = showMultipleLines;
-                _configService.Save();
+                settingsChanged = true;
             }
             ShowSettingTooltip("When viewing 'All Characters', show a separate line for each character.", "On");
 
@@ -318,7 +374,7 @@ public class InventoryValueTool : ToolComponent
                 if (ImGui.Checkbox("Show legend", ref showLegend))
                 {
                     settings.ShowLegend = showLegend;
-                    _configService.Save();
+                    settingsChanged = true;
                 }
                 ShowSettingTooltip("Show a legend panel on the right side of the graph.", "On");
 
@@ -328,7 +384,7 @@ public class InventoryValueTool : ToolComponent
                     if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                     {
                         settings.LegendPosition = (LegendPosition)legendPosition;
-                        _configService.Save();
+                        settingsChanged = true;
                     }
                     ShowSettingTooltip("Where to display the legend: outside the graph or inside at a corner.", "Outside (right)");
 
@@ -338,7 +394,7 @@ public class InventoryValueTool : ToolComponent
                         if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
                         {
                             settings.LegendWidth = legendWidth;
-                            _configService.Save();
+                            settingsChanged = true;
                         }
                         ShowSettingTooltip("Width of the scrollable legend panel.", "140");
                     }
@@ -348,7 +404,7 @@ public class InventoryValueTool : ToolComponent
                         if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
                         {
                             settings.LegendHeightPercent = legendHeight;
-                            _configService.Save();
+                            settingsChanged = true;
                         }
                         ShowSettingTooltip("Maximum height of the inside legend as a percentage of the graph height.", "25%");
                     }
@@ -363,7 +419,7 @@ public class InventoryValueTool : ToolComponent
             if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
                 settings.GraphType = graphType;
-                _configService.Save();
+                settingsChanged = true;
             }
             ShowSettingTooltip("Visual style for the graph.", "Area");
 
@@ -377,6 +433,12 @@ public class InventoryValueTool : ToolComponent
             {
                 settings.TimeRangeValue = timeRangeValue;
                 settings.TimeRangeUnit = timeRangeUnit;
+                settingsChanged = true;
+            }
+            
+            if (settingsChanged)
+            {
+                _cacheIsDirty = true;
                 _configService.Save();
             }
 
