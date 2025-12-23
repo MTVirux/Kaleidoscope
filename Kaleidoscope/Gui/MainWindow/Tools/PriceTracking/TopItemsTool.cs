@@ -133,7 +133,7 @@ public class TopItemsTool : ToolComponent
 
             for (int i = 0; i < chars.Count; i++)
             {
-                _characterNames[i + 1] = chars[i].name;
+                _characterNames[i + 1] = chars[i].name ?? $"Character {chars[i].characterId}";
                 _characterIds[i + 1] = chars[i].characterId;
             }
 
