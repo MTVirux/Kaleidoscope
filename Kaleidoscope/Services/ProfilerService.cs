@@ -14,17 +14,207 @@ public sealed class ProfilerService : IService, IDisposable
     private readonly object _lock = new();
 
     /// <summary>
-    /// Statistics for a single profiled target.
+    /// Ring buffer size for recent samples (used for rolling stats and percentiles).
+    /// </summary>
+    private const int RingBufferSize = 600; // ~10 seconds at 60fps
+
+    /// <summary>
+    /// Statistics for a single profiled target with detailed metrics.
     /// </summary>
     public class ProfileStats
     {
         public string Name { get; set; } = string.Empty;
+        
+        // Basic stats
         public double LastDrawTimeMs { get; set; }
         public double MinDrawTimeMs { get; set; } = double.MaxValue;
         public double MaxDrawTimeMs { get; set; } = double.MinValue;
         public double TotalDrawTimeMs { get; set; }
         public long SampleCount { get; set; }
         public double AverageDrawTimeMs => SampleCount > 0 ? TotalDrawTimeMs / SampleCount : 0;
+
+        // Ring buffer for recent samples
+        private readonly double[] _recentSamples = new double[RingBufferSize];
+        private readonly long[] _recentTimestamps = new long[RingBufferSize]; // Ticks when sample was recorded
+        private int _ringIndex;
+        private int _ringCount;
+
+        // For standard deviation calculation (Welford's online algorithm)
+        private double _m2; // Sum of squared differences from the mean
+
+        // Child scopes for hierarchical profiling
+        private Dictionary<string, ProfileStats>? _childScopes;
+        
+        /// <summary>
+        /// Gets child scopes for hierarchical profiling.
+        /// </summary>
+        public IReadOnlyDictionary<string, ProfileStats> ChildScopes => 
+            _childScopes ?? (IReadOnlyDictionary<string, ProfileStats>)new Dictionary<string, ProfileStats>();
+
+        /// <summary>
+        /// Gets or creates a child scope for hierarchical profiling.
+        /// </summary>
+        public ProfileStats GetOrCreateChildScope(string name)
+        {
+            _childScopes ??= new Dictionary<string, ProfileStats>();
+            if (!_childScopes.TryGetValue(name, out var child))
+            {
+                child = new ProfileStats { Name = name };
+                _childScopes[name] = child;
+            }
+            return child;
+        }
+
+        /// <summary>
+        /// Standard deviation of all samples (population).
+        /// </summary>
+        public double StandardDeviationMs => SampleCount > 1 ? Math.Sqrt(_m2 / SampleCount) : 0;
+
+        /// <summary>
+        /// Effective FPS based on average draw time (theoretical max if only this component ran).
+        /// </summary>
+        public double EffectiveFps => AverageDrawTimeMs > 0 ? 1000.0 / AverageDrawTimeMs : 0;
+
+        /// <summary>
+        /// Gets the number of samples in the ring buffer.
+        /// </summary>
+        public int RecentSampleCount => _ringCount;
+
+        /// <summary>
+        /// Gets the 50th percentile (median) from recent samples.
+        /// </summary>
+        public double P50Ms => GetPercentile(50);
+
+        /// <summary>
+        /// Gets the 90th percentile from recent samples.
+        /// </summary>
+        public double P90Ms => GetPercentile(90);
+
+        /// <summary>
+        /// Gets the 95th percentile from recent samples.
+        /// </summary>
+        public double P95Ms => GetPercentile(95);
+
+        /// <summary>
+        /// Gets the 99th percentile from recent samples.
+        /// </summary>
+        public double P99Ms => GetPercentile(99);
+
+        /// <summary>
+        /// Gets the average of samples from the last N seconds.
+        /// </summary>
+        public double GetRollingAverageMs(double seconds)
+        {
+            if (_ringCount == 0) return 0;
+            
+            var cutoffTicks = DateTime.UtcNow.Ticks - (long)(seconds * TimeSpan.TicksPerSecond);
+            var sum = 0.0;
+            var count = 0;
+            
+            for (var i = 0; i < _ringCount; i++)
+            {
+                var idx = (_ringIndex - 1 - i + RingBufferSize) % RingBufferSize;
+                if (_recentTimestamps[idx] >= cutoffTicks)
+                {
+                    sum += _recentSamples[idx];
+                    count++;
+                }
+                else
+                {
+                    break; // Samples are in order, so we can stop
+                }
+            }
+            
+            return count > 0 ? sum / count : 0;
+        }
+
+        /// <summary>
+        /// Gets the 1-second rolling average.
+        /// </summary>
+        public double Rolling1SecMs => GetRollingAverageMs(1.0);
+
+        /// <summary>
+        /// Gets the 5-second rolling average.
+        /// </summary>
+        public double Rolling5SecMs => GetRollingAverageMs(5.0);
+
+        /// <summary>
+        /// Gets samples per second (actual render rate for this component).
+        /// </summary>
+        public double SamplesPerSecond
+        {
+            get
+            {
+                if (_ringCount < 2) return 0;
+                
+                var cutoffTicks = DateTime.UtcNow.Ticks - TimeSpan.TicksPerSecond;
+                var count = 0;
+                
+                for (var i = 0; i < _ringCount; i++)
+                {
+                    var idx = (_ringIndex - 1 - i + RingBufferSize) % RingBufferSize;
+                    if (_recentTimestamps[idx] >= cutoffTicks)
+                        count++;
+                    else
+                        break;
+                }
+                
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// Gets the jitter (difference between max and min in recent samples).
+        /// </summary>
+        public double JitterMs
+        {
+            get
+            {
+                if (_ringCount < 2) return 0;
+                var min = double.MaxValue;
+                var max = double.MinValue;
+                for (var i = 0; i < _ringCount; i++)
+                {
+                    var sample = _recentSamples[i];
+                    if (sample < min) min = sample;
+                    if (sample > max) max = sample;
+                }
+                return max - min;
+            }
+        }
+
+        /// <summary>
+        /// Gets recent samples as a copy for histogram display.
+        /// </summary>
+        public double[] GetRecentSamples()
+        {
+            var result = new double[_ringCount];
+            for (var i = 0; i < _ringCount; i++)
+            {
+                var idx = (_ringIndex - _ringCount + i + RingBufferSize) % RingBufferSize;
+                result[i] = _recentSamples[idx];
+            }
+            return result;
+        }
+
+        private double GetPercentile(int percentile)
+        {
+            if (_ringCount == 0) return 0;
+            
+            // Copy and sort recent samples
+            var samples = new double[_ringCount];
+            for (var i = 0; i < _ringCount; i++)
+            {
+                samples[i] = _recentSamples[i];
+            }
+            Array.Sort(samples);
+            
+            // Calculate percentile index
+            var index = (int)Math.Ceiling(percentile / 100.0 * _ringCount) - 1;
+            index = Math.Max(0, Math.Min(index, _ringCount - 1));
+            
+            return samples[index];
+        }
 
         public void Reset()
         {
@@ -33,15 +223,37 @@ public sealed class ProfilerService : IService, IDisposable
             MaxDrawTimeMs = double.MinValue;
             TotalDrawTimeMs = 0;
             SampleCount = 0;
+            _m2 = 0;
+            _ringIndex = 0;
+            _ringCount = 0;
+            Array.Clear(_recentSamples, 0, _recentSamples.Length);
+            Array.Clear(_recentTimestamps, 0, _recentTimestamps.Length);
+            
+            if (_childScopes != null)
+            {
+                foreach (var child in _childScopes.Values)
+                    child.Reset();
+            }
         }
 
         public void RecordSample(double drawTimeMs)
         {
+            // Update basic stats
             LastDrawTimeMs = drawTimeMs;
             if (drawTimeMs < MinDrawTimeMs) MinDrawTimeMs = drawTimeMs;
             if (drawTimeMs > MaxDrawTimeMs) MaxDrawTimeMs = drawTimeMs;
             TotalDrawTimeMs += drawTimeMs;
             SampleCount++;
+
+            // Update Welford's algorithm for standard deviation
+            var delta = drawTimeMs - AverageDrawTimeMs;
+            _m2 += delta * (drawTimeMs - AverageDrawTimeMs);
+
+            // Add to ring buffer
+            _recentSamples[_ringIndex] = drawTimeMs;
+            _recentTimestamps[_ringIndex] = DateTime.UtcNow.Ticks;
+            _ringIndex = (_ringIndex + 1) % RingBufferSize;
+            if (_ringCount < RingBufferSize) _ringCount++;
         }
     }
 
@@ -194,6 +406,35 @@ public sealed class ProfilerService : IService, IDisposable
     /// </summary>
     public ProfileScope BeginToolScope(string toolId, string toolName) => new(this, ProfileTargetType.Tool, toolId, toolName);
 
+    /// <summary>
+    /// Creates a nested scoped timer for profiling a child operation within a tool.
+    /// </summary>
+    public ChildProfileScope BeginChildScope(string toolId, string childScopeName)
+    {
+        if (!IsEnabled) return new ChildProfileScope(null, null);
+        
+        lock (_lock)
+        {
+            if (_toolStats.TryGetValue(toolId, out var parentStats))
+            {
+                var childStats = parentStats.GetOrCreateChildScope(childScopeName);
+                return new ChildProfileScope(childStats, Stopwatch.StartNew());
+            }
+        }
+        return new ChildProfileScope(null, null);
+    }
+
+    /// <summary>
+    /// Gets current GC collection counts for monitoring allocations.
+    /// </summary>
+    public (int gen0, int gen1, int gen2) GetGcCollectionCounts() =>
+        (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+
+    /// <summary>
+    /// Gets the total managed memory in bytes.
+    /// </summary>
+    public long GetTotalManagedMemory() => GC.GetTotalMemory(forceFullCollection: false);
+
     public void Dispose()
     {
         _log.Debug("ProfilerService disposed");
@@ -243,6 +484,28 @@ public sealed class ProfilerService : IService, IDisposable
                     _service.RecordToolDraw(_toolId, _toolName, elapsedMs);
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Disposable scope for timing child operations within a tool.
+    /// </summary>
+    public readonly struct ChildProfileScope : IDisposable
+    {
+        private readonly ProfileStats? _stats;
+        private readonly Stopwatch? _stopwatch;
+
+        public ChildProfileScope(ProfileStats? stats, Stopwatch? stopwatch)
+        {
+            _stats = stats;
+            _stopwatch = stopwatch;
+        }
+
+        public void Dispose()
+        {
+            if (_stopwatch == null || _stats == null) return;
+            _stopwatch.Stop();
+            _stats.RecordSample(_stopwatch.Elapsed.TotalMilliseconds);
         }
     }
 }
