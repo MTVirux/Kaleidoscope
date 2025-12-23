@@ -225,6 +225,7 @@ public class ImplotGraphWidget
     
     /// <summary>
     /// Formatter delegate for X-axis tick labels with time values.
+    /// Shows only time (HH:mm) if all visible labels are on the same day, otherwise date+time (M/d HH:mm).
     /// </summary>
     private static readonly unsafe ImPlotFormatter XAxisTimeFormatter = (double value, byte* buff, int size, void* userData) =>
     {
@@ -232,7 +233,16 @@ public class ImplotGraphWidget
         var startTicks = (long)userData;
         var startTime = new DateTime(startTicks);
         var time = startTime.AddSeconds(value).ToLocalTime();
-        var formatted = time.ToString("M/d HH:mm");
+        
+        // Check if the visible X-axis range spans a single day
+        var plotLimits = ImPlot.GetPlotLimits();
+        var visibleMinTime = startTime.AddSeconds(plotLimits.X.Min).ToLocalTime();
+        var visibleMaxTime = startTime.AddSeconds(plotLimits.X.Max).ToLocalTime();
+        var isSameDay = visibleMinTime.Date == visibleMaxTime.Date;
+        
+        // If all visible labels are on the same day, show only time; otherwise show date+time
+        var format = isSameDay ? "HH:mm" : "M/d HH:mm";
+        var formatted = time.ToString(format);
         var len = Math.Min(formatted.Length, size - 1);
         for (var i = 0; i < len; i++)
             buff[i] = (byte)formatted[i];
