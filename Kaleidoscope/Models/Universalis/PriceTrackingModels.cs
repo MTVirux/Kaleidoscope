@@ -1,5 +1,6 @@
 using Kaleidoscope;
 using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Models;
 
 namespace Kaleidoscope.Models.Universalis;
 
@@ -122,15 +123,12 @@ public class LivePriceFeedSettings
 
 /// <summary>
 /// Settings for the Inventory Value tool.
+/// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
-public class InventoryValueSettings
+public class InventoryValueSettings : IGraphWidgetSettings
 {
-    /// <summary>Time range value for the graph.</summary>
-    public int TimeRangeValue { get; set; } = 7;
-
-    /// <summary>Time range unit for the graph.</summary>
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
-
+    // === Tool-specific settings ===
+    
     /// <summary>Whether to show multiple lines per character.</summary>
     public bool ShowMultipleLines { get; set; } = true;
 
@@ -139,6 +137,14 @@ public class InventoryValueSettings
 
     /// <summary>Whether to include gil in the value calculation.</summary>
     public bool IncludeGil { get; set; } = true;
+    
+    // === IGraphWidgetSettings implementation ===
+    
+    /// <summary>Time range value for the graph.</summary>
+    public int TimeRangeValue { get; set; } = 7;
+
+    /// <summary>Time range unit for the graph.</summary>
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
 
     /// <summary>Whether to show the legend.</summary>
     public bool ShowLegend { get; set; } = true;
@@ -154,6 +160,27 @@ public class InventoryValueSettings
 
     /// <summary>Graph type for visualization.</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;
+    
+    /// <summary>Whether to show X-axis timestamps.</summary>
+    public bool ShowXAxisTimestamps { get; set; } = true;
+    
+    /// <summary>Whether to show crosshair on hover.</summary>
+    public bool ShowCrosshair { get; set; } = true;
+    
+    /// <summary>Whether to show horizontal grid lines.</summary>
+    public bool ShowGridLines { get; set; } = true;
+    
+    /// <summary>Whether to show the current value line.</summary>
+    public bool ShowCurrentPriceLine { get; set; } = true;
+    
+    /// <summary>Whether to show a value label at the latest point.</summary>
+    public bool ShowValueLabel { get; set; } = true;
+    
+    /// <summary>X offset for the value label.</summary>
+    public float ValueLabelOffsetX { get; set; } = 0f;
+    
+    /// <summary>Y offset for the value label.</summary>
+    public float ValueLabelOffsetY { get; set; } = 0f;
     
     /// <summary>Whether auto-scroll (follow mode) is enabled.</summary>
     public bool AutoScrollEnabled { get; set; } = false;
