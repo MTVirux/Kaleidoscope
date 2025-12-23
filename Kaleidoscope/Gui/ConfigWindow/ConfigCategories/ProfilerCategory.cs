@@ -85,6 +85,31 @@ public class ProfilerCategory
         }
 
         ImGui.Spacing();
+        
+        // Slow operation logging settings
+        var logSlow = _profilerService.LogSlowOperations;
+        if (ImGui.Checkbox("Log Slow Operations", ref logSlow))
+        {
+            _profilerService.LogSlowOperations = logSlow;
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("When enabled, operations that exceed the threshold will be logged to the Dalamud log.");
+        }
+        
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(80);
+        var threshold = (float)_profilerService.SlowOperationThresholdMs;
+        if (ImGui.InputFloat("Threshold (ms)", ref threshold, 0.5f, 2f, "%.1f"))
+        {
+            _profilerService.SlowOperationThresholdMs = Math.Max(0.1, threshold);
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Operations taking longer than this will be logged. Lower values = more verbose logging.");
+        }
+
+        ImGui.Spacing();;
 
         // Stats view selector
         ImGui.SetNextItemWidth(150);

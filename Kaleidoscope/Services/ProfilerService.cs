@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
 
@@ -12,6 +13,28 @@ public sealed class ProfilerService : IService, IDisposable
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly object _lock = new();
+    
+    /// <summary>
+    /// Thread-local context for the current tool being profiled.
+    /// Allows nested widgets to add child scopes without explicit service passing.
+    /// </summary>
+    [ThreadStatic]
+    private static ProfilerContext? _currentContext;
+    
+    /// <summary>
+    /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
+    /// </summary>
+    public double SlowOperationThresholdMs { get; set; } = 5.0;
+    
+    /// <summary>
+    /// Whether to log slow operations to the Dalamud log.
+    /// </summary>
+    public bool LogSlowOperations { get; set; } = true;
+    
+    /// <summary>
+    /// Gets the current profiler context for this thread, if any.
+    /// </summary>
+    public static ProfilerContext? CurrentContext => _currentContext;
 
     /// <summary>
     /// Ring buffer size for recent samples (used for rolling stats and percentiles).
@@ -411,17 +434,32 @@ public sealed class ProfilerService : IService, IDisposable
     /// </summary>
     public ChildProfileScope BeginChildScope(string toolId, string childScopeName)
     {
-        if (!IsEnabled) return new ChildProfileScope(null, null);
+        if (!IsEnabled) return new ChildProfileScope(null, null, null, null, null);
         
+        string? toolName = null;
         lock (_lock)
         {
             if (_toolStats.TryGetValue(toolId, out var parentStats))
             {
+                toolName = parentStats.Name;
                 var childStats = parentStats.GetOrCreateChildScope(childScopeName);
-                return new ChildProfileScope(childStats, Stopwatch.StartNew());
+                return new ChildProfileScope(childStats, Stopwatch.StartNew(), this, childScopeName, toolName);
             }
         }
-        return new ChildProfileScope(null, null);
+        return new ChildProfileScope(null, null, null, null, null);
+    }
+    
+    /// <summary>
+    /// Creates a child scope using the current thread-local context.
+    /// This is the preferred way to add child profiling from nested widgets.
+    /// </summary>
+    /// <param name="scopeName">Name of the operation being profiled.</param>
+    /// <returns>A disposable scope that records the elapsed time.</returns>
+    public static ChildProfileScope BeginStaticChildScope(string scopeName)
+    {
+        var context = _currentContext;
+        if (context == null) return new ChildProfileScope(null, null, null, null, null);
+        return context.BeginScope(scopeName);
     }
 
     /// <summary>
@@ -448,7 +486,31 @@ public sealed class ProfilerService : IService, IDisposable
     }
 
     /// <summary>
+    /// Context for the current profiling scope, allowing nested widgets to add child scopes.
+    /// </summary>
+    public sealed class ProfilerContext
+    {
+        public ProfilerService Service { get; }
+        public string ToolId { get; }
+        public string ToolName { get; }
+        
+        internal ProfilerContext(ProfilerService service, string toolId, string toolName)
+        {
+            Service = service;
+            ToolId = toolId;
+            ToolName = toolName;
+        }
+        
+        /// <summary>
+        /// Begins a child scope for timing a sub-operation within the current tool.
+        /// </summary>
+        /// <param name="scopeName">Name of the sub-operation being timed.</param>
+        public ChildProfileScope BeginScope(string scopeName) => Service.BeginChildScope(ToolId, scopeName);
+    }
+
+    /// <summary>
     /// Disposable scope for timing draw operations.
+    /// Sets up thread-local context for nested child scope access.
     /// </summary>
     public readonly struct ProfileScope : IDisposable
     {
@@ -457,6 +519,7 @@ public sealed class ProfilerService : IService, IDisposable
         private readonly string _toolId;
         private readonly string _toolName;
         private readonly Stopwatch _stopwatch;
+        private readonly ProfilerContext? _previousContext;
 
         public ProfileScope(ProfilerService service, ProfileTargetType targetType, string toolId, string toolName)
         {
@@ -465,10 +528,20 @@ public sealed class ProfilerService : IService, IDisposable
             _toolId = toolId;
             _toolName = toolName;
             _stopwatch = Stopwatch.StartNew();
+            
+            // Set up thread-local context for Tool scopes
+            _previousContext = _currentContext;
+            if (targetType == ProfileTargetType.Tool && service.IsEnabled)
+            {
+                _currentContext = new ProfilerContext(service, toolId, toolName);
+            }
         }
 
         public void Dispose()
         {
+            // Restore previous context
+            _currentContext = _previousContext;
+            
             _stopwatch.Stop();
             var elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;
 
@@ -482,6 +555,11 @@ public sealed class ProfilerService : IService, IDisposable
                     break;
                 case ProfileTargetType.Tool:
                     _service.RecordToolDraw(_toolId, _toolName, elapsedMs);
+                    // Log slow tool draws
+                    if (_service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
+                    {
+                        _service._log.Debug($"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
+                    }
                     break;
             }
         }
@@ -494,18 +572,31 @@ public sealed class ProfilerService : IService, IDisposable
     {
         private readonly ProfileStats? _stats;
         private readonly Stopwatch? _stopwatch;
+        private readonly ProfilerService? _service;
+        private readonly string? _scopeName;
+        private readonly string? _toolName;
 
-        public ChildProfileScope(ProfileStats? stats, Stopwatch? stopwatch)
+        public ChildProfileScope(ProfileStats? stats, Stopwatch? stopwatch, ProfilerService? service = null, string? scopeName = null, string? toolName = null)
         {
             _stats = stats;
             _stopwatch = stopwatch;
+            _service = service;
+            _scopeName = scopeName;
+            _toolName = toolName;
         }
 
         public void Dispose()
         {
             if (_stopwatch == null || _stats == null) return;
             _stopwatch.Stop();
-            _stats.RecordSample(_stopwatch.Elapsed.TotalMilliseconds);
+            var elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;
+            _stats.RecordSample(elapsedMs);
+            
+            // Log slow child operations
+            if (_service != null && _service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
+            {
+                _service._log.Debug($"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
+            }
         }
     }
 }
