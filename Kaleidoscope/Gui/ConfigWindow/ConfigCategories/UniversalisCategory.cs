@@ -24,6 +24,10 @@ public class UniversalisCategory
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
+    // World selection widget for excluded worlds in value calculations
+    private WorldSelectionWidget? _excludedWorldsWidget;
+    private bool _excludedWorldsWidgetInitialized = false;
+
     // Common region names for the dropdown (for override settings)
     private static readonly string[] RegionNames = 
     {
@@ -312,6 +316,18 @@ public class UniversalisCategory
         }
         ImGui.SameLine();
         HelpMarker("Automatically fetch prices from API for items in your inventory when the plugin starts.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        // Excluded Worlds sub-section
+        ImGui.TextUnformatted("Excluded Worlds (Value Calculation)");
+        ImGui.Spacing();
+        ImGui.TextWrapped("Select worlds to exclude from inventory value calculations. Sales data from these worlds will be ignored.");
+        ImGui.Spacing();
+
+        DrawExcludedWorldsWidget(settings);
     }
 
     private void DrawWorldSelectionWidget(PriceTrackingSettings settings)
@@ -397,6 +413,59 @@ public class UniversalisCategory
         ImGui.SameLine();
         HelpMarker("Select which worlds, data centers, or regions to track prices for.\n" +
             "Use the mode selector inside the dropdown to switch between selection types.");
+    }
+
+    private void DrawExcludedWorldsWidget(PriceTrackingSettings settings)
+    {
+        var worldData = _priceTrackingService?.WorldData;
+
+        if (worldData == null || worldData.DataCenters.Count == 0)
+        {
+            ImGui.TextDisabled("World data not yet loaded...");
+            return;
+        }
+
+        // Create widget if needed
+        if (_excludedWorldsWidget == null)
+        {
+            _excludedWorldsWidget = new WorldSelectionWidget(worldData, "ExcludedWorlds");
+            _excludedWorldsWidget.Width = 300f;
+            _excludedWorldsWidget.Mode = WorldSelectionMode.Worlds; // Exclude by world only
+        }
+
+        // Initialize widget from settings on first draw
+        if (!_excludedWorldsWidgetInitialized)
+        {
+            // Initialize with the excluded world IDs
+            _excludedWorldsWidget.InitializeFrom(
+                new HashSet<string>(),
+                new HashSet<string>(),
+                settings.ExcludedWorldIds);
+
+            _excludedWorldsWidgetInitialized = true;
+        }
+
+        // Draw the widget
+        if (_excludedWorldsWidget.Draw("Exclude Worlds##ExcludedWorldsSelection"))
+        {
+            // Sync widget selections back to settings
+            settings.ExcludedWorldIds.Clear();
+            foreach (var w in _excludedWorldsWidget.SelectedWorldIds)
+                settings.ExcludedWorldIds.Add(w);
+
+            _configService.Save();
+        }
+
+        var excludeCount = _excludedWorldsWidget.SelectedWorldIds.Count;
+        if (excludeCount > 0)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(0.9f, 0.7f, 0.3f, 1f), 
+                $"{excludeCount} world(s) excluded from value calculations");
+        }
+
+        ImGui.SameLine();
+        HelpMarker("Sales data from these worlds will be ignored when calculating inventory values.\n" +
+            "This allows you to exclude worlds with outlier prices from your calculations.");
     }
 
     private void DrawDataManagement()

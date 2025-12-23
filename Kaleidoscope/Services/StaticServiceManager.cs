@@ -43,6 +43,7 @@ public static class StaticServiceManager
             .AddSingleton<InventoryChangeService>()
             .AddSingleton<SamplerService>()
             .AddSingleton<InventoryCacheService>()
+            .AddSingleton<ProfilerService>()
             .AddSingleton<CommandService>();
 
     private static ServiceManager AddUi(this ServiceManager services)

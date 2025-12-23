@@ -42,11 +42,20 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>Gets the cached world data.</summary>
     public UniversalisWorldData? WorldData => _worldData;
 
+    /// <summary>Gets the Universalis service for API calls.</summary>
+    public UniversalisService UniversalisService => _universalisService;
+
     /// <summary>Gets the set of marketable item IDs.</summary>
     public IReadOnlySet<int>? MarketableItems => _marketableItems;
 
     /// <summary>Gets whether the service is initialized.</summary>
     public bool IsInitialized => _worldData != null && _marketableItems != null;
+
+    /// <summary>Gets whether the WebSocket is currently connected for real-time price updates.</summary>
+    public bool IsSocketConnected => _webSocketService.IsConnected;
+
+    /// <summary>Event fired when price data is updated (new price received via WebSocket).</summary>
+    public event Action<int>? OnPriceDataUpdated;
 
     public PriceTrackingService(
         IPluginLog log,
@@ -114,6 +123,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _log.Debug("[PriceTracking] InitializeAsync - starting WebSocket");
                 await _webSocketService.StartAsync();
                 await _webSocketService.SubscribeToAllAsync();
+                
+                // Fetch prices for stale inventory items at startup
+                await FetchStaleInventoryPricesAsync();
             }
 
             _log.Debug("[PriceTracking] Initialization complete");
@@ -172,32 +184,74 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             if (!IsWorldInScope(entry.WorldId))
                 return;
 
-            // Update price cache
             var key = (entry.ItemId, entry.WorldId);
-            var price = entry.IsHq 
-                ? (0, entry.PricePerUnit) 
-                : (entry.PricePerUnit, 0);
 
-            if (_priceCache.TryGetValue(key, out var existing))
+            // Check if this is a sale event or a listing event
+            var isSale = entry.EventType == "Sale";
+
+            if (isSale)
             {
-                // Merge with existing - keep lower prices
-                var newNq = price.Item1 > 0 ? 
-                    (existing.minNq > 0 ? Math.Min(existing.minNq, price.Item1) : price.Item1) 
-                    : existing.minNq;
-                var newHq = price.Item2 > 0 ? 
-                    (existing.minHq > 0 ? Math.Min(existing.minHq, price.Item2) : price.Item2) 
-                    : existing.minHq;
-                _priceCache[key] = (newNq, newHq, DateTime.UtcNow);
+                // Sale event - save individual sale record for per-world filtering
+                DbService.SaveSaleRecord(
+                    entry.ItemId, 
+                    entry.WorldId, 
+                    entry.PricePerUnit, 
+                    entry.Quantity, 
+                    entry.IsHq, 
+                    entry.Total,
+                    entry.BuyerName);
+
+                // Also update the aggregated last sale prices for backward compatibility
+                var lastSaleNq = entry.IsHq ? 0 : entry.PricePerUnit;
+                var lastSaleHq = entry.IsHq ? entry.PricePerUnit : 0;
+
+                // Get existing cached prices to preserve min prices
+                var existingNq = 0;
+                var existingHq = 0;
+                if (_priceCache.TryGetValue(key, out var existing))
+                {
+                    existingNq = existing.minNq;
+                    existingHq = existing.minHq;
+                }
+
+                // Save to database with last sale prices
+                DbService.SaveItemPrice(entry.ItemId, entry.WorldId, existingNq, existingHq, 
+                    lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
+
+                // Notify listeners that price data has been updated
+                OnPriceDataUpdated?.Invoke(entry.ItemId);
             }
             else
             {
-                _priceCache[key] = (price.Item1, price.Item2, DateTime.UtcNow);
-            }
+                // Listing event - update min price cache
+                var price = entry.IsHq 
+                    ? (0, entry.PricePerUnit) 
+                    : (entry.PricePerUnit, 0);
 
-            // Save to database asynchronously
-            if (_priceCache.TryGetValue(key, out var cached))
-            {
-                DbService.SaveItemPrice(entry.ItemId, entry.WorldId, cached.minNq, cached.minHq);
+                if (_priceCache.TryGetValue(key, out var existing))
+                {
+                    // Merge with existing - keep lower prices
+                    var newNq = price.Item1 > 0 ? 
+                        (existing.minNq > 0 ? Math.Min(existing.minNq, price.Item1) : price.Item1) 
+                        : existing.minNq;
+                    var newHq = price.Item2 > 0 ? 
+                        (existing.minHq > 0 ? Math.Min(existing.minHq, price.Item2) : price.Item2) 
+                        : existing.minHq;
+                    _priceCache[key] = (newNq, newHq, DateTime.UtcNow);
+                }
+                else
+                {
+                    _priceCache[key] = (price.Item1, price.Item2, DateTime.UtcNow);
+                }
+
+                // Save to database
+                if (_priceCache.TryGetValue(key, out var cached))
+                {
+                    DbService.SaveItemPrice(entry.ItemId, entry.WorldId, cached.minNq, cached.minHq);
+
+                    // Notify listeners that price data has been updated
+                    OnPriceDataUpdated?.Invoke(entry.ItemId);
+                }
             }
         }
         catch (Exception ex)
@@ -370,6 +424,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             var result = data.Results[0];
             var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
             var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
+            var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
+            var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
 
             // Cache in memory
             if (worldId.HasValue)
@@ -384,7 +440,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 var wid = _worldData.GetWorldId(scope);
                 if (wid.HasValue)
                 {
-                    DbService.SaveItemPrice(itemId, wid.Value, nqPrice, hqPrice);
+                    DbService.SaveItemPrice(itemId, wid.Value, nqPrice, hqPrice, 
+                        lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
                 }
             }
 
@@ -434,17 +491,22 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             }
         }
 
-        // Get prices for all items
+        // Get prices for all items using new filtered sale records
         if (itemQuantities.Count > 0)
         {
-            var prices = DbService.GetItemPricesBatch(itemQuantities.Keys);
+            // Get excluded worlds from settings
+            var excludedWorldIds = Settings.ExcludedWorldIds.Count > 0 
+                ? Settings.ExcludedWorldIds 
+                : null;
+
+            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, excludedWorldIds);
 
             foreach (var (itemId, quantity) in itemQuantities)
             {
                 if (prices.TryGetValue(itemId, out var price))
                 {
-                    // Use NQ price first, then HQ if no NQ
-                    var unitPrice = price.MinPriceNq > 0 ? price.MinPriceNq : price.MinPriceHq;
+                    // Use last sale NQ price first, then HQ if no NQ
+                    var unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
                     itemValue += unitPrice * quantity;
                 }
             }
@@ -554,13 +616,15 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 {
                     var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
                     var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
+                    var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
+                    var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
 
                     if (_worldData != null)
                     {
                         var wid = _worldData.GetWorldId(scope);
                         if (wid.HasValue)
                         {
-                            DbService.SaveItemPrice(result.ItemId, wid.Value, nqPrice, hqPrice);
+                            DbService.SaveItemPrice(result.ItemId, wid.Value, nqPrice, hqPrice, lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
                         }
                     }
                 }
@@ -574,6 +638,92 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             _log.Warning($"[PriceTracking] Error fetching inventory prices: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fetches prices for inventory items that have stale or missing sale data.
+    /// Only fetches items where the last update is more than 5 minutes old.
+    /// </summary>
+    private async Task FetchStaleInventoryPricesAsync()
+    {
+        try
+        {
+            // Get inventory item IDs and scope on main thread via framework
+            List<int>? allItemIds = null;
+            string? scope = null;
+            
+            await _framework.RunOnFrameworkThread(() =>
+            {
+                var allCaches = DbService.GetAllInventoryCachesAllCharacters();
+                allItemIds = allCaches
+                    .SelectMany(c => c.Items.Select(i => (int)i.ItemId))
+                    .Distinct()
+                    .Where(id => _marketableItems?.Contains(id) ?? true)
+                    .ToList();
+                
+                scope = _universalisService.GetConfiguredScope();
+            });
+
+            if (allItemIds == null || allItemIds.Count == 0)
+            {
+                _log.Debug("[PriceTracking] No inventory items to check for stale prices");
+                return;
+            }
+
+            // Get items with stale or missing sale data (older than 5 minutes)
+            var staleThreshold = TimeSpan.FromMinutes(5);
+            var staleItemIds = DbService.GetStaleItemIds(allItemIds, staleThreshold);
+
+            if (staleItemIds.Count == 0)
+            {
+                _log.Debug("[PriceTracking] All inventory items have fresh price data");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(scope))
+            {
+                _log.Debug("[PriceTracking] No scope configured, skipping stale price fetch");
+                return;
+            }
+
+            _log.Debug($"[PriceTracking] Fetching prices for {staleItemIds.Count} stale inventory items");
+
+            // Fetch in batches of 100
+            var staleItemsList = staleItemIds.ToList();
+            foreach (var batch in staleItemsList.Chunk(100))
+            {
+                if (_disposed) break;
+
+                var data = await _universalisService.GetAggregatedDataAsync(scope, batch.Select(i => (uint)i));
+                if (data?.Results == null) continue;
+
+                foreach (var result in data.Results)
+                {
+                    var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
+                    var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
+                    var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
+                    var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
+
+                    if (_worldData != null)
+                    {
+                        var wid = _worldData.GetWorldId(scope);
+                        if (wid.HasValue)
+                        {
+                            DbService.SaveItemPrice(result.ItemId, wid.Value, nqPrice, hqPrice, lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
+                        }
+                    }
+                }
+
+                // Rate limiting - wait between batches
+                await Task.Delay(100);
+            }
+
+            _log.Debug($"[PriceTracking] Finished fetching stale inventory prices ({staleItemIds.Count} items)");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"[PriceTracking] Error fetching stale inventory prices: {ex.Message}");
         }
     }
 
@@ -620,15 +770,18 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }
             }
 
-            // Get prices
-            var prices = DbService.GetItemPricesBatch(itemQuantities.Keys);
+            // Get prices using filtered sale records
+            var excludedWorldIds = Settings.ExcludedWorldIds.Count > 0 
+                ? Settings.ExcludedWorldIds 
+                : null;
+            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, excludedWorldIds);
 
-            // Calculate values
+            // Calculate values using last sale prices
             foreach (var (itemId, quantity) in itemQuantities)
             {
                 if (prices.TryGetValue(itemId, out var price))
                 {
-                    var unitPrice = price.MinPriceNq > 0 ? price.MinPriceNq : price.MinPriceHq;
+                    var unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
                     var value = unitPrice * quantity;
                     result.Add((itemId, quantity, value));
                 }

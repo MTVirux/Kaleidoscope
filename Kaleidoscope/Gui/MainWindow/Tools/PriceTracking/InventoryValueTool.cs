@@ -13,6 +13,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// </summary>
 public class InventoryValueTool : ToolComponent
 {
+    private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
+
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
@@ -158,7 +160,8 @@ public class InventoryValueTool : ToolComponent
             showCrosshair: true,
             showGridLines: true,
             showCurrentPriceLine: true,
-            legendPosition: LegendPosition.Outside);
+            legendPosition: settings.LegendPosition,
+            legendHeightPercent: settings.LegendHeightPercent);
 
         if (_selectedCharacterId == 0 && settings.ShowMultipleLines)
         {
@@ -306,11 +309,33 @@ public class InventoryValueTool : ToolComponent
 
                 if (showLegend)
                 {
-                    var legendWidth = settings.LegendWidth;
-                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
+                    var legendPosition = (int)settings.LegendPosition;
+                    if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                     {
-                        settings.LegendWidth = legendWidth;
+                        settings.LegendPosition = (LegendPosition)legendPosition;
                         _configService.Save();
+                    }
+                    ShowSettingTooltip("Where to display the legend: outside the graph or inside at a corner.", "Outside (right)");
+
+                    if (settings.LegendPosition == LegendPosition.Outside)
+                    {
+                        var legendWidth = settings.LegendWidth;
+                        if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
+                        {
+                            settings.LegendWidth = legendWidth;
+                            _configService.Save();
+                        }
+                        ShowSettingTooltip("Width of the scrollable legend panel.", "140");
+                    }
+                    else
+                    {
+                        var legendHeight = settings.LegendHeightPercent;
+                        if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
+                        {
+                            settings.LegendHeightPercent = legendHeight;
+                            _configService.Save();
+                        }
+                        ShowSettingTooltip("Maximum height of the inside legend as a percentage of the graph height.", "25%");
                     }
                 }
             }

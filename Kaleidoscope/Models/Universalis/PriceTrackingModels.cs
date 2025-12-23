@@ -1,4 +1,5 @@
 using Kaleidoscope;
+using Kaleidoscope.Gui.Widgets;
 
 namespace Kaleidoscope.Models.Universalis;
 
@@ -56,6 +57,9 @@ public class PriceTrackingSettings
 
     /// <summary>Selected world IDs when using ByWorld scope mode.</summary>
     public HashSet<int> SelectedWorldIds { get; set; } = new();
+
+    /// <summary>World IDs to exclude from price/value calculations.</summary>
+    public HashSet<int> ExcludedWorldIds { get; set; } = new();
 
     /// <summary>Item IDs to exclude from tracking.</summary>
     public HashSet<int> ExcludedItemIds { get; set; } = new();
@@ -131,6 +135,12 @@ public class InventoryValueSettings
 
     /// <summary>Legend width in pixels.</summary>
     public float LegendWidth { get; set; } = 140f;
+
+    /// <summary>Legend position (outside or inside corners).</summary>
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+
+    /// <summary>Maximum height of inside legend as percentage of graph height.</summary>
+    public float LegendHeightPercent { get; set; } = 25f;
 
     /// <summary>Graph type for visualization.</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;

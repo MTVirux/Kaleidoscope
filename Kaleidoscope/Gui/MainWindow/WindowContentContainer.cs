@@ -653,7 +653,9 @@ public class WindowContentContainer
             }
         }
 
-        public void Draw(bool editMode)
+        public void Draw(bool editMode) => Draw(editMode, null);
+
+        public void Draw(bool editMode, ProfilerService? profilerService)
         {
             var dl = ImGui.GetWindowDrawList();
 
@@ -1146,7 +1148,20 @@ public class WindowContentContainer
                     ImGui.TextUnformatted(t.DisplayTitle);
                     ImGui.Separator();
                 }
-                t.DrawContent();
+                
+                // Draw tool content with optional profiling
+                if (profilerService != null)
+                {
+                    using (profilerService.BeginToolScope(t.Id, t.DisplayTitle))
+                    {
+                        t.DrawContent();
+                    }
+                }
+                else
+                {
+                    t.DrawContent();
+                }
+                
                 // Capture focus state before ending child - must be called inside BeginChild/EndChild block
                 var isChildFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows);
                 ImGui.EndChild();

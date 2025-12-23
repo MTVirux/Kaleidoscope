@@ -23,6 +23,7 @@ public sealed class ConfigWindow : Window
     private readonly TrackedDataRegistry _registry;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly UniversalisWebSocketService _webSocketService;
+    private readonly ProfilerService _profilerService;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -34,6 +35,7 @@ public sealed class ConfigWindow : Window
     private LayoutsCategory? _layoutsCategory;
     private WindowsCategory? _windowsCategory;
     private UniversalisCategory? _universalisCategory;
+    private ProfilerCategory? _profilerCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -46,6 +48,7 @@ public sealed class ConfigWindow : Window
         public const int Layouts = 3;
         public const int Windows = 4;
         public const int Universalis = 5;
+        public const int Profiler = 6; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -64,7 +67,8 @@ public sealed class ConfigWindow : Window
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
-        UniversalisWebSocketService webSocketService)
+        UniversalisWebSocketService webSocketService,
+        ProfilerService profilerService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -74,6 +78,7 @@ public sealed class ConfigWindow : Window
         _registry = registry;
         _priceTrackingService = priceTrackingService;
         _webSocketService = webSocketService;
+        _profilerService = profilerService;
 
         var lockTb = new TitleBarButton
         {
@@ -114,6 +119,7 @@ public sealed class ConfigWindow : Window
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
+        _profilerCategory = new ProfilerCategory(_profilerService, _configService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -141,6 +147,10 @@ public sealed class ConfigWindow : Window
 
     public override void Draw()
     {
+        // Check if CTRL+ALT are held while this window is focused for profiler access
+        var io = ImGui.GetIO();
+        var showProfiler = io.KeyCtrl && io.KeyAlt && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+
         // Sidebar layout: left navigation, right content
         var sidebarWidth = 160f;
         var fullSize = ImGui.GetContentRegionAvail();
@@ -153,6 +163,14 @@ public sealed class ConfigWindow : Window
         if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
         if (ImGui.Selectable("Windows", _selectedTab == 4)) _selectedTab = 4;
         if (ImGui.Selectable("Universalis", _selectedTab == 5)) _selectedTab = 5;
+        
+        // Only show Profiler tab when CTRL+ALT are held
+        if (showProfiler)
+        {
+            ImGui.Separator();
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
+            if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
+        }
         ImGui.EndChild();
 
         ImGui.SameLine();
@@ -178,6 +196,13 @@ public sealed class ConfigWindow : Window
                 break;
             case TabIndex.Universalis:
                 _universalisCategory?.Draw();
+                break;
+            case TabIndex.Profiler:
+                // Only draw profiler if CTRL+ALT are still held, otherwise reset to General
+                if (showProfiler)
+                    _profilerCategory?.Draw();
+                else
+                    _selectedTab = TabIndex.General;
                 break;
         }
         ImGui.EndChild();

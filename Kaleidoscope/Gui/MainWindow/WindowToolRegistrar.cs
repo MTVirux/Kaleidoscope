@@ -23,6 +23,7 @@ public static class WindowToolRegistrar
         public const string LivePriceFeed = "LivePriceFeed";
         public const string InventoryValue = "InventoryValue";
         public const string TopItems = "TopItems";
+        public const string ItemSalesHistory = "ItemSalesHistory";
         
         // Data tracker tool IDs are dynamically generated as "DataTracker_{TrackedDataType}"
         public static string DataTracker(TrackedDataType type) => $"DataTracker_{type}";
@@ -123,8 +124,15 @@ public static class WindowToolRegistrar
                 container.RegisterTool(
                     ToolIds.TopItems,
                     "Top Items",
-                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager),
+                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, inventoryChangeService),
                     "Shows the most valuable items in character inventories",
+                    "Price Tracking");
+
+                container.RegisterTool(
+                    ToolIds.ItemSalesHistory,
+                    "Item Sales History",
+                    pos => CreateItemSalesHistoryTool(pos, priceTrackingService, configService, itemDataService, dataManager),
+                    "View sale history for any marketable item from Universalis",
                     "Price Tracking");
             }
         }
@@ -221,7 +229,8 @@ public static class WindowToolRegistrar
         SamplerService samplerService,
         ConfigurationService configService,
         ItemDataService itemDataService,
-        IDataManager? dataManager)
+        IDataManager? dataManager,
+        InventoryChangeService? inventoryChangeService)
     {
         try
         {
@@ -230,11 +239,39 @@ public static class WindowToolRegistrar
                 LogService.Debug("CreateTopItemsTool: IDataManager is null, tool will have limited functionality");
                 return null;
             }
-            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService, dataManager) { Position = pos };
+            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService, dataManager, inventoryChangeService) { Position = pos };
         }
         catch (Exception ex)
         {
             LogService.Error("Failed to create TopItemsTool", ex);
+            return null;
+        }
+    }
+
+    private static ToolComponent? CreateItemSalesHistoryTool(
+        Vector2 pos,
+        PriceTrackingService priceTrackingService,
+        ConfigurationService configService,
+        ItemDataService itemDataService,
+        IDataManager? dataManager)
+    {
+        try
+        {
+            if (dataManager == null)
+            {
+                LogService.Debug("CreateItemSalesHistoryTool: IDataManager is null");
+                return null;
+            }
+            return new ItemSalesHistoryTool(
+                priceTrackingService.UniversalisService, 
+                priceTrackingService, 
+                configService, 
+                itemDataService, 
+                dataManager) { Position = pos };
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create ItemSalesHistoryTool", ex);
             return null;
         }
     }
@@ -290,7 +327,12 @@ public static class WindowToolRegistrar
 
                 case ToolIds.TopItems:
                     if (priceTrackingService != null && itemDataService != null && dataManager != null)
-                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager);
+                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, inventoryChangeService);
+                    return null;
+
+                case ToolIds.ItemSalesHistory:
+                    if (priceTrackingService != null && itemDataService != null && dataManager != null)
+                        return CreateItemSalesHistoryTool(pos, priceTrackingService, configService, itemDataService, dataManager);
                     return null;
 
                 default:

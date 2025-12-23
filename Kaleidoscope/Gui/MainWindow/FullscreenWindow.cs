@@ -26,6 +26,7 @@ public sealed class FullscreenWindow : Window
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
     private readonly IDataManager _dataManager;
+    private readonly ProfilerService _profilerService;
     private readonly WindowContentContainer _contentContainer;
 
     // Reference to WindowService for window coordination (set after construction due to circular dependency)
@@ -51,7 +52,8 @@ public sealed class FullscreenWindow : Window
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
         ItemDataService itemDataService,
-        IDataManager dataManager) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        IDataManager dataManager,
+        ProfilerService profilerService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
@@ -66,6 +68,7 @@ public sealed class FullscreenWindow : Window
         _itemDataService = itemDataService;
         _dataManager = dataManager;
         _priceTrackingService = priceTrackingService;
+        _profilerService = profilerService;
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the
@@ -307,13 +310,16 @@ public sealed class FullscreenWindow : Window
             {
                 var io = ImGui.GetIO();
                 var fsEdit = io.KeyCtrl && io.KeyShift;
-                _contentContainer?.Draw(fsEdit || _stateService.IsEditMode);
+                using (_profilerService.BeginFullscreenWindowScope())
+                {
+                    _contentContainer?.Draw(fsEdit || _stateService.IsEditMode, _profilerService);
+                }
             }
             catch (Exception ex)
             {
                 // Fall back to StateService value if IO access fails for any reason
                 LogService.Debug($"[FullscreenWindow] Draw IO check failed: {ex.Message}");
-                _contentContainer?.Draw(_stateService.IsEditMode);
+                _contentContainer?.Draw(_stateService.IsEditMode, _profilerService);
             }
         }
         catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }

@@ -64,6 +64,11 @@ public class Configuration : IPluginConfiguration
     public bool PinMainWindow { get; set; } = false;
     public bool PinConfigWindow { get; set; } = false;
 
+    /// <summary>
+    /// Whether profiling is enabled for draw time tracking.
+    /// </summary>
+    public bool ProfilerEnabled { get; set; } = false;
+
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
     public Vector2 ConfigWindowPos { get; set; } = new(100, 100);

@@ -31,6 +31,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
     private readonly IDataManager _dataManager;
+    private readonly ProfilerService _profilerService;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -99,7 +100,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
         ItemDataService itemDataService,
-        IDataManager dataManager) 
+        IDataManager dataManager,
+        ProfilerService profilerService) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -114,6 +116,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
+        _profilerService = profilerService;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -676,7 +679,10 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Main content drawing: render the HUD content container
         try
         {
-            _contentContainer?.Draw(_stateService.IsEditMode);
+            using (_profilerService.BeginMainWindowScope())
+            {
+                _contentContainer?.Draw(_stateService.IsEditMode, _profilerService);
+            }
             
             // Note: Layout changes are now tracked by LayoutEditingService.
             // The dirty flag is consumed internally and marked in the service.
