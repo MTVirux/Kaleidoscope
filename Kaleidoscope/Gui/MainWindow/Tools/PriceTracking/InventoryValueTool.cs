@@ -10,11 +10,10 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// Tool component that tracks character inventory liquid value over time.
 /// Shows a time-series graph of total inventory value (items + gil).
+/// Uses automatic settings binding with ImplotGraphWidget.
 /// </summary>
 public class InventoryValueTool : ToolComponent
 {
-    private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
-
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
@@ -67,6 +66,20 @@ public class InventoryValueTool : ToolComponent
             ShowGridLines = true,
             ShowCurrentPriceLine = true
         });
+        
+        // Bind graph widget to settings for automatic synchronization
+        _graphWidget.BindSettings(
+            Settings,
+            onSettingsChanged: () =>
+            {
+                _configService.Save();
+                _cacheIsDirty = true;
+            },
+            settingsName: "Graph Settings",
+            showLegendSettings: true);
+        
+        // Register graph widget for automatic settings drawing
+        RegisterSettingsProvider(_graphWidget);
         
         _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
         
@@ -212,32 +225,15 @@ public class InventoryValueTool : ToolComponent
 
     private void DrawGraph()
     {
-        var settings = Settings;
-
-        // Update graph widget display options from settings
-        _graphWidget.UpdateDisplayOptions(
-            showValueLabel: true,
-            legendWidth: settings.LegendWidth,
-            showLegend: settings.ShowLegend,
-            graphType: settings.GraphType,
-            showXAxisTimestamps: true,
-            showCrosshair: true,
-            showGridLines: true,
-            showCurrentPriceLine: true,
-            legendPosition: settings.LegendPosition,
-            legendHeightPercent: settings.LegendHeightPercent,
-            autoScrollEnabled: settings.AutoScrollEnabled,
-            autoScrollTimeValue: settings.AutoScrollTimeValue,
-            autoScrollTimeUnit: settings.AutoScrollTimeUnit,
-            autoScrollNowPosition: settings.AutoScrollNowPosition,
-            showControlsDrawer: settings.ShowControlsDrawer);
+        // Sync graph widget from bound settings (in case settings changed externally)
+        _graphWidget.SyncFromBoundSettings();
 
         // Refresh cache if needed
         if (NeedsCacheRefresh())
         {
             using (ProfilerService.BeginStaticChildScope("RefreshCachedData"))
             {
-                RefreshCachedData(settings);
+                RefreshCachedData(Settings);
             }
         }
         
@@ -345,9 +341,15 @@ public class InventoryValueTool : ToolComponent
         return TimeRangeSelectorWidget.GetTimeSpan(settings.TimeRangeValue, settings.TimeRangeUnit);
     }
 
-    public override bool HasSettings => true;
+    /// <summary>
+    /// Indicates this tool has its own settings in addition to component settings.
+    /// </summary>
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    /// <summary>
+    /// Draws tool-specific settings. Graph settings are automatically drawn via the registered graph widget.
+    /// </summary>
+    protected override void DrawToolSettings()
     {
         try
         {
@@ -380,74 +382,6 @@ public class InventoryValueTool : ToolComponent
                 settingsChanged = true;
             }
             ShowSettingTooltip("When viewing 'All Characters', show a separate line for each character.", "On");
-
-            if (showMultipleLines)
-            {
-                var showLegend = settings.ShowLegend;
-                if (ImGui.Checkbox("Show legend", ref showLegend))
-                {
-                    settings.ShowLegend = showLegend;
-                    settingsChanged = true;
-                }
-                ShowSettingTooltip("Show a legend panel on the right side of the graph.", "On");
-
-                if (showLegend)
-                {
-                    var legendPosition = (int)settings.LegendPosition;
-                    if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
-                    {
-                        settings.LegendPosition = (LegendPosition)legendPosition;
-                        settingsChanged = true;
-                    }
-                    ShowSettingTooltip("Where to display the legend: outside the graph or inside at a corner.", "Outside (right)");
-
-                    if (settings.LegendPosition == LegendPosition.Outside)
-                    {
-                        var legendWidth = settings.LegendWidth;
-                        if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
-                        {
-                            settings.LegendWidth = legendWidth;
-                            settingsChanged = true;
-                        }
-                        ShowSettingTooltip("Width of the scrollable legend panel.", "140");
-                    }
-                    else
-                    {
-                        var legendHeight = settings.LegendHeightPercent;
-                        if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
-                        {
-                            settings.LegendHeightPercent = legendHeight;
-                            settingsChanged = true;
-                        }
-                        ShowSettingTooltip("Maximum height of the inside legend as a percentage of the graph height.", "25%");
-                    }
-                }
-            }
-
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Graph Settings");
-            ImGui.Separator();
-
-            var graphType = settings.GraphType;
-            if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
-            {
-                settings.GraphType = graphType;
-                settingsChanged = true;
-            }
-            ShowSettingTooltip("Visual style for the graph.", "Area");
-
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Time Range");
-            ImGui.Separator();
-
-            var timeRangeValue = settings.TimeRangeValue;
-            var timeRangeUnit = settings.TimeRangeUnit;
-            if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
-            {
-                settings.TimeRangeValue = timeRangeValue;
-                settings.TimeRangeUnit = timeRangeUnit;
-                settingsChanged = true;
-            }
             
             if (settingsChanged)
             {
