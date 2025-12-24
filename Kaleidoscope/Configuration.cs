@@ -103,6 +103,11 @@ public class Configuration : IPluginConfiguration
     public string ActiveWindowedLayoutName { get; set; } = string.Empty;
     public string ActiveFullscreenLayoutName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// When enabled, layout changes are automatically saved without requiring manual save.
+    /// </summary>
+    public bool AutoSaveLayoutChanges { get; set; } = false;
+
     [Obsolete("Use ActiveWindowedLayoutName or ActiveFullscreenLayoutName instead")]
     public string ActiveLayoutName { get; set; } = string.Empty;
 
@@ -188,6 +193,21 @@ public class Configuration : IPluginConfiguration
     /// Settings for the Top Items tool.
     /// </summary>
     public TopItemsSettings TopItems { get; set; } = new();
+
+    /// <summary>
+    /// Settings for the Crystal Table tool.
+    /// </summary>
+    public CrystalTableSettings CrystalTable { get; set; } = new();
+    
+    /// <summary>
+    /// Settings for the Item Table tool.
+    /// </summary>
+    public ItemTableSettings ItemTable { get; set; } = new();
+    
+    /// <summary>
+    /// Settings for the Item Graph tool.
+    /// </summary>
+    public ItemGraphSettings ItemGraph { get; set; } = new();
 }
 
 /// <summary>
@@ -343,6 +363,303 @@ public class CrystalTrackerSettings
     };
 }
 
+/// <summary>
+/// Settings for the Crystal Table tool.
+/// </summary>
+public class CrystalTableSettings
+{
+    /// <summary>
+    /// If true, show columns grouped by element (Fire, Ice, etc.).
+    /// </summary>
+    public bool GroupByElement { get; set; } = true;
+
+    /// <summary>
+    /// If true, show columns grouped by tier (Shard, Crystal, Cluster).
+    /// When both GroupByElement and GroupByTier are true, shows detailed element×tier breakdown.
+    /// </summary>
+    public bool GroupByTier { get; set; } = false;
+
+    /// <summary>
+    /// Show a total row at the bottom summing all characters.
+    /// </summary>
+    public bool ShowTotalRow { get; set; } = true;
+
+    /// <summary>
+    /// Colorize element values using their characteristic colors.
+    /// </summary>
+    public bool ColorizeByElement { get; set; } = true;
+
+    /// <summary>
+    /// Allow sorting by clicking column headers.
+    /// </summary>
+    public bool Sortable { get; set; } = true;
+
+    /// <summary>
+    /// In detailed mode, if true sort columns by element first (Fi-Sha, Fi-Cry, Fi-Clu, Ic-Sha...).
+    /// If false, sort by tier first (Fi-Sha, Ic-Sha, Wi-Sha..., Fi-Cry, Ic-Cry...).
+    /// </summary>
+    public bool SortColumnsByElement { get; set; } = true;
+
+    // Element visibility filters
+    public bool ShowFire { get; set; } = true;
+    public bool ShowIce { get; set; } = true;
+    public bool ShowWind { get; set; } = true;
+    public bool ShowEarth { get; set; } = true;
+    public bool ShowLightning { get; set; } = true;
+    public bool ShowWater { get; set; } = true;
+
+    // Tier visibility filters
+    public bool ShowShards { get; set; } = true;
+    public bool ShowCrystals { get; set; } = true;
+    public bool ShowClusters { get; set; } = true;
+
+    /// <summary>
+    /// Returns whether the specified element index is visible.
+    /// </summary>
+    public bool IsElementVisible(int elementIndex) => elementIndex switch
+    {
+        0 => ShowFire,
+        1 => ShowIce,
+        2 => ShowWind,
+        3 => ShowEarth,
+        4 => ShowLightning,
+        5 => ShowWater,
+        _ => true
+    };
+
+    /// <summary>
+    /// Returns whether the specified tier index is visible.
+    /// </summary>
+    public bool IsTierVisible(int tierIndex) => tierIndex switch
+    {
+        0 => ShowShards,
+        1 => ShowCrystals,
+        2 => ShowClusters,
+        _ => true
+    };
+}
+
+/// <summary>
+/// Settings for the Item Table tool.
+/// Implements IItemTableWidgetSettings for automatic widget binding.
+/// </summary>
+public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettings
+{
+    /// <summary>
+    /// List of column configurations for items/currencies to display.
+    /// </summary>
+    public List<Kaleidoscope.Gui.Widgets.ItemColumnConfig> Columns { get; set; } = new();
+    
+    /// <summary>
+    /// Whether to show a total row at the bottom summing all characters.
+    /// </summary>
+    public bool ShowTotalRow { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to allow sorting by clicking column headers.
+    /// </summary>
+    public bool Sortable { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to include retainer inventory in item counts.
+    /// </summary>
+    public bool IncludeRetainers { get; set; } = true;
+    
+    /// <summary>
+    /// Width of the character name column.
+    /// </summary>
+    public float CharacterColumnWidth { get; set; } = 120f;
+    
+    /// <summary>
+    /// Optional custom color for the character name column.
+    /// </summary>
+    public System.Numerics.Vector4? CharacterColumnColor { get; set; }
+    
+    /// <summary>
+    /// Index of the column to sort by (0 = character name, 1+ = data columns).
+    /// </summary>
+    public int SortColumnIndex { get; set; } = 0;
+    
+    /// <summary>
+    /// Whether to sort in ascending order.
+    /// </summary>
+    public bool SortAscending { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to show the action buttons row (Add Item, Add Currency, Refresh).
+    /// </summary>
+    public bool ShowActionButtons { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to automatically refresh data.
+    /// </summary>
+    public bool AutoRefresh { get; set; } = true;
+    
+    /// <summary>
+    /// Auto-refresh interval in seconds.
+    /// </summary>
+    public float RefreshIntervalSeconds { get; set; } = 5f;
+    
+    /// <summary>
+    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
+    /// </summary>
+    public bool UseCompactNumbers { get; set; } = false;
+    
+    /// <summary>
+    /// Optional custom color for the table header row.
+    /// </summary>
+    public System.Numerics.Vector4? HeaderColor { get; set; }
+    
+    /// <summary>
+    /// Optional custom color for even-numbered rows (0, 2, 4...).
+    /// </summary>
+    public System.Numerics.Vector4? EvenRowColor { get; set; }
+    
+    /// <summary>
+    /// Optional custom color for odd-numbered rows (1, 3, 5...).
+    /// </summary>
+    public System.Numerics.Vector4? OddRowColor { get; set; }
+    
+    /// <summary>
+    /// Whether to use the full character name width as the minimum column width.
+    /// When enabled, the character column will be at least as wide as the longest name.
+    /// </summary>
+    public bool UseFullNameWidth { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to auto-size all data columns to equal widths.
+    /// The character column width (based on name width if UseFullNameWidth) takes priority.
+    /// </summary>
+    public bool AutoSizeEqualColumns { get; set; } = false;
+    
+    /// <summary>
+    /// Horizontal alignment for data cell content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HorizontalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Right;
+    
+    /// <summary>
+    /// Vertical alignment for data cell content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment VerticalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    
+    /// <summary>
+    /// Horizontal alignment for character column content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Left;
+    
+    /// <summary>
+    /// Vertical alignment for character column content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    
+    /// <summary>
+    /// Horizontal alignment for header row content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Center;
+    
+    /// <summary>
+    /// Vertical alignment for header row content.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+}
+
+/// <summary>
+/// Settings for the Item Graph tool.
+/// Implements IGraphWidgetSettings for automatic graph widget binding.
+/// </summary>
+public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
+{
+    /// <summary>
+    /// List of series configurations for items/currencies to display as graph lines.
+    /// </summary>
+    public List<Kaleidoscope.Gui.Widgets.ItemColumnConfig> Series { get; set; } = new();
+    
+    /// <summary>
+    /// Whether to include retainer inventory in item counts.
+    /// </summary>
+    public bool IncludeRetainers { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to show separate lines for each character instead of aggregating.
+    /// </summary>
+    public bool ShowPerCharacter { get; set; } = false;
+    
+    /// <summary>
+    /// Whether to show the action buttons row (Add Item, Add Currency, Refresh).
+    /// </summary>
+    public bool ShowActionButtons { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
+    /// </summary>
+    public bool UseCompactNumbers { get; set; } = false;
+    
+    // === IGraphWidgetSettings implementation ===
+    
+    /// <summary>Width of the scrollable legend panel on the right side of the graph.</summary>
+    public float LegendWidth { get; set; } = 140f;
+    
+    /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
+    public float LegendHeightPercent { get; set; } = 25f;
+    
+    /// <summary>Whether to show the legend panel.</summary>
+    public bool ShowLegend { get; set; } = true;
+    
+    /// <summary>Position of the legend (inside or outside the graph).</summary>
+    public Kaleidoscope.Gui.Widgets.LegendPosition LegendPosition { get; set; } = Kaleidoscope.Gui.Widgets.LegendPosition.Outside;
+    
+    /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
+    public GraphType GraphType { get; set; } = GraphType.Area;
+    
+    /// <summary>Whether to show X-axis timestamps.</summary>
+    public bool ShowXAxisTimestamps { get; set; } = true;
+    
+    /// <summary>Whether to show crosshair on hover.</summary>
+    public bool ShowCrosshair { get; set; } = true;
+    
+    /// <summary>Whether to show horizontal grid lines.</summary>
+    public bool ShowGridLines { get; set; } = true;
+    
+    /// <summary>Whether to show the current value line.</summary>
+    public bool ShowCurrentPriceLine { get; set; } = true;
+    
+    /// <summary>Whether to show a value label at the latest point.</summary>
+    public bool ShowValueLabel { get; set; } = false;
+    
+    /// <summary>X offset for the value label.</summary>
+    public float ValueLabelOffsetX { get; set; } = 0f;
+    
+    /// <summary>Y offset for the value label.</summary>
+    public float ValueLabelOffsetY { get; set; } = 0f;
+    
+    /// <summary>Whether auto-scroll is enabled.</summary>
+    public bool AutoScrollEnabled { get; set; } = false;
+    
+    /// <summary>Numeric value for auto-scroll time range.</summary>
+    public int AutoScrollTimeValue { get; set; } = 1;
+    
+    /// <summary>Unit for auto-scroll time range.</summary>
+    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    
+    /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
+    public float AutoScrollNowPosition { get; set; } = 75f;
+    
+    /// <summary>Whether to show the controls drawer.</summary>
+    public bool ShowControlsDrawer { get; set; } = true;
+    
+    /// <summary>Numeric value for time range.</summary>
+    public int TimeRangeValue { get; set; } = 7;
+    
+    /// <summary>Unit for time range.</summary>
+    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+}
+
 public class ContentLayoutState
 {
     public string Name { get; set; } = string.Empty;
@@ -380,7 +697,7 @@ public class ToolLayoutState
 
     public bool BackgroundEnabled { get; set; } = false;
     public bool HeaderVisible { get; set; } = true;
-    public bool ScrollbarVisible { get; set; } = false;
+    public bool OutlineEnabled { get; set; } = true;
     public Vector4 BackgroundColor { get; set; } = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
 
     public float GridCol { get; set; } = 0f;
