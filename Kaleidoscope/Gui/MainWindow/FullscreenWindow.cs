@@ -3,6 +3,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Services;
+using Kaleidoscope.Gui.Widgets;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
@@ -26,8 +27,14 @@ public sealed class FullscreenWindow : Window
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
     private readonly IDataManager _dataManager;
+    private readonly InventoryCacheService _inventoryCacheService;
     private readonly ProfilerService _profilerService;
+    private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly LayoutEditingService _layoutEditingService;
     private readonly WindowContentContainer _contentContainer;
+    
+    // Quick access bar widget (appears when CTRL+ALT is held)
+    private QuickAccessBarWidget? _quickAccessBar;
 
     // Reference to WindowService for window coordination (set after construction due to circular dependency)
     private WindowService? _windowService;
@@ -53,7 +60,10 @@ public sealed class FullscreenWindow : Window
         PriceTrackingService priceTrackingService,
         ItemDataService itemDataService,
         IDataManager dataManager,
-        ProfilerService profilerService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        InventoryCacheService inventoryCacheService,
+        ProfilerService profilerService,
+        AutoRetainerIpcService autoRetainerIpc,
+        LayoutEditingService layoutEditingService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
@@ -66,7 +76,10 @@ public sealed class FullscreenWindow : Window
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
+        _inventoryCacheService = inventoryCacheService;
         _profilerService = profilerService;
+        _autoRetainerIpc = autoRetainerIpc;
+        _layoutEditingService = layoutEditingService;
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the
@@ -85,12 +98,13 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
 
             AddDefaultTools();
             ApplyInitialLayout();
             WireLayoutCallbacks();
             WireInteractionCallbacks();
+            InitializeQuickAccessBar();
         }
         catch (Exception ex)
         {
@@ -113,7 +127,9 @@ public sealed class FullscreenWindow : Window
                 _webSocketService,
                 _priceTrackingService,
                 _itemDataService,
-                _dataManager);
+                _dataManager,
+                _inventoryCacheService,
+                _autoRetainerIpc);
             if (gettingStarted != null)
                 _contentContainer.AddTool(gettingStarted);
         }
@@ -272,6 +288,41 @@ public sealed class FullscreenWindow : Window
         };
     }
 
+    private void InitializeQuickAccessBar()
+    {
+        _quickAccessBar = new QuickAccessBarWidget(
+            _stateService,
+            _layoutEditingService,
+            _configService,
+            _samplerService,
+            _webSocketService,
+            _autoRetainerIpc,
+            onFullscreenToggle: () =>
+            {
+                try
+                {
+                    _windowService?.RequestExitFullscreen();
+                }
+                catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Quick access exit fullscreen failed: {ex.Message}"); }
+            },
+            onSave: () =>
+            {
+                if (_layoutEditingService.IsDirty)
+                {
+                    _layoutEditingService.Save();
+                }
+            },
+            onExitEditModeWithDirtyCheck: () =>
+            {
+                // Fullscreen doesn't have the same dialog infrastructure, just toggle
+                return false;
+            },
+            onLayoutChanged: layoutName =>
+            {
+                _contentContainer.OnLoadLayout?.Invoke(layoutName);
+            });
+    }
+
     public override void PreDraw()
     {
         // Force fullscreen positioning and disable move/resize/title
@@ -321,5 +372,12 @@ public sealed class FullscreenWindow : Window
             }
         }
         catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Draw failed: {ex.Message}"); }
+        
+        // Draw quick access bar if CTRL+ALT is held (drawn after window content)
+        try
+        {
+            _quickAccessBar?.Draw();
+        }
+        catch (Exception ex) { LogService.Debug($"[FullscreenWindow] Quick access bar draw failed: {ex.Message}"); }
     }
 }

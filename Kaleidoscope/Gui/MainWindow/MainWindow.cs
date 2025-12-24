@@ -5,6 +5,7 @@ using OtterGui.Text;
 using Dalamud.Interface;
 using Kaleidoscope.Services;
 using Kaleidoscope.Models;
+using Kaleidoscope.Gui.Widgets;
 using OtterGui.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -31,7 +32,9 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ItemDataService _itemDataService;
     private readonly IDataManager _dataManager;
+    private readonly InventoryCacheService _inventoryCacheService;
     private readonly ProfilerService _profilerService;
+    private readonly AutoRetainerIpcService _autoRetainerIpc;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -59,6 +62,9 @@ public sealed class MainWindow : Window, IService, IDisposable
     // Title bar buttons
     private TitleBarButton? _lockButton;
     private TitleBarButton? _fullscreenButton;
+    
+    // Quick access bar widget (appears when CTRL+ALT is held)
+    private QuickAccessBarWidget? _quickAccessBar;
 
     /// <summary>
     /// Sets the WindowService reference. Required due to circular dependency.
@@ -101,7 +107,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         PriceTrackingService priceTrackingService,
         ItemDataService itemDataService,
         IDataManager dataManager,
-        ProfilerService profilerService) 
+        InventoryCacheService inventoryCacheService,
+        ProfilerService profilerService,
+        AutoRetainerIpcService autoRetainerIpc) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -116,12 +124,15 @@ public sealed class MainWindow : Window, IService, IDisposable
         _priceTrackingService = priceTrackingService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
+        _inventoryCacheService = inventoryCacheService;
         _profilerService = profilerService;
+        _autoRetainerIpc = autoRetainerIpc;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
         InitializeTitleBarButtons();
         InitializeContentContainer();
+        InitializeQuickAccessBar();
 
         // Initialize last-saved pos/size from config so change detection starts correct
         _lastSavedPos = Config.MainWindowPos;
@@ -299,7 +310,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -310,7 +321,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService, _itemDataService, _dataManager);
+                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
                 if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
             }
         }
@@ -518,6 +529,52 @@ public sealed class MainWindow : Window, IService, IDisposable
         _contentContainer.IsMainWindowInteracting = () => _stateService.IsMainWindowInteracting;
     }
 
+    private void InitializeQuickAccessBar()
+    {
+        _quickAccessBar = new QuickAccessBarWidget(
+            _stateService,
+            _layoutEditingService,
+            _configService,
+            _samplerService,
+            _webSocketService,
+            _autoRetainerIpc,
+            onFullscreenToggle: () =>
+            {
+                try
+                {
+                    _savedPos = ImGui.GetWindowPos();
+                    _savedSize = ImGui.GetWindowSize();
+                    _stateService.EnterFullscreen();
+                    _windowService?.RequestShowFullscreen();
+                }
+                catch (Exception ex) { _log.Error($"Quick access fullscreen toggle failed: {ex.Message}"); }
+            },
+            onSave: () =>
+            {
+                if (_layoutEditingService.IsDirty)
+                {
+                    _layoutEditingService.Save();
+                    UpdateWindowTitle();
+                }
+            },
+            onExitEditModeWithDirtyCheck: () =>
+            {
+                if (_layoutEditingService.IsDirty)
+                {
+                    _contentContainer?.ShowUnsavedChangesDialog("exit edit mode", () =>
+                    {
+                        _stateService.ToggleEditMode();
+                    });
+                    return true; // Handled - dialog shown
+                }
+                return false; // Not handled - let caller toggle edit mode
+            },
+            onLayoutChanged: layoutName =>
+            {
+                _contentContainer?.OnLoadLayout?.Invoke(layoutName);
+            });
+    }
+
     private void PersistCurrentLayout()
     {
         // Use the LayoutEditingService to save instead of manually persisting
@@ -679,9 +736,13 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Main content drawing: render the HUD content container
         try
         {
+            // Allow CTRL+SHIFT to temporarily enable edit mode (like fullscreen window)
+            var io = ImGui.GetIO();
+            var tempEdit = io.KeyCtrl && io.KeyShift;
+            
             using (_profilerService.BeginMainWindowScope())
             {
-                _contentContainer?.Draw(_stateService.IsEditMode, _profilerService);
+                _contentContainer?.Draw(tempEdit || _stateService.IsEditMode, _profilerService);
             }
             
             // Note: Layout changes are now tracked by LayoutEditingService.
@@ -693,6 +754,13 @@ public sealed class MainWindow : Window, IService, IDisposable
             PersistWindowPositionIfChanged();
         }
         catch (Exception ex) { LogService.Debug($"[MainWindow] Draw failed: {ex.Message}"); }
+        
+        // Draw quick access bar if CTRL+ALT is held (drawn after window content)
+        try
+        {
+            _quickAccessBar?.Draw();
+        }
+        catch (Exception ex) { _log.Debug($"[MainWindow] Quick access bar draw failed: {ex.Message}"); }
     }
 
     private void PersistWindowPositionIfChanged()
