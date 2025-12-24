@@ -364,7 +364,7 @@ public class WindowContentContainer
                     BackgroundEnabled = t.BackgroundEnabled,
                     BackgroundColor = t.BackgroundColor,
                     HeaderVisible = t.HeaderVisible,
-                    ScrollbarVisible = t.ScrollbarVisible,
+                    OutlineEnabled = t.OutlineEnabled,
                     // Include grid coordinates
                     GridCol = t.GridCol,
                     GridRow = t.GridRow,
@@ -437,7 +437,7 @@ public class WindowContentContainer
                         match.Visible = entry.Visible;
                         match.BackgroundEnabled = entry.BackgroundEnabled;
                         match.HeaderVisible = entry.HeaderVisible;
-                        match.ScrollbarVisible = entry.ScrollbarVisible;
+                        match.OutlineEnabled = entry.OutlineEnabled;
                         match.CustomTitle = entry.CustomTitle;
                         // Apply grid coordinates
                         match.GridCol = entry.GridCol;
@@ -477,7 +477,7 @@ public class WindowContentContainer
                                 created.Visible = entry.Visible;
                                 created.BackgroundEnabled = entry.BackgroundEnabled;
                                 created.HeaderVisible = entry.HeaderVisible;
-                                created.ScrollbarVisible = entry.ScrollbarVisible;
+                                created.OutlineEnabled = entry.OutlineEnabled;
                                 created.BackgroundColor = entry.BackgroundColor;
                                 // Apply grid coordinates
                                 created.GridCol = entry.GridCol;
@@ -526,7 +526,7 @@ public class WindowContentContainer
                                     cand.Visible = entry.Visible;
                                     cand.BackgroundEnabled = entry.BackgroundEnabled;
                                     cand.HeaderVisible = entry.HeaderVisible;
-                                    cand.ScrollbarVisible = entry.ScrollbarVisible;
+                                    cand.OutlineEnabled = entry.OutlineEnabled;
                                     cand.BackgroundColor = entry.BackgroundColor;
                                     // Apply grid coordinates
                                     cand.GridCol = entry.GridCol;
@@ -1140,8 +1140,7 @@ public class WindowContentContainer
                 {
                     LogService.Debug($"Background draw error: {ex.Message}");
                 }
-                var childFlags = t.ScrollbarVisible ? ImGuiWindowFlags.None : (ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-                ImGui.BeginChild(id, t.Size, true, childFlags);
+                ImGui.BeginChild(id, t.Size, true, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
                 // Title bar inside the child (toggleable)
                 if (t.HeaderVisible)
                 {
@@ -1171,8 +1170,9 @@ public class WindowContentContainer
 
                 if (editMode)
                 {
-                    // draw border
-                    dl.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border));
+                    // draw border (if enabled)
+                    if (t.OutlineEnabled)
+                        dl.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border));
 
                     // Check if main window is being interacted with - if so, block new tool interactions
                     var mainWindowInteracting = false;
@@ -1416,8 +1416,8 @@ public class WindowContentContainer
                         if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
                         var hdr = t.HeaderVisible;
                         if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
-                        var scroll = t.ScrollbarVisible;
-                        if (ImGui.Checkbox("Show scrollbar", ref scroll)) t.ScrollbarVisible = scroll;
+                        var outline = t.OutlineEnabled;
+                        if (ImGui.Checkbox("Show outline", ref outline)) t.OutlineEnabled = outline;
                         var col = t.BackgroundColor;
                         if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
                         ImGui.Separator();
