@@ -83,7 +83,15 @@ public class InventoryValueTool : ToolComponent
         
         _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
         
+        // Subscribe to inventory value history changes (e.g., when sale records are deleted)
+        _samplerService.OnInventoryValueHistoryChanged += OnInventoryValueHistoryChanged;
+        
         RefreshCharacterList();
+    }
+    
+    private void OnInventoryValueHistoryChanged()
+    {
+        _cacheIsDirty = true;
     }
     
     private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
@@ -398,5 +406,6 @@ public class InventoryValueTool : ToolComponent
     public override void Dispose()
     {
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
+        _samplerService.OnInventoryValueHistoryChanged -= OnInventoryValueHistoryChanged;
     }
 }

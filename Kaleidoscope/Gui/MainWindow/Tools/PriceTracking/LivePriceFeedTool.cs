@@ -40,7 +40,6 @@ public class LivePriceFeedTool : ToolComponent
 
         Title = "Live Price Feed";
         Size = new Vector2(450, 300);
-        ScrollbarVisible = true;
     }
 
     public override void DrawContent()
@@ -123,6 +122,12 @@ public class LivePriceFeedTool : ToolComponent
         // Limit entries
         entries = entries.TakeLast(settings.MaxEntries).ToList();
 
+        // Reverse order if latest on top
+        if (settings.LatestOnTop)
+        {
+            entries.Reverse();
+        }
+
         // Child window for scrolling
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         if (ImGui.BeginChild("##PriceFeed", new Vector2(0, availableHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
@@ -133,13 +138,19 @@ public class LivePriceFeedTool : ToolComponent
             }
             else
             {
+                // Auto-scroll to top if latest on top
+                if (settings.AutoScroll && settings.LatestOnTop)
+                {
+                    ImGui.SetScrollY(0);
+                }
+
                 foreach (var entry in entries)
                 {
                     DrawFeedEntry(entry);
                 }
 
-                // Auto-scroll to bottom
-                if (settings.AutoScroll && entries.Count > 0)
+                // Auto-scroll to bottom if latest on bottom
+                if (settings.AutoScroll && !settings.LatestOnTop)
                 {
                     ImGui.SetScrollHereY(1.0f);
                 }
@@ -214,6 +225,15 @@ public class LivePriceFeedTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Automatically scroll to the newest entry.", "On");
+
+            // Latest on top
+            var latestOnTop = settings.LatestOnTop;
+            if (ImGui.Checkbox("Latest on top", ref latestOnTop))
+            {
+                settings.LatestOnTop = latestOnTop;
+                _configService.Save();
+            }
+            ShowSettingTooltip("Show newest entries at the top of the list instead of the bottom.", "Off");
 
             ImGui.Spacing();
             ImGui.TextUnformatted("Event Filters");

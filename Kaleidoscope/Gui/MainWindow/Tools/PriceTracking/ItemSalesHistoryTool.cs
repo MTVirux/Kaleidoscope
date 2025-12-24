@@ -47,7 +47,6 @@ public class ItemSalesHistoryTool : ToolComponent
 
         Title = "Item Sales History";
         Size = new Vector2(450, 400);
-        ScrollbarVisible = true;
     }
 
     public override void DrawContent()

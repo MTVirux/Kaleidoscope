@@ -88,7 +88,6 @@ public class TopItemsTool : ToolComponent
 
         Title = "Top Items";
         Size = new Vector2(400, 350);
-        ScrollbarVisible = true;
 
         // Subscribe to inventory change events for automatic refresh
         if (_inventoryChangeService != null)
@@ -313,9 +312,9 @@ public class TopItemsTool : ToolComponent
     private void DrawItemsList()
     {
         var settings = Settings;
-        var availableHeight = ImGui.GetContentRegionAvail().Y;
 
-        if (ImGui.BeginChild("##TopItemsList", new Vector2(0, availableHeight), false))
+        // Use 0 height to auto-fit content and avoid unnecessary scrollbar
+        if (ImGui.BeginChild("##TopItemsList", new Vector2(0, 0), false))
         {
             // Gil row first if included
             if (settings.IncludeGil && _gilValue > 0)
@@ -352,7 +351,9 @@ public class TopItemsTool : ToolComponent
         ImGui.TextColored(new Vector4(1f, 0.84f, 0f, 1f), "●");
         ImGui.SameLine();
         ImGui.TextUnformatted("Gil");
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 150);
+        
+        // Value and percentage (right-aligned, matching item rows)
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 120);
         ImGui.TextUnformatted($"{FormatUtils.FormatGil(_gilValue)} ({percentage:F1}%)");
     }
 
@@ -360,8 +361,10 @@ public class TopItemsTool : ToolComponent
     {
         var percentage = _totalValue > 0 ? (float)item.Value / _totalValue * 100 : 0;
         
-        // Color gradient from green to yellow to orange based on rank
-        var hue = Math.Max(0, 0.33f - (rank * 0.03f));
+        // Color gradient from green to yellow to orange based on rank (scales with MaxItems setting)
+        var maxItems = Math.Max(1, Settings.MaxItems);
+        var gradientStep = 0.33f / maxItems;
+        var hue = Math.Max(0, 0.33f - (rank * gradientStep));
         var color = HsvToRgb(hue, 0.8f, 0.9f);
 
         // Start invisible button for hover detection (covers the whole row)
