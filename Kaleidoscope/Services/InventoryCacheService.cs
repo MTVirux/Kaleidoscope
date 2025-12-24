@@ -26,6 +26,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly IFramework _framework;
     private readonly InventoryChangeService _inventoryChangeService;
     private readonly IClientState _clientState;
+    private readonly ConfigurationService _configService;
     
     // In-memory cache for inventory data - avoids repeated DB reads for offline characters
     // Key: characterId, Value: list of inventory cache entries for that character
@@ -91,13 +92,15 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         IObjectTable objectTable,
         IFramework framework,
         InventoryChangeService inventoryChangeService,
-        IClientState clientState)
+        IClientState clientState,
+        ConfigurationService configService)
     {
         _log = log;
         _samplerService = samplerService;
         _objectTable = objectTable;
         _framework = framework;
         _inventoryChangeService = inventoryChangeService;
+        _configService = configService;
         _clientState = clientState;
 
         // Subscribe to events
@@ -237,6 +240,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Save to database
             _samplerService.DbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
+            
+            // Sample tracked items to time-series for historical graphing
+            SampleTrackedItems(characterId, entry.Items);
             
             // Invalidate memory cache since DB was updated
             InvalidateCharacterCache(characterId);
@@ -490,6 +496,72 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         _lastCachedRetainerId = 0;
     }
+
+    /// <summary>
+    /// Samples tracked item quantities to the time-series database for historical graphing.
+    /// Only samples items that are configured in the ItemGraph settings.
+    /// </summary>
+    /// <param name="characterId">The character ID to associate with the samples.</param>
+    /// <param name="items">The inventory items to check against tracked items.</param>
+    private void SampleTrackedItems(ulong characterId, List<InventoryItemSnapshot> items)
+    {
+        try
+        {
+            // Get the list of tracked item IDs from config (non-currency series)
+            var trackedItems = _configService.Config.ItemGraph?.Series?
+                .Where(s => !s.IsCurrency)
+                .Select(s => s.Id)
+                .ToHashSet();
+
+            if (trackedItems == null || trackedItems.Count == 0)
+                return;
+
+            // Also check ItemTable for tracked items
+            var tableItems = _configService.Config.ItemTable?.Columns?
+                .Where(c => !c.IsCurrency)
+                .Select(c => c.Id);
+            
+            if (tableItems != null)
+            {
+                foreach (var id in tableItems)
+                    trackedItems.Add(id);
+            }
+
+            // Calculate total quantity for each tracked item
+            var itemQuantities = new Dictionary<uint, long>();
+            foreach (var itemId in trackedItems)
+            {
+                var quantity = items
+                    .Where(i => i.ItemId == itemId)
+                    .Sum(i => (long)i.Quantity);
+                
+                itemQuantities[itemId] = quantity;
+            }
+
+            // Sample each tracked item to the time-series database
+            foreach (var (itemId, quantity) in itemQuantities)
+            {
+                var variableName = $"Item_{itemId}";
+                _samplerService.DbService.SaveSampleIfChanged(variableName, characterId, quantity);
+            }
+
+            if (itemQuantities.Count > 0)
+            {
+                _log.Debug($"[InventoryCacheService] Sampled {itemQuantities.Count} tracked items for character {characterId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[InventoryCacheService] Failed to sample tracked items: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Gets the variable name used for storing item time-series data.
+    /// </summary>
+    /// <param name="itemId">The item ID.</param>
+    /// <returns>The variable name in format "Item_{itemId}".</returns>
+    public static string GetItemVariableName(uint itemId) => $"Item_{itemId}";
 
     public void Dispose()
     {

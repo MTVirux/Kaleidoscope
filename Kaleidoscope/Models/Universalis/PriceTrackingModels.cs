@@ -105,6 +105,9 @@ public class LivePriceFeedSettings
     /// <summary>Whether to auto-scroll to latest entry.</summary>
     public bool AutoScroll { get; set; } = true;
 
+    /// <summary>Whether to show latest entries at the top (true) or bottom (false).</summary>
+    public bool LatestOnTop { get; set; } = false;
+
     /// <summary>World filter scope mode (All, ByRegion, ByDataCenter, ByWorld).</summary>
     public PriceTrackingScopeMode FilterScopeMode { get; set; } = PriceTrackingScopeMode.All;
 
