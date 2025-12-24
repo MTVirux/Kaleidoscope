@@ -32,6 +32,19 @@ public class LayoutsCategory
         ImGui.TextUnformatted("Layouts");
         ImGui.Separator();
 
+        // Auto-save setting
+        var autoSave = Config.AutoSaveLayoutChanges;
+        if (ImGui.Checkbox("Auto-save layout changes", ref autoSave))
+        {
+            Config.AutoSaveLayoutChanges = autoSave;
+            _configService.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Automatically save layout changes without requiring manual save.\nDisable for explicit save/discard workflow.");
+        }
+        ImGui.Spacing();
+
         var layouts = Config.Layouts ?? new List<ContentLayoutState>();
 
         // Split layouts by type
