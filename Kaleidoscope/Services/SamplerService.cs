@@ -60,6 +60,20 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     public TrackedDataRegistry Registry => _registry;
 
+    /// <summary>
+    /// Event fired when inventory value history is modified (e.g., sale record deleted).
+    /// </summary>
+    public event Action? OnInventoryValueHistoryChanged;
+
+    /// <summary>
+    /// Notifies subscribers that inventory value history has changed.
+    /// Call this after modifying inventory_value_history records.
+    /// </summary>
+    public void NotifyInventoryValueHistoryChanged()
+    {
+        OnInventoryValueHistoryChanged?.Invoke();
+    }
+
     private readonly AutoRetainerIpcService _arIpc;
 
     public SamplerService(
