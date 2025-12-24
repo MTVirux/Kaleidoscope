@@ -95,9 +95,15 @@ internal sealed class PreparedGraphData
     public double TotalTimeSpan { get; set; }
     
     /// <summary>
-    /// Whether this graph has multiple visible series (affects legend display).
+    /// Whether this graph has multiple visible series (affects rendering decisions like bar width).
     /// </summary>
     public bool HasMultipleSeries => Series.Count(s => s.Visible) > 1;
+    
+    /// <summary>
+    /// Whether this graph has multiple series total (including hidden), affects legend display.
+    /// This ensures the legend remains visible when series are hidden, allowing users to re-enable them.
+    /// </summary>
+    public bool HasMultipleSeriesTotal => Series.Count > 1;
 }
 
 /// <summary>
@@ -1230,7 +1236,7 @@ public class ImplotGraphWidget : ISettingsProvider
     {
         // Find global time range
         var globalMinTime = DateTime.MaxValue;
-        var globalMaxTime = DateTime.Now;
+        var globalMaxTime = DateTime.UtcNow;
         
         foreach (var (_, samples) in seriesData)
         {
@@ -1239,7 +1245,7 @@ public class ImplotGraphWidget : ISettingsProvider
         }
         
         if (globalMinTime == DateTime.MaxValue)
-            globalMinTime = DateTime.Now.AddHours(-1);
+            globalMinTime = DateTime.UtcNow.AddHours(-1);
         
         var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
         if (totalTimeSpan < 1) totalTimeSpan = 1;
@@ -1513,7 +1519,7 @@ public class ImplotGraphWidget : ISettingsProvider
     private void UpdateAutoScrollLimits(PreparedGraphData data)
     {
         // Recalculate totalTimeSpan based on current time
-        var globalMaxTime = DateTime.Now;
+        var globalMaxTime = DateTime.UtcNow;
         var totalTimeSpan = (globalMaxTime - data.StartTime).TotalSeconds;
         if (totalTimeSpan < 1) totalTimeSpan = 1;
         
@@ -1656,10 +1662,10 @@ public class ImplotGraphWidget : ISettingsProvider
         {
             var avail = ImGui.GetContentRegionAvail();
             
-            // Reserve space for outside legend if needed
+            // Reserve space for outside legend if needed (use total series count so legend stays visible when series are hidden)
             var useOutsideLegend = _config.ShowLegend && 
                                    _config.LegendPosition == LegendPosition.Outside && 
-                                   data.HasMultipleSeries;
+                                   data.HasMultipleSeriesTotal;
             var legendWidth = useOutsideLegend ? _config.LegendWidth : 0f;
             var legendPadding = useOutsideLegend ? 5f : 0f;
             var plotWidth = Math.Max(1f, avail.X - legendWidth - legendPadding);
@@ -1756,8 +1762,8 @@ public class ImplotGraphWidget : ISettingsProvider
                     DrawValueLabels(data);
                 }
                 
-                // Draw inside legend if applicable
-                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeries)
+                // Draw inside legend if applicable (use total series count so legend stays visible when series are hidden)
+                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeriesTotal)
                 {
                     using (ProfilerService.BeginStaticChildScope("DrawInsideLegend"))
                     {
@@ -1912,8 +1918,6 @@ public class ImplotGraphWidget : ISettingsProvider
     /// </summary>
     private void DrawValueLabels(PreparedGraphData data)
     {
-        const float labelHeight = 18f;
-        
         // Collect labels from visible series using cached list to avoid allocations
         _valueLabelCache.Clear();
         foreach (var s in data.Series)
@@ -1934,8 +1938,7 @@ public class ImplotGraphWidget : ISettingsProvider
                 ? $"{name}: {FormatValue(lastValue)}"
                 : FormatValue(lastValue);
             
-            var yOffset = _config.ValueLabelOffsetY + (i * labelHeight);
-            var pixOffset = new Vector2(_config.ValueLabelOffsetX, yOffset);
+            var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
             var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
             
             var xPos = data.IsTimeBased ? data.TotalTimeSpan : data.XMax - (data.XMax - data.XMin) * 0.05;
@@ -2559,15 +2562,15 @@ public class ImplotGraphWidget : ISettingsProvider
     
     /// <summary>
     /// Updates the cached sorted series list if the series data has changed.
-    /// Uses a hash of series names to detect changes without allocating.
+    /// Uses a hash of series names and visibility to detect changes without allocating.
     /// </summary>
     private void UpdateSortedSeriesCache(PreparedGraphData data)
     {
-        // Compute a simple hash of the series collection
+        // Compute a simple hash of the series collection including visibility state
         var hash = data.Series.Count;
         foreach (var s in data.Series)
         {
-            hash = HashCode.Combine(hash, s.Name);
+            hash = HashCode.Combine(hash, s.Name, s.Visible);
         }
         
         // Only rebuild if changed
@@ -2577,11 +2580,6 @@ public class ImplotGraphWidget : ISettingsProvider
             _sortedSeriesCache.Clear();
             _sortedSeriesCache.AddRange(data.Series);
             _sortedSeriesCache.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
-        }
-        else
-        {
-            // Update visibility state from source (series objects are shared references)
-            // No action needed - we use the original series objects which have current Visible state
         }
     }
 

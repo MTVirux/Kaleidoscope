@@ -581,6 +581,10 @@ public class ItemDetailsPopup
                 // Reload the sales list
                 _localSalesLoaded = false;
                 LoadLocalSales();
+                
+                // Notify that inventory value history was modified
+                _samplerService.NotifyInventoryValueHistoryChanged();
+                
                 LogService.Debug($"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
             }
         }
