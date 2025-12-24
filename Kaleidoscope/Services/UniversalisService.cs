@@ -14,7 +14,7 @@ namespace Kaleidoscope.Services;
 /// Rate limits: Limited to 10 req/s to be conservative with Universalis API.
 /// See: https://docs.universalis.app
 /// </remarks>
-public sealed class UniversalisService : IService, IDisposable
+public sealed class UniversalisService : IDisposable, IService
 {
     private const string BaseUrl = "https://universalis.app/api/v2/";
     private const string UserAgent = "Kaleidoscope-FFXIV-Plugin";

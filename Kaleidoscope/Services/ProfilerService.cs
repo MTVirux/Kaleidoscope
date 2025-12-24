@@ -8,7 +8,7 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Tracks draw times for tools, windows, and other profiling metrics.
 /// </summary>
-public sealed class ProfilerService : IService, IDisposable
+public sealed class ProfilerService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;

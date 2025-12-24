@@ -23,7 +23,7 @@ public sealed class PendingLayoutAction
 /// This follows the "dirty flag" pattern common in document editors. The working
 /// layout is kept in memory and a snapshot is persisted to disk for crash recovery.
 /// </remarks>
-public sealed class LayoutEditingService : IService, IDisposable
+public sealed class LayoutEditingService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -83,11 +83,23 @@ public sealed class LayoutEditingService : IService, IDisposable
 
     /// <summary>
     /// Marks the working layout as changed.
+    /// If auto-save is enabled, saves immediately instead of marking dirty.
     /// </summary>
     public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
     {
         _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
         _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+
+        // Auto-save if enabled
+        if (_configService.Config.AutoSaveLayoutChanges)
+        {
+            // Temporarily set dirty to allow Save() to work
+            var wasDirty = _isDirty;
+            _isDirty = true;
+            Save();
+            _log.Debug($"Layout auto-saved for '{_currentLayoutName}'");
+            return;
+        }
 
         if (!_isDirty)
         {
