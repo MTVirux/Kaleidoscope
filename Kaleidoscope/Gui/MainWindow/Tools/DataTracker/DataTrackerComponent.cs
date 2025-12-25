@@ -130,7 +130,7 @@ public class DataTrackerComponent : IDisposable
         }
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     {
         var settings = GetSettings();
         settings.AutoScrollEnabled = enabled;
@@ -246,7 +246,7 @@ public class DataTrackerComponent : IDisposable
 
         // Calculate time cutoff if time range filtering is enabled
         DateTime? timeCutoff = null;
-        if (settings.TimeRangeUnit != TimeRangeUnit.All)
+        if (settings.TimeRangeUnit != TimeUnit.All)
         {
             timeCutoff = CalculateTimeCutoff(settings);
         }
@@ -335,11 +335,11 @@ public class DataTrackerComponent : IDisposable
 
         return settings.TimeRangeUnit switch
         {
-            TimeRangeUnit.Minutes => now.AddMinutes(-value),
-            TimeRangeUnit.Hours => now.AddHours(-value),
-            TimeRangeUnit.Days => now.AddDays(-value),
-            TimeRangeUnit.Weeks => now.AddDays(-value * 7),
-            TimeRangeUnit.Months => now.AddMonths(-value),
+            TimeUnit.Minutes => now.AddMinutes(-value),
+            TimeUnit.Hours => now.AddHours(-value),
+            TimeUnit.Days => now.AddDays(-value),
+            TimeUnit.Weeks => now.AddDays(-value * 7),
+            TimeUnit.Months => now.AddMonths(-value),
             _ => DateTime.MinValue
         };
     }

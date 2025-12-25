@@ -9,8 +9,11 @@ namespace Kaleidoscope.Gui.Widgets;
 /// </summary>
 public static class TimeRangeSelectorWidget
 {
-    /// <summary>Display names for time range units.</summary>
+    /// <summary>Display names for time range units (excludes Seconds for data range selection).</summary>
     private static readonly string[] TimeRangeUnitNames = { "Minutes", "Hours", "Days", "Weeks", "Months", "All (no limit)" };
+    
+    /// <summary>Offset to skip Seconds when indexing into TimeUnit enum for range selection.</summary>
+    private const int TimeRangeUnitOffset = 1;
 
     /// <summary>
     /// Draws a time range selector with value input and unit dropdown.
@@ -24,7 +27,7 @@ public static class TimeRangeSelectorWidget
     public static bool Draw(
         string label,
         ref int timeRangeValue,
-        ref TimeRangeUnit timeRangeUnit,
+        ref TimeUnit timeRangeUnit,
         float valueWidth = 100f,
         float unitWidth = 150f)
     {
@@ -32,17 +35,18 @@ public static class TimeRangeSelectorWidget
 
         ImGui.PushID(label);
 
-        // Unit dropdown first
+        // Unit dropdown first (skip Seconds, so offset by 1)
         ImGui.SetNextItemWidth(unitWidth);
-        var unitIndex = (int)timeRangeUnit;
+        var unitIndex = (int)timeRangeUnit - TimeRangeUnitOffset;
+        if (unitIndex < 0) unitIndex = 0; // Clamp Seconds to Minutes
         if (ImGui.Combo($"##Unit", ref unitIndex, TimeRangeUnitNames, TimeRangeUnitNames.Length))
         {
-            timeRangeUnit = (TimeRangeUnit)unitIndex;
+            timeRangeUnit = (TimeUnit)(unitIndex + TimeRangeUnitOffset);
             changed = true;
         }
 
         // Only show value input if not "All"
-        if (timeRangeUnit != TimeRangeUnit.All)
+        if (timeRangeUnit != TimeUnit.All)
         {
             ImGui.SameLine();
             ImGui.SetNextItemWidth(valueWidth);
@@ -72,22 +76,23 @@ public static class TimeRangeSelectorWidget
     /// <returns>True if either value changed.</returns>
     public static bool DrawVertical(
         ref int timeRangeValue,
-        ref TimeRangeUnit timeRangeUnit,
+        ref TimeUnit timeRangeUnit,
         float inputWidth = 150f)
     {
         bool changed = false;
 
-        // Unit dropdown first
-        var unitIndex = (int)timeRangeUnit;
+        // Unit dropdown first (skip Seconds, so offset by 1)
+        var unitIndex = (int)timeRangeUnit - TimeRangeUnitOffset;
+        if (unitIndex < 0) unitIndex = 0; // Clamp Seconds to Minutes
         ImGui.SetNextItemWidth(inputWidth);
         if (ImGui.Combo("Range unit", ref unitIndex, TimeRangeUnitNames, TimeRangeUnitNames.Length))
         {
-            timeRangeUnit = (TimeRangeUnit)unitIndex;
+            timeRangeUnit = (TimeUnit)(unitIndex + TimeRangeUnitOffset);
             changed = true;
         }
 
         // Only show value input if not "All"
-        if (timeRangeUnit != TimeRangeUnit.All)
+        if (timeRangeUnit != TimeUnit.All)
         {
             var value = timeRangeValue;
             ImGui.SetNextItemWidth(inputWidth);
@@ -108,16 +113,17 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>The calculated TimeSpan, or null if unit is All.</returns>
-    public static TimeSpan? GetTimeSpan(int value, TimeRangeUnit unit)
+    public static TimeSpan? GetTimeSpan(int value, TimeUnit unit)
     {
         return unit switch
         {
-            TimeRangeUnit.Minutes => TimeSpan.FromMinutes(value),
-            TimeRangeUnit.Hours => TimeSpan.FromHours(value),
-            TimeRangeUnit.Days => TimeSpan.FromDays(value),
-            TimeRangeUnit.Weeks => TimeSpan.FromDays(value * 7),
-            TimeRangeUnit.Months => TimeSpan.FromDays(value * 30),
-            TimeRangeUnit.All => null,
+            TimeUnit.Seconds => TimeSpan.FromSeconds(value),
+            TimeUnit.Minutes => TimeSpan.FromMinutes(value),
+            TimeUnit.Hours => TimeSpan.FromHours(value),
+            TimeUnit.Days => TimeSpan.FromDays(value),
+            TimeUnit.Weeks => TimeSpan.FromDays(value * 7),
+            TimeUnit.Months => TimeSpan.FromDays(value * 30),
+            TimeUnit.All => null,
             _ => null
         };
     }
@@ -128,7 +134,7 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>The start DateTime (UTC), or DateTime.MinValue if unit is All.</returns>
-    public static DateTime GetStartTime(int value, TimeRangeUnit unit)
+    public static DateTime GetStartTime(int value, TimeUnit unit)
     {
         var timeSpan = GetTimeSpan(value, unit);
         return timeSpan.HasValue ? DateTime.UtcNow - timeSpan.Value : DateTime.MinValue;
@@ -140,18 +146,19 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>Description like "Last 7 days" or "All time".</returns>
-    public static string GetDescription(int value, TimeRangeUnit unit)
+    public static string GetDescription(int value, TimeUnit unit)
     {
-        if (unit == TimeRangeUnit.All)
+        if (unit == TimeUnit.All)
             return "All time";
 
         var unitName = unit switch
         {
-            TimeRangeUnit.Minutes => value == 1 ? "minute" : "minutes",
-            TimeRangeUnit.Hours => value == 1 ? "hour" : "hours",
-            TimeRangeUnit.Days => value == 1 ? "day" : "days",
-            TimeRangeUnit.Weeks => value == 1 ? "week" : "weeks",
-            TimeRangeUnit.Months => value == 1 ? "month" : "months",
+            TimeUnit.Seconds => value == 1 ? "second" : "seconds",
+            TimeUnit.Minutes => value == 1 ? "minute" : "minutes",
+            TimeUnit.Hours => value == 1 ? "hour" : "hours",
+            TimeUnit.Days => value == 1 ? "day" : "days",
+            TimeUnit.Weeks => value == 1 ? "week" : "weeks",
+            TimeUnit.Months => value == 1 ? "month" : "months",
             _ => "units"
         };
 

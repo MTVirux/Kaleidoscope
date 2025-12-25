@@ -33,7 +33,7 @@ public class InventoryValueTool : ToolComponent
     private bool _cachedShowMultipleLines;
     private bool _cachedIncludeGil;
     private int _cachedTimeRangeValue;
-    private TimeRangeUnit _cachedTimeRangeUnit;
+    private TimeUnit _cachedTimeRangeUnit;
     private CharacterNameFormat _cachedNameFormat;
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
     private bool _cacheIsDirty = true;
@@ -113,7 +113,7 @@ public class InventoryValueTool : ToolComponent
         _cacheService?.InvalidateInventoryValueCache();
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     {
         var settings = Settings;
         settings.AutoScrollEnabled = enabled;
@@ -572,7 +572,7 @@ public class InventoryValueTool : ToolComponent
         if (settings.TryGetValue("TimeRangeValue", out var timeRangeValue))
             _instanceSettings.TimeRangeValue = Convert.ToInt32(timeRangeValue);
         if (settings.TryGetValue("TimeRangeUnit", out var timeRangeUnit))
-            _instanceSettings.TimeRangeUnit = (TimeRangeUnit)Convert.ToInt32(timeRangeUnit);
+            _instanceSettings.TimeRangeUnit = (TimeUnit)Convert.ToInt32(timeRangeUnit);
         if (settings.TryGetValue("ShowLegend", out var showLegend))
             _instanceSettings.ShowLegend = Convert.ToBoolean(showLegend);
         if (settings.TryGetValue("LegendWidth", out var legendWidth))
@@ -602,7 +602,7 @@ public class InventoryValueTool : ToolComponent
         if (settings.TryGetValue("AutoScrollTimeValue", out var autoScrollTimeValue))
             _instanceSettings.AutoScrollTimeValue = Convert.ToInt32(autoScrollTimeValue);
         if (settings.TryGetValue("AutoScrollTimeUnit", out var autoScrollTimeUnit))
-            _instanceSettings.AutoScrollTimeUnit = (AutoScrollTimeUnit)Convert.ToInt32(autoScrollTimeUnit);
+            _instanceSettings.AutoScrollTimeUnit = (TimeUnit)Convert.ToInt32(autoScrollTimeUnit);
         if (settings.TryGetValue("AutoScrollNowPosition", out var autoScrollNowPosition))
             _instanceSettings.AutoScrollNowPosition = Convert.ToSingle(autoScrollNowPosition);
         if (settings.TryGetValue("ShowControlsDrawer", out var showControlsDrawer))

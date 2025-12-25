@@ -218,7 +218,7 @@ public class DataTrackerTool : ToolComponent
                 var unitIndex = (int)settings.AutoScrollTimeUnit;
                 if (ImGui.Combo("##autoscroll_unit", ref unitIndex, TimeUnitNames, TimeUnitNames.Length))
                 {
-                    settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
+                    settings.AutoScrollTimeUnit = (TimeUnit)unitIndex;
                     _configService.Save();
                 }
                 ShowSettingTooltip("How much time to show when auto-scrolling.", "1 Hour");

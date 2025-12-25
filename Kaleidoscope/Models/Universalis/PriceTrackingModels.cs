@@ -156,7 +156,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
 
     /// <summary>Time range unit for the graph.</summary>
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
 
     /// <summary>Whether to show the legend.</summary>
     public bool ShowLegend { get; set; } = true;
@@ -201,7 +201,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Auto-scroll time range unit.</summary>
-    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     
     /// <summary>Position of "now" on X-axis (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;

@@ -282,7 +282,7 @@ public class ImplotGraphWidget : ISettingsProvider
         /// <summary>
         /// The unit for auto-scroll time range.
         /// </summary>
-        public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+        public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
         
         /// <summary>
         /// Calculates the auto-scroll time range in seconds.
@@ -503,9 +503,9 @@ public class ImplotGraphWidget : ISettingsProvider
     
     /// <summary>
     /// Event fired when auto-scroll settings are changed via the controls drawer.
-    /// Parameters: (bool autoScrollEnabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    /// Parameters: (bool autoScrollEnabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     /// </summary>
-    public event Action<bool, int, AutoScrollTimeUnit, float>? OnAutoScrollSettingsChanged;
+    public event Action<bool, int, TimeUnit, float>? OnAutoScrollSettingsChanged;
     
     /// <summary>
     /// Delegate for virtualized data loading.
@@ -840,7 +840,7 @@ public class ImplotGraphWidget : ISettingsProvider
         float legendHeightPercent = 25f,
         bool autoScrollEnabled = false,
         int autoScrollTimeValue = 1,
-        AutoScrollTimeUnit autoScrollTimeUnit = AutoScrollTimeUnit.Hours,
+        TimeUnit autoScrollTimeUnit = TimeUnit.Hours,
         float autoScrollNowPosition = 75f,
         bool showControlsDrawer = true)
     {
@@ -884,7 +884,7 @@ public class ImplotGraphWidget : ISettingsProvider
     /// <summary>
     /// Gets or sets the auto-scroll time unit.
     /// </summary>
-    public AutoScrollTimeUnit AutoScrollTimeUnit
+    public TimeUnit AutoScrollTimeUnit
     {
         get => _config.AutoScrollTimeUnit;
         set => _config.AutoScrollTimeUnit = value;
@@ -1144,7 +1144,7 @@ public class ImplotGraphWidget : ISettingsProvider
             var unitIndex = (int)settings.AutoScrollTimeUnit;
             if (ImGui.Combo("##autoscroll_unit", ref unitIndex, AutoScrollTimeUnitNames, AutoScrollTimeUnitNames.Length))
             {
-                settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
+                settings.AutoScrollTimeUnit = (TimeUnit)unitIndex;
                 _config.AutoScrollTimeUnit = settings.AutoScrollTimeUnit;
                 changed = true;
             }
@@ -2740,7 +2740,7 @@ public class ImplotGraphWidget : ISettingsProvider
                 
                 if (unitBtnHovered && ImGui.IsMouseClicked(0))
                 {
-                    _config.AutoScrollTimeUnit = (AutoScrollTimeUnit)i;
+                    _config.AutoScrollTimeUnit = (TimeUnit)i;
                     OnAutoScrollSettingsChanged?.Invoke(_config.AutoScrollEnabled, _config.AutoScrollTimeValue, _config.AutoScrollTimeUnit, _config.AutoScrollNowPosition);
                 }
             }

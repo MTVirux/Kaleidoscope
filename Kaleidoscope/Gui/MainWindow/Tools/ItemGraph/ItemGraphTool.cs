@@ -39,7 +39,7 @@ public class ItemGraphTool : ToolComponent
     // Cache tracking for change detection
     private int _cachedSeriesCount;
     private int _cachedTimeRangeValue;
-    private TimeRangeUnit _cachedTimeRangeUnit;
+    private TimeUnit _cachedTimeRangeUnit;
     private bool _cachedIncludeRetainers;
     private bool _cachedShowPerCharacter;
     private CharacterNameFormat _cachedNameFormat;
@@ -112,7 +112,7 @@ public class ItemGraphTool : ToolComponent
         }
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     {
         var settings = Settings;
         settings.AutoScrollEnabled = enabled;
@@ -1104,11 +1104,11 @@ public class ItemGraphTool : ToolComponent
         target.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
         target.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
         target.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
-        target.AutoScrollTimeUnit = (AutoScrollTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
         target.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
         target.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
         target.TimeRangeValue = GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
-        target.TimeRangeUnit = (TimeRangeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        target.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
         
         _cacheIsDirty = true;
     }

@@ -22,7 +22,7 @@ public class CrystalTrackerComponent : IDisposable
     // Caching fields for optimization
     private DateTime _lastCacheTime = DateTime.MinValue;
     private CrystalGrouping _cachedGrouping;
-    private TimeRangeUnit _cachedTimeRangeUnit;
+    private TimeUnit _cachedTimeRangeUnit;
     private int _cachedTimeRangeValue;
     private int _cachedFilterHash;
     private List<float>? _cachedSingleSeriesData;
@@ -93,7 +93,7 @@ public class CrystalTrackerComponent : IDisposable
         }
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     {
         var settings = Settings;
         settings.AutoScrollEnabled = enabled;
@@ -219,7 +219,7 @@ public class CrystalTrackerComponent : IDisposable
             var bufferSeconds = timeRangeSeconds * 2; // 2x buffer for smooth scrolling
             timeCutoff = DateTime.UtcNow.AddSeconds(-bufferSeconds);
         }
-        else if (settings.TimeRangeUnit != TimeRangeUnit.All)
+        else if (settings.TimeRangeUnit != TimeUnit.All)
         {
             timeCutoff = CalculateTimeCutoff(settings);
         }
@@ -714,11 +714,11 @@ public class CrystalTrackerComponent : IDisposable
         var now = DateTime.UtcNow;
         return settings.TimeRangeUnit switch
         {
-            TimeRangeUnit.Minutes => now.AddMinutes(-settings.TimeRangeValue),
-            TimeRangeUnit.Hours => now.AddHours(-settings.TimeRangeValue),
-            TimeRangeUnit.Days => now.AddDays(-settings.TimeRangeValue),
-            TimeRangeUnit.Weeks => now.AddDays(-settings.TimeRangeValue * 7),
-            TimeRangeUnit.Months => now.AddMonths(-settings.TimeRangeValue),
+            TimeUnit.Minutes => now.AddMinutes(-settings.TimeRangeValue),
+            TimeUnit.Hours => now.AddHours(-settings.TimeRangeValue),
+            TimeUnit.Days => now.AddDays(-settings.TimeRangeValue),
+            TimeUnit.Weeks => now.AddDays(-settings.TimeRangeValue * 7),
+            TimeUnit.Months => now.AddMonths(-settings.TimeRangeValue),
             _ => DateTime.MinValue
         };
     }

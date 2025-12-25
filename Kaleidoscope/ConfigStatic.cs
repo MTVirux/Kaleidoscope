@@ -76,13 +76,15 @@ public static class ConfigExtensions
     /// <param name="unit">The time unit.</param>
     /// <param name="value">The numeric value.</param>
     /// <returns>The total time in seconds.</returns>
-    public static double ToSeconds(this AutoScrollTimeUnit unit, int value) => unit switch
+    public static double ToSeconds(this TimeUnit unit, int value) => unit switch
     {
-        AutoScrollTimeUnit.Seconds => value,
-        AutoScrollTimeUnit.Minutes => value * 60,
-        AutoScrollTimeUnit.Hours => value * 3600,
-        AutoScrollTimeUnit.Days => value * 86400,
-        AutoScrollTimeUnit.Weeks => value * 604800,
+        TimeUnit.Seconds => value,
+        TimeUnit.Minutes => value * 60,
+        TimeUnit.Hours => value * 3600,
+        TimeUnit.Days => value * 86400,
+        TimeUnit.Weeks => value * 604800,
+        TimeUnit.Months => value * 2592000, // 30 days
+        TimeUnit.All => double.MaxValue,
         _ => 3600
     };
 }

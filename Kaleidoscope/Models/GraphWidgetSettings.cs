@@ -29,13 +29,13 @@ public interface IGraphWidgetSettings
     // Auto-scroll settings
     bool AutoScrollEnabled { get; set; }
     int AutoScrollTimeValue { get; set; }
-    AutoScrollTimeUnit AutoScrollTimeUnit { get; set; }
+    TimeUnit AutoScrollTimeUnit { get; set; }
     float AutoScrollNowPosition { get; set; }
     bool ShowControlsDrawer { get; set; }
     
     // Time range settings
     int TimeRangeValue { get; set; }
-    TimeRangeUnit TimeRangeUnit { get; set; }
+    TimeUnit TimeRangeUnit { get; set; }
 }
 
 /// <summary>
@@ -66,13 +66,13 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     
     // Time range settings
     public int TimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     
     /// <summary>
     /// Calculates the auto-scroll time range in seconds from value and unit.

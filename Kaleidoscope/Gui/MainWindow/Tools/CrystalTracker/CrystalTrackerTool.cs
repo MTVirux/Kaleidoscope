@@ -287,7 +287,7 @@ public class CrystalTrackerTool : ToolComponent
                 var unitIndex = (int)settings.AutoScrollTimeUnit;
                 if (ImGui.Combo("##autoscroll_unit", ref unitIndex, TimeUnitNames, TimeUnitNames.Length))
                 {
-                    settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
+                    settings.AutoScrollTimeUnit = (TimeUnit)unitIndex;
                     NotifyToolSettingsChanged();
                 }
                 ShowSettingTooltip("How much time to show when auto-scrolling.", "1 Hour");
@@ -365,7 +365,7 @@ public class CrystalTrackerTool : ToolComponent
         t.IncludeWater = GetSetting(settings, "IncludeWater", t.IncludeWater);
         t.IncludeRetainers = GetSetting(settings, "IncludeRetainers", t.IncludeRetainers);
         t.TimeRangeValue = GetSetting(settings, "TimeRangeValue", t.TimeRangeValue);
-        t.TimeRangeUnit = (TimeRangeUnit)GetSetting(settings, "TimeRangeUnit", (int)t.TimeRangeUnit);
+        t.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)t.TimeRangeUnit);
         t.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", t.ShowXAxisTimestamps);
         t.ShowValueLabel = GetSetting(settings, "ShowValueLabel", t.ShowValueLabel);
         t.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", t.ValueLabelOffsetX);
@@ -377,7 +377,7 @@ public class CrystalTrackerTool : ToolComponent
         t.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)t.GraphType);
         t.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", t.AutoScrollEnabled);
         t.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", t.AutoScrollTimeValue);
-        t.AutoScrollTimeUnit = (AutoScrollTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)t.AutoScrollTimeUnit);
+        t.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)t.AutoScrollTimeUnit);
         t.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", t.AutoScrollNowPosition);
         t.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", t.ShowControlsDrawer);
     }

@@ -16,28 +16,25 @@ public enum LayoutType
 }
 
 /// <summary>
-/// Time range unit for data filtering.
+/// Unified time unit for data filtering, auto-scroll, and time range selection.
+/// Combines the granularity of seconds for auto-scroll with months/all for data ranges.
 /// </summary>
-public enum TimeRangeUnit
+public enum TimeUnit
 {
-    Minutes = 0,
-    Hours = 1,
-    Days = 2,
-    Weeks = 3,
-    Months = 4,
-    All = 5
-}
-
-/// <summary>
-/// Time unit for auto-scroll follow mode (includes seconds for finer granularity).
-/// </summary>
-public enum AutoScrollTimeUnit
-{
+    /// <summary>Seconds - for fine-grained auto-scroll control.</summary>
     Seconds = 0,
+    /// <summary>Minutes.</summary>
     Minutes = 1,
+    /// <summary>Hours.</summary>
     Hours = 2,
+    /// <summary>Days.</summary>
     Days = 3,
-    Weeks = 4
+    /// <summary>Weeks.</summary>
+    Weeks = 4,
+    /// <summary>Months - approximate (30 days).</summary>
+    Months = 5,
+    /// <summary>All time - no time limit applied.</summary>
+    All = 6
 }
 
 /// <summary>
@@ -154,7 +151,7 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerHideCharacterSelector { get; set; } = false;
     public bool GilTrackerShowMultipleLines { get; set; } = false;
     public int GilTrackerTimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit GilTrackerTimeRangeUnit { get; set; } = TimeRangeUnit.All;
+    public TimeUnit GilTrackerTimeRangeUnit { get; set; } = TimeUnit.All;
     public bool GilTrackerShowEndGap { get; set; } = false;
     public float GilTrackerEndGapPercent { get; set; } = 5f;
     public bool GilTrackerShowValueLabel { get; set; } = false;
@@ -290,7 +287,7 @@ public class DataTrackerSettings
     public bool HideCharacterSelector { get; set; } = false;
     public bool ShowMultipleLines { get; set; } = false;
     public int TimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowEndGap { get; set; } = false;
     public float EndGapPercent { get; set; } = 5f;
@@ -308,7 +305,7 @@ public class DataTrackerSettings
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     
@@ -386,7 +383,7 @@ public class CrystalTrackerSettings
 
     // Display settings
     public int TimeRangeValue { get; set; } = 7;
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
@@ -400,7 +397,7 @@ public class CrystalTrackerSettings
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     
@@ -749,7 +746,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Unit for auto-scroll time range.</summary>
-    public AutoScrollTimeUnit AutoScrollTimeUnit { get; set; } = AutoScrollTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
@@ -761,7 +758,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
     
     /// <summary>Unit for time range.</summary>
-    public TimeRangeUnit TimeRangeUnit { get; set; } = TimeRangeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
 }
 
 public class ContentLayoutState
