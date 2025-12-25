@@ -38,6 +38,9 @@ public class ItemDetailsPopup
     private List<(long Id, int WorldId, int PricePerUnit, int Quantity, bool IsHq, int Total, DateTime Timestamp, string? BuyerName)> _localSales = new();
     private bool _localSalesLoaded;
 
+    // Focus state - used to bring window to front when opened
+    private bool _shouldFocus;
+
     /// <summary>
     /// Creates a new ItemDetailsPopup.
     /// </summary>
@@ -62,6 +65,7 @@ public class ItemDetailsPopup
         _currentItemId = (uint)itemId;
         _currentItemName = _itemDataService.GetItemName(itemId);
         _isOpen = true;
+        _shouldFocus = true;
         _marketData = null;
         _errorMessage = null;
         _localSales.Clear();
@@ -92,6 +96,13 @@ public class ItemDetailsPopup
 
         // Set up the popup window
         ImGui.SetNextWindowSize(new Vector2(550, 450), ImGuiCond.FirstUseEver);
+        
+        // Bring window to front when first opened
+        if (_shouldFocus)
+        {
+            ImGui.SetNextWindowFocus();
+            _shouldFocus = false;
+        }
         
         var windowFlags = ImGuiWindowFlags.NoCollapse;
         if (ImGui.Begin($"{_currentItemName}###ItemDetailsPopup", ref _isOpen, windowFlags))

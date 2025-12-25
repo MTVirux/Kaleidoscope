@@ -12,6 +12,8 @@ namespace Kaleidoscope.Gui.Widgets;
 public class CharacterPickerWidget
 {
     private readonly ICharacterDataSource _dataSource;
+    private readonly ConfigurationService? _configService;
+    private readonly AutoRetainerIpcService? _autoRetainerService;
 #if DEBUG
     private bool _namesPopupOpen = false;
 #endif
@@ -20,9 +22,16 @@ public class CharacterPickerWidget
     /// Creates a new CharacterPickerWidget.
     /// </summary>
     /// <param name="dataSource">The data source providing character information.</param>
-    public CharacterPickerWidget(ICharacterDataSource dataSource)
+    /// <param name="configService">Optional configuration service for sort order settings.</param>
+    /// <param name="autoRetainerService">Optional AutoRetainer service for AR sort order.</param>
+    public CharacterPickerWidget(
+        ICharacterDataSource dataSource,
+        ConfigurationService? configService = null,
+        AutoRetainerIpcService? autoRetainerService = null)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _configService = configService;
+        _autoRetainerService = autoRetainerService;
     }
 
     /// <summary>
@@ -52,8 +61,8 @@ public class CharacterPickerWidget
                         _dataSource.AvailableCharacters.Add(e.cid);
                 }
             }
-            // Keep the list sorted for predictable ordering
-            _dataSource.AvailableCharacters.Sort();
+            // Apply configured sort order
+            ApplySortOrder(_dataSource.AvailableCharacters);
         }
         catch (Exception ex)
         {
@@ -181,5 +190,76 @@ public class CharacterPickerWidget
             ImGui.EndPopup();
         }
 #endif
+    }
+
+    /// <summary>
+    /// Applies the configured sort order to the character list.
+    /// </summary>
+    private void ApplySortOrder(List<ulong> characters)
+    {
+        if (characters == null || characters.Count <= 1) return;
+
+        var sortOrder = _configService?.Config.CharacterSortOrder ?? CharacterSortOrder.Alphabetical;
+
+        switch (sortOrder)
+        {
+            case CharacterSortOrder.Alphabetical:
+                characters.Sort((a, b) =>
+                {
+                    var nameA = _dataSource.GetCharacterDisplayName(a);
+                    var nameB = _dataSource.GetCharacterDisplayName(b);
+                    return string.Compare(nameA, nameB, StringComparison.OrdinalIgnoreCase);
+                });
+                break;
+
+            case CharacterSortOrder.ReverseAlphabetical:
+                characters.Sort((a, b) =>
+                {
+                    var nameA = _dataSource.GetCharacterDisplayName(a);
+                    var nameB = _dataSource.GetCharacterDisplayName(b);
+                    return string.Compare(nameB, nameA, StringComparison.OrdinalIgnoreCase);
+                });
+                break;
+
+            case CharacterSortOrder.AutoRetainer:
+                var arOrder = _autoRetainerService?.GetRegisteredCharacterIds();
+                if (arOrder != null && arOrder.Count > 0)
+                {
+                    var orderLookup = new Dictionary<ulong, int>();
+                    for (var i = 0; i < arOrder.Count; i++)
+                    {
+                        orderLookup[arOrder[i]] = i;
+                    }
+
+                    characters.Sort((a, b) =>
+                    {
+                        var hasA = orderLookup.TryGetValue(a, out var orderA);
+                        var hasB = orderLookup.TryGetValue(b, out var orderB);
+
+                        if (hasA && hasB)
+                            return orderA.CompareTo(orderB);
+                        if (hasA)
+                            return -1;
+                        if (hasB)
+                            return 1;
+
+                        // Both not in AR, sort alphabetically
+                        var nameA = _dataSource.GetCharacterDisplayName(a);
+                        var nameB = _dataSource.GetCharacterDisplayName(b);
+                        return string.Compare(nameA, nameB, StringComparison.OrdinalIgnoreCase);
+                    });
+                }
+                else
+                {
+                    // Fall back to alphabetical
+                    characters.Sort((a, b) =>
+                    {
+                        var nameA = _dataSource.GetCharacterDisplayName(a);
+                        var nameB = _dataSource.GetCharacterDisplayName(b);
+                        return string.Compare(nameA, nameB, StringComparison.OrdinalIgnoreCase);
+                    });
+                }
+                break;
+        }
     }
 }

@@ -21,6 +21,7 @@ public sealed class QuickAccessBarWidget
     private readonly AutoRetainerIpcService? _autoRetainerService;
     private readonly Action? _onFullscreenToggle;
     private readonly Action? _onSave;
+    private readonly Action? _onOpenSettings;
     private readonly Func<bool>? _onExitEditModeWithDirtyCheck;
     private readonly Action<string>? _onLayoutChanged;
 
@@ -41,6 +42,27 @@ public sealed class QuickAccessBarWidget
     private const uint StatusDisconnectedColor = 0xFF0000CC; // Red
     private const uint StatusWarningColor = 0xFF00AAFF; // Orange/Yellow
     private const uint SeparatorColor = 0xFF505050;
+    private const uint PinActiveColor = 0xFF00CC00; // Green when pinned
+    private const uint PinInactiveColor = 0xFF808080; // Gray when not pinned
+    private const float AnimationDuration = 0.1f; // 0.1 second dropdown animation
+    private const float TopOffset = 2f; // Reduced spacing from top
+
+    // Pin and animation state
+    private bool _isPinned = false;
+    private float _animationProgress = 0f;
+    private DateTime _animationStartTime = DateTime.MinValue;
+    private bool _isAnimatingIn = false;
+    private bool _isAnimatingOut = false;
+    private bool _wasVisible = false;
+
+    /// <summary>
+    /// Whether the bar is pinned (stays visible without holding CTRL+ALT).
+    /// </summary>
+    public bool IsPinned
+    {
+        get => _isPinned;
+        set => _isPinned = value;
+    }
 
     /// <summary>
     /// Creates a new quick access bar widget.
@@ -53,6 +75,7 @@ public sealed class QuickAccessBarWidget
     /// <param name="autoRetainerService">AutoRetainer IPC service for plugin integration status (optional).</param>
     /// <param name="onFullscreenToggle">Callback to toggle fullscreen mode.</param>
     /// <param name="onSave">Callback to save the layout.</param>
+    /// <param name="onOpenSettings">Callback to open settings window.</param>
     /// <param name="onExitEditModeWithDirtyCheck">Callback when toggling edit mode off with dirty state. Returns true if handled (e.g., showing dialog).</param>
     /// <param name="onLayoutChanged">Callback when user selects a different layout from the dropdown.</param>
     public QuickAccessBarWidget(
@@ -64,6 +87,7 @@ public sealed class QuickAccessBarWidget
         AutoRetainerIpcService? autoRetainerService = null,
         Action? onFullscreenToggle = null,
         Action? onSave = null,
+        Action? onOpenSettings = null,
         Func<bool>? onExitEditModeWithDirtyCheck = null,
         Action<string>? onLayoutChanged = null)
     {
@@ -75,25 +99,81 @@ public sealed class QuickAccessBarWidget
         _autoRetainerService = autoRetainerService;
         _onFullscreenToggle = onFullscreenToggle;
         _onSave = onSave;
+        _onOpenSettings = onOpenSettings;
         _onExitEditModeWithDirtyCheck = onExitEditModeWithDirtyCheck;
         _onLayoutChanged = onLayoutChanged;
     }
 
     /// <summary>
-    /// Draws the quick access bar if CTRL+ALT is held.
+    /// Draws the quick access bar if CTRL+ALT is held or pinned.
     /// </summary>
-    /// <returns>True if the bar was drawn (CTRL+ALT is held).</returns>
+    /// <returns>True if the bar was drawn.</returns>
     public bool Draw()
     {
         var io = ImGui.GetIO();
+        var now = DateTime.Now;
         
-        // Only show when CTRL+ALT is held (but not SHIFT, which is used for temp edit mode)
-        if (!io.KeyCtrl || !io.KeyAlt || io.KeyShift)
+        // Show when CTRL+ALT is held (but not SHIFT) OR when pinned
+        var keyComboHeld = io.KeyCtrl && io.KeyAlt && !io.KeyShift;
+        var shouldBeVisible = keyComboHeld || _isPinned;
+        
+        // Handle animation state transitions
+        if (shouldBeVisible && !_wasVisible)
+        {
+            // Start animating in
+            _isAnimatingIn = true;
+            _isAnimatingOut = false;
+            _animationStartTime = now;
+        }
+        else if (!shouldBeVisible && _wasVisible)
+        {
+            // Start animating out
+            _isAnimatingOut = true;
+            _isAnimatingIn = false;
+            _animationStartTime = now;
+        }
+        
+        // Update animation progress
+        if (_isAnimatingIn)
+        {
+            var elapsed = (float)(now - _animationStartTime).TotalSeconds;
+            _animationProgress = Math.Min(1f, elapsed / AnimationDuration);
+            if (_animationProgress >= 1f)
+            {
+                _isAnimatingIn = false;
+                _animationProgress = 1f;
+            }
+        }
+        else if (_isAnimatingOut)
+        {
+            var elapsed = (float)(now - _animationStartTime).TotalSeconds;
+            _animationProgress = Math.Max(0f, 1f - (elapsed / AnimationDuration));
+            if (_animationProgress <= 0f)
+            {
+                _isAnimatingOut = false;
+                _animationProgress = 0f;
+            }
+        }
+        else if (shouldBeVisible)
+        {
+            _animationProgress = 1f;
+        }
+        else
+        {
+            _animationProgress = 0f;
+        }
+        
+        // Only track the shouldBeVisible state, not animation progress
+        // This prevents the animation from restarting every frame
+        _wasVisible = shouldBeVisible;
+        
+        // Don't draw if fully hidden
+        if (_animationProgress <= 0f)
             return false;
 
         // Calculate bar dimensions
         var isDirty = _layoutEditingService.IsDirty;
-        var buttonCount = isDirty ? 4 : 3; // Edit, Lock, Fullscreen, and optionally Save
+        var buttonCount = isDirty ? 6 : 5; // Pin, Edit, Lock, Fullscreen, Settings, and optionally Save
         
         // Count status indicators (only show if services are provided)
         var statusCount = 0;
@@ -132,13 +212,18 @@ public sealed class QuickAccessBarWidget
         var statusSectionWidth = statusCount > 0 ? statusWidth + separatorSpace : 0f;
         var barWidth = buttonsWidth + layoutSectionWidth + characterSectionWidth + statusSectionWidth + (BarPadding * 2);
         
-        // Position at top center of the current window
+        // Position at top center of the current window with reduced spacing
         var windowPos = ImGui.GetWindowPos();
         var windowSize = ImGui.GetWindowSize();
         var contentMin = ImGui.GetWindowContentRegionMin();
+        
+        // Apply ease-out animation for dropdown effect
+        var easeProgress = 1f - (float)Math.Pow(1f - _animationProgress, 2);
+        var animationOffset = BarHeight * (1f - easeProgress);
+        
         var barPos = new Vector2(
             windowPos.X + (windowSize.X - barWidth) / 2f, 
-            windowPos.Y + contentMin.Y + 5f);
+            windowPos.Y + contentMin.Y + TopOffset - animationOffset);
         
         // Draw bar background using the window's draw list
         var dl = ImGui.GetWindowDrawList();
@@ -150,6 +235,10 @@ public sealed class QuickAccessBarWidget
         // Button positions
         var buttonY = barPos.Y + (BarHeight - ButtonWidth) / 2f;
         var currentX = barPos.X + BarPadding;
+
+        // Pin Button
+        DrawPinButton(dl, ref currentX, buttonY);
+        currentX += ButtonSpacing;
 
         // Edit Mode Button
         DrawIconButton(dl, ref currentX, buttonY, 
@@ -197,6 +286,16 @@ public sealed class QuickAccessBarWidget
             _stateService.IsFullscreen,
             false,
             () => _onFullscreenToggle?.Invoke());
+
+        currentX += ButtonSpacing;
+
+        // Settings Button
+        DrawIconButton(dl, ref currentX, buttonY,
+            FontAwesomeIcon.Cog,
+            "Open Settings",
+            false,
+            false,
+            () => _onOpenSettings?.Invoke());
 
         // Save Button (only when dirty)
         if (isDirty)
@@ -338,6 +437,60 @@ public sealed class QuickAccessBarWidget
         }
         
         x += StatusIndicatorSize;
+    }
+
+    private void DrawPinButton(ImDrawListPtr dl, ref float x, float y)
+    {
+        var buttonMin = new Vector2(x, y);
+        var buttonMax = buttonMin + new Vector2(ButtonWidth, ButtonWidth);
+        var mousePos = ImGui.GetMousePos();
+        var isHovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
+                        mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
+
+        // Determine button color
+        uint bgColor;
+        if (_isPinned)
+            bgColor = ButtonActiveColor;
+        else if (isHovered)
+            bgColor = ButtonHoverColor;
+        else
+            bgColor = 0x00000000; // Transparent when not hovered
+
+        // Draw button background
+        if (bgColor != 0)
+            dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
+
+        // Draw pin icon using FontAwesome
+        var icon = _isPinned ? FontAwesomeIcon.Thumbtack : FontAwesomeIcon.Thumbtack;
+        var iconText = icon.ToIconString();
+        ImGui.PushFont(UiBuilder.IconFont);
+        try
+        {
+            var textSize = ImGui.CalcTextSize(iconText);
+            var textPos = buttonMin + (new Vector2(ButtonWidth, ButtonWidth) - textSize) / 2f;
+            var textColor = _isPinned ? PinActiveColor : PinInactiveColor;
+            dl.AddText(textPos, textColor, iconText);
+        }
+        finally
+        {
+            ImGui.PopFont();
+        }
+
+        // Handle click
+        if (isHovered)
+        {
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            {
+                _isPinned = !_isPinned;
+            }
+
+            // Show tooltip
+            ImGui.BeginTooltip();
+            ImGui.TextUnformatted(_isPinned ? "Unpin (hide when CTRL+ALT released)" : "Pin (keep visible)");
+            ImGui.EndTooltip();
+        }
+
+        x += ButtonWidth;
     }
 
     private void DrawIconButton(ImDrawListPtr dl, ref float x, float y, FontAwesomeIcon icon, string tooltip, bool isActive, bool isSaveButton, Action onClick)
