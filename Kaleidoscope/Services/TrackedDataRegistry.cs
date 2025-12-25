@@ -72,7 +72,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Tomestone,
             ItemId = 43693, // Aesthetics as of 7.x
             MaxValue = 2000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Uncapped tomestones for current expansion."
         });
 
@@ -85,7 +85,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Scrip,
             ItemId = 25199,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Crafters' scrips for older recipes."
         });
 
@@ -97,7 +97,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Scrip,
             ItemId = 33913,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Crafters' scrips for endgame crafting."
         });
 
@@ -121,7 +121,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Scrip,
             ItemId = 25200,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Gatherers' scrips for older content."
         });
 
@@ -133,7 +133,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Scrip,
             ItemId = 33914,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Gatherers' scrips for endgame gathering."
         });
 
@@ -157,7 +157,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Scrip,
             ItemId = 28063,
             MaxValue = 99999,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Ishgardian Restoration scrips."
         });
 
@@ -169,7 +169,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "Storm",
             Category = TrackedDataCategory.GrandCompany,
             MaxValue = 90000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Maelstrom grand company seals."
         });
 
@@ -180,7 +180,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "Serpent",
             Category = TrackedDataCategory.GrandCompany,
             MaxValue = 90000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Order of the Twin Adder grand company seals."
         });
 
@@ -191,7 +191,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "Flame",
             Category = TrackedDataCategory.GrandCompany,
             MaxValue = 90000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Immortal Flames grand company seals."
         });
 
@@ -203,7 +203,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "Wolf",
             Category = TrackedDataCategory.PvP,
             MaxValue = 20000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "PvP currency for gear and items."
         });
 
@@ -215,7 +215,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.PvP,
             ItemId = 36656,
             MaxValue = 20000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "PvP currency for special rewards."
         });
 
@@ -227,7 +227,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "Allied",
             Category = TrackedDataCategory.Hunt,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "ARR/HW hunt currency."
         });
 
@@ -239,7 +239,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Hunt,
             ItemId = 10307,
             MaxValue = 4000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Stormblood hunt currency."
         });
 
@@ -263,7 +263,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ShortName = "MGP",
             Category = TrackedDataCategory.GoldSaucer,
             MaxValue = 9_999_999,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "Gold Saucer currency."
         });
 
@@ -276,7 +276,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Category = TrackedDataCategory.Tribal,
             ItemId = 26807,
             MaxValue = 1000,
-            EnabledByDefault = false,
+            EnabledByDefault = true,
             Description = "FATE currency for ShB/EW zones."
         });
 

@@ -40,6 +40,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         Config = cfg;
 
         NormalizeLayouts();
+        EnsureDefaultCrystalColors();
 
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
@@ -149,6 +150,60 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         catch (Exception ex)
         {
             _log.Error($"Failed to load layouts: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Ensures default colors are set for crystal items if not already configured.
+    /// Colors match the CrystalTableTool element colors.
+    /// </summary>
+    private void EnsureDefaultCrystalColors()
+    {
+        Config.GameItemColors ??= new Dictionary<uint, uint>();
+        
+        // Element colors in ABGR uint format (matching CrystalTableTool.ElementColors)
+        // ABGR format: A << 24 | B << 16 | G << 8 | R
+        // Fire: (1.0f, 0.3f, 0.2f, 1.0f) - red/orange → R=255, G=77, B=51, A=255
+        // Ice: (0.4f, 0.7f, 1.0f, 1.0f) - light blue → R=102, G=179, B=255, A=255
+        // Wind: (0.3f, 0.9f, 0.5f, 1.0f) - green → R=77, G=230, B=128, A=255
+        // Earth: (0.8f, 0.6f, 0.3f, 1.0f) - brown/tan → R=204, G=153, B=77, A=255
+        // Lightning: (0.7f, 0.3f, 0.9f, 1.0f) - purple → R=179, G=77, B=230, A=255
+        // Water: (0.3f, 0.5f, 1.0f, 1.0f) - blue → R=77, G=128, B=255, A=255
+        uint[] elementColorsAbgr =
+        {
+            0xFF334DFF, // Fire
+            0xFFFFB366, // Ice
+            0xFF80E64D, // Wind
+            0xFF4D99CC, // Earth
+            0xFFE64DB3, // Lightning
+            0xFFFF804D  // Water
+        };
+        
+        // Crystal item IDs: 
+        // Shards: 2-7 (Fire=2, Ice=3, Wind=4, Earth=5, Lightning=6, Water=7)
+        // Crystals: 8-13 (Fire=8, Ice=9, Wind=10, Earth=11, Lightning=12, Water=13)
+        // Clusters: 14-19 (Fire=14, Ice=15, Wind=16, Earth=17, Lightning=18, Water=19)
+        const int baseId = ConfigStatic.CrystalBaseItemId; // 2
+        const int tierOffset = ConfigStatic.CrystalTierOffset; // 6
+        
+        for (int element = 0; element < 6; element++)
+        {
+            var color = elementColorsAbgr[element];
+            
+            // Shard
+            var shardId = (uint)(baseId + element);
+            if (!Config.GameItemColors.ContainsKey(shardId))
+                Config.GameItemColors[shardId] = color;
+            
+            // Crystal
+            var crystalId = (uint)(baseId + tierOffset + element);
+            if (!Config.GameItemColors.ContainsKey(crystalId))
+                Config.GameItemColors[crystalId] = color;
+            
+            // Cluster
+            var clusterId = (uint)(baseId + 2 * tierOffset + element);
+            if (!Config.GameItemColors.ContainsKey(clusterId))
+                Config.GameItemColors[clusterId] = color;
         }
     }
 
