@@ -83,6 +83,15 @@ public class PriceTrackingSettings
 
     /// <summary>Whether to subscribe to sales/add events (completed sales).</summary>
     public bool SubscribeSalesAdd { get; set; } = true;
+
+    /// <summary>Whether to filter out sales with large discrepancies from current listings.</summary>
+    public bool FilterSalesByListingPrice { get; set; } = true;
+
+    /// <summary>Maximum allowed discrepancy percentage (0-100) between sale price and listing price. Sales outside this range are ignored.</summary>
+    public int SaleDiscrepancyThreshold { get; set; } = 50;
+
+    /// <summary>Minimum unit price for sale filtering to apply. Sales below this price skip the discrepancy filter.</summary>
+    public int SaleFilterMinimumPrice { get; set; } = 10000;
 }
 
 /// <summary>

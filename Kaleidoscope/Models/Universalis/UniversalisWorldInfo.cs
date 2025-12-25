@@ -82,4 +82,18 @@ public sealed class UniversalisWorldData
     {
         return Worlds.FirstOrDefault(w => w.Name == worldName)?.Id;
     }
+    
+    /// <summary>Gets data center for a world by world name.</summary>
+    public UniversalisDataCenter? GetDataCenterForWorld(string worldName)
+    {
+        var worldId = GetWorldId(worldName);
+        if (worldId == null) return null;
+        return DataCenters.FirstOrDefault(dc => dc.Worlds?.Contains(worldId.Value) == true);
+    }
+    
+    /// <summary>Gets region for a world by world name.</summary>
+    public string? GetRegionForWorld(string worldName)
+    {
+        return GetDataCenterForWorld(worldName)?.Region;
+    }
 }

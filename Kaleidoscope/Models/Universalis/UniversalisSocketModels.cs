@@ -174,4 +174,7 @@ public sealed class PriceFeedEntry
 
     /// <summary>Retainer name (for listings).</summary>
     public string? RetainerName { get; set; }
+
+    /// <summary>Whether this sale was from a mannequin.</summary>
+    public bool OnMannequin { get; set; }
 }

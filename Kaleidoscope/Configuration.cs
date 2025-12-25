@@ -2,6 +2,7 @@ using Dalamud.Configuration;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope;
 
@@ -67,6 +68,34 @@ public enum UniversalisScope
     Region = 2
 }
 
+/// <summary>
+/// Format for displaying character names.
+/// </summary>
+public enum CharacterNameFormat
+{
+    /// <summary>Display full name (e.g., "John Smith").</summary>
+    FullName = 0,
+    /// <summary>Display first name only (e.g., "John").</summary>
+    FirstNameOnly = 1,
+    /// <summary>Display last name only (e.g., "Smith").</summary>
+    LastNameOnly = 2,
+    /// <summary>Display initials (e.g., "J.S.").</summary>
+    Initials = 3
+}
+
+/// <summary>
+/// Sort order for character lists.
+/// </summary>
+public enum CharacterSortOrder
+{
+    /// <summary>Sort characters alphabetically by name (A-Z).</summary>
+    Alphabetical = 0,
+    /// <summary>Sort characters in reverse alphabetical order (Z-A).</summary>
+    ReverseAlphabetical = 1,
+    /// <summary>Sort characters in the order returned by AutoRetainer.</summary>
+    AutoRetainer = 2
+}
+
 public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
@@ -85,6 +114,16 @@ public class Configuration : IPluginConfiguration
     /// Whether developer mode stays visible without holding CTRL+ALT.
     /// </summary>
     public bool DeveloperModeEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Format for displaying character names throughout the UI.
+    /// </summary>
+    public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;
+
+    /// <summary>
+    /// Sort order for character lists throughout the UI.
+    /// </summary>
+    public CharacterSortOrder CharacterSortOrder { get; set; } = CharacterSortOrder.Alphabetical;
 
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
@@ -170,6 +209,34 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Dictionary<TrackedDataType, DataTrackerSettings> DataTrackerSettings { get; set; } = new();
 
+    /// <summary>
+    /// Custom colors for each tracked data type. Used across all tools for consistent coloring.
+    /// Stored as ABGR uint format.
+    /// </summary>
+    public Dictionary<TrackedDataType, uint> ItemColors { get; set; } = new();
+
+    /// <summary>
+    /// Custom colors for game items (keyed by item ID). Used in Item Table and other tools.
+    /// Stored as ABGR uint format.
+    /// </summary>
+    public Dictionary<uint, uint> GameItemColors { get; set; } = new();
+
+    // === Favorites ===
+    /// <summary>
+    /// Favorite item IDs for quick access in item selectors.
+    /// </summary>
+    public HashSet<uint> FavoriteItems { get; set; } = new();
+
+    /// <summary>
+    /// Favorite currency types (TrackedDataType) for quick access.
+    /// </summary>
+    public HashSet<TrackedDataType> FavoriteCurrencies { get; set; } = new();
+
+    /// <summary>
+    /// Favorite character IDs for quick access in character selectors.
+    /// </summary>
+    public HashSet<ulong> FavoriteCharacters { get; set; } = new();
+
     // CrystalTracker settings
     public CrystalTrackerSettings CrystalTracker { get; set; } = new();
 
@@ -208,6 +275,11 @@ public class Configuration : IPluginConfiguration
     /// Settings for the Item Graph tool.
     /// </summary>
     public ItemGraphSettings ItemGraph { get; set; } = new();
+
+    /// <summary>
+    /// Settings for the time-series in-memory cache.
+    /// </summary>
+    public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
 }
 
 /// <summary>
@@ -567,6 +639,38 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// </summary>
     public Kaleidoscope.Gui.Widgets.TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
         Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    
+    /// <summary>
+    /// Set of character IDs that are hidden from the table.
+    /// </summary>
+    public HashSet<ulong> HiddenCharacters { get; set; } = new();
+    
+    /// <summary>
+    /// Grouping mode for table rows (Character, World, DataCenter, Region, All).
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableGroupingMode GroupingMode { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableGroupingMode.Character;
+    
+    /// <summary>
+    /// Whether to hide the character/group column when GroupingMode is All.
+    /// </summary>
+    public bool HideCharacterColumnInAllMode { get; set; } = false;
+    
+    /// <summary>
+    /// List of merged column groups. Each group combines multiple columns into one.
+    /// </summary>
+    public List<Kaleidoscope.Gui.Widgets.MergedColumnGroup> MergedColumnGroups { get; set; } = new();
+    
+    /// <summary>
+    /// List of merged row groups. Each group combines multiple character rows into one.
+    /// </summary>
+    public List<Kaleidoscope.Gui.Widgets.MergedRowGroup> MergedRowGroups { get; set; } = new();
+    
+    /// <summary>
+    /// Mode for determining cell text colors.
+    /// </summary>
+    public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
+        Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
 }
 
 /// <summary>
@@ -710,4 +814,10 @@ public class ToolLayoutState
     /// List of series names that are hidden in this tool instance.
     /// </summary>
     public List<string> HiddenSeries { get; set; } = new();
+    
+    /// <summary>
+    /// Tool-specific settings stored as key-value pairs.
+    /// Each tool type can store its own settings here for instance-specific persistence.
+    /// </summary>
+    public Dictionary<string, object?> ToolSettings { get; set; } = new();
 }
