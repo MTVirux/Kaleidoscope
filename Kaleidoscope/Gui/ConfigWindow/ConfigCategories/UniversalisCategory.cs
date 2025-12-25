@@ -356,6 +356,53 @@ public class UniversalisCategory
         ImGui.SameLine();
         HelpMarker("Receive notifications when items are sold on the market board.");
 
+        ImGui.Spacing();
+
+        // Sale filtering sub-section
+        ImGui.TextUnformatted("Sale Filtering");
+        ImGui.Spacing();
+
+        var filterByListing = settings.FilterSalesByListingPrice;
+        if (ImGui.Checkbox("Filter outlier sales##FilterSalesByListing", ref filterByListing))
+        {
+            settings.FilterSalesByListingPrice = filterByListing;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker("Ignore sales that deviate significantly from the reference price.\n" +
+            "The reference price is the average of the lowest listing and most recent sale for that world.\n" +
+            "This prevents price manipulation and outliers from affecting inventory value calculations.");
+
+        if (settings.FilterSalesByListingPrice)
+        {
+            var threshold = settings.SaleDiscrepancyThreshold;
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.InputInt("Discrepancy threshold %##SaleDiscrepancy", ref threshold))
+            {
+                if (threshold < 0) threshold = 0;
+                settings.SaleDiscrepancyThreshold = threshold;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
+                $"Reference = average of lowest listing and most recent sale for that world.\n" +
+                $"At {threshold}%: a sale must be between {100 - threshold}% and {100 + threshold}% of the reference price.");
+
+            var minPrice = settings.SaleFilterMinimumPrice;
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.InputInt("Minimum price for filter##SaleMinPrice", ref minPrice))
+            {
+                if (minPrice < 0) minPrice = 0;
+                settings.SaleFilterMinimumPrice = minPrice;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
+                "Low-value items often have high price variance, so filtering them can cause missed data.");
+        }
+
+        ImGui.Spacing();
+
         // Show warning if no channels are selected
         if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
         {

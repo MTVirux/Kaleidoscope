@@ -13,6 +13,7 @@ public class ProfilerCategory
 {
     private readonly ProfilerService _profilerService;
     private readonly ConfigurationService _configService;
+    private readonly SamplerService? _samplerService;
     
     /// <summary>
     /// Which stats view to show (Basic, Percentiles, Rolling, All).
@@ -35,10 +36,11 @@ public class ProfilerCategory
     /// </summary>
     private bool _showChildScopes = true;
 
-    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService)
+    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, SamplerService? samplerService = null)
     {
         _profilerService = profilerService;
         _configService = configService;
+        _samplerService = samplerService;
     }
 
     public void Draw()
@@ -178,6 +180,31 @@ public class ProfilerCategory
         ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1f, 1f), "GC:");
         ImGui.SameLine();
         ImGui.TextUnformatted($"Gen0: {gen0}  Gen1: {gen1}  Gen2: {gen2}");
+        
+        // Cache statistics
+        if (_samplerService?.CacheService != null)
+        {
+            var cacheStats = _samplerService.CacheService.GetStatistics();
+            
+            ImGui.TextColored(new System.Numerics.Vector4(0.6f, 1f, 0.6f, 1f), "Cache:");
+            ImGui.SameLine();
+            ImGui.TextUnformatted($"{cacheStats.SeriesCount} series, {cacheStats.TotalPoints:N0} points");
+            ImGui.SameLine();
+            ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), "|");
+            ImGui.SameLine();
+            
+            // Hit rate with color coding (green = good, red = bad)
+            var hitRateColor = cacheStats.HitRate >= 0.9 
+                ? new System.Numerics.Vector4(0.2f, 1f, 0.2f, 1f)  // Green for 90%+
+                : cacheStats.HitRate >= 0.7 
+                    ? new System.Numerics.Vector4(1f, 1f, 0.2f, 1f)  // Yellow for 70-90%
+                    : new System.Numerics.Vector4(1f, 0.4f, 0.4f, 1f); // Red for <70%
+            
+            ImGui.TextColored(hitRateColor, $"Hit Rate: {cacheStats.HitRate:P1}");
+            ImGui.SameLine();
+            ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
+                $"({cacheStats.CacheHits:N0} hits / {cacheStats.CacheMisses:N0} misses)");
+        }
     }
 
     private void DrawStatsTable(string label, ProfilerService.ProfileStats[] stats, bool showChildScopes)

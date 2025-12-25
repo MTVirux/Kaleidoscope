@@ -36,6 +36,9 @@ public sealed class ConfigWindow : Window
     private WindowsCategory? _windowsCategory;
     private UniversalisCategory? _universalisCategory;
     private ProfilerCategory? _profilerCategory;
+    private CharactersCategory? _charactersCategory;
+    private ItemsCategory? _currenciesCategory;
+    private GameItemsCategory? _gameItemsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -44,11 +47,14 @@ public sealed class ConfigWindow : Window
     {
         public const int General = 0;
         public const int Data = 1;
-        public const int Sampler = 2;
-        public const int Layouts = 3;
-        public const int Windows = 4;
-        public const int Universalis = 5;
-        public const int Profiler = 6; // Hidden tab, only shown with CTRL+ALT
+        public const int Characters = 2;
+        public const int Currencies = 3;
+        public const int GameItems = 4;
+        public const int Sampler = 5;
+        public const int Layouts = 6;
+        public const int Windows = 7;
+        public const int Universalis = 8;
+        public const int Profiler = 9; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -68,7 +74,11 @@ public sealed class ConfigWindow : Window
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
         UniversalisWebSocketService webSocketService,
-        ProfilerService profilerService)
+        ProfilerService profilerService,
+        ItemDataService itemDataService,
+        IDataManager dataManager,
+        ITextureProvider textureProvider,
+        FavoritesService favoritesService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -119,7 +129,10 @@ public sealed class ConfigWindow : Window
         _layoutsCategory = new LayoutsCategory(_configService);
         _windowsCategory = new WindowsCategory(Config, _configService.Save);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
-        _profilerCategory = new ProfilerCategory(_profilerService, _configService);
+        _profilerCategory = new ProfilerCategory(_profilerService, _configService, _samplerService);
+        _charactersCategory = new CharactersCategory(_samplerService, _samplerService.CacheService, _configService, _arIpc);
+        _currenciesCategory = new ItemsCategory(_configService, _registry);
+        _gameItemsCategory = new GameItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -159,12 +172,15 @@ public sealed class ConfigWindow : Window
 
         // Sidebar
         ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
-        if (ImGui.Selectable("General", _selectedTab == 0)) _selectedTab = 0;
-        if (ImGui.Selectable("Data", _selectedTab == 1)) _selectedTab = 1;
-        if (ImGui.Selectable("Sampler", _selectedTab == 2)) _selectedTab = 2;
-        if (ImGui.Selectable("Layouts", _selectedTab == 3)) _selectedTab = 3;
-        if (ImGui.Selectable("Windows", _selectedTab == 4)) _selectedTab = 4;
-        if (ImGui.Selectable("Universalis", _selectedTab == 5)) _selectedTab = 5;
+        if (ImGui.Selectable("General", _selectedTab == TabIndex.General)) _selectedTab = TabIndex.General;
+        if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
+        if (ImGui.Selectable("Characters", _selectedTab == TabIndex.Characters)) _selectedTab = TabIndex.Characters;
+        if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
+        if (ImGui.Selectable("Items", _selectedTab == TabIndex.GameItems)) _selectedTab = TabIndex.GameItems;
+        if (ImGui.Selectable("Sampler", _selectedTab == TabIndex.Sampler)) _selectedTab = TabIndex.Sampler;
+        if (ImGui.Selectable("Layouts", _selectedTab == TabIndex.Layouts)) _selectedTab = TabIndex.Layouts;
+        if (ImGui.Selectable("Windows", _selectedTab == TabIndex.Windows)) _selectedTab = TabIndex.Windows;
+        if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
         
         // Only show Profiler tab when CTRL+ALT are held
         if (showProfiler)
@@ -186,6 +202,15 @@ public sealed class ConfigWindow : Window
                 break;
             case TabIndex.Data:
                 _dataCategory?.Draw();
+                break;
+            case TabIndex.Characters:
+                _charactersCategory?.Draw();
+                break;
+            case TabIndex.Currencies:
+                _currenciesCategory?.Draw();
+                break;
+            case TabIndex.GameItems:
+                _gameItemsCategory?.Draw();
                 break;
             case TabIndex.Sampler:
                 _samplerCategory?.Draw();
