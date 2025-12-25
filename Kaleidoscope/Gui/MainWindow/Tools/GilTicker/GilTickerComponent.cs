@@ -1,15 +1,16 @@
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 
 /// <summary>
 /// Component that displays a scrolling ticker of character gil values.
+/// Uses DataTrackerHelper with TrackedDataType.Gil for data access.
 /// </summary>
 public class GilTickerComponent
 {
-    private readonly GilTrackerHelper _helper;
+    private readonly DataTrackerHelper _helper;
     private readonly ConfigurationService _configService;
 
     // Ticker animation state
@@ -21,7 +22,7 @@ public class GilTickerComponent
 
     private Configuration Config => _configService.Config;
 
-    public GilTickerComponent(GilTrackerHelper helper, ConfigurationService configService)
+    public GilTickerComponent(DataTrackerHelper helper, ConfigurationService configService)
     {
         _helper = helper;
         _configService = configService;

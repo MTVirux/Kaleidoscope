@@ -3,7 +3,6 @@ using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTable;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Gui.MainWindow.Tools.ItemGraph;
@@ -686,8 +685,12 @@ public static class WindowToolRegistrar
                     return CreateItemGraphTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService);
 
                 case ToolIds.GilTicker:
-                    // Create a helper that shares the database and cache with the sampler
-                    var tickerHelper = new GilTrackerHelper(samplerService.DbService, samplerService.CacheService);
+                    // Create a DataTrackerHelper for Gil that shares the database and cache with the sampler
+                    var tickerHelper = new DataTrackerHelper(
+                        TrackedDataType.Gil,
+                        samplerService.DbService,
+                        samplerService.Registry,
+                        samplerService.CacheService);
                     var tickerInner = new GilTickerComponent(tickerHelper, configService);
                     return new GilTickerTool(tickerInner, tickerHelper, configService, samplerService.CacheService) { Position = pos };
 

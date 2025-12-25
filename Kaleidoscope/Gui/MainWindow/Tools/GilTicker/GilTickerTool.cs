@@ -1,6 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
+using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
@@ -8,11 +8,12 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 /// <summary>
 /// Tool component wrapper for the Gil Ticker feature.
 /// Displays a scrolling ticker of character gil values.
+/// Uses DataTrackerHelper with TrackedDataType.Gil for data access.
 /// </summary>
 public class GilTickerTool : ToolComponent
 {
     private readonly GilTickerComponent _inner;
-    private readonly GilTrackerHelper _helper;
+    private readonly DataTrackerHelper _helper;
     private readonly ConfigurationService _configService;
     private readonly TimeSeriesCacheService _cacheService;
     
@@ -36,7 +37,7 @@ public class GilTickerTool : ToolComponent
     /// </summary>
     public HashSet<ulong> DisabledCharacters => _disabledCharacters;
 
-    public GilTickerTool(GilTickerComponent inner, GilTrackerHelper helper, ConfigurationService configService, TimeSeriesCacheService cacheService)
+    public GilTickerTool(GilTickerComponent inner, DataTrackerHelper helper, ConfigurationService configService, TimeSeriesCacheService cacheService)
     {
         _inner = inner;
         _helper = helper;
