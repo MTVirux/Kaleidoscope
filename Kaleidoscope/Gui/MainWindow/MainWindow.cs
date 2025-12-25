@@ -35,6 +35,8 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly InventoryCacheService _inventoryCacheService;
     private readonly ProfilerService _profilerService;
     private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly ITextureProvider _textureProvider;
+    private readonly FavoritesService _favoritesService;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -109,7 +111,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         IDataManager dataManager,
         InventoryCacheService inventoryCacheService,
         ProfilerService profilerService,
-        AutoRetainerIpcService autoRetainerIpc) 
+        AutoRetainerIpcService autoRetainerIpc,
+        ITextureProvider textureProvider,
+        FavoritesService favoritesService) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -127,6 +131,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         _inventoryCacheService = inventoryCacheService;
         _profilerService = profilerService;
         _autoRetainerIpc = autoRetainerIpc;
+        _textureProvider = textureProvider;
+        _favoritesService = favoritesService;
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -310,7 +316,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -557,6 +563,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                     UpdateWindowTitle();
                 }
             },
+            onOpenSettings: () => _windowService?.OpenConfigWindow(),
             onExitEditModeWithDirtyCheck: () =>
             {
                 if (_layoutEditingService.IsDirty)
@@ -668,6 +675,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         }
 
         Flags &= ~ImGuiWindowFlags.NoTitleBar;
+        
+        // Prevent the main window from coming in front of the config window when clicked
+        Flags |= ImGuiWindowFlags.NoBringToFrontOnFocus;
 
         if (_lockButton != null)
         {

@@ -31,6 +31,8 @@ public sealed class FullscreenWindow : Window
     private readonly ProfilerService _profilerService;
     private readonly AutoRetainerIpcService _autoRetainerIpc;
     private readonly LayoutEditingService _layoutEditingService;
+    private readonly ITextureProvider _textureProvider;
+    private readonly FavoritesService _favoritesService;
     private readonly WindowContentContainer _contentContainer;
     
     // Quick access bar widget (appears when CTRL+ALT is held)
@@ -63,7 +65,9 @@ public sealed class FullscreenWindow : Window
         InventoryCacheService inventoryCacheService,
         ProfilerService profilerService,
         AutoRetainerIpcService autoRetainerIpc,
-        LayoutEditingService layoutEditingService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        LayoutEditingService layoutEditingService,
+        ITextureProvider textureProvider,
+        FavoritesService favoritesService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
@@ -80,6 +84,8 @@ public sealed class FullscreenWindow : Window
         _profilerService = profilerService;
         _autoRetainerIpc = autoRetainerIpc;
         _layoutEditingService = layoutEditingService;
+        _textureProvider = textureProvider;
+        _favoritesService = favoritesService;
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the
@@ -98,7 +104,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -312,6 +318,7 @@ public sealed class FullscreenWindow : Window
                     _layoutEditingService.Save();
                 }
             },
+            onOpenSettings: () => _windowService?.OpenConfigWindow(),
             onExitEditModeWithDirtyCheck: () =>
             {
                 // Fullscreen doesn't have the same dialog infrastructure, just toggle

@@ -343,6 +343,10 @@ public class WindowContentContainer
         {
             _tools.Add(new ToolEntry(tool));
             LogService.Debug($"AddTool: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}");
+            
+            // Subscribe to tool settings changes to trigger layout saves
+            tool.OnToolSettingsChanged += () => MarkLayoutDirty();
+            
             MarkLayoutDirty();
         }
 
@@ -382,6 +386,13 @@ public class WindowContentContainer
                 else if (t is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool)
                 {
                     state.HiddenSeries = crystalTrackerTool.HiddenSeries.ToList();
+                }
+                
+                // Export tool-specific settings
+                var toolSettings = t.ExportToolSettings();
+                if (toolSettings != null && toolSettings.Count > 0)
+                {
+                    state.ToolSettings = toolSettings;
                 }
                 
                 ret.Add(state);
@@ -455,6 +466,11 @@ public class WindowContentContainer
                         {
                             crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
                         }
+                        // Apply tool-specific settings
+                        if (entry.ToolSettings?.Count > 0)
+                        {
+                            match.ImportToolSettings(entry.ToolSettings);
+                        }
                         if (matchIdx >= 0) matchedIndices.Add(matchIdx);
                         LogService.Debug($"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
                         continue;
@@ -496,6 +512,11 @@ public class WindowContentContainer
                                 else if (created is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
                                 {
                                     crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                }
+                                // Apply tool-specific settings
+                                if (entry.ToolSettings?.Count > 0)
+                                {
+                                    created.ImportToolSettings(entry.ToolSettings);
                                 }
                                 AddTool(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
@@ -545,6 +566,11 @@ public class WindowContentContainer
                                     else if (cand is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
                                     {
                                         crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                    }
+                                    // Apply tool-specific settings
+                                    if (entry.ToolSettings?.Count > 0)
+                                    {
+                                        cand.ImportToolSettings(entry.ToolSettings);
                                     }
                                     AddTool(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
@@ -617,6 +643,11 @@ public class WindowContentContainer
                                         else if (inst is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
                                         {
                                             crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
+                                        }
+                                        // Apply tool-specific settings
+                                        if (entry.ToolSettings?.Count > 0)
+                                        {
+                                            inst.ImportToolSettings(entry.ToolSettings);
                                         }
                                         AddTool(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
@@ -1212,9 +1243,14 @@ public class WindowContentContainer
 
                     // Start drag only when clicking the title (not resize handle), but continue dragging while mouse is down
                     // Block starting new drags if main window is being moved/resized, another tool is being interacted with, or this tool is not focused
-                    if ((canStartDrag || te.Dragging) && io.MouseDown[0] && (!mainWindowInteracting || te.Dragging) && (!anotherToolInteracting || te.Dragging) && !te.Resizing)
+                    // IMPORTANT: Only start dragging if the click originated in the title area (IsMouseClicked), 
+                    // but continue dragging while mouse is held (MouseDown) once started
+                    var shouldStartDrag = canStartDrag && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !mainWindowInteracting && !anotherToolInteracting && !te.Resizing;
+                    var shouldContinueDrag = te.Dragging && io.MouseDown[0];
+                    
+                    if (shouldStartDrag || shouldContinueDrag)
                     {
-                        if (!te.Dragging && !mainWindowInteracting)
+                        if (!te.Dragging)
                         {
                             te.Dragging = true;
                             te.OrigPos = t.Position;
@@ -1284,9 +1320,14 @@ public class WindowContentContainer
 
                     // Start resize when clicking the handle, but continue resizing while mouse is down
                     // Block starting new resizes if main window is being moved/resized, another tool is being interacted with, or this tool is not focused
-                    if ((canStartResize || te.Resizing) && io.MouseDown[0] && (!mainWindowInteracting || te.Resizing) && (!anotherToolInteracting || te.Resizing))
+                    // IMPORTANT: Only start resizing if the click originated in the resize handle (IsMouseClicked),
+                    // but continue resizing while mouse is held (MouseDown) once started
+                    var shouldStartResize = canStartResize && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !mainWindowInteracting && !anotherToolInteracting;
+                    var shouldContinueResize = te.Resizing && io.MouseDown[0];
+                    
+                    if (shouldStartResize || shouldContinueResize)
                     {
-                        if (!te.Resizing && !mainWindowInteracting)
+                        if (!te.Resizing)
                         {
                             te.Resizing = true;
                             te.OrigSize = t.Size;
@@ -1457,8 +1498,8 @@ public class WindowContentContainer
                 _contextToolIndex = -1;
             }
 
-            // Tool settings modal (renders when a tool has opened its settings)
-            DrawToolSettingsModal();
+            // Tool settings window (renders when a tool has opened its settings)
+            DrawToolSettingsWindow();
             
             // Tool rename modal
             DrawToolRenameModal();
@@ -1556,25 +1597,21 @@ public class WindowContentContainer
         }
 
         /// <summary>
-        /// Draws the tool settings modal if one is currently open.
+        /// Draws the tool settings window if one is currently open.
         /// </summary>
-        private void DrawToolSettingsModal()
+        private void DrawToolSettingsWindow()
         {
         if (_settingsToolIndex < 0 || _settingsToolIndex >= _tools.Count)
             return;
 
-        const string popupName = "tool_settings_popup";
         var toolForSettings = _tools[_settingsToolIndex].Tool;
+        var windowTitle = $"{toolForSettings.Title ?? "Tool"} Settings###ToolSettingsWindow";
 
-        // The popup must be opened each frame until it appears
-        if (_settingsPopupOpen && !ImGui.IsPopupOpen(popupName))
-        {
-            ImGui.OpenPopup(popupName);
-        }
+        ImGui.SetNextWindowSize(new Vector2(400, 300), ImGuiCond.FirstUseEver);
 
-        if (!ImGui.BeginPopupModal(popupName, ref _settingsPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        if (!ImGui.Begin(windowTitle, ref _settingsPopupOpen, ImGuiWindowFlags.NoCollapse))
         {
-            // Modal not showing - if user closed it, reset state
+            ImGui.End();
             if (!_settingsPopupOpen)
             {
                 _settingsToolIndex = -1;
@@ -1584,9 +1621,6 @@ public class WindowContentContainer
 
         try
         {
-            ImGui.TextUnformatted(toolForSettings.Title ?? "Tool Settings");
-            ImGui.Separator();
-
             try
             {
                 toolForSettings.DrawSettings();
@@ -1598,24 +1632,17 @@ public class WindowContentContainer
             }
 
             ImGui.Separator();
-            if (ImGui.Button("OK", new Vector2(80, 0)))
+            if (ImGui.Button("Close", new Vector2(80, 0)))
             {
-                ImGui.CloseCurrentPopup();
-                _settingsPopupOpen = false;
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(80, 0)))
-            {
-                ImGui.CloseCurrentPopup();
                 _settingsPopupOpen = false;
             }
         }
         catch (Exception ex)
         {
-            LogService.Error("Error in tool settings modal", ex);
+            LogService.Error("Error in tool settings window", ex);
         }
 
-        ImGui.EndPopup();
+        ImGui.End();
 
         if (!_settingsPopupOpen)
         {

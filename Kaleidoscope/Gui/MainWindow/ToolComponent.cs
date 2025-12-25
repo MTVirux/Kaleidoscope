@@ -18,6 +18,17 @@ public abstract class ToolComponent : IDisposable
     public string Id { get; set; } = Guid.NewGuid().ToString();
     
     /// <summary>
+    /// Event raised when tool-specific settings change and need to be persisted.
+    /// The container should subscribe to this to trigger layout saves.
+    /// </summary>
+    public event Action? OnToolSettingsChanged;
+    
+    /// <summary>
+    /// Raises the OnToolSettingsChanged event to notify the container that settings need persistence.
+    /// </summary>
+    protected void NotifyToolSettingsChanged() => OnToolSettingsChanged?.Invoke();
+    
+    /// <summary>
     /// The default title for this tool type.
     /// </summary>
     public string Title { get; set; } = "Tool";
@@ -63,27 +74,30 @@ public abstract class ToolComponent : IDisposable
     /// <summary>
     /// Draws all settings for this tool, including tool-specific settings and registered component settings.
     /// Override DrawToolSettings to add tool-specific settings that appear before component settings.
+    /// All settings sections are wrapped in collapsible headers.
     /// </summary>
     public virtual void DrawSettings()
     {
         try
         {
-            // Draw tool-specific settings first
+            // Draw tool-specific settings first (in collapsible header)
             if (HasToolSettings)
             {
-                DrawToolSettings();
+                if (ImGui.CollapsingHeader("Tool Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    DrawToolSettings();
+                }
             }
             
-            // Draw all registered component settings
+            // Draw all registered component settings (each in its own collapsible header)
             foreach (var provider in _settingsProviders)
             {
                 if (!provider.HasSettings) continue;
                 
-                ImGui.Spacing();
-                ImGui.TextUnformatted(provider.SettingsName);
-                ImGui.Separator();
-                
-                provider.DrawSettings();
+                if (ImGui.CollapsingHeader(provider.SettingsName))
+                {
+                    provider.DrawSettings();
+                }
             }
         }
         catch (Exception ex)
@@ -130,6 +144,56 @@ public abstract class ToolComponent : IDisposable
     /// Disposes resources held by this tool. Override in derived classes for cleanup.
     /// </summary>
     public virtual void Dispose() { }
+    
+    /// <summary>
+    /// Exports tool-specific settings to a dictionary for layout persistence.
+    /// Override in derived classes to persist instance-specific settings.
+    /// </summary>
+    /// <returns>Dictionary of settings to persist, or null if no settings to export.</returns>
+    public virtual Dictionary<string, object?>? ExportToolSettings() => null;
+    
+    /// <summary>
+    /// Imports tool-specific settings from a dictionary when loading a layout.
+    /// Override in derived classes to restore instance-specific settings.
+    /// </summary>
+    /// <param name="settings">Dictionary of settings from the layout.</param>
+    public virtual void ImportToolSettings(Dictionary<string, object?>? settings) { }
+    
+    /// <summary>
+    /// Helper method to safely get a typed value from settings dictionary.
+    /// Handles JSON deserialization for complex types.
+    /// </summary>
+    protected static T? GetSetting<T>(Dictionary<string, object?>? settings, string key, T? defaultValue = default)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return defaultValue;
+        
+        try
+        {
+            // Handle Newtonsoft.Json JValue/JToken (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JToken jToken)
+            {
+                return jToken.ToObject<T>();
+            }
+            
+            // Handle System.Text.Json JsonElement (when loaded from JSON)
+            if (value is System.Text.Json.JsonElement jsonElement)
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<T>(jsonElement.GetRawText());
+            }
+            
+            // Direct cast for simple types
+            if (value is T typedValue)
+                return typedValue;
+            
+            // Try convert for numeric types
+            return (T)Convert.ChangeType(value, typeof(T));
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
 
     protected void ShowSettingTooltip(string description, string defaultText)
     {
