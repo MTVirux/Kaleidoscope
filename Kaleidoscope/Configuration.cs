@@ -160,10 +160,6 @@ public class Configuration : IPluginConfiguration
     public float GilTrackerLegendWidth { get; set; } = 120f;
     public bool GilTrackerShowLegend { get; set; } = true;
 
-    // GilTicker settings
-    public float GilTickerScrollSpeed { get; set; } = 30f;
-    public List<ulong> GilTickerDisabledCharacters { get; set; } = new();
-
     // Universalis Integration settings
     /// <summary>
     /// The scope for Universalis market data queries (World, DataCenter, or Region).

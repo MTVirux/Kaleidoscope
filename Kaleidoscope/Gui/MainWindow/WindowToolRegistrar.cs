@@ -3,7 +3,6 @@ using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTable;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
-using Kaleidoscope.Gui.MainWindow.Tools.GilTicker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Gui.MainWindow.Tools.ItemGraph;
 using Kaleidoscope.Gui.MainWindow.Tools.ItemTable;
@@ -22,7 +21,6 @@ public static class WindowToolRegistrar
 {
     public static class ToolIds
     {
-        public const string GilTicker = "GilTicker";
         public const string GettingStarted = "GettingStarted";
         public const string ImPlotReference = "ImPlotReference";
         public const string CrystalTracker = "CrystalTracker";
@@ -136,13 +134,6 @@ public static class WindowToolRegistrar
                 pos => CreateItemGraphTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService),
                 "Customizable time-series graph for tracking items and currencies",
                 "Graph");
-
-            container.RegisterTool(
-                ToolIds.GilTicker,
-                "Gil Ticker",
-                pos => CreateToolInstance(ToolIds.GilTicker, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
-                "Scrolling ticker of character gil values",
-                "Ticker");
 
             container.RegisterTool(
                 ToolIds.GettingStarted,
@@ -683,16 +674,6 @@ public static class WindowToolRegistrar
 
                 case ToolIds.ItemGraph:
                     return CreateItemGraphTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService);
-
-                case ToolIds.GilTicker:
-                    // Create a DataTrackerHelper for Gil that shares the database and cache with the sampler
-                    var tickerHelper = new DataTrackerHelper(
-                        TrackedDataType.Gil,
-                        samplerService.DbService,
-                        samplerService.Registry,
-                        samplerService.CacheService);
-                    var tickerInner = new GilTickerComponent(tickerHelper, configService);
-                    return new GilTickerTool(tickerInner, tickerHelper, configService, samplerService.CacheService) { Position = pos };
 
                 case ToolIds.GettingStarted:
                     return new GettingStartedTool { Position = pos };
