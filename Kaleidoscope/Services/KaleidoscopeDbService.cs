@@ -26,9 +26,16 @@ public sealed class KaleidoscopeDbService : IDisposable
     private SqliteConnection? _readConnection;
     
     // Character name cache to avoid repeated DB queries
-    private Dictionary<ulong, string?>? _characterNameCache;
+    // Stores (gameName, displayName, timeSeriesColor) tuple for each character
+    private Dictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)>? _characterNameCache;
     private DateTime _characterNameCacheTime = DateTime.MinValue;
     private const double CharacterNameCacheExpirySeconds = 30.0; // Cache for 30 seconds
+    
+    // Inventory value history stats cache (updated on writes, read without DB access)
+    private readonly object _inventoryValueStatsLock = new();
+    private long _cachedInventoryValueRecordCount;
+    private long? _cachedInventoryValueMaxTimestamp;
+    private bool _inventoryValueStatsCacheValid;
     
     // Cache size in KB (negative value for SQLite PRAGMA)
     private readonly int _cacheSizeKb;
@@ -172,7 +179,9 @@ CREATE TABLE IF NOT EXISTS points (
 
 CREATE TABLE IF NOT EXISTS character_names (
     character_id INTEGER PRIMARY KEY,
-    name TEXT
+    name TEXT,
+    display_name TEXT,
+    time_series_color INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS inventory_cache (
@@ -302,6 +311,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             
             // Migration: Add inventory_value_items table for per-item value tracking
             MigrateAddInventoryValueItemsTable();
+            
+            // Migration: Add display_name column to character_names table
+            MigrateAddDisplayNameColumn();
+            
+            // Migration: Add time_series_color column to character_names table
+            MigrateAddTimeSeriesColorColumn();
         }
         catch (Exception ex)
         {
@@ -379,6 +394,72 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
             createCmd.ExecuteNonQuery();
             LogService.Debug("[KaleidoscopeDb] Migration: Created inventory_value_items table");
+        }
+    }
+
+    /// <summary>
+    /// Adds display_name column to character_names table if it doesn't exist.
+    /// This allows users to set custom display names separate from the game name.
+    /// </summary>
+    private void MigrateAddDisplayNameColumn()
+    {
+        if (_connection == null) return;
+
+        // Check if column exists
+        using var checkCmd = _connection.CreateCommand();
+        checkCmd.CommandText = "PRAGMA table_info(character_names)";
+        
+        bool hasDisplayName = false;
+        
+        using (var reader = checkCmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var columnName = reader.GetString(1);
+                if (columnName == "display_name") hasDisplayName = true;
+            }
+        }
+
+        // Add missing column
+        if (!hasDisplayName)
+        {
+            using var alterCmd = _connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN display_name TEXT";
+            alterCmd.ExecuteNonQuery();
+            LogService.Debug("[KaleidoscopeDb] Migration: Added display_name column to character_names");
+        }
+    }
+
+    /// <summary>
+    /// Adds time_series_color column to character_names table if it doesn't exist.
+    /// This allows users to set custom colors for time-series graphs.
+    /// </summary>
+    private void MigrateAddTimeSeriesColorColumn()
+    {
+        if (_connection == null) return;
+
+        // Check if column exists
+        using var checkCmd = _connection.CreateCommand();
+        checkCmd.CommandText = "PRAGMA table_info(character_names)";
+        
+        bool hasTimeSeriesColor = false;
+        
+        using (var reader = checkCmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var columnName = reader.GetString(1);
+                if (columnName == "time_series_color") hasTimeSeriesColor = true;
+            }
+        }
+
+        // Add missing column
+        if (!hasTimeSeriesColor)
+        {
+            using var alterCmd = _connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN time_series_color INTEGER";
+            alterCmd.ExecuteNonQuery();
+            LogService.Debug("[KaleidoscopeDb] Migration: Added time_series_color column to character_names");
         }
     }
 
@@ -571,6 +652,47 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             catch (Exception ex)
             {
                 LogService.Debug($"[KaleidoscopeDb] GetPoints failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets points for a character filtered by time.
+    /// Used for cache population on startup.
+    /// </summary>
+    public List<(DateTime timestamp, long value)> GetPointsSince(string variable, ulong characterId, DateTime since)
+    {
+        var result = new List<(DateTime, long)>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+                    JOIN series s ON p.series_id = s.id
+                    WHERE s.variable = $v AND s.character_id = $c AND p.timestamp >= $since
+                    ORDER BY p.timestamp ASC";
+                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.Parameters.AddWithValue("$since", since.Ticks);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var ticks = reader.GetInt64(0);
+                    var value = reader.GetInt64(1);
+                    result.Add((new DateTime(ticks, DateTimeKind.Utc), value));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetPointsSince failed: {ex.Message}");
             }
         }
 
@@ -857,7 +979,8 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Saves or updates a character name mapping.
+    /// Saves or updates a character's game name (automatically detected from the game).
+    /// Preserves any existing display_name that was set by the user.
     /// </summary>
     public bool SaveCharacterName(ulong characterId, string name)
     {
@@ -871,9 +994,26 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             try
             {
                 using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name) VALUES($c, $n)";
+                // First check if record exists to preserve display_name and time_series_color
+                cmd.CommandText = "SELECT display_name, time_series_color FROM character_names WHERE character_id = $c";
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                string? existingDisplayName = null;
+                long? existingColor = null;
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        existingDisplayName = reader.IsDBNull(0) ? null : reader.GetString(0);
+                        existingColor = reader.IsDBNull(1) ? null : reader.GetInt64(1);
+                    }
+                }
+                
+                cmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name, display_name, time_series_color) VALUES($c, $n, $d, $col)";
+                cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("$c", (long)characterId);
                 cmd.Parameters.AddWithValue("$n", name);
+                cmd.Parameters.AddWithValue("$d", existingDisplayName ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("$col", existingColor.HasValue ? (object)existingColor.Value : DBNull.Value);
                 cmd.ExecuteNonQuery();
                 
                 // Invalidate cache so next lookup gets fresh data
@@ -889,23 +1029,157 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Gets the stored name for a character.
+    /// Saves or updates a character's display name (user-customizable).
+    /// </summary>
+    /// <param name="characterId">The character's content ID.</param>
+    /// <param name="displayName">The custom display name. Pass null to clear and use game name.</param>
+    /// <returns>True if successful.</returns>
+    public bool SaveCharacterDisplayName(ulong characterId, string? displayName)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return false;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                // Update only the display_name column, or insert if not exists
+                cmd.CommandText = @"
+                    INSERT INTO character_names(character_id, name, display_name) 
+                    VALUES($c, NULL, $d)
+                    ON CONFLICT(character_id) DO UPDATE SET display_name = $d";
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.Parameters.AddWithValue("$d", string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName);
+                cmd.ExecuteNonQuery();
+                
+                // Invalidate cache so next lookup gets fresh data
+                InvalidateCharacterNameCache();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] SaveCharacterDisplayName failed: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Saves or updates a character's time series color.
+    /// </summary>
+    /// <param name="characterId">The character's content ID.</param>
+    /// <param name="color">The ARGB color value. Pass null to clear and use default colors.</param>
+    /// <returns>True if successful.</returns>
+    public bool SaveCharacterTimeSeriesColor(ulong characterId, uint? color)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return false;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                // Update only the time_series_color column, or insert if not exists
+                cmd.CommandText = @"
+                    INSERT INTO character_names(character_id, name, display_name, time_series_color) 
+                    VALUES($c, NULL, NULL, $col)
+                    ON CONFLICT(character_id) DO UPDATE SET time_series_color = $col";
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.Parameters.AddWithValue("$col", color.HasValue ? (object)(long)color.Value : DBNull.Value);
+                cmd.ExecuteNonQuery();
+                
+                // Invalidate cache so next lookup gets fresh data
+                InvalidateCharacterNameCache();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] SaveCharacterTimeSeriesColor failed: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the display name for a character (custom display_name if set, otherwise game name).
     /// Uses cached data if available to avoid repeated DB queries.
     /// </summary>
     public string? GetCharacterName(ulong characterId)
     {
         // Try cache first
         var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var cachedName))
-            return cachedName;
+        if (cache.TryGetValue(characterId, out var names))
+            return names.DisplayName ?? names.GameName;
         
         return null;
+    }
+
+    /// <summary>
+    /// Gets the game name for a character (the name automatically detected from the game).
+    /// </summary>
+    public string? GetCharacterGameName(ulong characterId)
+    {
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var names))
+            return names.GameName;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the custom display name for a character (null if not set).
+    /// </summary>
+    public string? GetCharacterDisplayName(ulong characterId)
+    {
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var names))
+            return names.DisplayName;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Gets both the game name and display name for a character.
+    /// </summary>
+    public (string? GameName, string? DisplayName) GetCharacterNames(ulong characterId)
+    {
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var names))
+            return (names.GameName, names.DisplayName);
+        
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Gets the time series color for a character (null if not set).
+    /// </summary>
+    public uint? GetCharacterTimeSeriesColor(ulong characterId)
+    {
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var names))
+            return names.TimeSeriesColor;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all character data (game name, display name, and time series color).
+    /// </summary>
+    public (string? GameName, string? DisplayName, uint? TimeSeriesColor) GetCharacterData(ulong characterId)
+    {
+        var cache = GetCharacterNameCache();
+        if (cache.TryGetValue(characterId, out var data))
+            return data;
+        
+        return (null, null, null);
     }
     
     /// <summary>
     /// Gets or refreshes the character name cache.
     /// </summary>
-    private Dictionary<ulong, string?> GetCharacterNameCache()
+    private Dictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)> GetCharacterNameCache()
     {
         var now = DateTime.UtcNow;
         if (_characterNameCache != null && (now - _characterNameCacheTime).TotalSeconds < CharacterNameCacheExpirySeconds)
@@ -914,7 +1188,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
         
         // Refresh cache
-        var newCache = new Dictionary<ulong, string?>();
+        var newCache = new Dictionary<ulong, (string?, string?, uint?)>();
         
         lock (_writeLock)
         {
@@ -924,15 +1198,17 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             try
             {
                 using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name FROM character_names";
+                cmd.CommandText = "SELECT character_id, name, display_name, time_series_color FROM character_names";
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
                     var cid = reader.GetInt64(0);
-                    var name = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    uint? timeSeriesColor = reader.IsDBNull(3) ? null : (uint)reader.GetInt64(3);
                     if (cid != 0)
-                        newCache[(ulong)cid] = name;
+                        newCache[(ulong)cid] = (gameName, displayName, timeSeriesColor);
                 }
             }
             catch (Exception ex)
@@ -957,7 +1233,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Gets all stored character name mappings.
+    /// Gets all stored character name mappings (returns display_name if set, otherwise game name).
     /// Uses cached data to avoid repeated DB queries.
     /// </summary>
     public List<(ulong characterId, string? name)> GetAllCharacterNames()
@@ -967,19 +1243,57 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         
         foreach (var kvp in cache)
         {
-            result.Add((kvp.Key, kvp.Value));
+            // Return display_name if set, otherwise game name
+            result.Add((kvp.Key, kvp.Value.DisplayName ?? kvp.Value.GameName));
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all stored character name mappings with both game and display names.
+    /// </summary>
+    public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
+    {
+        var cache = GetCharacterNameCache();
+        var result = new List<(ulong, string?, string?)>(cache.Count);
+        
+        foreach (var kvp in cache)
+        {
+            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName));
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all stored character data including time series colors.
+    /// </summary>
+    public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
+    {
+        var cache = GetCharacterNameCache();
+        var result = new List<(ulong, string?, string?, uint?)>(cache.Count);
+        
+        foreach (var kvp in cache)
+        {
+            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName, kvp.Value.TimeSeriesColor));
         }
         
         return result;
     }
     
     /// <summary>
-    /// Gets all stored character name mappings as a dictionary.
-    /// Returns the cached dictionary directly to avoid allocations.
+    /// Gets all stored character name mappings as a dictionary (display_name if set, otherwise game name).
     /// </summary>
     public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
     {
-        return GetCharacterNameCache();
+        var cache = GetCharacterNameCache();
+        var result = new Dictionary<ulong, string?>(cache.Count);
+        foreach (var kvp in cache)
+        {
+            result[kvp.Key] = kvp.Value.DisplayName ?? kvp.Value.GameName;
+        }
+        return result;
     }
 
     #endregion
@@ -1178,7 +1492,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     {
                         var cid = reader.GetInt64(0);
                         var name = reader.IsDBNull(1) ? null : reader.GetString(1);
-                        var sanitized = SanitizeName(name);
+                        var sanitized = NameSanitizer.Sanitize(name);
 
                         // If the stored name contains any digit, treat it as invalid
                         if (!string.IsNullOrEmpty(sanitized) && sanitized.Any(char.IsDigit))
@@ -1236,38 +1550,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             {
                 LogService.Debug($"[KaleidoscopeDb] MigrateStoredNames failed: {ex.Message}");
             }
-        }
-    }
-
-    private static string? SanitizeName(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return raw;
-
-        try
-        {
-            var s = raw.Trim();
-
-            // Look for patterns like "You (Name)" and extract the inner name
-            var idxOpen = s.IndexOf('(');
-            var idxClose = s.LastIndexOf(')');
-            if (idxOpen >= 0 && idxClose > idxOpen)
-            {
-                var inner = s.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
-                if (!string.IsNullOrEmpty(inner)) return inner;
-            }
-
-            // If it starts with "You " then strip that prefix
-            if (s.StartsWith("You ", StringComparison.OrdinalIgnoreCase))
-            {
-                var rem = s.Substring(4).Trim();
-                if (!string.IsNullOrEmpty(rem)) return rem;
-            }
-
-            return s;
-        }
-        catch
-        {
-            return raw;
         }
     }
 
@@ -1477,7 +1759,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     transaction.Commit();
-                    LogService.Debug($"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
+                    LogService.Verbose($"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
                 }
                 catch
                 {
@@ -1913,7 +2195,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     transaction.Commit();
-                    LogService.Debug($"[KaleidoscopeDb] Batch saved {priceList.Count} item prices");
+                    LogService.Verbose($"[KaleidoscopeDb] Batch saved {priceList.Count} item prices");
                 }
                 catch
                 {
@@ -2277,6 +2559,9 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     transaction.Commit();
+                    
+                    // Invalidate cached stats so next read will refresh from DB
+                    InvalidateInventoryValueStatsCache();
                 }
                 catch
                 {
@@ -2441,7 +2726,63 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     /// <summary>
     /// Gets the latest timestamp and total record count from inventory_value_history.
+    /// Uses an in-memory cache that's invalidated when data is written.
+    /// This version is safe to call from the main thread as it avoids DB queries when cache is valid.
+    /// </summary>
+    /// <param name="characterId">Optional character filter (null = all characters).</param>
+    /// <returns>Cached stats. Call RefreshInventoryValueStatsCacheAsync() to update from DB.</returns>
+    public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStatsCached(ulong? characterId = null)
+    {
+        // Note: characterId filtering is not supported in cached mode - returns global stats
+        // This is a deliberate trade-off for performance
+        lock (_inventoryValueStatsLock)
+        {
+            if (_inventoryValueStatsCacheValid)
+            {
+                return (_cachedInventoryValueRecordCount, _cachedInventoryValueMaxTimestamp);
+            }
+        }
+        
+        // Cache not valid - need to refresh (this will block, but only happens once after invalidation)
+        RefreshInventoryValueStatsCache();
+        
+        lock (_inventoryValueStatsLock)
+        {
+            return (_cachedInventoryValueRecordCount, _cachedInventoryValueMaxTimestamp);
+        }
+    }
+    
+    /// <summary>
+    /// Refreshes the inventory value stats cache from the database.
+    /// Call this on a background thread after writes to pre-populate the cache.
+    /// </summary>
+    public void RefreshInventoryValueStatsCache()
+    {
+        var stats = GetInventoryValueHistoryStats(null);
+        lock (_inventoryValueStatsLock)
+        {
+            _cachedInventoryValueRecordCount = stats.recordCount;
+            _cachedInventoryValueMaxTimestamp = stats.maxTimestampTicks;
+            _inventoryValueStatsCacheValid = true;
+        }
+    }
+    
+    /// <summary>
+    /// Invalidates the inventory value stats cache.
+    /// Called automatically after writes.
+    /// </summary>
+    public void InvalidateInventoryValueStatsCache()
+    {
+        lock (_inventoryValueStatsLock)
+        {
+            _inventoryValueStatsCacheValid = false;
+        }
+    }
+
+    /// <summary>
+    /// Gets the latest timestamp and total record count from inventory_value_history.
     /// Used for cache invalidation detection.
+    /// WARNING: This directly queries the database - prefer GetInventoryValueHistoryStatsCached() for main thread.
     /// </summary>
     public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStats(ulong? characterId = null)
     {
@@ -2548,6 +2889,139 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             catch (Exception ex)
             {
                 LogService.Error($"[KaleidoscopeDb] SaveSaleRecord failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Saves multiple sale records in a single transaction for better performance.
+    /// Reduces lock contention by batching writes together.
+    /// </summary>
+    public void SaveSaleRecordsBatch(IEnumerable<(int ItemId, int WorldId, int PricePerUnit, int Quantity, bool IsHq, int Total, string? BuyerName)> records)
+    {
+        var recordList = records.ToList();
+        if (recordList.Count == 0) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var transaction = _connection.BeginTransaction();
+                try
+                {
+                    using var cmd = _connection.CreateCommand();
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = @"
+                        INSERT INTO sale_records (item_id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name)
+                        VALUES ($iid, $wid, $ppu, $qty, $hq, $total, $time, $buyer)";
+
+                    var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var ppuParam = cmd.Parameters.Add("$ppu", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var qtyParam = cmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var hqParam = cmd.Parameters.Add("$hq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var totalParam = cmd.Parameters.Add("$total", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var buyerParam = cmd.Parameters.Add("$buyer", Microsoft.Data.Sqlite.SqliteType.Text);
+
+                    var now = DateTime.UtcNow.Ticks;
+
+                    foreach (var (itemId, worldId, pricePerUnit, quantity, isHq, total, buyerName) in recordList)
+                    {
+                        iidParam.Value = itemId;
+                        widParam.Value = worldId;
+                        ppuParam.Value = pricePerUnit;
+                        qtyParam.Value = quantity;
+                        hqParam.Value = isHq ? 1 : 0;
+                        totalParam.Value = total;
+                        timeParam.Value = now;
+                        buyerParam.Value = (object?)buyerName ?? DBNull.Value;
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] SaveSaleRecordsBatch failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recent sale price for a specific item, used for filtering price spikes.
+    /// Returns the latest price_per_unit or 0 if no sales exist.
+    /// </summary>
+    public int GetMostRecentSalePrice(int itemId, bool isHq)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT price_per_unit
+                    FROM sale_records
+                    WHERE item_id = $iid AND is_hq = $hq
+                    ORDER BY timestamp DESC
+                    LIMIT 1";
+                cmd.Parameters.AddWithValue("$iid", itemId);
+                cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetMostRecentSalePrice failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the most recent sale price for a specific item on a specific world.
+    /// Returns the latest price_per_unit or 0 if no sales exist.
+    /// </summary>
+    public int GetMostRecentSalePriceForWorld(int itemId, int worldId, bool isHq)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT price_per_unit
+                    FROM sale_records
+                    WHERE item_id = $iid AND world_id = $wid AND is_hq = $hq
+                    ORDER BY timestamp DESC
+                    LIMIT 1";
+                cmd.Parameters.AddWithValue("$iid", itemId);
+                cmd.Parameters.AddWithValue("$wid", worldId);
+                cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetMostRecentSalePriceForWorld failed: {ex.Message}", ex);
+                return 0;
             }
         }
     }

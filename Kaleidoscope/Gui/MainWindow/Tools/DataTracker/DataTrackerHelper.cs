@@ -8,12 +8,13 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 /// Generic helper class for data tracking UI components.
 /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
 /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
-/// Uses background loading and caching to avoid blocking the UI thread.
+/// Uses TimeSeriesCacheService for fast reads and background loading to avoid blocking the UI thread.
 /// </summary>
 public class DataTrackerHelper : ICharacterDataSource
 {
     private readonly KaleidoscopeDbService _dbService;
     private readonly TrackedDataRegistry _registry;
+    private readonly TimeSeriesCacheService? _cacheService;
     private readonly int _maxSamples;
     private readonly List<float> _samples;
 
@@ -54,12 +55,14 @@ public class DataTrackerHelper : ICharacterDataSource
         TrackedDataType dataType,
         KaleidoscopeDbService dbService,
         TrackedDataRegistry registry,
+        TimeSeriesCacheService? cacheService = null,
         int maxSamples = ConfigStatic.GilTrackerMaxSamples,
         float startingValue = 0f)
     {
         DataType = dataType;
         _dbService = dbService ?? throw new ArgumentNullException(nameof(dbService));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        _cacheService = cacheService;
         _maxSamples = maxSamples;
         _samples = new List<float>();
         LastValue = startingValue;
@@ -164,15 +167,7 @@ public class DataTrackerHelper : ICharacterDataSource
             var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
             if (string.IsNullOrEmpty(name)) return;
 
-            var sanitized = SanitizeName(name);
-
-            // Try to get local player name if it's just "You"
-            if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
-            {
-                var localName = GameStateService.LocalPlayerName;
-                if (!string.IsNullOrEmpty(localName))
-                    sanitized = localName;
-            }
+            var sanitized = NameSanitizer.SanitizeWithPlayerFallback(name);
 
             // Validate and save
             if (!string.IsNullOrEmpty(sanitized) && Kaleidoscope.Libs.CharacterLib.ValidateName(sanitized))
@@ -235,13 +230,23 @@ public class DataTrackerHelper : ICharacterDataSource
     }
 
     /// <summary>
-    /// Refreshes the list of available characters from the database.
+    /// Refreshes the list of available characters from the database or cache.
     /// </summary>
     public void RefreshAvailableCharacters()
     {
         try
         {
-            var chars = _dbService.GetAvailableCharacters(VariableName);
+            // Try cache first for fast access
+            IReadOnlyList<ulong> chars;
+            if (_cacheService != null)
+            {
+                chars = _cacheService.GetAvailableCharacters(VariableName);
+            }
+            else
+            {
+                chars = _dbService.GetAvailableCharacters(VariableName);
+            }
+            
             AvailableCharacters.Clear();
             AvailableCharacters.AddRange(chars);
 
@@ -260,12 +265,27 @@ public class DataTrackerHelper : ICharacterDataSource
 
     /// <summary>
     /// Loads data for a specific character into the in-memory samples.
+    /// Uses cache for fast access when available.
     /// </summary>
     public void LoadForCharacter(ulong characterId)
     {
         try
         {
-            var points = _dbService.GetPoints(VariableName, characterId);
+            // Try cache first for fast access
+            IReadOnlyList<(DateTime timestamp, long value)> points;
+            if (_cacheService != null)
+            {
+                points = _cacheService.GetCachedPoints(VariableName, characterId);
+                // Fall back to DB if cache is empty
+                if (points.Count == 0)
+                {
+                    points = _dbService.GetPoints(VariableName, characterId);
+                }
+            }
+            else
+            {
+                points = _dbService.GetPoints(VariableName, characterId);
+            }
 
             _samples.Clear();
             var start = Math.Max(0, points.Count - _maxSamples);
@@ -294,7 +314,16 @@ public class DataTrackerHelper : ICharacterDataSource
     {
         try
         {
-            var allPoints = _dbService.GetAllPoints(VariableName);
+            // Try cache first for fast access
+            IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
+            if (_cacheService != null)
+            {
+                allPoints = _cacheService.GetAllCachedPoints(VariableName);
+            }
+            else
+            {
+                allPoints = _dbService.GetAllPoints(VariableName);
+            }
 
             if (allPoints.Count == 0)
             {
@@ -395,11 +424,18 @@ public class DataTrackerHelper : ICharacterDataSource
 
     public string? GetCharacterName(ulong characterId)
     {
+        // Try cache first for fast access
+        if (_cacheService != null)
+        {
+            var cachedName = _cacheService.GetCharacterName(characterId);
+            if (!string.IsNullOrEmpty(cachedName))
+                return cachedName;
+        }
         return _dbService.GetCharacterName(characterId);
     }
 
     /// <summary>
-    /// Gets all stored character names from the database.
+    /// Gets all stored character names from the database or cache.
     /// </summary>
     public List<(ulong cid, string? name)> GetAllStoredCharacterNames()
     {
@@ -473,11 +509,17 @@ public class DataTrackerHelper : ICharacterDataSource
 
     /// <summary>
     /// Gets samples filtered by a time cutoff.
-    /// Uses caching to avoid repeated database queries on every frame.
+    /// Uses TimeSeriesCacheService when available, with local caching as fallback.
     /// </summary>
     public IReadOnlyList<float> GetFilteredSamples(DateTime cutoffTime)
     {
-        // Check if we can use cached data
+        // When using cache service, query it directly (it's fast in-memory access)
+        if (_cacheService != null)
+        {
+            return LoadFilteredSamplesFromDb(cutoffTime);
+        }
+        
+        // Fallback: Check if we can use local cached data (only when no cache service)
         var now = DateTime.UtcNow;
         var cacheValid = _cachedFilteredSamples != null 
             && (now - _lastFilteredCacheTime).TotalSeconds < FilteredCacheExpirySeconds
@@ -514,7 +556,17 @@ public class DataTrackerHelper : ICharacterDataSource
             if (SelectedCharacterId == 0)
             {
                 // Get aggregated points with timestamps
-                var allPoints = _dbService.GetAllPoints(VariableName);
+                // Try cache first for fast access
+                IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
+                if (_cacheService != null)
+                {
+                    allPoints = _cacheService.GetAllCachedPoints(VariableName);
+                }
+                else
+                {
+                    allPoints = _dbService.GetAllPoints(VariableName);
+                }
+                
                 if (allPoints.Count == 0) return Array.Empty<float>();
 
                 // Group by character and build aggregate
@@ -565,7 +617,24 @@ public class DataTrackerHelper : ICharacterDataSource
             }
             else
             {
-                points = _dbService.GetPoints(VariableName, SelectedCharacterId);
+                // Try cache first for single character
+                if (_cacheService != null)
+                {
+                    var cachedPoints = _cacheService.GetCachedPoints(VariableName, SelectedCharacterId, cutoffTime);
+                    if (cachedPoints.Count > 0)
+                    {
+                        points = cachedPoints.Select(p => (p.timestamp, p.value)).ToList();
+                    }
+                    else
+                    {
+                        // Fall back to DB if cache is empty
+                        points = _dbService.GetPoints(VariableName, SelectedCharacterId);
+                    }
+                }
+                else
+                {
+                    points = _dbService.GetPoints(VariableName, SelectedCharacterId);
+                }
             }
 
             // Filter by cutoff time
@@ -588,19 +657,53 @@ public class DataTrackerHelper : ICharacterDataSource
 
     /// <summary>
     /// Retrieves all stored points for a character (for debug UI).
+    /// Uses cache when available for fast access.
     /// </summary>
     public List<(DateTime ts, long value)> GetPoints(ulong? characterId = null)
     {
-        return _dbService.GetPoints(VariableName, characterId ?? SelectedCharacterId);
+        var cid = characterId ?? SelectedCharacterId;
+        
+        // Try cache first for fast access
+        if (_cacheService != null)
+        {
+            var cachedPoints = _cacheService.GetCachedPoints(VariableName, cid);
+            if (cachedPoints.Count > 0)
+            {
+                return cachedPoints.Select(p => (p.timestamp, p.value)).ToList();
+            }
+        }
+        
+        return _dbService.GetPoints(VariableName, cid);
     }
 
     /// <summary>
     /// Gets all character data as separate series (for multi-line display).
-    /// Uses caching to avoid repeated database queries on every frame.
+    /// Uses TimeSeriesCacheService when available, with local caching as fallback.
     /// </summary>
     public IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
     {
-        // Check if we can use cached data
+        // If using cache service, get data directly from it (it handles caching internally)
+        if (_cacheService != null)
+        {
+            var cachedSeries = _cacheService.GetAllCachedCharacterSeries(VariableName, cutoffTime);
+            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+            
+            foreach (var (charId, name, points) in cachedSeries)
+            {
+                if (points.Count == 0) continue;
+                
+                var samples = new List<(DateTime ts, float value)>();
+                var start = Math.Max(0, points.Count - _maxSamples);
+                for (var i = start; i < points.Count; i++)
+                    samples.Add((points[i].ts, (float)points[i].value));
+                
+                result.Add((name, samples));
+            }
+            
+            return result;
+        }
+        
+        // Fallback: Check if we can use local cached data
         lock (_cacheLock)
         {
             var now = DateTime.UtcNow;
@@ -615,19 +718,19 @@ public class DataTrackerHelper : ICharacterDataSource
             }
         }
 
-        // Load fresh data
-        var result = LoadCharacterSeriesFromDb(cutoffTime);
+        // Load fresh data from DB
+        var dbResult = LoadCharacterSeriesFromDb(cutoffTime);
         
-        // Update cache
+        // Update local cache
         lock (_cacheLock)
         {
-            _cachedCharacterSeries = result;
+            _cachedCharacterSeries = dbResult;
             _lastSeriesCacheTime = DateTime.UtcNow;
             _lastSeriesCutoffTime = cutoffTime;
             _needsRefresh = false;
         }
         
-        return result;
+        return dbResult;
     }
     
     /// <summary>
@@ -694,28 +797,6 @@ public class DataTrackerHelper : ICharacterDataSource
 
         // Fallback to last 6 digits of character ID
         return $"...{characterId % 1_000_000:D6}";
-    }
-
-    #endregion
-
-    #region Helpers
-
-    private static string? SanitizeName(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return raw;
-
-        var s = raw.Trim();
-
-        // Look for patterns like "You (Name)" and extract the inner name
-        var idxOpen = s.IndexOf('(');
-        var idxClose = s.LastIndexOf(')');
-        if (idxOpen >= 0 && idxClose > idxOpen)
-        {
-            var inner = s.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
-            if (!string.IsNullOrEmpty(inner)) return inner;
-        }
-
-        return s;
     }
 
     #endregion

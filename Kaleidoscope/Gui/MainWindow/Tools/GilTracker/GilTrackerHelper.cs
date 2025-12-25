@@ -7,11 +7,12 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.GilTracker;
 /// Helper class for the GilTracker UI component.
 /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
 /// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
-/// Uses background loading and caching to avoid blocking the UI thread.
+/// Uses TimeSeriesCacheService for fast reads and background loading to avoid blocking the UI thread.
 /// </summary>
 public class GilTrackerHelper : ICharacterDataSource
 {
         private readonly KaleidoscopeDbService _dbService;
+        private readonly TimeSeriesCacheService? _cacheService;
         private readonly int _maxSamples;
         private readonly List<float> _samples;
         
@@ -33,11 +34,12 @@ public class GilTrackerHelper : ICharacterDataSource
         public ulong SelectedCharacterId { get; private set; }
         public string? DbPath => _dbService.DbPath;
 
-        public GilTrackerHelper(string? dbPath, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue, int cacheSizeMb = 8)
+        public GilTrackerHelper(string? dbPath, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue, int cacheSizeMb = 8, TimeSeriesCacheService? cacheService = null)
         {
             _maxSamples = maxSamples;
             _samples = new List<float>();
             LastValue = startingValue;
+            _cacheService = cacheService;
 
             // Create or reuse database service with specified cache size
             _dbService = new KaleidoscopeDbService(dbPath, cacheSizeMb);
@@ -49,9 +51,10 @@ public class GilTrackerHelper : ICharacterDataSource
         /// <summary>
         /// Constructor that accepts an existing database service (for sharing with SamplerService).
         /// </summary>
-        public GilTrackerHelper(KaleidoscopeDbService dbService, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue)
+        public GilTrackerHelper(KaleidoscopeDbService dbService, TimeSeriesCacheService? cacheService = null, int maxSamples = ConfigStatic.GilTrackerMaxSamples, float startingValue = ConfigStatic.GilTrackerStartingValue)
         {
             _dbService = dbService ?? throw new ArgumentNullException(nameof(dbService));
+            _cacheService = cacheService;
             _maxSamples = maxSamples;
             _samples = new List<float>();
             LastValue = startingValue;
@@ -146,15 +149,7 @@ public class GilTrackerHelper : ICharacterDataSource
                 var name = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
                 if (string.IsNullOrEmpty(name)) return;
 
-                var sanitized = SanitizeName(name);
-
-                // Try to get local player name if it's just "You"
-                if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
-                {
-                    var localName = GameStateService.LocalPlayerName;
-                    if (!string.IsNullOrEmpty(localName))
-                        sanitized = localName;
-                }
+                var sanitized = NameSanitizer.SanitizeWithPlayerFallback(name);
 
                 // Validate and save
                 if (!string.IsNullOrEmpty(sanitized) && Kaleidoscope.Libs.CharacterLib.ValidateName(sanitized))
@@ -232,13 +227,23 @@ public class GilTrackerHelper : ICharacterDataSource
         }
 
         /// <summary>
-        /// Refreshes the list of available characters from the database.
+        /// Refreshes the list of available characters from the database or cache.
         /// </summary>
         public void RefreshAvailableCharacters()
         {
             try
             {
-                var chars = _dbService.GetAvailableCharacters("Gil");
+                // Try cache first for fast access
+                IReadOnlyList<ulong> chars;
+                if (_cacheService != null)
+                {
+                    chars = _cacheService.GetAvailableCharacters("Gil");
+                }
+                else
+                {
+                    chars = _dbService.GetAvailableCharacters("Gil");
+                }
+                
                 AvailableCharacters.Clear();
                 AvailableCharacters.AddRange(chars);
 
@@ -257,6 +262,7 @@ public class GilTrackerHelper : ICharacterDataSource
 
         /// <summary>
         /// Loads data for a specific character into the in-memory samples.
+        /// Uses cache for fast access when available.
         /// </summary>
         public void LoadForCharacter(ulong characterId)
         {
@@ -266,7 +272,21 @@ public class GilTrackerHelper : ICharacterDataSource
             
             try
             {
-                var points = _dbService.GetPoints("Gil", characterId);
+                // Try cache first for fast access
+                IReadOnlyList<(DateTime timestamp, long value)> points;
+                if (_cacheService != null)
+                {
+                    points = _cacheService.GetCachedPoints("Gil", characterId);
+                    // Fall back to DB if cache is empty
+                    if (points.Count == 0)
+                    {
+                        points = _dbService.GetPoints("Gil", characterId);
+                    }
+                }
+                else
+                {
+                    points = _dbService.GetPoints("Gil", characterId);
+                }
 
                 _samples.Clear();
                 var start = Math.Max(0, points.Count - _maxSamples);
@@ -290,6 +310,7 @@ public class GilTrackerHelper : ICharacterDataSource
 
         /// <summary>
         /// Loads aggregated data across all characters.
+        /// Uses cache for fast access when available.
         /// </summary>
         public void LoadAllCharacters()
         {
@@ -299,7 +320,16 @@ public class GilTrackerHelper : ICharacterDataSource
             
             try
             {
-                var allPoints = _dbService.GetAllPoints("Gil");
+                // Try cache first for fast access
+                IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
+                if (_cacheService != null)
+                {
+                    allPoints = _cacheService.GetAllCachedPoints("Gil");
+                }
+                else
+                {
+                    allPoints = _dbService.GetAllPoints("Gil");
+                }
 
                 if (allPoints.Count == 0)
                 {
@@ -388,7 +418,28 @@ public class GilTrackerHelper : ICharacterDataSource
         /// <returns>List of character names and their sample data with timestamps.</returns>
         public IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> GetAllCharacterSeries(DateTime? cutoffTime = null)
         {
-            // Check if we can use cached data
+            // If using cache service, get data directly from it (it handles caching internally)
+            if (_cacheService != null)
+            {
+                var cachedSeries = _cacheService.GetAllCachedCharacterSeries("Gil", cutoffTime);
+                var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+                
+                foreach (var (charId, name, points) in cachedSeries)
+                {
+                    if (points.Count == 0) continue;
+                    
+                    var samples = new List<(DateTime ts, float value)>();
+                    var start = Math.Max(0, points.Count - _maxSamples);
+                    for (var i = start; i < points.Count; i++)
+                        samples.Add((points[i].ts, (float)points[i].value));
+                    
+                    result.Add((name, samples));
+                }
+                
+                return result;
+            }
+            
+            // Fallback: Check if we can use local cached data
             lock (_cacheLock)
             {
                 var now = DateTime.UtcNow;
@@ -403,19 +454,19 @@ public class GilTrackerHelper : ICharacterDataSource
                 }
             }
 
-            // Load fresh data
-            var result = LoadCharacterSeriesFromDb(cutoffTime);
+            // Load fresh data from DB
+            var dbResult = LoadCharacterSeriesFromDb(cutoffTime);
             
-            // Update cache
+            // Update local cache
             lock (_cacheLock)
             {
-                _cachedCharacterSeries = result;
+                _cachedCharacterSeries = dbResult;
                 _lastSeriesCacheTime = DateTime.UtcNow;
                 _lastSeriesCutoffTime = cutoffTime;
                 _needsRefresh = false;
             }
             
-            return result;
+            return dbResult;
         }
         
         /// <summary>
@@ -480,13 +531,19 @@ public class GilTrackerHelper : ICharacterDataSource
 
         /// <summary>
         /// Gets samples filtered by a time cutoff.
-        /// Uses caching to avoid repeated database queries on every frame.
+        /// Uses TimeSeriesCacheService when available, with local caching as fallback.
         /// </summary>
         /// <param name="cutoffTime">Only include samples after this time.</param>
         /// <returns>Filtered sample list.</returns>
         public IReadOnlyList<float> GetFilteredSamples(DateTime cutoffTime)
         {
-            // Check if we can use cached data
+            // When using cache service, query it directly (it's fast in-memory access)
+            if (_cacheService != null)
+            {
+                return LoadFilteredSamplesFromDb(cutoffTime);
+            }
+            
+            // Fallback: Check if we can use local cached data (only when no cache service)
             var now = DateTime.UtcNow;
             var cacheValid = _cachedFilteredSamples != null 
                 && (now - _lastFilteredCacheTime).TotalSeconds < FilteredCacheExpirySeconds
@@ -532,7 +589,17 @@ public class GilTrackerHelper : ICharacterDataSource
                 if (SelectedCharacterId == 0)
                 {
                     // Get aggregated points with timestamps
-                    var allPoints = _dbService.GetAllPoints("Gil");
+                    // Try cache first for fast access
+                    IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
+                    if (_cacheService != null)
+                    {
+                        allPoints = _cacheService.GetAllCachedPoints("Gil");
+                    }
+                    else
+                    {
+                        allPoints = _dbService.GetAllPoints("Gil");
+                    }
+                    
                     if (allPoints.Count == 0) return Array.Empty<float>();
 
                     // Group by character and build aggregate
@@ -583,7 +650,24 @@ public class GilTrackerHelper : ICharacterDataSource
                 }
                 else
                 {
-                    points = _dbService.GetPoints("Gil", SelectedCharacterId);
+                    // Try cache first for single character
+                    if (_cacheService != null)
+                    {
+                        var cachedPoints = _cacheService.GetCachedPoints("Gil", SelectedCharacterId, cutoffTime);
+                        if (cachedPoints.Count > 0)
+                        {
+                            points = cachedPoints.Select(p => (p.timestamp, p.value)).ToList();
+                        }
+                        else
+                        {
+                            // Fall back to DB if cache is empty
+                            points = _dbService.GetPoints("Gil", SelectedCharacterId);
+                        }
+                    }
+                    else
+                    {
+                        points = _dbService.GetPoints("Gil", SelectedCharacterId);
+                    }
                 }
 
                 // Filter by cutoff time
@@ -610,14 +694,26 @@ public class GilTrackerHelper : ICharacterDataSource
 
         /// <summary>
         /// Gets a display name for the provided character ID.
+        /// Uses cache for fast access when available.
         /// </summary>
         public string GetCharacterDisplayName(ulong characterId)
         {
-            // Try database first
+            // Try cache first for fast access
+            if (_cacheService != null)
+            {
+                var cachedName = _cacheService.GetCharacterName(characterId);
+                if (!string.IsNullOrEmpty(cachedName))
+                {
+                    var sanitized = NameSanitizer.Sanitize(cachedName);
+                    return !string.IsNullOrEmpty(sanitized) ? sanitized : cachedName;
+                }
+            }
+            
+            // Try database
             var storedName = _dbService.GetCharacterName(characterId);
             if (!string.IsNullOrEmpty(storedName))
             {
-                var sanitized = SanitizeName(storedName);
+                var sanitized = NameSanitizer.Sanitize(storedName);
                 return !string.IsNullOrEmpty(sanitized) ? sanitized : storedName;
             }
 
@@ -627,15 +723,7 @@ public class GilTrackerHelper : ICharacterDataSource
                 var runtime = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
                 if (!string.IsNullOrEmpty(runtime))
                 {
-                    var sanitized = SanitizeName(runtime);
-
-                    if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var localName = GameStateService.LocalPlayerName;
-                        if (!string.IsNullOrEmpty(localName))
-                            return localName;
-                    }
-
+                    var sanitized = NameSanitizer.SanitizeWithPlayerFallback(runtime);
                     return !string.IsNullOrEmpty(sanitized) ? sanitized : runtime;
                 }
             }
@@ -653,31 +741,6 @@ public class GilTrackerHelper : ICharacterDataSource
         public List<(ulong cid, string? name)> GetAllStoredCharacterNames()
         {
             return _dbService.GetAllCharacterNames();
-        }
-
-        private static string? SanitizeName(string? raw)
-        {
-            if (string.IsNullOrEmpty(raw)) return raw;
-
-            var s = raw.Trim();
-
-            // Look for patterns like "You (Name)" and extract the inner name
-            var idxOpen = s.IndexOf('(');
-            var idxClose = s.LastIndexOf(')');
-            if (idxOpen >= 0 && idxClose > idxOpen)
-            {
-                var inner = s.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
-                if (!string.IsNullOrEmpty(inner)) return inner;
-            }
-
-            // If it starts with "You " then strip that prefix
-            if (s.StartsWith("You ", StringComparison.OrdinalIgnoreCase))
-            {
-                var rem = s.Substring(4).Trim();
-                if (!string.IsNullOrEmpty(rem)) return rem;
-            }
-
-            return s;
         }
 
         #endregion

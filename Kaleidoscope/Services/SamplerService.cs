@@ -23,6 +23,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
     private readonly KaleidoscopeDbService _dbService;
     private readonly TrackedDataRegistry _registry;
     private readonly InventoryChangeService _inventoryChangeService;
+    private readonly TimeSeriesCacheService _cacheService;
 
     // Background thread for database writes
     private readonly Channel<SampleWorkItem> _sampleQueue;
@@ -61,6 +62,11 @@ public sealed class SamplerService : IDisposable, IRequiredService
     public TrackedDataRegistry Registry => _registry;
 
     /// <summary>
+    /// Gets the in-memory cache service for fast data access.
+    /// </summary>
+    public TimeSeriesCacheService CacheService => _cacheService;
+
+    /// <summary>
     /// Event fired when inventory value history is modified (e.g., sale record deleted).
     /// </summary>
     public event Action? OnInventoryValueHistoryChanged;
@@ -82,7 +88,8 @@ public sealed class SamplerService : IDisposable, IRequiredService
         ConfigurationService configService,
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
-        InventoryChangeService inventoryChangeService)
+        InventoryChangeService inventoryChangeService,
+        TimeSeriesCacheService cacheService)
     {
         _log = log;
         _filenames = filenames;
@@ -90,6 +97,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         _arIpc = arIpc;
         _registry = registry;
         _inventoryChangeService = inventoryChangeService;
+        _cacheService = cacheService;
 
         // Create the database service with configured cache size
         var cacheSizeMb = configService.SamplerConfig.DatabaseCacheSizeMb;
@@ -118,6 +126,9 @@ public sealed class SamplerService : IDisposable, IRequiredService
 
         // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
+
+        // Populate cache from database on startup
+        PopulateCacheFromDatabase();
 
         // Subscribe to inventory change events - uses pre-captured values to avoid re-reading game memory
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
@@ -206,21 +217,31 @@ public sealed class SamplerService : IDisposable, IRequiredService
             try
             {
                 var rawName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
-                characterName = SanitizeName(rawName);
-                if (string.Equals(characterName, "You", StringComparison.OrdinalIgnoreCase))
-                {
-                    var localName = GameStateService.LocalPlayerName;
-                    if (!string.IsNullOrEmpty(localName))
-                        characterName = localName;
-                }
+                characterName = NameSanitizer.SanitizeWithPlayerFallback(rawName);
             }
             catch { /* Ignore name capture failures */ }
 
             // Queue all changed values for background database write
+            // Also update cache immediately for instant UI access
             foreach (var (dataType, value) in changedValues)
             {
-                var workItem = new SampleWorkItem(cid, dataType.ToString(), value, characterName);
-                _sampleQueue.Writer.TryWrite(workItem);
+                var variable = dataType.ToString();
+                
+                // Update cache immediately (main thread) for instant UI access
+                var isNewValue = _cacheService.AddPoint(variable, cid, value);
+                
+                // Cache character name if available
+                if (!string.IsNullOrEmpty(characterName))
+                {
+                    _cacheService.SetCharacterName(cid, characterName);
+                }
+                
+                // Queue DB write (background thread) for persistence
+                if (isNewValue)
+                {
+                    var workItem = new SampleWorkItem(cid, variable, value, characterName);
+                    _sampleQueue.Writer.TryWrite(workItem);
+                }
             }
         }
         catch (Exception ex)
@@ -272,22 +293,60 @@ public sealed class SamplerService : IDisposable, IRequiredService
         }
     }
 
-    private static string? SanitizeName(string? raw)
+    /// <summary>
+    /// Populates the in-memory cache from database on startup.
+    /// Loads recent data based on cache configuration.
+    /// </summary>
+    private void PopulateCacheFromDatabase()
     {
-        if (string.IsNullOrEmpty(raw)) return raw;
-
-        var s = raw.Trim();
-
-        // Look for patterns like "You (Name)" and extract the inner name
-        var idxOpen = s.IndexOf('(');
-        var idxClose = s.LastIndexOf(')');
-        if (idxOpen >= 0 && idxClose > idxOpen)
+        var cacheConfig = _configService.Config.TimeSeriesCacheConfig;
+        if (!cacheConfig.PrePopulateOnStartup)
         {
-            var inner = s.Substring(idxOpen + 1, idxClose - idxOpen - 1).Trim();
-            if (!string.IsNullOrEmpty(inner)) return inner;
+            _log.Debug("[SamplerService] Cache pre-population disabled");
+            return;
         }
 
-        return s;
+        try
+        {
+            var cutoffTime = DateTime.UtcNow.AddHours(-cacheConfig.StartupLoadHours);
+            var loadedSeries = 0;
+            var loadedPoints = 0L;
+
+            // Load character names first (with game name, display name, and color)
+            var characterData = _dbService.GetAllCharacterDataExtended();
+            _cacheService.PopulateCharacterNames(characterData);
+            _log.Debug($"[SamplerService] Loaded {characterData.Count} character names into cache");
+
+            // Load data for each tracked data type
+            foreach (var dataType in _registry.Definitions.Keys)
+            {
+                var variable = dataType.ToString();
+
+                // Get available characters for this variable
+                var characters = _dbService.GetAvailableCharacters(variable);
+                if (characters.Count == 0) continue;
+
+                _cacheService.PopulateAvailableCharacters(variable, characters);
+
+                // Load recent points for each character
+                foreach (var charId in characters)
+                {
+                    var points = _dbService.GetPointsSince(variable, charId, cutoffTime);
+                    if (points.Count > 0)
+                    {
+                        _cacheService.PopulateFromDatabase(variable, charId, points);
+                        loadedSeries++;
+                        loadedPoints += points.Count;
+                    }
+                }
+            }
+
+            _log.Information($"[SamplerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"[SamplerService] Failed to populate cache from database: {ex.Message}");
+        }
     }
 
     #region Data Management Helpers
