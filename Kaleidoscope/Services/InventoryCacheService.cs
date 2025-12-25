@@ -303,6 +303,15 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             
             // Invalidate memory cache since DB was updated
             InvalidateCharacterCache(characterId);
+            
+            // Re-sample tracked items now that retainer data has been updated
+            // Get player inventory cache to combine with new retainer data
+            var playerCache = _samplerService.DbService.GetInventoryCache(
+                characterId, InventorySourceType.Player, 0);
+            if (playerCache != null)
+            {
+                SampleTrackedItems(characterId, playerCache.Items);
+            }
 
             _log.Debug($"[InventoryCacheService] Cached retainer inventory '{retainerName}': {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
@@ -499,11 +508,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Samples tracked item quantities to the time-series database for historical graphing.
-    /// Only samples items that are configured in the ItemGraph settings.
+    /// Stores player inventory and retainer inventory separately for toggleable display.
+    /// Player items stored as "Item_{itemId}", retainer totals as "ItemRetainer_{itemId}".
     /// </summary>
     /// <param name="characterId">The character ID to associate with the samples.</param>
-    /// <param name="items">The inventory items to check against tracked items.</param>
-    private void SampleTrackedItems(ulong characterId, List<InventoryItemSnapshot> items)
+    /// <param name="playerItems">The player's inventory items to check against tracked items.</param>
+    private void SampleTrackedItems(ulong characterId, List<InventoryItemSnapshot> playerItems)
     {
         try
         {
@@ -527,27 +537,40 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     trackedItems.Add(id);
             }
 
-            // Calculate total quantity for each tracked item
-            var itemQuantities = new Dictionary<uint, long>();
+            // Gather all retainer items from cache for this character
+            var retainerItems = new List<InventoryItemSnapshot>();
+            var retainerCaches = _samplerService.DbService.GetAllInventoryCaches(characterId)
+                .Where(c => c.SourceType == InventorySourceType.Retainer);
+            foreach (var cache in retainerCaches)
+            {
+                retainerItems.AddRange(cache.Items);
+            }
+
+            // Calculate quantities for each tracked item (player and retainers separately)
             foreach (var itemId in trackedItems)
             {
-                var quantity = items
+                // Player inventory count
+                var playerQuantity = playerItems
                     .Where(i => i.ItemId == itemId)
                     .Sum(i => (long)i.Quantity);
                 
-                itemQuantities[itemId] = quantity;
+                // Retainer inventory count (sum across all retainers)
+                var retainerQuantity = retainerItems
+                    .Where(i => i.ItemId == itemId)
+                    .Sum(i => (long)i.Quantity);
+                
+                // Store player inventory separately
+                var playerVariableName = $"Item_{itemId}";
+                _samplerService.DbService.SaveSampleIfChanged(playerVariableName, characterId, playerQuantity);
+                
+                // Store retainer total separately
+                var retainerVariableName = $"ItemRetainer_{itemId}";
+                _samplerService.DbService.SaveSampleIfChanged(retainerVariableName, characterId, retainerQuantity);
             }
 
-            // Sample each tracked item to the time-series database
-            foreach (var (itemId, quantity) in itemQuantities)
+            if (trackedItems.Count > 0)
             {
-                var variableName = $"Item_{itemId}";
-                _samplerService.DbService.SaveSampleIfChanged(variableName, characterId, quantity);
-            }
-
-            if (itemQuantities.Count > 0)
-            {
-                _log.Debug($"[InventoryCacheService] Sampled {itemQuantities.Count} tracked items for character {characterId}");
+                _log.Debug($"[InventoryCacheService] Sampled {trackedItems.Count} tracked items (player + retainer) for character {characterId}");
             }
         }
         catch (Exception ex)
@@ -562,6 +585,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// <param name="itemId">The item ID.</param>
     /// <returns>The variable name in format "Item_{itemId}".</returns>
     public static string GetItemVariableName(uint itemId) => $"Item_{itemId}";
+    
+    /// <summary>
+    /// Gets the variable name used for storing retainer item time-series data.
+    /// </summary>
+    /// <param name="itemId">The item ID.</param>
+    /// <returns>The variable name in format "ItemRetainer_{itemId}".</returns>
+    public static string GetRetainerItemVariableName(uint itemId) => $"ItemRetainer_{itemId}";
 
     public void Dispose()
     {
