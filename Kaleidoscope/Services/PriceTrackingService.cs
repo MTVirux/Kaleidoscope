@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
@@ -18,6 +19,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly SamplerService _samplerService;
     private readonly InventoryCacheService _inventoryCacheService;
+    private readonly ListingsService _listingsService;
+    private readonly ItemDataService _itemDataService;
+    private readonly TimeSeriesCacheService _cacheService;
 
     // Cached world/DC data from Universalis
     private UniversalisWorldData? _worldData;
@@ -29,8 +33,19 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     // In-memory price cache for quick lookups
     private readonly ConcurrentDictionary<(int itemId, int worldId), (int minNq, int minHq, DateTime updated)> _priceCache = new();
+    
+    // In-memory cache for recent sale prices (used for spike detection without DB reads)
+    // Key: (itemId, isHq), Value: last sale price
+    private readonly ConcurrentDictionary<(int itemId, bool isHq), int> _lastSalePriceCache = new();
+    // Key: (itemId, worldId, isHq), Value: last sale price for specific world
+    private readonly ConcurrentDictionary<(int itemId, int worldId, bool isHq), int> _lastSalePriceByWorldCache = new();
+    
     private readonly CancellationTokenSource _cts = new();
     private volatile bool _disposed;
+
+    // Background thread for database writes from WebSocket updates
+    private readonly Channel<PriceUpdateWorkItem> _priceUpdateQueue;
+    private readonly Task _backgroundWorker;
 
     private const int WorldDataRefreshHours = 24;
     private const int MarketableItemsRefreshHours = 24;
@@ -44,6 +59,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>Gets the Universalis service for API calls.</summary>
     public UniversalisService UniversalisService => _universalisService;
+
+    /// <summary>Gets the listings cache service for lowest listing lookups.</summary>
+    public ListingsService ListingsService => _listingsService;
 
     /// <summary>Gets the set of marketable item IDs.</summary>
     public IReadOnlySet<int>? MarketableItems => _marketableItems;
@@ -64,7 +82,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         UniversalisService universalisService,
         UniversalisWebSocketService webSocketService,
         SamplerService samplerService,
-        InventoryCacheService inventoryCacheService)
+        InventoryCacheService inventoryCacheService,
+        ListingsService listingsService,
+        ItemDataService itemDataService,
+        TimeSeriesCacheService cacheService)
     {
         _log = log;
         _framework = framework;
@@ -73,6 +94,24 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _webSocketService = webSocketService;
         _samplerService = samplerService;
         _inventoryCacheService = inventoryCacheService;
+        _listingsService = listingsService;
+        _itemDataService = itemDataService;
+        _cacheService = cacheService;
+
+        // Initialize background work queue for WebSocket price updates (unbounded, single consumer)
+        _priceUpdateQueue = Channel.CreateUnbounded<PriceUpdateWorkItem>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        // Start the background worker thread for database writes
+        _backgroundWorker = Task.Factory.StartNew(
+            ProcessPriceUpdateQueueAsync,
+            _cts.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default
+        ).Unwrap();
 
         // Subscribe to WebSocket events
         _webSocketService.OnPriceUpdate += OnPriceUpdate;
@@ -80,7 +119,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         // Subscribe to framework update for periodic tasks
         _framework.Update += OnFrameworkUpdate;
 
-        _log.Debug("[PriceTracking] Service initialized");
+        _log.Debug("[PriceTracking] Service initialized with background thread for price updates");
 
         // Start async initialization
         _ = InitializeAsync();
@@ -97,6 +136,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _log.Debug("[PriceTracking] InitializeAsync - already disposed, exiting");
                 return;
             }
+            
+            // Pre-populate inventory value cache on background thread
+            // This prevents blocking on main thread when InventoryValueTool first draws
+            PopulateInventoryValueCache();
             
             // Fetch world/DC data and marketable items in parallel for faster startup
             var worldDataTask = RefreshWorldDataAsync();
@@ -117,6 +160,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _log.Debug("[PriceTracking] InitializeAsync - starting WebSocket");
                 await _webSocketService.StartAsync();
                 await _webSocketService.SubscribeToAllAsync();
+                
+                // Initialize the listings service with world data and marketable items
+                await _listingsService.InitializeAsync(_worldData, _marketableItems);
                 
                 // Fetch prices for stale inventory items at startup
                 await FetchStaleInventoryPricesAsync();
@@ -185,17 +231,63 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             if (isSale)
             {
-                // Sale event - save individual sale record for per-world filtering
-                DbService.SaveSaleRecord(
-                    entry.ItemId, 
-                    entry.WorldId, 
-                    entry.PricePerUnit, 
-                    entry.Quantity, 
-                    entry.IsHq, 
-                    entry.Total,
-                    entry.BuyerName);
+                // Skip sales from mannequins
+                if (entry.OnMannequin)
+                {
+                    var itemName = _itemDataService.GetItemName(entry.ItemId);
+                    _log.Verbose($"[PriceTracking] Ignoring mannequin sale for {itemName} ({entry.ItemId})");
+                    return;
+                }
 
-                // Also update the aggregated last sale prices for backward compatibility
+                // Check for price spikes (100x or higher than previous sale) only for items with previous sales >= 10k
+                // Uses in-memory cache to avoid blocking DB reads on the WebSocket thread
+                _lastSalePriceCache.TryGetValue((entry.ItemId, entry.IsHq), out var previousPrice);
+                if (previousPrice >= 10000 && entry.PricePerUnit >= (long)previousPrice * 100)
+                {
+                    var itemName = _itemDataService.GetItemName(entry.ItemId);
+                    _log.Debug($"[PriceTracking] Ignoring price spike for {itemName} ({entry.ItemId}): {entry.PricePerUnit:N0} is 100x+ higher than previous {previousPrice:N0}");
+                    return;
+                }
+
+                // Check for listing price discrepancy if enabled
+                // Uses average of lowest listing and most recent sale for that world as reference
+                // Skip the filter if the unit price is below the minimum threshold
+                if (Settings.FilterSalesByListingPrice && entry.PricePerUnit >= Settings.SaleFilterMinimumPrice)
+                {
+                    var listing = _listingsService.GetListing(entry.ItemId, entry.WorldId);
+                    var listingPrice = listing != null ? (entry.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
+                    // Use in-memory cache instead of DB read
+                    _lastSalePriceByWorldCache.TryGetValue((entry.ItemId, entry.WorldId, entry.IsHq), out var recentSalePrice);
+                    
+                    // Calculate reference price as average of listing and recent sale (if both available)
+                    double referencePrice;
+                    if (listingPrice > 0 && recentSalePrice > 0)
+                        referencePrice = (listingPrice + recentSalePrice) / 2.0;
+                    else if (listingPrice > 0)
+                        referencePrice = listingPrice;
+                    else if (recentSalePrice > 0)
+                        referencePrice = recentSalePrice;
+                    else
+                        referencePrice = 0; // No reference data available
+                    
+                    if (referencePrice > 0)
+                    {
+                        var ratio = entry.PricePerUnit / referencePrice;
+                        var threshold = Settings.SaleDiscrepancyThreshold / 100.0;
+                        var minRatio = 1.0 - threshold;
+                        var maxRatio = 1.0 + threshold;
+                        if (ratio < minRatio || ratio > maxRatio)
+                        {
+                            var itemName = _itemDataService.GetItemName(entry.ItemId);
+                            var worldName = _worldData?.GetWorldName(entry.WorldId) ?? entry.WorldId.ToString();
+                            _log.Debug($"[PriceTracking] Ignoring sale for {itemName} on {worldName}: " +
+                                $"price {entry.PricePerUnit:N0} is {(ratio * 100 - 100):+0;-0}% from reference {referencePrice:N0} (listing: {listingPrice:N0}, recent sale: {recentSalePrice:N0}, threshold: {Settings.SaleDiscrepancyThreshold}%)");
+                            return;
+                        }
+                    }
+                }
+
+                // Sale event - queue write to background thread
                 var lastSaleNq = entry.IsHq ? 0 : entry.PricePerUnit;
                 var lastSaleHq = entry.IsHq ? entry.PricePerUnit : 0;
 
@@ -208,12 +300,23 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     existingHq = existing.minHq;
                 }
 
-                // Save to database with last sale prices
-                DbService.SaveItemPrice(entry.ItemId, entry.WorldId, existingNq, existingHq, 
-                    lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
-
-                // Notify listeners that price data has been updated
-                OnPriceDataUpdated?.Invoke(entry.ItemId);
+                // Queue the write to background thread
+                _priceUpdateQueue.Writer.TryWrite(new PriceUpdateWorkItem(
+                    ItemId: entry.ItemId,
+                    WorldId: entry.WorldId,
+                    IsSale: true,
+                    PricePerUnit: entry.PricePerUnit,
+                    Quantity: entry.Quantity,
+                    IsHq: entry.IsHq,
+                    Total: entry.Total,
+                    BuyerName: entry.BuyerName,
+                    ExistingMinNq: existingNq,
+                    ExistingMinHq: existingHq,
+                    LastSaleNq: lastSaleNq,
+                    LastSaleHq: lastSaleHq,
+                    CachedMinNq: 0,
+                    CachedMinHq: 0
+                ));
             }
             else
             {
@@ -238,19 +341,145 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     _priceCache[key] = (price.Item1, price.Item2, DateTime.UtcNow);
                 }
 
-                // Save to database
+                // Queue to database write on background thread
                 if (_priceCache.TryGetValue(key, out var cached))
                 {
-                    DbService.SaveItemPrice(entry.ItemId, entry.WorldId, cached.minNq, cached.minHq);
-
-                    // Notify listeners that price data has been updated
-                    OnPriceDataUpdated?.Invoke(entry.ItemId);
+                    _priceUpdateQueue.Writer.TryWrite(new PriceUpdateWorkItem(
+                        ItemId: entry.ItemId,
+                        WorldId: entry.WorldId,
+                        IsSale: false,
+                        PricePerUnit: entry.PricePerUnit,
+                        Quantity: entry.Quantity,
+                        IsHq: entry.IsHq,
+                        Total: entry.Total,
+                        BuyerName: null,
+                        ExistingMinNq: 0,
+                        ExistingMinHq: 0,
+                        LastSaleNq: 0,
+                        LastSaleHq: 0,
+                        CachedMinNq: cached.minNq,
+                        CachedMinHq: cached.minHq
+                    ));
                 }
             }
         }
         catch (Exception ex)
         {
             _log.Debug($"[PriceTracking] Error processing price update: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Background worker that processes queued price updates.
+    /// Drains the channel in batches and writes to the database on a dedicated thread.
+    /// Uses batching to reduce lock contention with the main thread.
+    /// </summary>
+    private async Task ProcessPriceUpdateQueueAsync()
+    {
+        const int BatchSize = 50;
+        const int BatchDelayMs = 100; // Wait up to 100ms to collect more items
+        
+        var batch = new List<PriceUpdateWorkItem>(BatchSize);
+        var itemsToNotify = new HashSet<int>();
+        
+        try
+        {
+            while (!_cts.Token.IsCancellationRequested)
+            {
+                batch.Clear();
+                itemsToNotify.Clear();
+                
+                // Wait for at least one item
+                if (!await _priceUpdateQueue.Reader.WaitToReadAsync(_cts.Token))
+                    break; // Channel completed
+                
+                // Collect items for up to BatchDelayMs or until batch is full
+                var batchDeadline = DateTime.UtcNow.AddMilliseconds(BatchDelayMs);
+                while (batch.Count < BatchSize && DateTime.UtcNow < batchDeadline)
+                {
+                    if (_priceUpdateQueue.Reader.TryRead(out var workItem))
+                    {
+                        batch.Add(workItem);
+                    }
+                    else if (batch.Count > 0)
+                    {
+                        // No more items available, process what we have
+                        break;
+                    }
+                    else
+                    {
+                        // Wait a bit for more items
+                        await Task.Delay(10, _cts.Token);
+                    }
+                }
+                
+                if (batch.Count == 0) continue;
+                
+                // Process the batch - DB writes are done inside SaveSaleRecordsBatch/SaveItemPricesBatch
+                // which use transactions to minimize lock time
+                try
+                {
+                    // Separate sales and listings
+                    var sales = batch.Where(w => w.IsSale).ToList();
+                    var listings = batch.Where(w => !w.IsSale).ToList();
+                    
+                    // Process sales
+                    if (sales.Count > 0)
+                    {
+                        // Save sale records in batch
+                        var saleRecords = sales.Select(w => (
+                            w.ItemId, w.WorldId, w.PricePerUnit, w.Quantity, w.IsHq, w.Total, w.BuyerName
+                        )).ToList();
+                        DbService.SaveSaleRecordsBatch(saleRecords);
+                        
+                        // Save item prices in batch
+                        var salePrices = sales.Select(w => (
+                            w.ItemId, w.WorldId, w.ExistingMinNq, w.ExistingMinHq, w.LastSaleNq, w.LastSaleHq
+                        )).ToList();
+                        DbService.SaveItemPricesBatch(salePrices);
+                        
+                        // Update in-memory caches
+                        foreach (var w in sales)
+                        {
+                            _lastSalePriceCache[(w.ItemId, w.IsHq)] = w.PricePerUnit;
+                            _lastSalePriceByWorldCache[(w.ItemId, w.WorldId, w.IsHq)] = w.PricePerUnit;
+                            itemsToNotify.Add(w.ItemId);
+                        }
+                    }
+                    
+                    // Process listings
+                    if (listings.Count > 0)
+                    {
+                        var listingPrices = listings.Select(w => (
+                            w.ItemId, w.WorldId, w.CachedMinNq, w.CachedMinHq, 0, 0 // No sale prices for listings
+                        )).ToList();
+                        DbService.SaveItemPricesBatch(listingPrices);
+                        
+                        foreach (var w in listings)
+                        {
+                            itemsToNotify.Add(w.ItemId);
+                        }
+                    }
+                    
+                    // Notify listeners for all affected items (deduplicated)
+                    foreach (var itemId in itemsToNotify)
+                    {
+                        OnPriceDataUpdated?.Invoke(itemId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Verbose($"[PriceTracking] Background batch write error: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"[PriceTracking] Background worker crashed: {ex.Message}", ex);
         }
     }
 
@@ -554,12 +783,33 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             {
                 DbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
             }
+            
+            // Re-populate the full cache on background thread so main thread doesn't block
+            PopulateInventoryValueCache();
 
             _log.Debug($"[PriceTracking] Saved value snapshots for {characterIds.Count} characters (parallel)");
         }
         catch (Exception ex)
         {
             _log.Debug($"[PriceTracking] Error taking value snapshots: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Populates the in-memory inventory value cache from the database.
+    /// This runs on the background thread so the main thread never hits the DB.
+    /// </summary>
+    private void PopulateInventoryValueCache()
+    {
+        try
+        {
+            var historyData = DbService.GetAllInventoryValueHistory();
+            _cacheService.SetInventoryValueCache(historyData);
+            _log.Debug($"[PriceTracking] Populated inventory value cache with {historyData.Count} records");
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[PriceTracking] Error populating inventory value cache: {ex.Message}");
         }
     }
 
@@ -897,6 +1147,13 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try { _cts.Cancel(); }
         catch (Exception) { /* Ignore */ }
+
+        // Complete the channel to stop the background worker
+        _priceUpdateQueue.Writer.TryComplete();
+
+        // Wait for background worker to finish (with timeout)
+        try { _backgroundWorker.Wait(TimeSpan.FromSeconds(2)); }
+        catch (Exception) { /* Ignore timeout */ }
         
         _framework.Update -= OnFrameworkUpdate;
         _webSocketService.OnPriceUpdate -= OnPriceUpdate;
@@ -905,3 +1162,37 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         catch (Exception) { /* Ignore */ }
     }
 }
+
+/// <summary>
+/// Work item representing a price update to be persisted to the database.
+/// </summary>
+/// <param name="ItemId">The item ID.</param>
+/// <param name="WorldId">The world ID.</param>
+/// <param name="IsSale">Whether this is a sale event (true) or listing event (false).</param>
+/// <param name="PricePerUnit">Price per unit.</param>
+/// <param name="Quantity">Quantity.</param>
+/// <param name="IsHq">Whether the item is HQ.</param>
+/// <param name="Total">Total price.</param>
+/// <param name="BuyerName">Buyer name (for sales).</param>
+/// <param name="ExistingMinNq">Existing cached min NQ price.</param>
+/// <param name="ExistingMinHq">Existing cached min HQ price.</param>
+/// <param name="LastSaleNq">Last sale NQ price (for sales).</param>
+/// <param name="LastSaleHq">Last sale HQ price (for sales).</param>
+/// <param name="CachedMinNq">Cached min NQ price after update (for listings).</param>
+/// <param name="CachedMinHq">Cached min HQ price after update (for listings).</param>
+internal readonly record struct PriceUpdateWorkItem(
+    int ItemId,
+    int WorldId,
+    bool IsSale,
+    int PricePerUnit,
+    int Quantity,
+    bool IsHq,
+    int Total,
+    string? BuyerName,
+    int ExistingMinNq,
+    int ExistingMinHq,
+    int LastSaleNq,
+    int LastSaleHq,
+    int CachedMinNq,
+    int CachedMinHq
+);
