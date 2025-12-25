@@ -55,6 +55,14 @@ public static class ConfigStatic
     public const int BaseGridColumns = 16;
     /// <summary>Base number of rows for grid calculations.</summary>
     public const int BaseGridRows = 9;
+    
+    // Cache timing
+    /// <summary>Cache validity period for time-series data helpers in seconds.</summary>
+    public const int SeriesCacheExpirySeconds = 2;
+    /// <summary>Cache validity period for inventory value calculations in seconds.</summary>
+    public const int InventoryValueCacheSeconds = 30;
+    /// <summary>Default cache duration for price listings in seconds.</summary>
+    public const int ListingsCacheSeconds = 300;
 }
 
 /// <summary>
