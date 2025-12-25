@@ -28,6 +28,7 @@ public static class LogService
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
+    public static void Verbose(string message) => _log?.Verbose(message);
     public static void Info(string message) => _log?.Information(message);
     public static void Debug(string message) => _log?.Debug(message);
     public static void Warning(string message) => _log?.Warning(message);

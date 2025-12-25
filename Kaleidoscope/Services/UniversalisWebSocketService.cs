@@ -36,6 +36,14 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private readonly ConcurrentQueue<PriceFeedEntry> _liveFeed = new();
     private int _feedCount = 0;
 
+    // Message aggregation for logging
+    private const int MessageLogIntervalMs = 5000;
+    private System.Threading.Timer? _messageLogTimer;
+    private int _listingsAddCount;
+    private int _listingsRemoveCount;
+    private int _salesAddCount;
+    private readonly object _messageCountLock = new();
+
     /// <summary>Event fired when a new price update is received.</summary>
     public event Action<PriceFeedEntry>? OnPriceUpdate;
 
@@ -61,6 +69,9 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         _log = log;
         _configService = configService;
         _universalisService = universalisService;
+
+        // Start the message aggregation timer
+        _messageLogTimer = new System.Threading.Timer(LogMessageCounts, null, MessageLogIntervalMs, MessageLogIntervalMs);
 
         _log.Verbose("[UniversalisWebSocket] Service initialized");
     }
@@ -249,21 +260,21 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             var eventType = ParseEventType(data);
             if (string.IsNullOrEmpty(eventType))
             {
-                _log.Verbose("[UniversalisWebSocket] Could not parse event type");
                 return;
             }
-
-            _log.Verbose($"[UniversalisWebSocket] Received event: {eventType}");
 
             switch (eventType)
             {
                 case UniversalisSocketEvents.ListingsAdd:
+                    Interlocked.Increment(ref _listingsAddCount);
                     ProcessListingsAdd(data);
                     break;
                 case UniversalisSocketEvents.ListingsRemove:
+                    Interlocked.Increment(ref _listingsRemoveCount);
                     ProcessListingsRemove(data);
                     break;
                 case UniversalisSocketEvents.SalesAdd:
+                    Interlocked.Increment(ref _salesAddCount);
                     ProcessSalesAdd(data);
                     break;
                 default:
@@ -473,7 +484,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                     Quantity = GetIntField(sale, "quantity"),
                     IsHq = GetBoolField(sale, "hq"),
                     Total = GetIntField(sale, "total"),
-                    BuyerName = GetStringField(sale, "buyerName")
+                    BuyerName = GetStringField(sale, "buyerName"),
+                    OnMannequin = GetBoolField(sale, "onMannequin")
                 };
 
                 AddToFeed(entry);
@@ -844,12 +856,36 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         _feedCount = 0;
     }
 
+    private void LogMessageCounts(object? state)
+    {
+        var listingsAdd = Interlocked.Exchange(ref _listingsAddCount, 0);
+        var listingsRemove = Interlocked.Exchange(ref _listingsRemoveCount, 0);
+        var salesAdd = Interlocked.Exchange(ref _salesAddCount, 0);
+
+        var total = listingsAdd + listingsRemove + salesAdd;
+        if (total > 0)
+        {
+            _log.Verbose($"[UniversalisWebSocket] Messages received: ListingsAdd={listingsAdd}, ListingsRemove={listingsRemove}, SalesAdd={salesAdd}");
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         
         _log.Verbose("[UniversalisWebSocket] Disposing service");
+
+        // Dispose the message log timer
+        try
+        {
+            _messageLogTimer?.Dispose();
+            _messageLogTimer = null;
+        }
+        catch (Exception ex)
+        {
+            _log.Verbose($"[UniversalisWebSocket] Error disposing message log timer: {ex.Message}");
+        }
 
         // Cancel the token to stop the receive loop
         try
