@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Bindings.ImPlot;
 using Kaleidoscope.Interfaces;
@@ -404,6 +405,11 @@ public class ImplotGraphWidget : ISettingsProvider
     private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _lastSeriesData;
     
     /// <summary>
+    /// Reference to the last series data with colors used to detect changes.
+    /// </summary>
+    private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _lastSeriesDataWithColors;
+    
+    /// <summary>
     /// Hash of hidden series to detect visibility changes.
     /// </summary>
     private int _lastHiddenSeriesHash;
@@ -472,6 +478,28 @@ public class ImplotGraphWidget : ISettingsProvider
     /// Gets whether the mouse is over any overlay element (legend or controls drawer).
     /// </summary>
     public bool IsMouseOverOverlay => IsMouseOverInsideLegend || IsMouseOverControlsDrawer;
+    
+    /// <summary>
+    /// Checks whether a point is inside the legend bounds.
+    /// </summary>
+    private bool IsPointInLegend(Vector2 point)
+    {
+        if (!_cachedLegendBounds.valid || _config.LegendPosition == LegendPosition.Outside)
+            return false;
+        return point.X >= _cachedLegendBounds.min.X && point.X <= _cachedLegendBounds.max.X &&
+               point.Y >= _cachedLegendBounds.min.Y && point.Y <= _cachedLegendBounds.max.Y;
+    }
+    
+    /// <summary>
+    /// Checks whether a point is inside the controls drawer bounds.
+    /// </summary>
+    private bool IsPointInControlsDrawer(Vector2 point)
+    {
+        if (!_cachedControlsDrawerBounds.valid)
+            return false;
+        return point.X >= _cachedControlsDrawerBounds.min.X && point.X <= _cachedControlsDrawerBounds.max.X &&
+               point.Y >= _cachedControlsDrawerBounds.min.Y && point.Y <= _cachedControlsDrawerBounds.max.Y;
+    }
     
     /// <summary>
     /// Event fired when auto-scroll settings are changed via the controls drawer.
@@ -563,27 +591,13 @@ public class ImplotGraphWidget : ISettingsProvider
     /// </summary>
     private static readonly unsafe ImPlotFormatter YAxisFormatter = (double value, byte* buff, int size, void* userData) =>
     {
-        var formatted = FormatAbbreviated(value);
+        var formatted = FormatUtils.FormatAbbreviated(value);
         var len = Math.Min(formatted.Length, size - 1);
         for (var i = 0; i < len; i++)
             buff[i] = (byte)formatted[i];
         buff[len] = 0;
         return len;
     };
-    
-    /// <summary>
-    /// Formats a number with abbreviated notation (K, M, B).
-    /// </summary>
-    private static string FormatAbbreviated(double value)
-    {
-        return value switch
-        {
-            >= 1_000_000_000 => $"{value / 1_000_000_000:0.##}B",
-            >= 1_000_000 => $"{value / 1_000_000:0.##}M",
-            >= 1_000 => $"{value / 1_000:0.##}K",
-            _ => $"{value:0.##}"
-        };
-    }
     
     /// <summary>
     /// Applies trading platform style colors to the plot.
@@ -650,19 +664,23 @@ public class ImplotGraphWidget : ISettingsProvider
             drawList.AddLine(p1, p2, colorU32, thickness);
         }
         
-        // Draw price label on the right
+        // Draw price label on the right (clipped to plot area so it goes under the Y-axis)
         if (!string.IsNullOrEmpty(label))
         {
+            var plotPos = ImPlot.GetPlotPos();
+            var plotSize = ImPlot.GetPlotSize();
             var labelSize = ImGui.CalcTextSize(label);
             var labelPos = new Vector2(p2.X - labelSize.X - 4, p2.Y - labelSize.Y / 2);
             
             // Background for label
             var bgMin = new Vector2(labelPos.X - 4, labelPos.Y - 2);
             var bgMax = new Vector2(p2.X, labelPos.Y + labelSize.Y + 2);
-            drawList.AddRectFilled(bgMin, bgMax, ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 0.85f)), 2f);
             
-            // Label text
+            // Clip to plot area so label goes under the axis
+            drawList.PushClipRect(plotPos, new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y), true);
+            drawList.AddRectFilled(bgMin, bgMax, ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 0.85f)), 2f);
             drawList.AddText(labelPos, ImGui.GetColorU32(new Vector4(0.1f, 0.1f, 0.1f, 1f)), label);
+            drawList.PopClipRect();
         }
     }
     
@@ -706,13 +724,14 @@ public class ImplotGraphWidget : ISettingsProvider
             x += dashLength + gapLength;
         }
         
-        // Draw value label on Y axis
-        var valueLabel = FormatAbbreviated(valueAtMouse);
+        // Draw value label on Y axis (clipped to plot area so it goes under the Y-axis)
+        var valueLabel = FormatUtils.FormatAbbreviated(valueAtMouse);
         var labelSize = ImGui.CalcTextSize(valueLabel);
         var labelPos = new Vector2(hRight.X - labelSize.X - 6, hRight.Y - labelSize.Y / 2);
         
-        // Background box
+        // Background box - clipped to plot area
         var bgPadding = 3f;
+        drawList.PushClipRect(plotPos, new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y), true);
         drawList.AddRectFilled(
             new Vector2(labelPos.X - bgPadding, labelPos.Y - bgPadding),
             new Vector2(labelPos.X + labelSize.X + bgPadding, labelPos.Y + labelSize.Y + bgPadding),
@@ -723,6 +742,7 @@ public class ImplotGraphWidget : ISettingsProvider
             ImGui.GetColorU32(ChartColors.TooltipBorder), 2f);
         
         drawList.AddText(labelPos, ImGui.GetColorU32(ChartColors.TextPrimary), valueLabel);
+        drawList.PopClipRect();
     }
     
     /// <summary>
@@ -1032,11 +1052,10 @@ public class ImplotGraphWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        ImGui.TextUnformatted("Graph Style");
-        ImGui.Separator();
-        
-        // Graph type
-        var graphType = settings.GraphType;
+        if (ImGui.CollapsingHeader("Graph Style"))
+        {
+            // Graph type
+            var graphType = settings.GraphType;
         if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
         {
             settings.GraphType = graphType;
@@ -1083,14 +1102,14 @@ public class ImplotGraphWidget : ISettingsProvider
             _config.ShowCurrentPriceLine = showCurrentPriceLine;
             changed = true;
         }
-        ShowSettingsTooltip("Shows a horizontal line at the current value.");
+            ShowSettingsTooltip("Shows a horizontal line at the current value.");
+        }
         
         ImGui.Spacing();
-        ImGui.TextUnformatted("Auto-Scroll");
-        ImGui.Separator();
-        
-        // Controls drawer
-        var showControlsDrawer = settings.ShowControlsDrawer;
+        if (ImGui.CollapsingHeader("Auto-Scroll"))
+        {
+            // Controls drawer
+            var showControlsDrawer = settings.ShowControlsDrawer;
         if (ImGui.Checkbox("Show controls drawer", ref showControlsDrawer))
         {
             settings.ShowControlsDrawer = showControlsDrawer;
@@ -1138,22 +1157,23 @@ public class ImplotGraphWidget : ISettingsProvider
                 _config.AutoScrollNowPosition = nowPosition;
                 changed = true;
             }
-            ShowSettingsTooltip("Position of 'now' on the X-axis. 0% = left edge, 100% = right edge.");
+                ShowSettingsTooltip("Position of 'now' on the X-axis. 0% = left edge, 100% = right edge.");
+            }
         }
         
         ImGui.Spacing();
-        ImGui.TextUnformatted("Time Range");
-        ImGui.Separator();
-        
-        var timeRangeValue = settings.TimeRangeValue;
+        if (ImGui.CollapsingHeader("Time Range"))
+        {
+            var timeRangeValue = settings.TimeRangeValue;
         var timeRangeUnit = settings.TimeRangeUnit;
         if (TimeRangeSelectorWidget.DrawVertical(ref timeRangeValue, ref timeRangeUnit))
         {
             settings.TimeRangeValue = timeRangeValue;
-            settings.TimeRangeUnit = timeRangeUnit;
-            changed = true;
+                settings.TimeRangeUnit = timeRangeUnit;
+                changed = true;
+            }
+            ShowSettingsTooltip("Time range to display on the graph.");
         }
-        ShowSettingsTooltip("Time range to display on the graph.");
         
         if (changed)
         {
@@ -1443,7 +1463,11 @@ public class ImplotGraphWidget : ISettingsProvider
         PreparedGraphData data;
         
         // Check if we need to recompute prepared data
-        var needsRecompute = NeedsPreparedDataRecompute(series);
+        bool needsRecompute;
+        using (ProfilerService.BeginStaticChildScope("NeedsRecompute"))
+        {
+            needsRecompute = NeedsPreparedDataRecompute(series);
+        }
         
         if (needsRecompute)
         {
@@ -1464,11 +1488,194 @@ public class ImplotGraphWidget : ISettingsProvider
             // For auto-scroll, just update the X limits and Y bounds without reprocessing all data
             if (_config.AutoScrollEnabled)
             {
-                UpdateAutoScrollLimits(data);
+                using (ProfilerService.BeginStaticChildScope("UpdateAutoScroll"))
+                {
+                    UpdateAutoScrollLimits(data);
+                }
             }
         }
         
-        DrawGraph(data);
+        using (ProfilerService.BeginStaticChildScope("DrawGraph"))
+        {
+            DrawGraph(data);
+        }
+    }
+    
+    /// <summary>
+    /// Draws multiple data series overlaid on the same graph with time-aligned data, using custom colors.
+    /// Uses caching to avoid recomputing prepared data every frame.
+    /// </summary>
+    /// <param name="series">List of data series with names, timestamped values, and optional colors.</param>
+    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
+    {
+        if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
+        {
+            DrawNoDataMessage();
+            return;
+        }
+
+        PreparedGraphData data;
+        
+        // Check if we need to recompute prepared data
+        bool needsRecompute;
+        using (ProfilerService.BeginStaticChildScope("NeedsRecompute"))
+        {
+            needsRecompute = NeedsPreparedDataRecomputeWithColors(series);
+        }
+        
+        if (needsRecompute)
+        {
+            using (ProfilerService.BeginStaticChildScope("PrepareTimeData"))
+            {
+                data = PrepareTimeBasedDataWithColors(series);
+            }
+            _cachedPreparedData = data;
+            _lastSeriesDataWithColors = series;
+            _lastSeriesData = null; // Clear the non-color version to avoid confusion
+            _lastHiddenSeriesHash = ComputeHiddenSeriesHash();
+            _lastAutoScrollEnabled = _config.AutoScrollEnabled;
+            _lastPreparedDataTime = DateTime.UtcNow;
+        }
+        else
+        {
+            data = _cachedPreparedData!;
+            
+            // For auto-scroll, just update the X limits and Y bounds without reprocessing all data
+            if (_config.AutoScrollEnabled)
+            {
+                using (ProfilerService.BeginStaticChildScope("UpdateAutoScroll"))
+                {
+                    UpdateAutoScrollLimits(data);
+                }
+            }
+        }
+        
+        using (ProfilerService.BeginStaticChildScope("DrawGraph"))
+        {
+            DrawGraph(data);
+        }
+    }
+    
+    /// <summary>
+    /// Determines if prepared graph data needs to be recomputed (for color-aware overload).
+    /// </summary>
+    private bool NeedsPreparedDataRecomputeWithColors(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
+    {
+        // No cache yet
+        if (_cachedPreparedData == null || _lastSeriesDataWithColors == null)
+            return true;
+        
+        // Series reference changed (new data from caller)
+        if (!ReferenceEquals(series, _lastSeriesDataWithColors))
+            return true;
+        
+        // Hidden series changed
+        var currentHiddenHash = ComputeHiddenSeriesHash();
+        if (currentHiddenHash != _lastHiddenSeriesHash)
+            return true;
+        
+        // Auto-scroll was just enabled/disabled
+        if (_config.AutoScrollEnabled != _lastAutoScrollEnabled)
+            return true;
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Prepares time-based multi-series data for rendering, using custom colors when provided.
+    /// </summary>
+    private PreparedGraphData PrepareTimeBasedDataWithColors(
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> seriesData)
+    {
+        // Find global time range
+        var globalMinTime = DateTime.MaxValue;
+        var globalMaxTime = DateTime.UtcNow;
+        
+        foreach (var (_, samples, _) in seriesData)
+        {
+            if (samples == null || samples.Count == 0) continue;
+            if (samples[0].ts < globalMinTime) globalMinTime = samples[0].ts;
+        }
+        
+        if (globalMinTime == DateTime.MaxValue)
+            globalMinTime = DateTime.UtcNow.AddHours(-1);
+        
+        var totalTimeSpan = (globalMaxTime - globalMinTime).TotalSeconds;
+        if (totalTimeSpan < 1) totalTimeSpan = 1;
+        
+        // Generate default colors for series without custom colors
+        var defaultColors = GetSeriesColors(seriesData.Count);
+        
+        // Build series list using pooled arrays to avoid allocations
+        var series = new List<GraphSeriesData>();
+        var defaultColorIndex = 0;
+        for (var i = 0; i < seriesData.Count; i++)
+        {
+            var (name, samples, customColor) = seriesData[i];
+            if (samples == null || samples.Count == 0) continue;
+            
+            // Get or create pooled arrays (reuse if size matches, otherwise allocate)
+            var pointCount = samples.Count + 1;
+            var xValues = GetOrCreatePooledArray(_pooledXArrays, name, pointCount);
+            var yValues = GetOrCreatePooledArray(_pooledYArrays, name, pointCount);
+            
+            for (var j = 0; j < samples.Count; j++)
+            {
+                xValues[j] = (samples[j].ts - globalMinTime).TotalSeconds;
+                yValues[j] = samples[j].value;
+            }
+            
+            // Extend to current time with last value
+            xValues[samples.Count] = totalTimeSpan;
+            yValues[samples.Count] = samples[^1].value;
+            
+            // Use custom color if provided, otherwise use default color palette
+            var color = customColor.HasValue 
+                ? new Vector3(customColor.Value.X, customColor.Value.Y, customColor.Value.Z)
+                : defaultColors[defaultColorIndex++ % defaultColors.Length];
+            
+            series.Add(new GraphSeriesData
+            {
+                Name = name,
+                XValues = xValues,
+                YValues = yValues,
+                PointCount = pointCount,
+                Color = color,
+                Visible = !_hiddenSeries.Contains(name)
+            });
+        }
+        
+        // Calculate X limits based on auto-scroll mode
+        double xMin, xMax;
+        if (_config.AutoScrollEnabled)
+        {
+            var timeRangeSeconds = _config.GetAutoScrollTimeRangeSeconds();
+            var nowFraction = _config.AutoScrollNowPosition / 100f;
+            var leftPortion = timeRangeSeconds * nowFraction;
+            var rightPortion = timeRangeSeconds * (1f - nowFraction);
+            xMin = totalTimeSpan - leftPortion;
+            xMax = totalTimeSpan + rightPortion;
+        }
+        else
+        {
+            xMin = 0;
+            xMax = totalTimeSpan + Math.Max(totalTimeSpan * 0.05, 1.0);
+        }
+        
+        // Calculate Y bounds for visible series (considering visible X range for auto-scroll)
+        var (yMinCalc, yMaxCalc) = CalculateYBounds(series, xMin, xMax);
+        
+        return new PreparedGraphData
+        {
+            Series = series,
+            XMin = xMin,
+            XMax = xMax,
+            YMin = yMinCalc,
+            YMax = yMaxCalc,
+            IsTimeBased = true,
+            StartTime = globalMinTime,
+            TotalTimeSpan = totalTimeSpan
+        };
     }
     
     /// <summary>
@@ -1743,7 +1950,7 @@ public class ImplotGraphWidget : ISettingsProvider
                         var isBullish = lastVisibleSeries.PointCount < 2 || 
                                        lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1] >= lastVisibleSeries.YValues[0];
                         var priceLineColor = isBullish ? ChartColors.Bullish : ChartColors.Bearish;
-                        DrawPriceLine(currentValue, FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
+                        DrawPriceLine(currentValue, FormatUtils.FormatAbbreviated(currentValue), priceLineColor, 1.5f, true);
                     }
                 }
                 
@@ -1756,13 +1963,8 @@ public class ImplotGraphWidget : ISettingsProvider
                     }
                 }
                 
-                // Draw value labels
-                if (_config.ShowValueLabel)
-                {
-                    DrawValueLabels(data);
-                }
-                
                 // Draw inside legend if applicable (use total series count so legend stays visible when series are hidden)
+                // Draw this BEFORE value labels so bounds are cached for overlap detection
                 if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeriesTotal)
                 {
                     using (ProfilerService.BeginStaticChildScope("DrawInsideLegend"))
@@ -1776,6 +1978,7 @@ public class ImplotGraphWidget : ISettingsProvider
                 }
                 
                 // Draw controls drawer
+                // Draw this BEFORE value labels so bounds are cached for overlap detection
                 if (_config.ShowControlsDrawer)
                 {
                     DrawControlsDrawer();
@@ -1783,6 +1986,12 @@ public class ImplotGraphWidget : ISettingsProvider
                 else
                 {
                     _cachedControlsDrawerBounds = (Vector2.Zero, Vector2.Zero, false);
+                }
+                
+                // Draw value labels AFTER legend and drawer so we can check for overlap
+                if (_config.ShowValueLabel)
+                {
+                    DrawValueLabels(data);
                 }
                 
                 ImPlot.EndPlot();
@@ -1918,6 +2127,13 @@ public class ImplotGraphWidget : ISettingsProvider
     /// </summary>
     private void DrawValueLabels(PreparedGraphData data)
     {
+        var drawList = ImPlot.GetPlotDrawList();
+        var plotPos = ImPlot.GetPlotPos();
+        var plotSize = ImPlot.GetPlotSize();
+        
+        // Clip to plot area so labels go under the Y-axis
+        drawList.PushClipRect(plotPos, new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y), true);
+        
         // Collect labels from visible series using cached list to avoid allocations
         _valueLabelCache.Clear();
         foreach (var s in data.Series)
@@ -1928,8 +2144,11 @@ public class ImplotGraphWidget : ISettingsProvider
             }
         }
         
-        // Sort by value descending (in-place to avoid allocation)
-        _valueLabelCache.Sort((a, b) => b.Value.CompareTo(a.Value));
+        // Sort by value ascending so higher values are drawn last (on top when overlapping)
+        _valueLabelCache.Sort((a, b) => a.Value.CompareTo(b.Value));
+        
+        const float padding = 4f;
+        const float rounding = 3f;
         
         for (var i = 0; i < _valueLabelCache.Count; i++)
         {
@@ -1938,12 +2157,51 @@ public class ImplotGraphWidget : ISettingsProvider
                 ? $"{name}: {FormatValue(lastValue)}"
                 : FormatValue(lastValue);
             
-            var pixOffset = new Vector2(_config.ValueLabelOffsetX, _config.ValueLabelOffsetY);
-            var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
-            
             var xPos = data.IsTimeBased ? data.TotalTimeSpan : data.XMax - (data.XMax - data.XMin) * 0.05;
-            ImPlot.Annotation(xPos, lastValue, labelColor, pixOffset, true, text);
+            var dataPointScreenPos = ImPlot.PlotToPixels(xPos, lastValue);
+            
+            // Calculate text size first for centering calculation
+            var textSize = ImGui.CalcTextSize(text);
+            
+            // Calculate offset magnitude to determine if we should center the label
+            var offsetMagnitudeForCentering = MathF.Sqrt(_config.ValueLabelOffsetX * _config.ValueLabelOffsetX + 
+                                                          _config.ValueLabelOffsetY * _config.ValueLabelOffsetY);
+            
+            // Label position with offset - center on data point when offset is near zero
+            var labelPos = new Vector2(
+                dataPointScreenPos.X + _config.ValueLabelOffsetX - (offsetMagnitudeForCentering < 1f ? textSize.X / 2 : 0f),
+                dataPointScreenPos.Y + _config.ValueLabelOffsetY);
+            
+            // Skip if label would overlap with legend or controls drawer
+            var labelMin = new Vector2(labelPos.X - padding, labelPos.Y - textSize.Y / 2 - padding);
+            var labelMax = new Vector2(labelPos.X + textSize.X + padding, labelPos.Y + textSize.Y / 2 + padding);
+            
+            if (IsPointInLegend(labelPos) || IsPointInControlsDrawer(labelPos) ||
+                IsPointInLegend(labelMin) || IsPointInControlsDrawer(labelMin) ||
+                IsPointInLegend(labelMax) || IsPointInControlsDrawer(labelMax))
+            {
+                continue;
+            }
+            
+            var labelColor = new Vector4(color.X, color.Y, color.Z, 0.9f);
+            var bgColor = ImGui.GetColorU32(labelColor);
+            var lineColor = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 0.7f));
+            var textColor = ImGui.GetColorU32(ChartColors.TextPrimary);
+            
+            // Draw connecting line from data point to label (if offset is significant)
+            if (offsetMagnitudeForCentering > 5f)
+            {
+                // Line connects to the left edge of the label box
+                var lineEnd = new Vector2(labelMin.X, labelPos.Y);
+                drawList.AddLine(dataPointScreenPos, lineEnd, lineColor, 1.5f);
+            }
+            
+            // Draw background box
+            drawList.AddRectFilled(labelMin, labelMax, bgColor, rounding);
+            drawList.AddText(new Vector2(labelPos.X, labelPos.Y - textSize.Y / 2), textColor, text);
         }
+        
+        drawList.PopClipRect();
     }
 
     #endregion
