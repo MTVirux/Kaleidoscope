@@ -30,7 +30,20 @@ public class CrystalTrackerComponent : IDisposable
     private bool _cacheIsDirty = true;
     private const double CacheValiditySeconds = 2.0; // Refresh cache every 2 seconds max (data changes trigger immediate refresh via _cacheIsDirty)
 
-    private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
+    // Settings provider for instance-specific settings
+    private Func<CrystalTrackerSettings>? _settingsProvider;
+    
+    private CrystalTrackerSettings Settings => _settingsProvider?.Invoke() ?? _configService.Config.CrystalTracker;
+    
+    /// <summary>
+    /// Sets a custom settings provider for instance-specific settings.
+    /// </summary>
+    public void SetSettingsProvider(Func<CrystalTrackerSettings> provider) => _settingsProvider = provider;
+    
+    /// <summary>
+    /// Event raised when settings are changed and need persistence.
+    /// </summary>
+    public event Action? OnSettingsChanged;
 
     /// <summary>
     /// Element names for display.
@@ -82,12 +95,12 @@ public class CrystalTrackerComponent : IDisposable
     
     private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
     {
-        var settings = _configService.Config.CrystalTracker;
+        var settings = Settings;
         settings.AutoScrollEnabled = enabled;
         settings.AutoScrollTimeValue = timeValue;
         settings.AutoScrollTimeUnit = timeUnit;
         settings.AutoScrollNowPosition = nowPosition;
-        _configService.Save();
+        OnSettingsChanged?.Invoke();
     }
 
     private void OnCrystalsChanged()

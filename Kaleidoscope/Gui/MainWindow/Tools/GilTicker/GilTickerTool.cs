@@ -14,24 +14,49 @@ public class GilTickerTool : ToolComponent
     private readonly GilTickerComponent _inner;
     private readonly GilTrackerHelper _helper;
     private readonly ConfigurationService _configService;
+    private readonly TimeSeriesCacheService _cacheService;
+    
+    // Instance-specific settings (overrides global config)
+    private float _scrollSpeed = 30f;
+    private HashSet<ulong> _disabledCharacters = new();
 
     private Configuration Config => _configService.Config;
+    
+    /// <summary>
+    /// Gets the scroll speed for this instance.
+    /// </summary>
+    public float ScrollSpeed
+    {
+        get => _scrollSpeed;
+        set => _scrollSpeed = value;
+    }
+    
+    /// <summary>
+    /// Gets the set of disabled character IDs for this instance.
+    /// </summary>
+    public HashSet<ulong> DisabledCharacters => _disabledCharacters;
 
-    public GilTickerTool(GilTickerComponent inner, GilTrackerHelper helper, ConfigurationService configService)
+    public GilTickerTool(GilTickerComponent inner, GilTrackerHelper helper, ConfigurationService configService, TimeSeriesCacheService cacheService)
     {
         _inner = inner;
         _helper = helper;
         _configService = configService;
+        _cacheService = cacheService;
         Title = "Gil Ticker";
         Size = new System.Numerics.Vector2(400, 30);
         HeaderVisible = false;
         // Default to 6 subunits height (1.5 cells at default 4 subdivisions)
         GridRowSpan = 1.5f;
+        
+        // Initialize from global config as default
+        _scrollSpeed = Config.GilTickerScrollSpeed;
+        _disabledCharacters = new HashSet<ulong>(Config.GilTickerDisabledCharacters);
     }
 
     public override void DrawContent()
     {
-        _inner.Draw();
+        // Pass instance-specific settings to inner component
+        _inner.Draw(_scrollSpeed, _disabledCharacters);
     }
 
     public override bool HasSettings => true;
@@ -40,14 +65,13 @@ public class GilTickerTool : ToolComponent
     {
         try
         {
-            // Speed setting
-            ImGui.TextUnformatted("Ticker Settings");
-            ImGui.Separator();
+            if (!ImGui.CollapsingHeader("Ticker Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
 
-            var speed = Config.GilTickerScrollSpeed;
+            var speed = _scrollSpeed;
             if (ImGui.SliderFloat("Scroll speed", ref speed, 5f, 100f, "%.0f px/s"))
             {
-                Config.GilTickerScrollSpeed = speed;
+                _scrollSpeed = speed;
                 _configService.Save();
             }
             ShowSettingTooltip("How fast the ticker scrolls in pixels per second.", "30");
@@ -67,21 +91,21 @@ public class GilTickerTool : ToolComponent
             {
                 foreach (var charId in availableChars)
                 {
-                    var charName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(charId);
+                    var charName = _cacheService.GetFormattedCharacterName(charId) 
+                        ?? Kaleidoscope.Libs.CharacterLib.GetCharacterName(charId);
                     if (string.IsNullOrEmpty(charName))
                         charName = $"Character {charId}";
 
-                    var isEnabled = !Config.GilTickerDisabledCharacters.Contains(charId);
+                    var isEnabled = !_disabledCharacters.Contains(charId);
                     if (ImGui.Checkbox(charName, ref isEnabled))
                     {
                         if (isEnabled)
                         {
-                            Config.GilTickerDisabledCharacters.Remove(charId);
+                            _disabledCharacters.Remove(charId);
                         }
                         else
                         {
-                            if (!Config.GilTickerDisabledCharacters.Contains(charId))
-                                Config.GilTickerDisabledCharacters.Add(charId);
+                            _disabledCharacters.Add(charId);
                         }
                         _configService.Save();
                     }
@@ -91,6 +115,34 @@ public class GilTickerTool : ToolComponent
         catch (Exception ex)
         {
             LogService.Error("Error drawing GilTicker settings", ex);
+        }
+    }
+    
+    /// <summary>
+    /// Exports tool-specific settings for layout persistence.
+    /// </summary>
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["ScrollSpeed"] = _scrollSpeed,
+            ["DisabledCharacters"] = _disabledCharacters.ToList()
+        };
+    }
+    
+    /// <summary>
+    /// Imports tool-specific settings from a layout.
+    /// </summary>
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        _scrollSpeed = GetSetting(settings, "ScrollSpeed", _scrollSpeed);
+        
+        var disabledChars = GetSetting<List<ulong>>(settings, "DisabledCharacters", null);
+        if (disabledChars != null)
+        {
+            _disabledCharacters = new HashSet<ulong>(disabledChars);
         }
     }
 }

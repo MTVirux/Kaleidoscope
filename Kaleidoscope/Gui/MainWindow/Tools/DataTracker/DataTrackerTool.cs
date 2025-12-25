@@ -74,9 +74,8 @@ public class DataTrackerTool : ToolComponent
             var def = _inner.Definition;
             var displayName = def?.DisplayName ?? DataType.ToString();
 
-            // Display settings section
-            ImGui.TextUnformatted($"{displayName} Settings");
-            ImGui.Separator();
+            if (!ImGui.CollapsingHeader($"{displayName} Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
 
             var hideCharSelector = settings.HideCharacterSelector;
             if (ImGui.Checkbox("Hide character selector", ref hideCharSelector))

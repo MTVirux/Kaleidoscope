@@ -17,7 +17,9 @@ public class InventoryValueTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
+    private readonly TimeSeriesCacheService? _cacheService;
     private readonly ImplotGraphWidget _graphWidget;
+    private readonly InventoryValueSettings _instanceSettings;
 
     // Character selection (0 = all)
     private ulong _selectedCharacterId = 0;
@@ -25,22 +27,23 @@ public class InventoryValueTool : ToolComponent
     private ulong[] _characterIds = Array.Empty<ulong>();
     private int _selectedCharacterIndex = 0;
     
-    // Caching fields for optimization
+    // Caching fields for optimization (local fallback when cache service unavailable)
     private DateTime _lastCacheTime = DateTime.MinValue;
     private ulong _cachedCharacterId;
     private bool _cachedShowMultipleLines;
     private bool _cachedIncludeGil;
     private int _cachedTimeRangeValue;
     private TimeRangeUnit _cachedTimeRangeUnit;
+    private CharacterNameFormat _cachedNameFormat;
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
     private bool _cacheIsDirty = true;
-    private const double CacheValiditySeconds = 2.0; // Refresh cache every 2 seconds max
+    private const double CacheValiditySeconds = 30.0; // Check for DB changes every 30 seconds
     
     // Change detection - track DB state to avoid unnecessary reprocessing
     private long _cachedDbRecordCount;
     private long? _cachedDbMaxTimestamp;
 
-    private InventoryValueSettings Settings => _configService.Config.InventoryValue;
+    private InventoryValueSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
 
     public InventoryValueTool(
@@ -51,6 +54,8 @@ public class InventoryValueTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _samplerService = samplerService;
         _configService = configService;
+        _cacheService = samplerService.CacheService;
+        _instanceSettings = new InventoryValueSettings();
 
         Title = "Inventory Value";
         Size = new Vector2(400, 300);
@@ -69,10 +74,10 @@ public class InventoryValueTool : ToolComponent
         
         // Bind graph widget to settings for automatic synchronization
         _graphWidget.BindSettings(
-            Settings,
+            _instanceSettings,
             onSettingsChanged: () =>
             {
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _cacheIsDirty = true;
             },
             settingsName: "Graph Settings",
@@ -86,12 +91,26 @@ public class InventoryValueTool : ToolComponent
         // Subscribe to inventory value history changes (e.g., when sale records are deleted)
         _samplerService.OnInventoryValueHistoryChanged += OnInventoryValueHistoryChanged;
         
+        // Subscribe to cache updates from background thread
+        if (_cacheService != null)
+        {
+            _cacheService.OnInventoryValueCacheInvalidated += OnCacheInvalidated;
+        }
+        
         RefreshCharacterList();
+    }
+    
+    private void OnCacheInvalidated()
+    {
+        // Cache was invalidated - need to refresh on next draw
+        _cacheIsDirty = true;
     }
     
     private void OnInventoryValueHistoryChanged()
     {
         _cacheIsDirty = true;
+        // Also invalidate the cache service's inventory value cache
+        _cacheService?.InvalidateInventoryValueCache();
     }
     
     private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, AutoScrollTimeUnit timeUnit, float nowPosition)
@@ -101,7 +120,7 @@ public class InventoryValueTool : ToolComponent
         settings.AutoScrollTimeValue = timeValue;
         settings.AutoScrollTimeUnit = timeUnit;
         settings.AutoScrollNowPosition = nowPosition;
-        _configService.Save();
+        NotifyToolSettingsChanged();
         _cacheIsDirty = true;
     }
     
@@ -110,7 +129,11 @@ public class InventoryValueTool : ToolComponent
     /// </summary>
     private bool NeedsCacheRefresh()
     {
+        // Dirty flag is set when data changes via event - this is the primary refresh trigger
         if (_cacheIsDirty) return true;
+        
+        // No cached data yet - need initial load
+        if (_cachedSeriesData == null) return true;
         
         var settings = Settings;
         
@@ -119,23 +142,29 @@ public class InventoryValueTool : ToolComponent
             _cachedShowMultipleLines != settings.ShowMultipleLines ||
             _cachedIncludeGil != settings.IncludeGil ||
             _cachedTimeRangeValue != settings.TimeRangeValue ||
-            _cachedTimeRangeUnit != settings.TimeRangeUnit)
+            _cachedTimeRangeUnit != settings.TimeRangeUnit ||
+            _cachedNameFormat != _configService.Config.CharacterNameFormat)
         {
             return true;
         }
         
-        // Check if cache is stale (time-based)
+        // Check if cache is stale (time-based) - only do stats check periodically
         var elapsed = (DateTime.UtcNow - _lastCacheTime).TotalSeconds;
         if (elapsed < CacheValiditySeconds)
             return false; // Cache is still fresh time-wise
         
-        // Time-based cache expired - check if DB actually changed to avoid reprocessing
-        var characterIdForStats = _selectedCharacterId == 0 ? (ulong?)null : _selectedCharacterId;
-        var (recordCount, maxTimestamp) = DbService.GetInventoryValueHistoryStats(characterIdForStats);
+        // Time-based cache expired - check cached stats (NO DB query - uses in-memory cache only)
+        long recordCount;
+        long? maxTimestamp;
+        using (ProfilerService.BeginStaticChildScope("CachedStatsCheck"))
+        {
+            // Use cache-only stats - this NEVER hits DB
+            (recordCount, maxTimestamp) = _cacheService?.GetInventoryValueStatsFromCache() ?? (0, null);
+        }
         
         if (recordCount == _cachedDbRecordCount && maxTimestamp == _cachedDbMaxTimestamp)
         {
-            // DB hasn't changed - just update last cache time and skip full refresh
+            // Stats haven't changed - just update last cache time and skip full refresh
             _lastCacheTime = DateTime.UtcNow;
             return false;
         }
@@ -145,19 +174,19 @@ public class InventoryValueTool : ToolComponent
 
     /// <summary>
     /// Gets a display name for the provided character ID.
-    /// Checks database first, then runtime lookup, then falls back to ID.
+    /// Uses formatted name from cache service, respecting the name format setting.
     /// </summary>
     private string GetCharacterDisplayName(ulong characterId)
     {
-        // Try database first (most reliable for historical data)
-        var storedName = DbService.GetCharacterName(characterId);
-        if (!string.IsNullOrEmpty(storedName))
-            return storedName;
+        // Use cache service which handles display name, game name formatting, and fallbacks
+        var formattedName = _cacheService?.GetFormattedCharacterName(characterId);
+        if (!string.IsNullOrEmpty(formattedName))
+            return formattedName;
 
-        // Try runtime lookup for currently-loaded characters
+        // Try runtime lookup for currently-loaded characters (formats it)
         var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
         if (!string.IsNullOrEmpty(runtimeName))
-            return runtimeName;
+            return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
 
         // Fallback to ID
         return $"Character {characterId}";
@@ -237,7 +266,13 @@ public class InventoryValueTool : ToolComponent
         _graphWidget.SyncFromBoundSettings();
 
         // Refresh cache if needed
-        if (NeedsCacheRefresh())
+        bool needsRefresh;
+        using (ProfilerService.BeginStaticChildScope("NeedsCacheRefresh"))
+        {
+            needsRefresh = NeedsCacheRefresh();
+        }
+        
+        if (needsRefresh)
         {
             using (ProfilerService.BeginStaticChildScope("RefreshCachedData"))
             {
@@ -248,7 +283,10 @@ public class InventoryValueTool : ToolComponent
         // Draw from cache
         if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
         {
-            _graphWidget.DrawMultipleSeries(_cachedSeriesData);
+            using (ProfilerService.BeginStaticChildScope("DrawMultipleSeries"))
+            {
+                _graphWidget.DrawMultipleSeries(_cachedSeriesData);
+            }
         }
         else
         {
@@ -257,7 +295,8 @@ public class InventoryValueTool : ToolComponent
     }
     
     /// <summary>
-    /// Refreshes the cached data from the database.
+    /// Refreshes the cached data from the in-memory cache.
+    /// This method NEVER hits the database - all DB access is done by background thread.
     /// </summary>
     private void RefreshCachedData(InventoryValueSettings settings)
     {
@@ -268,42 +307,69 @@ public class InventoryValueTool : ToolComponent
         _cachedIncludeGil = settings.IncludeGil;
         _cachedTimeRangeValue = settings.TimeRangeValue;
         _cachedTimeRangeUnit = settings.TimeRangeUnit;
+        _cachedNameFormat = _configService.Config.CharacterNameFormat;
         _cacheIsDirty = false;
         
-        // Update DB stats cache for change detection
-        var characterIdForStats = _selectedCharacterId == 0 ? (ulong?)null : _selectedCharacterId;
-        (_cachedDbRecordCount, _cachedDbMaxTimestamp) = DbService.GetInventoryValueHistoryStats(characterIdForStats);
+        // Update stats cache for change detection (NO DB query - uses in-memory cache only)
+        using (ProfilerService.BeginStaticChildScope("GetCacheStats"))
+        {
+            (_cachedDbRecordCount, _cachedDbMaxTimestamp) = _cacheService?.GetInventoryValueStatsFromCache() ?? (0, null);
+        }
         
         // Get time range
         var timeRange = GetTimeRange();
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
 
+        // Get data from in-memory cache only - NEVER hit DB on main thread
+        List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)>? allData = null;
+        
+        using (ProfilerService.BeginStaticChildScope("GetFromCache"))
+        {
+            allData = _cacheService?.GetInventoryValueHistoryFromCache();
+        }
+        
+        // If cache is empty, we can't display anything - background thread will populate it
+        if (allData == null)
+        {
+            _cachedSeriesData = null;
+            return;
+        }
+
         if (_selectedCharacterId == 0 && settings.ShowMultipleLines)
         {
             // Multi-character mode - show each character as a separate line
-            var allData = DbService.GetAllInventoryValueHistory(startTime);
-            
-            // Group data by character using direct dictionary iteration to avoid LINQ overhead
-            var perCharacterData = new Dictionary<ulong, List<(DateTime ts, float value)>>();
-            foreach (var entry in allData)
+            using (ProfilerService.BeginStaticChildScope("ProcessData"))
             {
-                if (!perCharacterData.TryGetValue(entry.CharacterId, out var list))
+                // Group data by character using direct dictionary iteration to avoid LINQ overhead
+                var perCharacterData = new Dictionary<ulong, List<(DateTime ts, float value)>>();
+                foreach (var entry in allData)
                 {
-                    list = new List<(DateTime ts, float value)>();
-                    perCharacterData[entry.CharacterId] = list;
+                    // Apply time filter (cache stores all data)
+                    if (startTime.HasValue && entry.Timestamp < startTime.Value)
+                        continue;
+                        
+                    if (!perCharacterData.TryGetValue(entry.CharacterId, out var list))
+                    {
+                        list = new List<(DateTime ts, float value)>();
+                        perCharacterData[entry.CharacterId] = list;
+                    }
+                    
+                    var value = settings.IncludeGil ? entry.TotalValue : entry.ItemValue;
+                    list.Add((entry.Timestamp, value));
                 }
                 
-                var value = settings.IncludeGil ? entry.TotalValue : entry.ItemValue;
-                list.Add((entry.Timestamp, value));
+                // Get disambiguated names for all characters in the data
+                var disambiguatedNames = _cacheService?.GetDisambiguatedNames(perCharacterData.Keys) 
+                    ?? perCharacterData.Keys.ToDictionary(k => k, k => GetCharacterDisplayName(k));
+                
+                // Convert to the format expected by ImplotGraphWidget - preallocate list capacity
+                var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>(perCharacterData.Count);
+                foreach (var kvp in perCharacterData)
+                {
+                    seriesList.Add((disambiguatedNames[kvp.Key], kvp.Value));
+                }
+                _cachedSeriesData = seriesList;
             }
-            
-            // Convert to the format expected by ImplotGraphWidget - preallocate list capacity
-            var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>(perCharacterData.Count);
-            foreach (var kvp in perCharacterData)
-            {
-                seriesList.Add((GetCharacterDisplayName(kvp.Key), kvp.Value));
-            }
-            _cachedSeriesData = seriesList;
         }
         else
         {
@@ -312,13 +378,13 @@ public class InventoryValueTool : ToolComponent
             
             if (_selectedCharacterId == 0)
             {
-                // All characters combined - use SQL aggregation instead of LINQ GroupBy
-                data = DbService.GetAggregatedInventoryValueHistory(startTime);
+                // All characters combined - aggregate in memory from cache
+                data = AggregateFromCache(allData, startTime);
             }
             else
             {
-                // Single character - pass startTime to DB query directly
-                data = DbService.GetInventoryValueHistory(_selectedCharacterId, startTime);
+                // Single character - filter from cache
+                data = FilterSingleCharacterFromCache(allData, _selectedCharacterId, startTime);
             }
             
             // Convert to timestamped series format for the widget - preallocate capacity
@@ -341,6 +407,67 @@ public class InventoryValueTool : ToolComponent
                 _cachedSeriesData = null;
             }
         }
+    }
+    
+    /// <summary>
+    /// Filters cached data for a single character.
+    /// </summary>
+    private static List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> FilterSingleCharacterFromCache(
+        List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> cachedData,
+        ulong characterId,
+        DateTime? startTime)
+    {
+        var result = new List<(DateTime, long, long, long)>();
+        
+        foreach (var entry in cachedData)
+        {
+            if (entry.CharacterId != characterId)
+                continue;
+            if (startTime.HasValue && entry.Timestamp < startTime.Value)
+                continue;
+                
+            result.Add((entry.Timestamp, entry.TotalValue, entry.GilValue, entry.ItemValue));
+        }
+        
+        // Sort by timestamp
+        result.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+        return result;
+    }
+
+    /// <summary>
+    /// Aggregates cached inventory value data by timestamp.
+    /// </summary>
+    private static List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> AggregateFromCache(
+        List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> cachedData,
+        DateTime? startTime)
+    {
+        // Group by timestamp and sum values
+        var grouped = new SortedDictionary<DateTime, (long total, long gil, long item)>();
+        
+        foreach (var entry in cachedData)
+        {
+            if (startTime.HasValue && entry.Timestamp < startTime.Value)
+                continue;
+                
+            if (grouped.TryGetValue(entry.Timestamp, out var existing))
+            {
+                grouped[entry.Timestamp] = (
+                    existing.total + entry.TotalValue,
+                    existing.gil + entry.GilValue,
+                    existing.item + entry.ItemValue);
+            }
+            else
+            {
+                grouped[entry.Timestamp] = (entry.TotalValue, entry.GilValue, entry.ItemValue);
+            }
+        }
+        
+        var result = new List<(DateTime, long, long, long)>(grouped.Count);
+        foreach (var kvp in grouped)
+        {
+            result.Add((kvp.Key, kvp.Value.total, kvp.Value.gil, kvp.Value.item));
+        }
+        return result;
     }
 
     private TimeSpan? GetTimeRange()
@@ -394,7 +521,7 @@ public class InventoryValueTool : ToolComponent
             if (settingsChanged)
             {
                 _cacheIsDirty = true;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
         }
         catch (Exception ex)
@@ -403,9 +530,94 @@ public class InventoryValueTool : ToolComponent
         }
     }
 
+    /// <inheritdoc />
+    public override Dictionary<string, object> ExportToolSettings()
+    {
+        return new Dictionary<string, object>
+        {
+            ["ShowMultipleLines"] = _instanceSettings.ShowMultipleLines,
+            ["IncludeRetainers"] = _instanceSettings.IncludeRetainers,
+            ["IncludeGil"] = _instanceSettings.IncludeGil,
+            ["TimeRangeValue"] = _instanceSettings.TimeRangeValue,
+            ["TimeRangeUnit"] = (int)_instanceSettings.TimeRangeUnit,
+            ["ShowLegend"] = _instanceSettings.ShowLegend,
+            ["LegendWidth"] = _instanceSettings.LegendWidth,
+            ["LegendPosition"] = (int)_instanceSettings.LegendPosition,
+            ["LegendHeightPercent"] = _instanceSettings.LegendHeightPercent,
+            ["GraphType"] = (int)_instanceSettings.GraphType,
+            ["ShowXAxisTimestamps"] = _instanceSettings.ShowXAxisTimestamps,
+            ["ShowCrosshair"] = _instanceSettings.ShowCrosshair,
+            ["ShowGridLines"] = _instanceSettings.ShowGridLines,
+            ["ShowCurrentPriceLine"] = _instanceSettings.ShowCurrentPriceLine,
+            ["ShowValueLabel"] = _instanceSettings.ShowValueLabel,
+            ["ValueLabelOffsetX"] = _instanceSettings.ValueLabelOffsetX,
+            ["ValueLabelOffsetY"] = _instanceSettings.ValueLabelOffsetY,
+            ["AutoScrollEnabled"] = _instanceSettings.AutoScrollEnabled,
+            ["AutoScrollTimeValue"] = _instanceSettings.AutoScrollTimeValue,
+            ["AutoScrollTimeUnit"] = (int)_instanceSettings.AutoScrollTimeUnit,
+            ["AutoScrollNowPosition"] = _instanceSettings.AutoScrollNowPosition,
+            ["ShowControlsDrawer"] = _instanceSettings.ShowControlsDrawer,
+        };
+    }
+
+    /// <inheritdoc />
+    public override void ImportToolSettings(Dictionary<string, object> settings)
+    {
+        if (settings.TryGetValue("ShowMultipleLines", out var showMultipleLines))
+            _instanceSettings.ShowMultipleLines = Convert.ToBoolean(showMultipleLines);
+        if (settings.TryGetValue("IncludeRetainers", out var includeRetainers))
+            _instanceSettings.IncludeRetainers = Convert.ToBoolean(includeRetainers);
+        if (settings.TryGetValue("IncludeGil", out var includeGil))
+            _instanceSettings.IncludeGil = Convert.ToBoolean(includeGil);
+        if (settings.TryGetValue("TimeRangeValue", out var timeRangeValue))
+            _instanceSettings.TimeRangeValue = Convert.ToInt32(timeRangeValue);
+        if (settings.TryGetValue("TimeRangeUnit", out var timeRangeUnit))
+            _instanceSettings.TimeRangeUnit = (TimeRangeUnit)Convert.ToInt32(timeRangeUnit);
+        if (settings.TryGetValue("ShowLegend", out var showLegend))
+            _instanceSettings.ShowLegend = Convert.ToBoolean(showLegend);
+        if (settings.TryGetValue("LegendWidth", out var legendWidth))
+            _instanceSettings.LegendWidth = Convert.ToSingle(legendWidth);
+        if (settings.TryGetValue("LegendPosition", out var legendPosition))
+            _instanceSettings.LegendPosition = (LegendPosition)Convert.ToInt32(legendPosition);
+        if (settings.TryGetValue("LegendHeightPercent", out var legendHeightPercent))
+            _instanceSettings.LegendHeightPercent = Convert.ToSingle(legendHeightPercent);
+        if (settings.TryGetValue("GraphType", out var graphType))
+            _instanceSettings.GraphType = (GraphType)Convert.ToInt32(graphType);
+        if (settings.TryGetValue("ShowXAxisTimestamps", out var showXAxisTimestamps))
+            _instanceSettings.ShowXAxisTimestamps = Convert.ToBoolean(showXAxisTimestamps);
+        if (settings.TryGetValue("ShowCrosshair", out var showCrosshair))
+            _instanceSettings.ShowCrosshair = Convert.ToBoolean(showCrosshair);
+        if (settings.TryGetValue("ShowGridLines", out var showGridLines))
+            _instanceSettings.ShowGridLines = Convert.ToBoolean(showGridLines);
+        if (settings.TryGetValue("ShowCurrentPriceLine", out var showCurrentPriceLine))
+            _instanceSettings.ShowCurrentPriceLine = Convert.ToBoolean(showCurrentPriceLine);
+        if (settings.TryGetValue("ShowValueLabel", out var showValueLabel))
+            _instanceSettings.ShowValueLabel = Convert.ToBoolean(showValueLabel);
+        if (settings.TryGetValue("ValueLabelOffsetX", out var valueLabelOffsetX))
+            _instanceSettings.ValueLabelOffsetX = Convert.ToSingle(valueLabelOffsetX);
+        if (settings.TryGetValue("ValueLabelOffsetY", out var valueLabelOffsetY))
+            _instanceSettings.ValueLabelOffsetY = Convert.ToSingle(valueLabelOffsetY);
+        if (settings.TryGetValue("AutoScrollEnabled", out var autoScrollEnabled))
+            _instanceSettings.AutoScrollEnabled = Convert.ToBoolean(autoScrollEnabled);
+        if (settings.TryGetValue("AutoScrollTimeValue", out var autoScrollTimeValue))
+            _instanceSettings.AutoScrollTimeValue = Convert.ToInt32(autoScrollTimeValue);
+        if (settings.TryGetValue("AutoScrollTimeUnit", out var autoScrollTimeUnit))
+            _instanceSettings.AutoScrollTimeUnit = (AutoScrollTimeUnit)Convert.ToInt32(autoScrollTimeUnit);
+        if (settings.TryGetValue("AutoScrollNowPosition", out var autoScrollNowPosition))
+            _instanceSettings.AutoScrollNowPosition = Convert.ToSingle(autoScrollNowPosition);
+        if (settings.TryGetValue("ShowControlsDrawer", out var showControlsDrawer))
+            _instanceSettings.ShowControlsDrawer = Convert.ToBoolean(showControlsDrawer);
+
+        _cacheIsDirty = true;
+    }
+
     public override void Dispose()
     {
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         _samplerService.OnInventoryValueHistoryChanged -= OnInventoryValueHistoryChanged;
+        if (_cacheService != null)
+        {
+            _cacheService.OnInventoryValueCacheInvalidated -= OnCacheInvalidated;
+        }
     }
 }

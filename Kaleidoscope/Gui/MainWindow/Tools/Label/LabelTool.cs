@@ -238,7 +238,45 @@ public class LabelTool : ToolComponent
 
         if (changed)
         {
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
+    }
+    
+    /// <summary>
+    /// Exports tool-specific settings for layout persistence.
+    /// </summary>
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["Text"] = _text,
+            ["TextColorR"] = _textColor.X,
+            ["TextColorG"] = _textColor.Y,
+            ["TextColorB"] = _textColor.Z,
+            ["TextColorA"] = _textColor.W,
+            ["WrapText"] = _wrapText,
+            ["HorizontalAlignment"] = (int)_horizontalAlignment,
+            ["VerticalAlignment"] = (int)_verticalAlignment
+        };
+    }
+    
+    /// <summary>
+    /// Imports tool-specific settings from a layout.
+    /// </summary>
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        _text = GetSetting(settings, "Text", _text) ?? _text;
+        
+        var r = GetSetting(settings, "TextColorR", _textColor.X);
+        var g = GetSetting(settings, "TextColorG", _textColor.Y);
+        var b = GetSetting(settings, "TextColorB", _textColor.Z);
+        var a = GetSetting(settings, "TextColorA", _textColor.W);
+        _textColor = new Vector4(r, g, b, a);
+        
+        _wrapText = GetSetting(settings, "WrapText", _wrapText);
+        _horizontalAlignment = (HorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)_horizontalAlignment);
+        _verticalAlignment = (VerticalAlignment)GetSetting(settings, "VerticalAlignment", (int)_verticalAlignment);
     }
 }

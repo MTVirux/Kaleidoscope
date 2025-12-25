@@ -14,6 +14,10 @@ public class CrystalTableTool : ToolComponent
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly InventoryChangeService? _inventoryChangeService;
+    private readonly AutoRetainerIpcService? _autoRetainerService;
+    
+    // Instance-specific settings (not shared with other tool instances)
+    private readonly CrystalTableSettings _instanceSettings;
 
     // Element names and colors
     private static readonly string[] ElementNames = { "Fire", "Ice", "Wind", "Earth", "Lightning", "Water" };
@@ -34,18 +38,24 @@ public class CrystalTableTool : ToolComponent
     private DateTime _lastRefresh = DateTime.MinValue;
     private const double RefreshIntervalSeconds = 5.0;
     private volatile bool _pendingRefresh = true;
+    private CharacterSortOrder _cachedSortOrder;
 
-    private CrystalTableSettings Settings => _configService.Config.CrystalTable;
+    private CrystalTableSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
 
     public CrystalTableTool(
         SamplerService samplerService,
         ConfigurationService configService,
-        InventoryChangeService? inventoryChangeService = null)
+        InventoryChangeService? inventoryChangeService = null,
+        AutoRetainerIpcService? autoRetainerService = null)
     {
         _samplerService = samplerService;
         _configService = configService;
         _inventoryChangeService = inventoryChangeService;
+        _autoRetainerService = autoRetainerService;
+        
+        // Initialize instance-specific settings with defaults
+        _instanceSettings = new CrystalTableSettings();
 
         Title = "Crystal Table";
         Size = new Vector2(500, 300);
@@ -141,10 +151,13 @@ public class CrystalTableTool : ToolComponent
                 }
             }
 
-            // Sort by name and store
-            _characterData = charDataDict.Values
-                .OrderBy(c => c.Name)
-                .ToList();
+            // Sort by configured order and store
+            _characterData = CharacterSortHelper.SortByCharacter(
+                charDataDict.Values,
+                _configService,
+                _autoRetainerService,
+                c => c.CharacterId,
+                c => c.Name).ToList();
 
             _lastRefresh = DateTime.UtcNow;
             _pendingRefresh = false;
@@ -179,6 +192,14 @@ public class CrystalTableTool : ToolComponent
     {
         try
         {
+            // Check if sort order changed - force refresh
+            var currentSortOrder = _configService.Config.CharacterSortOrder;
+            if (_cachedSortOrder != currentSortOrder)
+            {
+                _cachedSortOrder = currentSortOrder;
+                _pendingRefresh = true;
+            }
+            
             // Auto-refresh on pending changes or time interval
             if (_pendingRefresh || (DateTime.UtcNow - _lastRefresh).TotalSeconds > RefreshIntervalSeconds)
             {
@@ -534,8 +555,13 @@ public class CrystalTableTool : ToolComponent
 
     private List<CharacterCrystalData> GetSortedData()
     {
-        // For now, just return by name. Full ImGui table sorting would require more complex state tracking.
-        return _characterData.OrderBy(c => c.Name).ToList();
+        // Apply configured character sort order
+        return CharacterSortHelper.SortByCharacter(
+            _characterData,
+            _configService,
+            _autoRetainerService,
+            c => c.CharacterId,
+            c => c.Name).ToList();
     }
 
     private static string FormatNumber(long value)
@@ -558,7 +584,7 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Group by Element", ref groupByElement))
         {
             settings.GroupByElement = groupByElement;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("Shows columns for each element (Fire, Ice, etc.).", "On");
 
@@ -566,7 +592,7 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Group by Tier", ref groupByTier))
         {
             settings.GroupByTier = groupByTier;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("Shows columns for each tier (Shard, Crystal, Cluster).", "Off");
 
@@ -584,7 +610,7 @@ public class CrystalTableTool : ToolComponent
             if (ImGui.RadioButton("Element first", sortByElement))
             {
                 settings.SortColumnsByElement = true;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Groups columns by element: Fi-Sha, Fi-Cry, Fi-Clu, Ic-Sha, Ic-Cry, ...", "On");
 
@@ -592,7 +618,7 @@ public class CrystalTableTool : ToolComponent
             if (ImGui.RadioButton("Tier first", !sortByElement))
             {
                 settings.SortColumnsByElement = false;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Groups columns by tier: Fi-Sha, Ic-Sha, Wi-Sha, ..., Fi-Cry, Ic-Cry, ...", "Off");
         }
@@ -605,7 +631,7 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Show total row", ref showTotalRow))
         {
             settings.ShowTotalRow = showTotalRow;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("Shows a summary row at the bottom with totals across all characters.", "On");
 
@@ -613,7 +639,7 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Colorize by element", ref colorize))
         {
             settings.ColorizeByElement = colorize;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("Colors the element values using their characteristic colors.", "On");
 
@@ -621,7 +647,7 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Enable column sorting", ref sortable))
         {
             settings.Sortable = sortable;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("Allows clicking column headers to sort the table.", "On");
 
@@ -634,21 +660,21 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Fire", ref showFire))
         {
             settings.ShowFire = showFire;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showIce = settings.ShowIce;
         if (ImGui.Checkbox("Ice", ref showIce))
         {
             settings.ShowIce = showIce;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showWind = settings.ShowWind;
         if (ImGui.Checkbox("Wind", ref showWind))
         {
             settings.ShowWind = showWind;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
 
         // Element filter row 2
@@ -656,21 +682,21 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Earth", ref showEarth))
         {
             settings.ShowEarth = showEarth;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showLightning = settings.ShowLightning;
         if (ImGui.Checkbox("Lightning", ref showLightning))
         {
             settings.ShowLightning = showLightning;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showWater = settings.ShowWater;
         if (ImGui.Checkbox("Water", ref showWater))
         {
             settings.ShowWater = showWater;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
 
         ImGui.Spacing();
@@ -681,21 +707,21 @@ public class CrystalTableTool : ToolComponent
         if (ImGui.Checkbox("Shards", ref showShards))
         {
             settings.ShowShards = showShards;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showCrystals = settings.ShowCrystals;
         if (ImGui.Checkbox("Crystals", ref showCrystals))
         {
             settings.ShowCrystals = showCrystals;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ImGui.SameLine();
         var showClusters = settings.ShowClusters;
         if (ImGui.Checkbox("Clusters", ref showClusters))
         {
             settings.ShowClusters = showClusters;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
     }
 
@@ -706,5 +732,53 @@ public class CrystalTableTool : ToolComponent
         if (settings.GroupByElement)
             return "Mode: By Element (tiers combined)";
         return "Mode: By Tier (elements combined)";
+    }
+    
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var s = _instanceSettings;
+        return new Dictionary<string, object?>
+        {
+            ["GroupByElement"] = s.GroupByElement,
+            ["GroupByTier"] = s.GroupByTier,
+            ["ShowTotalRow"] = s.ShowTotalRow,
+            ["ColorizeByElement"] = s.ColorizeByElement,
+            ["Sortable"] = s.Sortable,
+            ["SortColumnsByElement"] = s.SortColumnsByElement,
+            ["ShowFire"] = s.ShowFire,
+            ["ShowIce"] = s.ShowIce,
+            ["ShowWind"] = s.ShowWind,
+            ["ShowEarth"] = s.ShowEarth,
+            ["ShowLightning"] = s.ShowLightning,
+            ["ShowWater"] = s.ShowWater,
+            ["ShowShards"] = s.ShowShards,
+            ["ShowCrystals"] = s.ShowCrystals,
+            ["ShowClusters"] = s.ShowClusters
+        };
+    }
+    
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var t = _instanceSettings;
+        
+        t.GroupByElement = GetSetting(settings, "GroupByElement", t.GroupByElement);
+        t.GroupByTier = GetSetting(settings, "GroupByTier", t.GroupByTier);
+        t.ShowTotalRow = GetSetting(settings, "ShowTotalRow", t.ShowTotalRow);
+        t.ColorizeByElement = GetSetting(settings, "ColorizeByElement", t.ColorizeByElement);
+        t.Sortable = GetSetting(settings, "Sortable", t.Sortable);
+        t.SortColumnsByElement = GetSetting(settings, "SortColumnsByElement", t.SortColumnsByElement);
+        t.ShowFire = GetSetting(settings, "ShowFire", t.ShowFire);
+        t.ShowIce = GetSetting(settings, "ShowIce", t.ShowIce);
+        t.ShowWind = GetSetting(settings, "ShowWind", t.ShowWind);
+        t.ShowEarth = GetSetting(settings, "ShowEarth", t.ShowEarth);
+        t.ShowLightning = GetSetting(settings, "ShowLightning", t.ShowLightning);
+        t.ShowWater = GetSetting(settings, "ShowWater", t.ShowWater);
+        t.ShowShards = GetSetting(settings, "ShowShards", t.ShowShards);
+        t.ShowCrystals = GetSetting(settings, "ShowCrystals", t.ShowCrystals);
+        t.ShowClusters = GetSetting(settings, "ShowClusters", t.ShowClusters);
+        
+        _pendingRefresh = true;
     }
 }

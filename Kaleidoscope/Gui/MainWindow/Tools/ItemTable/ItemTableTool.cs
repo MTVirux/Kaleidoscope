@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
+using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -20,17 +21,25 @@ public class ItemTableTool : ToolComponent
     private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly ItemDataService? _itemDataService;
     private readonly IDataManager? _dataManager;
+    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly PriceTrackingService? _priceTrackingService;
     
     private readonly ItemTableWidget _tableWidget;
-    private readonly ItemPickerWidget? _itemPicker;
+    private readonly ItemIconCombo? _itemCombo;
+    
+    // Instance-specific settings (not shared with other tool instances)
+    private readonly ItemTableSettings _instanceSettings;
     
     // Cached data
     private PreparedItemTableData? _cachedData;
     private DateTime _lastRefresh = DateTime.MinValue;
     private volatile bool _pendingRefresh = true;
+    private CharacterNameFormat _cachedNameFormat;
+    private CharacterSortOrder _cachedSortOrder;
     
-    private ItemTableSettings Settings => _configService.Config.ItemTable;
+    private ItemTableSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private TimeSeriesCacheService CacheService => _samplerService.CacheService;
     
     public ItemTableTool(
         SamplerService samplerService,
@@ -38,7 +47,11 @@ public class ItemTableTool : ToolComponent
         InventoryCacheService? inventoryCacheService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
         ItemDataService? itemDataService = null,
-        IDataManager? dataManager = null)
+        IDataManager? dataManager = null,
+        ITextureProvider? textureProvider = null,
+        FavoritesService? favoritesService = null,
+        AutoRetainerIpcService? autoRetainerService = null,
+        PriceTrackingService? priceTrackingService = null)
     {
         _samplerService = samplerService;
         _configService = configService;
@@ -46,6 +59,11 @@ public class ItemTableTool : ToolComponent
         _trackedDataRegistry = trackedDataRegistry;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
+        _autoRetainerService = autoRetainerService;
+        _priceTrackingService = priceTrackingService;
+        
+        // Initialize instance-specific settings with defaults
+        _instanceSettings = new ItemTableSettings();
         
         Title = "Item Table";
         Size = new Vector2(500, 300);
@@ -58,18 +76,26 @@ public class ItemTableTool : ToolComponent
                 NoDataText = "No data yet. Add items or currencies to track."
             },
             itemDataService,
-            trackedDataRegistry);
+            trackedDataRegistry,
+            configService.Config,
+            samplerService.CacheService);
         
-        // Bind settings
+        // Bind to instance-specific settings (not global config)
         _tableWidget.BindSettings(
-            Settings,
-            () => _configService.Save(),
+            _instanceSettings,
+            () => NotifyToolSettingsChanged(),
             "Table Settings");
         
-        // Create item picker if we have the required services
-        if (_dataManager != null && _itemDataService != null)
+        // Create item combo if we have the required services
+        if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
         {
-            _itemPicker = new ItemPickerWidget(_dataManager, _itemDataService);
+            _itemCombo = new ItemIconCombo(
+                textureProvider,
+                _dataManager,
+                favoritesService,
+                null, // No price tracking service - include all items
+                "ItemTableAdd",
+                marketableOnly: false);
         }
         
         // Register widget as settings provider
@@ -81,6 +107,22 @@ public class ItemTableTool : ToolComponent
         try
         {
             var settings = Settings;
+            
+            // Check if name format changed - force refresh
+            var currentFormat = _configService.Config.CharacterNameFormat;
+            if (_cachedNameFormat != currentFormat)
+            {
+                _cachedNameFormat = currentFormat;
+                _pendingRefresh = true;
+            }
+            
+            // Check if sort order changed - force refresh
+            var currentSortOrder = _configService.Config.CharacterSortOrder;
+            if (_cachedSortOrder != currentSortOrder)
+            {
+                _cachedSortOrder = currentSortOrder;
+                _pendingRefresh = true;
+            }
             
             // Auto-refresh on pending changes or time interval (if enabled)
             var shouldAutoRefresh = settings.AutoRefresh && 
@@ -146,15 +188,15 @@ public class ItemTableTool : ToolComponent
             ImGui.TextUnformatted("Add Item Column");
             ImGui.Separator();
             
-            if (_itemPicker != null)
+            if (_itemCombo != null)
             {
-                if (_itemPicker.Draw("##ItemToAdd", marketableOnly: false, width: 250))
+                if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
                 {
                     // Item selected
-                    if (_itemPicker.SelectedItemId.HasValue)
+                    if (_itemCombo.SelectedItemId > 0)
                     {
-                        AddColumn(_itemPicker.SelectedItemId.Value, isCurrency: false);
-                        _itemPicker.ClearSelection();
+                        AddColumn(_itemCombo.SelectedItemId, isCurrency: false);
+                        _itemCombo.ClearSelection();
                         ImGui.CloseCurrentPopup();
                     }
                 }
@@ -238,7 +280,7 @@ public class ItemTableTool : ToolComponent
         });
         
         _pendingRefresh = true;
-        _configService.Save();
+        NotifyToolSettingsChanged();
     }
     
     private void RefreshData()
@@ -260,17 +302,46 @@ public class ItemTableTool : ToolComponent
                 return;
             }
             
-            // Get all character names
+            // Get all character names with disambiguation
             var characterNames = DbService.GetAllCharacterNamesDict();
+            var disambiguatedNames = CacheService.GetDisambiguatedNames(characterNames.Keys);
             var rows = new Dictionary<ulong, ItemTableCharacterRow>();
+            
+            // Get world data for DC/Region lookups (from PriceTrackingService)
+            var worldData = _priceTrackingService?.WorldData;
+            
+            // Get character world info from AutoRetainer (maps CID to world name)
+            var characterWorlds = new Dictionary<ulong, string>();
+            if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
+            {
+                var arData = _autoRetainerService.GetAllCharacterData();
+                foreach (var (_, world, _, cid) in arData)
+                {
+                    if (!string.IsNullOrEmpty(world))
+                    {
+                        characterWorlds[cid] = world;
+                    }
+                }
+            }
             
             // Initialize rows for all known characters
             foreach (var (charId, name) in characterNames)
             {
+                var displayName = disambiguatedNames.TryGetValue(charId, out var formatted) 
+                    ? formatted : name ?? $"CID:{charId}";
+                
+                // Get world info for this character
+                var worldName = characterWorlds.TryGetValue(charId, out var w) ? w : string.Empty;
+                var dcName = !string.IsNullOrEmpty(worldName) ? worldData?.GetDataCenterForWorld(worldName)?.Name ?? string.Empty : string.Empty;
+                var regionName = !string.IsNullOrEmpty(worldName) ? worldData?.GetRegionForWorld(worldName) ?? string.Empty : string.Empty;
+                
                 rows[charId] = new ItemTableCharacterRow
                 {
                     CharacterId = charId,
-                    Name = name ?? $"CID:{charId}",
+                    Name = displayName,
+                    WorldName = worldName,
+                    DataCenterName = dcName,
+                    RegionName = regionName,
                     ItemCounts = new Dictionary<uint, long>()
                 };
             }
@@ -290,10 +361,17 @@ public class ItemTableTool : ToolComponent
                 }
             }
             
-            // Build result
+            // Build result with sorted rows
+            var sortedRows = CharacterSortHelper.SortByCharacter(
+                rows.Values,
+                _configService,
+                _autoRetainerService,
+                r => r.CharacterId,
+                r => r.Name).ToList();
+            
             _cachedData = new PreparedItemTableData
             {
-                Rows = rows.Values.OrderBy(r => r.Name).ToList(),
+                Rows = sortedRows,
                 Columns = columns
             };
             
@@ -386,7 +464,7 @@ public class ItemTableTool : ToolComponent
         if (ImGui.Checkbox("Show Action Buttons", ref showActionButtons))
         {
             settings.ShowActionButtons = showActionButtons;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         if (ImGui.IsItemHovered())
         {
@@ -398,7 +476,7 @@ public class ItemTableTool : ToolComponent
         if (ImGui.Checkbox("Compact Numbers", ref useCompactNumbers))
         {
             settings.UseCompactNumbers = useCompactNumbers;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         if (ImGui.IsItemHovered())
         {
@@ -411,7 +489,7 @@ public class ItemTableTool : ToolComponent
         if (ImGui.Checkbox("Auto-Refresh", ref autoRefresh))
         {
             settings.AutoRefresh = autoRefresh;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         if (ImGui.IsItemHovered())
         {
@@ -426,7 +504,7 @@ public class ItemTableTool : ToolComponent
             if (ImGui.DragFloat("##RefreshInterval", ref refreshInterval, 0.5f, 1f, 60f, "%.1fs"))
             {
                 settings.RefreshIntervalSeconds = refreshInterval;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             if (ImGui.IsItemHovered())
             {
@@ -476,7 +554,7 @@ public class ItemTableTool : ToolComponent
                     if (hasColor)
                     {
                         column.Color = null;
-                        _configService.Save();
+                        NotifyToolSettingsChanged();
                     }
                     else
                     {
@@ -495,7 +573,7 @@ public class ItemTableTool : ToolComponent
                     if (ImGui.ColorPicker4("##picker", ref color, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.NoSmallPreview))
                     {
                         column.Color = color;
-                        _configService.Save();
+                        NotifyToolSettingsChanged();
                     }
                     ImGui.EndPopup();
                 }
@@ -513,7 +591,7 @@ public class ItemTableTool : ToolComponent
                 if (ImGui.InputTextWithHint("##name", defaultName, ref customName, 64))
                 {
                     column.CustomName = string.IsNullOrWhiteSpace(customName) ? null : customName;
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
                 
                 ImGui.SameLine();
@@ -578,31 +656,371 @@ public class ItemTableTool : ToolComponent
                 var temp = settings.Columns[swapUpIndex - 1];
                 settings.Columns[swapUpIndex - 1] = settings.Columns[swapUpIndex];
                 settings.Columns[swapUpIndex] = temp;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             else if (swapDownIndex >= 0 && swapDownIndex < settings.Columns.Count - 1)
             {
                 var temp = settings.Columns[swapDownIndex + 1];
                 settings.Columns[swapDownIndex + 1] = settings.Columns[swapDownIndex];
                 settings.Columns[swapDownIndex] = temp;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             else if (deleteIndex >= 0)
             {
                 settings.Columns.RemoveAt(deleteIndex);
                 _pendingRefresh = true;
-                _configService.Save();
+                NotifyToolSettingsChanged();
+            }
+        }
+    }
+    
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var settings = _instanceSettings;
+        
+        // Serialize columns as a list of dictionaries
+        var columns = settings.Columns.Select(c => new Dictionary<string, object?>
+        {
+            ["Id"] = c.Id,
+            ["CustomName"] = c.CustomName,
+            ["IsCurrency"] = c.IsCurrency,
+            ["Color"] = c.Color.HasValue ? new float[] { c.Color.Value.X, c.Color.Value.Y, c.Color.Value.Z, c.Color.Value.W } : null,
+            ["Width"] = c.Width
+        }).ToList();
+        
+        // Serialize merged column groups
+        var mergedColumnGroups = settings.MergedColumnGroups.Select(g => new Dictionary<string, object?>
+        {
+            ["Name"] = g.Name,
+            ["ColumnIndices"] = g.ColumnIndices.ToList(),
+            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null,
+            ["Width"] = g.Width
+        }).ToList();
+        
+        // Serialize merged row groups
+        var mergedRowGroups = settings.MergedRowGroups.Select(g => new Dictionary<string, object?>
+        {
+            ["Name"] = g.Name,
+            ["CharacterIds"] = g.CharacterIds.ToList(),
+            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null
+        }).ToList();
+        
+        return new Dictionary<string, object?>
+        {
+            ["Columns"] = columns,
+            ["MergedColumnGroups"] = mergedColumnGroups,
+            ["MergedRowGroups"] = mergedRowGroups,
+            ["ShowTotalRow"] = settings.ShowTotalRow,
+            ["Sortable"] = settings.Sortable,
+            ["IncludeRetainers"] = settings.IncludeRetainers,
+            ["CharacterColumnWidth"] = settings.CharacterColumnWidth,
+            ["CharacterColumnColor"] = settings.CharacterColumnColor.HasValue ? new float[] { settings.CharacterColumnColor.Value.X, settings.CharacterColumnColor.Value.Y, settings.CharacterColumnColor.Value.Z, settings.CharacterColumnColor.Value.W } : null,
+            ["SortColumnIndex"] = settings.SortColumnIndex,
+            ["SortAscending"] = settings.SortAscending,
+            ["ShowActionButtons"] = settings.ShowActionButtons,
+            ["AutoRefresh"] = settings.AutoRefresh,
+            ["RefreshIntervalSeconds"] = settings.RefreshIntervalSeconds,
+            ["UseCompactNumbers"] = settings.UseCompactNumbers,
+            ["HeaderColor"] = settings.HeaderColor.HasValue ? new float[] { settings.HeaderColor.Value.X, settings.HeaderColor.Value.Y, settings.HeaderColor.Value.Z, settings.HeaderColor.Value.W } : null,
+            ["EvenRowColor"] = settings.EvenRowColor.HasValue ? new float[] { settings.EvenRowColor.Value.X, settings.EvenRowColor.Value.Y, settings.EvenRowColor.Value.Z, settings.EvenRowColor.Value.W } : null,
+            ["OddRowColor"] = settings.OddRowColor.HasValue ? new float[] { settings.OddRowColor.Value.X, settings.OddRowColor.Value.Y, settings.OddRowColor.Value.Z, settings.OddRowColor.Value.W } : null,
+            ["UseFullNameWidth"] = settings.UseFullNameWidth,
+            ["AutoSizeEqualColumns"] = settings.AutoSizeEqualColumns,
+            ["HorizontalAlignment"] = (int)settings.HorizontalAlignment,
+            ["VerticalAlignment"] = (int)settings.VerticalAlignment,
+            ["CharacterColumnHorizontalAlignment"] = (int)settings.CharacterColumnHorizontalAlignment,
+            ["CharacterColumnVerticalAlignment"] = (int)settings.CharacterColumnVerticalAlignment,
+            ["HeaderHorizontalAlignment"] = (int)settings.HeaderHorizontalAlignment,
+            ["HeaderVerticalAlignment"] = (int)settings.HeaderVerticalAlignment,
+            ["HiddenCharacters"] = settings.HiddenCharacters.ToList(),
+            ["GroupingMode"] = (int)settings.GroupingMode,
+            ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
+            ["TextColorMode"] = (int)settings.TextColorMode
+        };
+    }
+    
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var target = _instanceSettings;
+        
+        // Import columns
+        if (settings.TryGetValue("Columns", out var columnsObj) && columnsObj != null)
+        {
+            target.Columns.Clear();
+            
+            try
+            {
+                // Handle Newtonsoft.Json JArray (used by ConfigManager)
+                if (columnsObj is Newtonsoft.Json.Linq.JArray jArray)
+                {
+                    foreach (var columnToken in jArray)
+                    {
+                        if (columnToken is not Newtonsoft.Json.Linq.JObject columnObj) continue;
+                        
+                        var column = new ItemColumnConfig
+                        {
+                            Id = columnObj["Id"]?.ToObject<uint>() ?? 0,
+                            CustomName = columnObj["CustomName"]?.ToObject<string>(),
+                            IsCurrency = columnObj["IsCurrency"]?.ToObject<bool>() ?? false,
+                            Width = columnObj["Width"]?.ToObject<float>() ?? 80f
+                        };
+                        
+                        var colorToken = columnObj["Color"];
+                        if (colorToken is Newtonsoft.Json.Linq.JArray colorArr && colorArr.Count >= 4)
+                        {
+                            column.Color = new System.Numerics.Vector4(
+                                colorArr[0].ToObject<float>(),
+                                colorArr[1].ToObject<float>(),
+                                colorArr[2].ToObject<float>(),
+                                colorArr[3].ToObject<float>());
+                        }
+                        
+                        target.Columns.Add(column);
+                    }
+                }
+                // Fallback: Handle System.Text.Json.JsonElement (in case it's used elsewhere)
+                else if (columnsObj is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var columnJson in jsonElement.EnumerateArray())
+                    {
+                        var column = new ItemColumnConfig
+                        {
+                            Id = columnJson.TryGetProperty("Id", out var idProp) ? idProp.GetUInt32() : 0,
+                            CustomName = columnJson.TryGetProperty("CustomName", out var nameProp) && nameProp.ValueKind != System.Text.Json.JsonValueKind.Null ? nameProp.GetString() : null,
+                            IsCurrency = columnJson.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
+                            Width = columnJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f
+                        };
+                        
+                        if (columnJson.TryGetProperty("Color", out var colorProp) && colorProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            var colorArr = colorProp.EnumerateArray().Select(v => v.GetSingle()).ToArray();
+                            if (colorArr.Length >= 4)
+                                column.Color = new System.Numerics.Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                        }
+                        
+                        target.Columns.Add(column);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[ItemTableTool] Error importing columns: {ex.Message}");
             }
         }
         
-        ImGui.Spacing();
+        // Import scalar settings
+        target.ShowTotalRow = GetSetting(settings, "ShowTotalRow", target.ShowTotalRow);
+        target.Sortable = GetSetting(settings, "Sortable", target.Sortable);
+        target.IncludeRetainers = GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
+        target.CharacterColumnWidth = GetSetting(settings, "CharacterColumnWidth", target.CharacterColumnWidth);
+        target.SortColumnIndex = GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
+        target.SortAscending = GetSetting(settings, "SortAscending", target.SortAscending);
+        target.ShowActionButtons = GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
+        target.AutoRefresh = GetSetting(settings, "AutoRefresh", target.AutoRefresh);
+        target.RefreshIntervalSeconds = GetSetting(settings, "RefreshIntervalSeconds", target.RefreshIntervalSeconds);
+        target.UseCompactNumbers = GetSetting(settings, "UseCompactNumbers", target.UseCompactNumbers);
+        target.UseFullNameWidth = GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
+        target.AutoSizeEqualColumns = GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
+        target.HorizontalAlignment = (Widgets.TableHorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
+        target.VerticalAlignment = (Widgets.TableVerticalAlignment)GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
+        target.CharacterColumnHorizontalAlignment = (Widgets.TableHorizontalAlignment)GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
+        target.CharacterColumnVerticalAlignment = (Widgets.TableVerticalAlignment)GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
+        target.HeaderHorizontalAlignment = (Widgets.TableHorizontalAlignment)GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
+        target.HeaderVerticalAlignment = (Widgets.TableVerticalAlignment)GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
         
-        if (settings.Columns.Count > 0 && ImGui.Button("Clear All"))
+        // Import colors
+        target.CharacterColumnColor = ImportColor(settings, "CharacterColumnColor");
+        target.HeaderColor = ImportColor(settings, "HeaderColor");
+        target.EvenRowColor = ImportColor(settings, "EvenRowColor");
+        target.OddRowColor = ImportColor(settings, "OddRowColor");
+        
+        // Import hidden characters
+        target.HiddenCharacters = ImportUlongHashSet(settings, "HiddenCharacters") ?? new HashSet<ulong>();
+        
+        // Import merged column groups
+        target.MergedColumnGroups = ImportMergedColumnGroups(settings, "MergedColumnGroups") ?? new List<Widgets.MergedColumnGroup>();
+        
+        // Import merged row groups
+        target.MergedRowGroups = ImportMergedRowGroups(settings, "MergedRowGroups") ?? new List<Widgets.MergedRowGroup>();
+        
+        // Import grouping mode
+        target.GroupingMode = (Widgets.TableGroupingMode)GetSetting(settings, "GroupingMode", (int)target.GroupingMode);
+        target.HideCharacterColumnInAllMode = GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
+        
+        // Import text color mode
+        target.TextColorMode = (Widgets.TableTextColorMode)GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
+        
+        _pendingRefresh = true;
+    }
+    
+    private static System.Numerics.Vector4? ImportColor(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+        
+        try
         {
-            settings.Columns.Clear();
-            _pendingRefresh = true;
-            _configService.Save();
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray && jArray.Count >= 4)
+            {
+                return new System.Numerics.Vector4(
+                    jArray[0].ToObject<float>(),
+                    jArray[1].ToObject<float>(),
+                    jArray[2].ToObject<float>(),
+                    jArray[3].ToObject<float>());
+            }
+            // Fallback: Handle System.Text.Json.JsonElement
+            if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var arr = jsonElement.EnumerateArray().Select(v => v.GetSingle()).ToArray();
+                if (arr.Length >= 4)
+                    return new System.Numerics.Vector4(arr[0], arr[1], arr[2], arr[3]);
+            }
         }
+        catch { }
+        
+        return null;
+    }
+    
+    private static HashSet<ulong>? ImportUlongHashSet(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+        
+        try
+        {
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                return new HashSet<ulong>(jArray.Select(v => v.ToObject<ulong>()));
+            }
+            // Handle List<ulong> directly
+            if (value is List<ulong> list)
+            {
+                return new HashSet<ulong>(list);
+            }
+            // Handle IEnumerable<object>
+            if (value is System.Collections.IEnumerable enumerable)
+            {
+                var result = new HashSet<ulong>();
+                foreach (var item in enumerable)
+                {
+                    if (item is ulong ul)
+                        result.Add(ul);
+                    else if (item is long l)
+                        result.Add((ulong)l);
+                    else if (ulong.TryParse(item?.ToString(), out var parsed))
+                        result.Add(parsed);
+                }
+                return result;
+            }
+        }
+        catch { }
+        
+        return null;
+    }
+    
+    private static List<Widgets.MergedColumnGroup>? ImportMergedColumnGroups(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+        
+        var result = new List<Widgets.MergedColumnGroup>();
+        
+        try
+        {
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                foreach (var item in jArray)
+                {
+                    if (item is not Newtonsoft.Json.Linq.JObject jObj) continue;
+                    
+                    var group = new Widgets.MergedColumnGroup
+                    {
+                        Name = jObj["Name"]?.ToObject<string>() ?? "Merged",
+                        Width = jObj["Width"]?.ToObject<float>() ?? 80f
+                    };
+                    
+                    // Import column indices
+                    if (jObj["ColumnIndices"] is Newtonsoft.Json.Linq.JArray indicesArr)
+                    {
+                        group.ColumnIndices = indicesArr.Select(v => v.ToObject<int>()).ToList();
+                    }
+                    
+                    // Import color
+                    if (jObj["Color"] is Newtonsoft.Json.Linq.JArray colorArr && colorArr.Count >= 4)
+                    {
+                        group.Color = new System.Numerics.Vector4(
+                            colorArr[0].ToObject<float>(),
+                            colorArr[1].ToObject<float>(),
+                            colorArr[2].ToObject<float>(),
+                            colorArr[3].ToObject<float>());
+                    }
+                    
+                    result.Add(group);
+                }
+                return result;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[ItemTableTool] Error importing merged column groups: {ex.Message}");
+        }
+        
+        return result.Count > 0 ? result : null;
+    }
+    
+    private static List<Widgets.MergedRowGroup>? ImportMergedRowGroups(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+        
+        var result = new List<Widgets.MergedRowGroup>();
+        
+        try
+        {
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                foreach (var item in jArray)
+                {
+                    if (item is not Newtonsoft.Json.Linq.JObject jObj) continue;
+                    
+                    var group = new Widgets.MergedRowGroup
+                    {
+                        Name = jObj["Name"]?.ToObject<string>() ?? "Merged"
+                    };
+                    
+                    // Import character IDs
+                    if (jObj["CharacterIds"] is Newtonsoft.Json.Linq.JArray idsArr)
+                    {
+                        group.CharacterIds = idsArr.Select(v => v.ToObject<ulong>()).ToList();
+                    }
+                    
+                    // Import color
+                    if (jObj["Color"] is Newtonsoft.Json.Linq.JArray colorArr && colorArr.Count >= 4)
+                    {
+                        group.Color = new System.Numerics.Vector4(
+                            colorArr[0].ToObject<float>(),
+                            colorArr[1].ToObject<float>(),
+                            colorArr[2].ToObject<float>(),
+                            colorArr[3].ToObject<float>());
+                    }
+                    
+                    result.Add(group);
+                }
+                return result;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[ItemTableTool] Error importing merged row groups: {ex.Message}");
+        }
+        
+        return result.Count > 0 ? result : null;
     }
     
     public override void Dispose()

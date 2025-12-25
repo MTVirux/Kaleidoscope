@@ -15,6 +15,9 @@ public class GilTickerComponent
     // Ticker animation state
     private float _tickerOffset = 0f;
     private DateTime _lastTickerUpdate = DateTime.MinValue;
+    
+    // Current scroll speed being used (for animation)
+    private float _currentScrollSpeed = 30f;
 
     private Configuration Config => _configService.Config;
 
@@ -23,9 +26,16 @@ public class GilTickerComponent
         _helper = helper;
         _configService = configService;
     }
-
-    public void Draw()
+    
+    /// <summary>
+    /// Draws with instance-specific settings.
+    /// </summary>
+    /// <param name="scrollSpeed">The scroll speed in pixels per second.</param>
+    /// <param name="disabledCharacters">Set of character IDs to exclude from display.</param>
+    public void Draw(float scrollSpeed, HashSet<ulong> disabledCharacters)
     {
+        _currentScrollSpeed = scrollSpeed;
+        
         var series = _helper.GetAllCharacterSeries(null);
         if (series == null || series.Count == 0)
         {
@@ -34,11 +44,10 @@ public class GilTickerComponent
         }
 
         // Filter out disabled characters
-        var disabledChars = Config.GilTickerDisabledCharacters;
         var filteredSeries = series.Where((s, idx) =>
         {
             var charId = GetCharacterIdFromName(s.name);
-            return !disabledChars.Contains(charId);
+            return !disabledCharacters.Contains(charId);
         }).ToList();
 
         if (filteredSeries.Count == 0)
@@ -52,6 +61,14 @@ public class GilTickerComponent
         var height = Math.Max(20f, avail.Y);
 
         DrawTickerLegend(filteredSeries, width, height);
+    }
+
+    /// <summary>
+    /// Draws using global configuration settings (legacy support).
+    /// </summary>
+    public void Draw()
+    {
+        Draw(Config.GilTickerScrollSpeed, new HashSet<ulong>(Config.GilTickerDisabledCharacters));
     }
 
     private ulong GetCharacterIdFromName(string name)
@@ -115,7 +132,7 @@ public class GilTickerComponent
         }
 
         // Update ticker animation
-        var speed = Config.GilTickerScrollSpeed;
+        var speed = _currentScrollSpeed;
         var now = DateTime.Now;
         if (_lastTickerUpdate != DateTime.MinValue)
         {

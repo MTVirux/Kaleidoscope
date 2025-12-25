@@ -34,7 +34,7 @@ public class TopItemsTool : ToolComponent
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
-    private readonly ItemPickerWidget _itemPicker;
+    private readonly ItemIconCombo _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
@@ -58,9 +58,14 @@ public class TopItemsTool : ToolComponent
     private string[] _characterNames = Array.Empty<string>();
     private ulong[] _characterIds = Array.Empty<ulong>();
     private int _selectedCharacterIndex = 0;
+    private CharacterNameFormat _cachedNameFormat;
 
-    private TopItemsSettings Settings => _configService.Config.TopItems;
+    // Instance-specific settings (persisted with layout, not global config)
+    private readonly TopItemsSettings _instanceSettings;
+    
+    private TopItemsSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private TimeSeriesCacheService CacheService => _samplerService.CacheService;
 
     public TopItemsTool(
         PriceTrackingService priceTrackingService,
@@ -68,6 +73,8 @@ public class TopItemsTool : ToolComponent
         ConfigurationService configService,
         ItemDataService itemDataService,
         IDataManager dataManager,
+        ITextureProvider textureProvider,
+        FavoritesService favoritesService,
         InventoryChangeService? inventoryChangeService = null)
     {
         _priceTrackingService = priceTrackingService;
@@ -76,8 +83,17 @@ public class TopItemsTool : ToolComponent
         _itemDataService = itemDataService;
         _inventoryChangeService = inventoryChangeService;
 
-        // Create item picker for exclusion list (marketable only since we're dealing with prices)
-        _itemPicker = new ItemPickerWidget(dataManager, itemDataService, priceTrackingService);
+        // Initialize instance settings (persisted with layout)
+        _instanceSettings = new TopItemsSettings();
+        
+        // Create item combo for exclusion list (marketable only since we're dealing with prices)
+        _itemCombo = new ItemIconCombo(
+            textureProvider,
+            dataManager,
+            favoritesService,
+            priceTrackingService,
+            "TopItemsExclude",
+            marketableOnly: true);
 
         // Create item details popup for showing listings and sales when clicking an item
         _itemDetailsPopup = new ItemDetailsPopup(
@@ -132,7 +148,9 @@ public class TopItemsTool : ToolComponent
 
             for (int i = 0; i < chars.Count; i++)
             {
-                _characterNames[i + 1] = chars[i].name ?? $"Character {chars[i].characterId}";
+                // Use formatted character name from cache service
+                _characterNames[i + 1] = CacheService.GetFormattedCharacterName(chars[i].characterId)
+                    ?? chars[i].name ?? $"Character {chars[i].characterId}";
                 _characterIds[i + 1] = chars[i].characterId;
             }
 
@@ -240,6 +258,14 @@ public class TopItemsTool : ToolComponent
     {
         try
         {
+            // Check if name format changed - refresh character list
+            var currentFormat = _configService.Config.CharacterNameFormat;
+            if (_cachedNameFormat != currentFormat)
+            {
+                _cachedNameFormat = currentFormat;
+                RefreshCharacterList();
+            }
+            
             // Auto-refresh on pending changes or time interval
             if (_pendingRefresh || (DateTime.UtcNow - _lastRefresh).TotalSeconds > RefreshIntervalSeconds)
             {
@@ -674,16 +700,16 @@ public class TopItemsTool : ToolComponent
     {
         try
         {
+            if (!ImGui.CollapsingHeader("Top Items Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+                
             var settings = Settings;
-
-            ImGui.TextUnformatted("Top Items Settings");
-            ImGui.Separator();
 
             var maxItems = settings.MaxItems;
             if (ImGui.SliderInt("Max items", ref maxItems, 10, 500))
             {
                 settings.MaxItems = maxItems;
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _ = Task.Run(RefreshTopItemsAsync);
             }
             ShowSettingTooltip("Maximum number of items to display.", "100");
@@ -692,7 +718,7 @@ public class TopItemsTool : ToolComponent
             if (ImGui.Checkbox("Show all characters combined", ref showAllCharacters))
             {
                 settings.ShowAllCharacters = showAllCharacters;
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _ = Task.Run(RefreshTopItemsAsync);
             }
             ShowSettingTooltip("Combine items from all characters, or select a specific character.", "On");
@@ -701,7 +727,7 @@ public class TopItemsTool : ToolComponent
             if (ImGui.Checkbox("Include retainer inventories", ref includeRetainers))
             {
                 settings.IncludeRetainers = includeRetainers;
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _ = Task.Run(RefreshTopItemsAsync);
             }
             ShowSettingTooltip("Include items from retainer inventories.", "On");
@@ -710,7 +736,7 @@ public class TopItemsTool : ToolComponent
             if (ImGui.Checkbox("Include gil in list", ref includeGil))
             {
                 settings.IncludeGil = includeGil;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Show gil as a row in the top items list.", "On");
 
@@ -718,7 +744,7 @@ public class TopItemsTool : ToolComponent
             if (ImGui.Checkbox("Group by item", ref groupByItem))
             {
                 settings.GroupByItem = groupByItem;
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _ = Task.Run(RefreshTopItemsAsync);
             }
             ShowSettingTooltip("Combine quantities of the same item across inventories.", "On");
@@ -731,7 +757,7 @@ public class TopItemsTool : ToolComponent
             if (ImGui.InputInt("Min value threshold", ref minThreshold, 1000, 10000))
             {
                 settings.MinValueThreshold = Math.Max(0, minThreshold);
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Only show items worth at least this much gil.", "0");
 
@@ -742,13 +768,13 @@ public class TopItemsTool : ToolComponent
 
             // Item picker for adding exclusions
             ImGui.TextDisabled("Add item to exclude:");
-            if (_itemPicker.Draw("##ExcludeItemPicker", marketableOnly: true, width: 250))
+            if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
             {
-                if (_itemPicker.SelectedItemId.HasValue)
+                if (_itemCombo.SelectedItemId > 0)
                 {
-                    settings.ExcludedItemIds.Add(_itemPicker.SelectedItemId.Value);
-                    _configService.Save();
-                    _itemPicker.ClearSelection();
+                    settings.ExcludedItemIds.Add(_itemCombo.SelectedItemId);
+                    NotifyToolSettingsChanged();
+                    _itemCombo.ClearSelection();
                     _ = Task.Run(RefreshTopItemsAsync);
                 }
             }
@@ -776,7 +802,7 @@ public class TopItemsTool : ToolComponent
                 if (itemToRemove.HasValue)
                 {
                     settings.ExcludedItemIds.Remove(itemToRemove.Value);
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                     _ = Task.Run(RefreshTopItemsAsync);
                 }
 
@@ -784,7 +810,7 @@ public class TopItemsTool : ToolComponent
                 if (ImGui.Button("Clear All Exclusions"))
                 {
                     settings.ExcludedItemIds.Clear();
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                     _ = Task.Run(RefreshTopItemsAsync);
                 }
             }
@@ -804,6 +830,50 @@ public class TopItemsTool : ToolComponent
         {
             LogService.Debug($"[TopItemsTool] Settings error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Exports tool-specific settings for layout persistence.
+    /// </summary>
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["MaxItems"] = Settings.MaxItems,
+            ["ShowAllCharacters"] = Settings.ShowAllCharacters,
+            ["SelectedCharacterId"] = Settings.SelectedCharacterId,
+            ["IncludeRetainers"] = Settings.IncludeRetainers,
+            ["IncludeGil"] = Settings.IncludeGil,
+            ["MinValueThreshold"] = Settings.MinValueThreshold,
+            ["GroupByItem"] = Settings.GroupByItem,
+            ["ExcludedItemIds"] = Settings.ExcludedItemIds.ToList()
+        };
+    }
+    
+    /// <summary>
+    /// Imports tool-specific settings from a layout.
+    /// </summary>
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        _instanceSettings.MaxItems = GetSetting(settings, "MaxItems", _instanceSettings.MaxItems);
+        _instanceSettings.ShowAllCharacters = GetSetting(settings, "ShowAllCharacters", _instanceSettings.ShowAllCharacters);
+        _instanceSettings.SelectedCharacterId = GetSetting(settings, "SelectedCharacterId", _instanceSettings.SelectedCharacterId);
+        _instanceSettings.IncludeRetainers = GetSetting(settings, "IncludeRetainers", _instanceSettings.IncludeRetainers);
+        _instanceSettings.IncludeGil = GetSetting(settings, "IncludeGil", _instanceSettings.IncludeGil);
+        _instanceSettings.MinValueThreshold = GetSetting(settings, "MinValueThreshold", _instanceSettings.MinValueThreshold);
+        _instanceSettings.GroupByItem = GetSetting(settings, "GroupByItem", _instanceSettings.GroupByItem);
+        
+        // Deserialize ExcludedItemIds from JsonElement array to HashSet<uint>
+        var excludedIds = GetSetting<List<uint>>(settings, "ExcludedItemIds", null);
+        if (excludedIds != null)
+        {
+            _instanceSettings.ExcludedItemIds = new HashSet<uint>(excludedIds);
+        }
+        
+        // Sync selected character from settings
+        _selectedCharacterId = _instanceSettings.SelectedCharacterId;
     }
 
     public override void Dispose()

@@ -10,6 +10,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// Tool component that displays a live feed of Universalis WebSocket price updates.
 /// Shows listings added/removed and sales as they happen in real-time.
+/// Click on any entry to open the ItemDetailsPopup with full market data from the API.
 /// </summary>
 public class LivePriceFeedTool : ToolComponent
 {
@@ -17,26 +18,44 @@ public class LivePriceFeedTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
+    private readonly UniversalisService _universalisService;
+    private readonly SamplerService? _samplerService;
+    private readonly LivePriceFeedSettings _instanceSettings;
 
     // World selection widget for filtering
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
+    // Item details popup for clicking on entries
+    private readonly ItemDetailsPopup _itemDetailsPopup;
+
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
 
-    private LivePriceFeedSettings Settings => _configService.Config.LivePriceFeed;
+    private LivePriceFeedSettings Settings => _instanceSettings;
     private PriceTrackingSettings PriceSettings => _configService.Config.PriceTracking;
 
     public LivePriceFeedTool(
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
-        ItemDataService itemDataService)
+        ItemDataService itemDataService,
+        UniversalisService universalisService,
+        SamplerService? samplerService = null)
     {
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
+        _universalisService = universalisService;
+        _samplerService = samplerService;
+        _instanceSettings = new LivePriceFeedSettings();
+
+        // Create item details popup for viewing market data when clicking entries
+        _itemDetailsPopup = new ItemDetailsPopup(
+            _universalisService,
+            _itemDataService,
+            _priceTrackingService,
+            _samplerService);
 
         Title = "Live Price Feed";
         Size = new Vector2(450, 300);
@@ -56,6 +75,9 @@ public class LivePriceFeedTool : ToolComponent
             {
                 DrawFeed();
             }
+
+            // Draw item details popup (renders on top when open)
+            _itemDetailsPopup.Draw();
         }
         catch (Exception ex)
         {
@@ -190,6 +212,31 @@ public class LivePriceFeedTool : ToolComponent
         var priceStr = FormatUtils.FormatGil(entry.PricePerUnit);
         var totalStr = FormatUtils.FormatGil(entry.Total);
 
+        // Make the entire entry clickable to open item details
+        var entryText = $"{timeStr} {eventIcon} {itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}";
+        var cursorPos = ImGui.GetCursorPos();
+        
+        // Draw the selectable (invisible, just for click detection)
+        ImGui.PushStyleColor(ImGuiCol.Header, new Vector4(0.3f, 0.3f, 0.3f, 0.4f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, new Vector4(0.4f, 0.4f, 0.4f, 0.6f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderActive, new Vector4(0.5f, 0.5f, 0.5f, 0.8f));
+        
+        if (ImGui.Selectable($"##{entry.ReceivedAt.Ticks}_{entry.ItemId}", false, ImGuiSelectableFlags.SpanAllColumns))
+        {
+            // Open the item details popup via Universalis API
+            _itemDetailsPopup.Open(entry.ItemId);
+        }
+        
+        ImGui.PopStyleColor(3);
+
+        // Show tooltip hint on hover
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Click to view market listings and sales history (via Universalis API)");
+        }
+
+        // Draw the actual text on top of the selectable
+        ImGui.SetCursorPos(cursorPos);
         ImGui.TextDisabled(timeStr);
         ImGui.SameLine();
         ImGui.TextColored(eventColor, eventIcon);
@@ -203,17 +250,17 @@ public class LivePriceFeedTool : ToolComponent
     {
         try
         {
+            if (!ImGui.CollapsingHeader("Live Feed Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+                
             var settings = Settings;
-
-            ImGui.TextUnformatted("Live Feed Settings");
-            ImGui.Separator();
 
             // Max entries
             var maxEntries = settings.MaxEntries;
             if (ImGui.SliderInt("Max entries", ref maxEntries, 10, 500))
             {
                 settings.MaxEntries = maxEntries;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Maximum number of entries to display in the feed.", "100");
 
@@ -222,7 +269,7 @@ public class LivePriceFeedTool : ToolComponent
             if (ImGui.Checkbox("Auto-scroll to latest", ref autoScroll))
             {
                 settings.AutoScroll = autoScroll;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Automatically scroll to the newest entry.", "On");
 
@@ -231,7 +278,7 @@ public class LivePriceFeedTool : ToolComponent
             if (ImGui.Checkbox("Latest on top", ref latestOnTop))
             {
                 settings.LatestOnTop = latestOnTop;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Show newest entries at the top of the list instead of the bottom.", "Off");
 
@@ -243,21 +290,21 @@ public class LivePriceFeedTool : ToolComponent
             if (ImGui.Checkbox("Show listings added", ref showListingsAdd))
             {
                 settings.ShowListingsAdd = showListingsAdd;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             var showListingsRemove = settings.ShowListingsRemove;
             if (ImGui.Checkbox("Show listings removed", ref showListingsRemove))
             {
                 settings.ShowListingsRemove = showListingsRemove;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             var showSales = settings.ShowSales;
             if (ImGui.Checkbox("Show sales", ref showSales))
             {
                 settings.ShowSales = showSales;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             ImGui.Spacing();
@@ -272,7 +319,7 @@ public class LivePriceFeedTool : ToolComponent
             if (ImGui.InputInt("Filter by Item ID (0 = all)", ref filterItem))
             {
                 settings.FilterItemId = filterItem;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
         }
         catch (Exception ex)
@@ -324,7 +371,7 @@ public class LivePriceFeedTool : ToolComponent
         if (ImGui.Checkbox("Show all worlds", ref filterAll))
         {
             settings.FilterScopeMode = filterAll ? PriceTrackingScopeMode.All : PriceTrackingScopeMode.ByWorld;
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
         ShowSettingTooltip("When enabled, shows events from all worlds without filtering.", "On");
 
@@ -355,7 +402,7 @@ public class LivePriceFeedTool : ToolComponent
                     _ => PriceTrackingScopeMode.ByWorld
                 };
 
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             // Show warning if nothing selected
@@ -423,6 +470,66 @@ public class LivePriceFeedTool : ToolComponent
         }
 
         return result;
+    }
+
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var s = Settings;
+        return new Dictionary<string, object?>
+        {
+            ["MaxEntries"] = s.MaxEntries,
+            ["ShowListingsAdd"] = s.ShowListingsAdd,
+            ["ShowListingsRemove"] = s.ShowListingsRemove,
+            ["ShowSales"] = s.ShowSales,
+            ["AutoScroll"] = s.AutoScroll,
+            ["LatestOnTop"] = s.LatestOnTop,
+            ["FilterScopeMode"] = (int)s.FilterScopeMode,
+            ["FilterRegions"] = s.FilterRegions.ToList(),
+            ["FilterDataCenters"] = s.FilterDataCenters.ToList(),
+            ["FilterWorldIds"] = s.FilterWorldIds.ToList(),
+            ["FilterItemId"] = s.FilterItemId
+        };
+    }
+
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var s = Settings;
+        s.MaxEntries = GetSetting(settings, "MaxEntries", s.MaxEntries);
+        s.ShowListingsAdd = GetSetting(settings, "ShowListingsAdd", s.ShowListingsAdd);
+        s.ShowListingsRemove = GetSetting(settings, "ShowListingsRemove", s.ShowListingsRemove);
+        s.ShowSales = GetSetting(settings, "ShowSales", s.ShowSales);
+        s.AutoScroll = GetSetting(settings, "AutoScroll", s.AutoScroll);
+        s.LatestOnTop = GetSetting(settings, "LatestOnTop", s.LatestOnTop);
+        s.FilterScopeMode = (PriceTrackingScopeMode)GetSetting(settings, "FilterScopeMode", (int)s.FilterScopeMode);
+        s.FilterItemId = GetSetting(settings, "FilterItemId", s.FilterItemId);
+
+        // Restore HashSet properties from lists (handles JsonElement from deserialization)
+        if (settings.TryGetValue("FilterRegions", out var regionsObj) && regionsObj != null)
+        {
+            if (regionsObj is System.Text.Json.JsonElement regionsJson && regionsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                s.FilterRegions = new HashSet<string>(regionsJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
+            }
+        }
+        if (settings.TryGetValue("FilterDataCenters", out var dcObj) && dcObj != null)
+        {
+            if (dcObj is System.Text.Json.JsonElement dcJson && dcJson.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                s.FilterDataCenters = new HashSet<string>(dcJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
+            }
+        }
+        if (settings.TryGetValue("FilterWorldIds", out var worldsObj) && worldsObj != null)
+        {
+            if (worldsObj is System.Text.Json.JsonElement worldsJson && worldsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                s.FilterWorldIds = new HashSet<int>(worldsJson.EnumerateArray().Select(v => v.GetInt32()));
+            }
+        }
+
+        // Reset widget initialization flag so it picks up imported settings
+        _worldSelectionWidgetInitialized = false;
     }
 
     public override void Dispose()

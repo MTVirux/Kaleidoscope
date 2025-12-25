@@ -13,17 +13,29 @@ public class CrystalTrackerTool : ToolComponent
 {
     private readonly CrystalTrackerComponent _inner;
     private readonly ConfigurationService _configService;
+    
+    // Instance-specific settings (not shared with other tool instances)
+    private readonly CrystalTrackerSettings _instanceSettings;
 
     private static readonly string[] GroupingNames = { "None (Total)", "By Character", "By Element", "By Character & Element", "By Tier", "By Character & Tier" };
     private static readonly string[] LegendPositionNames = { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
     private static readonly string[] TimeUnitNames = { "Seconds", "Minutes", "Hours", "Days", "Weeks" };
 
-    private CrystalTrackerSettings Settings => _configService.Config.CrystalTracker;
+    private CrystalTrackerSettings Settings => _instanceSettings;
     
     public CrystalTrackerTool(CrystalTrackerComponent inner, ConfigurationService configService)
     {
         _inner = inner;
         _configService = configService;
+        
+        // Initialize instance-specific settings with defaults
+        _instanceSettings = new CrystalTrackerSettings();
+        
+        // Link the inner component to use our instance settings
+        _inner.SetSettingsProvider(() => _instanceSettings);
+        
+        // Subscribe to settings changes from inner component
+        _inner.OnSettingsChanged += () => NotifyToolSettingsChanged();
         
         Title = "Crystals";
         Size = ConfigStatic.GilTrackerToolSize;
@@ -50,6 +62,9 @@ public class CrystalTrackerTool : ToolComponent
     {
         try
         {
+            if (!ImGui.CollapsingHeader("Crystal Tracker Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+                
             var settings = Settings;
 
             // Grouping section
@@ -60,7 +75,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Combo("Group by", ref grouping, GroupingNames, GroupingNames.Length))
             {
                 settings.Grouping = (CrystalGrouping)grouping;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("How to group crystal data in the display.\n" +
                 "None: Single total across all.\n" +
@@ -76,7 +91,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Include Shards", ref includeShards))
             {
                 settings.IncludeShards = includeShards;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Include Shards (lowest tier) in the count.", "On");
 
@@ -84,7 +99,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Include Crystals", ref includeCrystals))
             {
                 settings.IncludeCrystals = includeCrystals;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Include Crystals (middle tier) in the count.", "On");
 
@@ -92,7 +107,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Include Clusters", ref includeClusters))
             {
                 settings.IncludeClusters = includeClusters;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Include Clusters (highest tier) in the count.", "On");
 
@@ -113,21 +128,21 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Fire", ref fire))
             {
                 settings.IncludeFire = fire;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             var ice = settings.IncludeIce;
             if (ImGui.Checkbox("Ice", ref ice))
             {
                 settings.IncludeIce = ice;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             var wind = settings.IncludeWind;
             if (ImGui.Checkbox("Wind", ref wind))
             {
                 settings.IncludeWind = wind;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             // Element filter row 2
@@ -135,21 +150,21 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Earth", ref earth))
             {
                 settings.IncludeEarth = earth;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             var lightning = settings.IncludeLightning;
             if (ImGui.Checkbox("Lightning", ref lightning))
             {
                 settings.IncludeLightning = lightning;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             var water = settings.IncludeWater;
             if (ImGui.Checkbox("Water", ref water))
             {
                 settings.IncludeWater = water;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
 
             ImGui.Spacing();
@@ -160,7 +175,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Show legend", ref showLegend))
             {
                 settings.ShowLegend = showLegend;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Shows a scrollable legend panel on the right side of the graph.", "On");
 
@@ -170,7 +185,7 @@ public class CrystalTrackerTool : ToolComponent
                 if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                 {
                     settings.LegendPosition = (LegendPosition)legendPosition;
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
                 ShowSettingTooltip("Where to display the legend: outside the graph or inside at a corner.", "Outside (right)");
                 
@@ -180,7 +195,7 @@ public class CrystalTrackerTool : ToolComponent
                     if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
                     {
                         settings.LegendWidth = legendWidth;
-                        _configService.Save();
+                        NotifyToolSettingsChanged();
                     }
                     ShowSettingTooltip("Width of the scrollable legend panel.", "140");
                 }
@@ -190,7 +205,7 @@ public class CrystalTrackerTool : ToolComponent
                     if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
                     {
                         settings.LegendHeightPercent = legendHeight;
-                        _configService.Save();
+                        NotifyToolSettingsChanged();
                     }
                     ShowSettingTooltip("Maximum height of the inside legend as a percentage of the graph height.", "25%");
                 }
@@ -200,7 +215,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Show current value label", ref showValueLabel))
             {
                 settings.ShowValueLabel = showValueLabel;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Shows the current value as a small label near the latest data point.", "Off");
 
@@ -210,14 +225,14 @@ public class CrystalTrackerTool : ToolComponent
                 if (ImGui.SliderFloat("Label X offset", ref labelOffsetX, -100f, 100f, "%.0f"))
                 {
                     settings.ValueLabelOffsetX = labelOffsetX;
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
 
                 var labelOffsetY = settings.ValueLabelOffsetY;
                 if (ImGui.SliderFloat("Label Y offset", ref labelOffsetY, -50f, 50f, "%.0f"))
                 {
                     settings.ValueLabelOffsetY = labelOffsetY;
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
             }
 
@@ -225,7 +240,7 @@ public class CrystalTrackerTool : ToolComponent
             if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
                 settings.GraphType = graphType;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("The visual style for the graph.\nArea: Filled area chart.\nLine: Simple line chart.\nStairs: Step chart showing discrete changes.\nBars: Vertical bar chart.", "Area");
 
@@ -233,7 +248,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
             {
                 settings.ShowXAxisTimestamps = showXAxisTimestamps;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Shows time labels on the X-axis.", "On");
 
@@ -245,7 +260,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Show controls drawer", ref showControlsDrawer))
             {
                 settings.ShowControlsDrawer = showControlsDrawer;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("Shows a small toggle button in the top-right corner of the graph to access auto-scroll controls.", "On");
             
@@ -253,7 +268,7 @@ public class CrystalTrackerTool : ToolComponent
             if (ImGui.Checkbox("Auto-scroll enabled", ref autoScrollEnabled))
             {
                 settings.AutoScrollEnabled = autoScrollEnabled;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
             ShowSettingTooltip("When enabled, the graph automatically scrolls to show the most recent data.", "Off");
             
@@ -265,7 +280,7 @@ public class CrystalTrackerTool : ToolComponent
                 if (ImGui.InputInt("##autoscroll_value", ref timeValue))
                 {
                     settings.AutoScrollTimeValue = Math.Clamp(timeValue, 1, 999);
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(100);
@@ -273,7 +288,7 @@ public class CrystalTrackerTool : ToolComponent
                 if (ImGui.Combo("##autoscroll_unit", ref unitIndex, TimeUnitNames, TimeUnitNames.Length))
                 {
                     settings.AutoScrollTimeUnit = (AutoScrollTimeUnit)unitIndex;
-                    _configService.Save();
+                    NotifyToolSettingsChanged();
                 }
                 ShowSettingTooltip("How much time to show when auto-scrolling.", "1 Hour");
             }
@@ -288,12 +303,82 @@ public class CrystalTrackerTool : ToolComponent
             {
                 settings.TimeRangeValue = timeRangeValue;
                 settings.TimeRangeUnit = timeRangeUnit;
-                _configService.Save();
+                NotifyToolSettingsChanged();
             }
         }
         catch (Exception ex)
         {
             LogService.Debug($"[CrystalTrackerTool] DrawSettings error: {ex.Message}");
         }
+    }
+    
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var s = _instanceSettings;
+        return new Dictionary<string, object?>
+        {
+            ["Grouping"] = (int)s.Grouping,
+            ["IncludeShards"] = s.IncludeShards,
+            ["IncludeCrystals"] = s.IncludeCrystals,
+            ["IncludeClusters"] = s.IncludeClusters,
+            ["IncludeFire"] = s.IncludeFire,
+            ["IncludeIce"] = s.IncludeIce,
+            ["IncludeWind"] = s.IncludeWind,
+            ["IncludeEarth"] = s.IncludeEarth,
+            ["IncludeLightning"] = s.IncludeLightning,
+            ["IncludeWater"] = s.IncludeWater,
+            ["IncludeRetainers"] = s.IncludeRetainers,
+            ["TimeRangeValue"] = s.TimeRangeValue,
+            ["TimeRangeUnit"] = (int)s.TimeRangeUnit,
+            ["ShowXAxisTimestamps"] = s.ShowXAxisTimestamps,
+            ["ShowValueLabel"] = s.ShowValueLabel,
+            ["ValueLabelOffsetX"] = s.ValueLabelOffsetX,
+            ["ValueLabelOffsetY"] = s.ValueLabelOffsetY,
+            ["LegendWidth"] = s.LegendWidth,
+            ["LegendHeightPercent"] = s.LegendHeightPercent,
+            ["ShowLegend"] = s.ShowLegend,
+            ["LegendPosition"] = (int)s.LegendPosition,
+            ["GraphType"] = (int)s.GraphType,
+            ["AutoScrollEnabled"] = s.AutoScrollEnabled,
+            ["AutoScrollTimeValue"] = s.AutoScrollTimeValue,
+            ["AutoScrollTimeUnit"] = (int)s.AutoScrollTimeUnit,
+            ["AutoScrollNowPosition"] = s.AutoScrollNowPosition,
+            ["ShowControlsDrawer"] = s.ShowControlsDrawer
+        };
+    }
+    
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var t = _instanceSettings;
+        
+        t.Grouping = (CrystalGrouping)GetSetting(settings, "Grouping", (int)t.Grouping);
+        t.IncludeShards = GetSetting(settings, "IncludeShards", t.IncludeShards);
+        t.IncludeCrystals = GetSetting(settings, "IncludeCrystals", t.IncludeCrystals);
+        t.IncludeClusters = GetSetting(settings, "IncludeClusters", t.IncludeClusters);
+        t.IncludeFire = GetSetting(settings, "IncludeFire", t.IncludeFire);
+        t.IncludeIce = GetSetting(settings, "IncludeIce", t.IncludeIce);
+        t.IncludeWind = GetSetting(settings, "IncludeWind", t.IncludeWind);
+        t.IncludeEarth = GetSetting(settings, "IncludeEarth", t.IncludeEarth);
+        t.IncludeLightning = GetSetting(settings, "IncludeLightning", t.IncludeLightning);
+        t.IncludeWater = GetSetting(settings, "IncludeWater", t.IncludeWater);
+        t.IncludeRetainers = GetSetting(settings, "IncludeRetainers", t.IncludeRetainers);
+        t.TimeRangeValue = GetSetting(settings, "TimeRangeValue", t.TimeRangeValue);
+        t.TimeRangeUnit = (TimeRangeUnit)GetSetting(settings, "TimeRangeUnit", (int)t.TimeRangeUnit);
+        t.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", t.ShowXAxisTimestamps);
+        t.ShowValueLabel = GetSetting(settings, "ShowValueLabel", t.ShowValueLabel);
+        t.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", t.ValueLabelOffsetX);
+        t.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", t.ValueLabelOffsetY);
+        t.LegendWidth = GetSetting(settings, "LegendWidth", t.LegendWidth);
+        t.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", t.LegendHeightPercent);
+        t.ShowLegend = GetSetting(settings, "ShowLegend", t.ShowLegend);
+        t.LegendPosition = (LegendPosition)GetSetting(settings, "LegendPosition", (int)t.LegendPosition);
+        t.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)t.GraphType);
+        t.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", t.AutoScrollEnabled);
+        t.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", t.AutoScrollTimeValue);
+        t.AutoScrollTimeUnit = (AutoScrollTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)t.AutoScrollTimeUnit);
+        t.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", t.AutoScrollNowPosition);
+        t.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", t.ShowControlsDrawer);
     }
 }

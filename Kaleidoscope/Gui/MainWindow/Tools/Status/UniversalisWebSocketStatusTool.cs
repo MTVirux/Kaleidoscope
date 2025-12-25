@@ -104,6 +104,28 @@ public class UniversalisWebSocketStatusTool : ToolComponent
         if (ImGui.Checkbox("Show Details", ref showDetails))
         {
             ShowDetails = showDetails;
+            NotifyToolSettingsChanged();
         }
+    }
+    
+    /// <summary>
+    /// Exports tool-specific settings for layout persistence.
+    /// </summary>
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["ShowDetails"] = ShowDetails
+        };
+    }
+    
+    /// <summary>
+    /// Imports tool-specific settings from a layout.
+    /// </summary>
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        ShowDetails = GetSetting(settings, "ShowDetails", ShowDetails);
     }
 }

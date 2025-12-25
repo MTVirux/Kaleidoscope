@@ -17,7 +17,11 @@ public class ItemSalesHistoryTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
-    private readonly ItemPickerWidget _itemPicker;
+    private readonly SamplerService _samplerService;
+    private readonly ItemIconCombo _itemCombo;
+
+    // Convenience accessor for database service
+    private KaleidoscopeDbService DbService => _samplerService.DbService;
 
     // State
     private MarketHistory? _currentHistory;
@@ -36,14 +40,24 @@ public class ItemSalesHistoryTool : ToolComponent
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
         ItemDataService itemDataService,
-        IDataManager dataManager)
+        SamplerService samplerService,
+        IDataManager dataManager,
+        ITextureProvider textureProvider,
+        FavoritesService favoritesService)
     {
         _universalisService = universalisService;
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
+        _samplerService = samplerService;
 
-        _itemPicker = new ItemPickerWidget(dataManager, itemDataService, priceTrackingService);
+        _itemCombo = new ItemIconCombo(
+            textureProvider,
+            dataManager,
+            favoritesService,
+            priceTrackingService,
+            "ItemSalesHistory",
+            marketableOnly: true);
 
         Title = "Item Sales History";
         Size = new Vector2(450, 400);
@@ -74,22 +88,22 @@ public class ItemSalesHistoryTool : ToolComponent
         ImGui.TextUnformatted("Select Item:");
         ImGui.SameLine();
 
-        // Item picker
-        if (_itemPicker.Draw("##ItemPicker", marketableOnly: true, width: 250))
+        // Item picker with icons and favorites
+        if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
         {
-            if (_itemPicker.SelectedItemId.HasValue)
+            if (_itemCombo.SelectedItemId > 0)
             {
-                _ = FetchHistoryAsync(_itemPicker.SelectedItemId.Value);
+                _ = FetchHistoryAsync(_itemCombo.SelectedItemId);
             }
         }
 
         // Refresh button
         ImGui.SameLine();
-        if (_itemPicker.SelectedItemId.HasValue)
+        if (_itemCombo.SelectedItemId > 0)
         {
             if (ImGui.Button(_isLoading ? "..." : "↻"))
             {
-                _ = FetchHistoryAsync(_itemPicker.SelectedItemId.Value);
+                _ = FetchHistoryAsync(_itemCombo.SelectedItemId);
             }
             if (ImGui.IsItemHovered())
             {
@@ -98,7 +112,7 @@ public class ItemSalesHistoryTool : ToolComponent
         }
 
         // Show item info if selected
-        if (_itemPicker.SelectedItemId.HasValue && _currentHistory != null)
+        if (_itemCombo.SelectedItemId > 0 && _currentHistory != null)
         {
             var velocityText = $"Sales/day: {_currentHistory.RegularSaleVelocity:F1}";
             if (_currentHistory.NqSaleVelocity > 0 || _currentHistory.HqSaleVelocity > 0)
@@ -130,6 +144,19 @@ public class ItemSalesHistoryTool : ToolComponent
         {
             if (_showNqOnly) _showHqOnly = false;
         }
+
+        ImGui.SameLine();
+        var filterByListing = _configService.Config.PriceTracking.FilterSalesByListingPrice;
+        if (ImGui.Checkbox("Filter Outliers", ref filterByListing))
+        {
+            _configService.Config.PriceTracking.FilterSalesByListingPrice = filterByListing;
+            _configService.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            var threshold = _configService.Config.PriceTracking.SaleDiscrepancyThreshold;
+            ImGui.SetTooltip($"Ignore sales with {threshold}%+ discrepancy from current listing price on that world.\nConfigure threshold in Settings > Universalis.");
+        }
     }
 
     private void DrawSalesHistory()
@@ -148,7 +175,7 @@ public class ItemSalesHistoryTool : ToolComponent
 
         if (_currentHistory == null || _currentHistory.Entries == null || _currentHistory.Entries.Count == 0)
         {
-            if (_itemPicker.SelectedItemId.HasValue)
+            if (_itemCombo.SelectedItemId > 0)
             {
                 ImGui.TextDisabled("No sale history found for this item.");
             }
@@ -165,6 +192,41 @@ public class ItemSalesHistoryTool : ToolComponent
             entries = entries.Where(e => e.IsHq);
         else if (_showNqOnly)
             entries = entries.Where(e => !e.IsHq);
+
+        // Filter by listing price discrepancy (configurable threshold)
+        // Uses average of lowest listing and most recent sale for that world as reference
+        var priceTrackingSettings = _configService.Config.PriceTracking;
+        if (priceTrackingSettings.FilterSalesByListingPrice && _itemCombo.SelectedItemId > 0)
+        {
+            var itemId = (int)_itemCombo.SelectedItemId;
+            var listingsService = _priceTrackingService.ListingsService;
+            var threshold = priceTrackingSettings.SaleDiscrepancyThreshold / 100.0;
+            var minRatio = 1.0 - threshold;
+            var maxRatio = 1.0 + threshold;
+            entries = entries.Where(e =>
+            {
+                if (!e.WorldId.HasValue) return true; // Keep entries without world info
+                
+                var listing = listingsService.GetListing(itemId, e.WorldId.Value);
+                var listingPrice = listing != null ? (e.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
+                var recentSalePrice = DbService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
+                
+                // Calculate reference price as average of listing and recent sale (if both available)
+                double referencePrice;
+                if (listingPrice > 0 && recentSalePrice > 0)
+                    referencePrice = (listingPrice + recentSalePrice) / 2.0;
+                else if (listingPrice > 0)
+                    referencePrice = listingPrice;
+                else if (recentSalePrice > 0)
+                    referencePrice = recentSalePrice;
+                else
+                    return true; // No reference data available, keep entry
+                
+                // Check if sale price is within threshold of reference price (either direction)
+                var ratio = e.PricePerUnit / referencePrice;
+                return ratio >= minRatio && ratio <= maxRatio;
+            });
+        }
 
         var filteredEntries = entries.Take(_maxEntries).ToList();
 
@@ -306,8 +368,8 @@ public class ItemSalesHistoryTool : ToolComponent
 
     public override void DrawSettings()
     {
-        ImGui.TextUnformatted("Item Sales History Settings");
-        ImGui.Separator();
+        if (!ImGui.CollapsingHeader("Item Sales History Settings", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
 
         // Default max entries
         var maxEntries = _maxEntries;
@@ -316,6 +378,31 @@ public class ItemSalesHistoryTool : ToolComponent
             _maxEntries = maxEntries;
         }
         ImGui.TextDisabled("Number of sale entries to fetch and display.");
+    }
+    
+    /// <summary>
+    /// Exports tool-specific settings for layout persistence.
+    /// </summary>
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["MaxEntries"] = _maxEntries,
+            ["ShowHqOnly"] = _showHqOnly,
+            ["ShowNqOnly"] = _showNqOnly
+        };
+    }
+    
+    /// <summary>
+    /// Imports tool-specific settings from a layout.
+    /// </summary>
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        _maxEntries = GetSetting(settings, "MaxEntries", _maxEntries);
+        _showHqOnly = GetSetting(settings, "ShowHqOnly", _showHqOnly);
+        _showNqOnly = GetSetting(settings, "ShowNqOnly", _showNqOnly);
     }
 
     public override void Dispose()

@@ -98,11 +98,12 @@ public class DataTrackerComponent : IDisposable
         var definition = registry.GetDefinition(dataType);
         _graphMaxValue = definition?.MaxValue ?? 999_999_999;
 
-        // Share the database service from SamplerService to avoid duplicate connections
+        // Share the database service and cache service from SamplerService for fast access
         _helper = new DataTrackerHelper(
             dataType,
             samplerService.DbService,
             registry,
+            samplerService.CacheService,
             ConfigStatic.GilTrackerMaxSamples,
             0f);
 

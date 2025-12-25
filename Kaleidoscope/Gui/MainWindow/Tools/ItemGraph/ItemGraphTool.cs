@@ -23,10 +23,16 @@ public class ItemGraphTool : ToolComponent
     private readonly IDataManager? _dataManager;
     
     private readonly ImplotGraphWidget _graphWidget;
-    private readonly ItemPickerWidget? _itemPicker;
+    private readonly ItemIconCombo? _itemCombo;
     
-    // Cached data for graph rendering
-    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
+    // Instance-specific settings (not shared with other tool instances)
+    private readonly ItemGraphSettings _instanceSettings;
+    
+    // Cache service for formatted character names
+    private TimeSeriesCacheService _cacheService => _samplerService.CacheService;
+    
+    // Cached data for graph rendering (includes optional color for each series)
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
     private DateTime _lastRefresh = DateTime.MinValue;
     private volatile bool _cacheIsDirty = true;
     
@@ -36,9 +42,10 @@ public class ItemGraphTool : ToolComponent
     private TimeRangeUnit _cachedTimeRangeUnit;
     private bool _cachedIncludeRetainers;
     private bool _cachedShowPerCharacter;
+    private CharacterNameFormat _cachedNameFormat;
     private const double CacheValiditySeconds = 2.0;
     
-    private ItemGraphSettings Settings => _configService.Config.ItemGraph;
+    private ItemGraphSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
     
     public ItemGraphTool(
@@ -47,7 +54,9 @@ public class ItemGraphTool : ToolComponent
         InventoryCacheService? inventoryCacheService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
         ItemDataService? itemDataService = null,
-        IDataManager? dataManager = null)
+        IDataManager? dataManager = null,
+        ITextureProvider? textureProvider = null,
+        FavoritesService? favoritesService = null)
     {
         _samplerService = samplerService;
         _configService = configService;
@@ -55,6 +64,9 @@ public class ItemGraphTool : ToolComponent
         _trackedDataRegistry = trackedDataRegistry;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
+        
+        // Initialize instance-specific settings with defaults
+        _instanceSettings = new ItemGraphSettings();
         
         Title = "Item Graph";
         Size = new Vector2(500, 300);
@@ -71,12 +83,12 @@ public class ItemGraphTool : ToolComponent
             ShowCurrentPriceLine = true
         });
         
-        // Bind graph widget to settings for automatic synchronization
+        // Bind graph widget to instance-specific settings (not global config)
         _graphWidget.BindSettings(
-            Settings,
+            _instanceSettings,
             onSettingsChanged: () =>
             {
-                _configService.Save();
+                NotifyToolSettingsChanged();
                 _cacheIsDirty = true;
             },
             settingsName: "Graph Settings",
@@ -87,10 +99,16 @@ public class ItemGraphTool : ToolComponent
         
         _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
         
-        // Create item picker if we have the required services
-        if (_dataManager != null && _itemDataService != null)
+        // Create item combo if we have the required services
+        if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
         {
-            _itemPicker = new ItemPickerWidget(_dataManager, _itemDataService);
+            _itemCombo = new ItemIconCombo(
+                textureProvider,
+                _dataManager,
+                favoritesService,
+                null, // No price tracking service - include all items
+                "ItemGraphAdd",
+                marketableOnly: false);
         }
     }
     
@@ -101,7 +119,7 @@ public class ItemGraphTool : ToolComponent
         settings.AutoScrollTimeValue = timeValue;
         settings.AutoScrollTimeUnit = timeUnit;
         settings.AutoScrollNowPosition = nowPosition;
-        _configService.Save();
+        NotifyToolSettingsChanged();
         // Note: Don't set _cacheIsDirty here - auto-scroll settings don't require data refresh
         // The graph widget handles auto-scroll updates internally without needing new data
     }
@@ -120,7 +138,8 @@ public class ItemGraphTool : ToolComponent
             _cachedTimeRangeValue != settings.TimeRangeValue ||
             _cachedTimeRangeUnit != settings.TimeRangeUnit ||
             _cachedIncludeRetainers != settings.IncludeRetainers ||
-            _cachedShowPerCharacter != settings.ShowPerCharacter)
+            _cachedShowPerCharacter != settings.ShowPerCharacter ||
+            _cachedNameFormat != _configService.Config.CharacterNameFormat)
         {
             return true;
         }
@@ -202,15 +221,15 @@ public class ItemGraphTool : ToolComponent
             ImGui.TextUnformatted("Add Item Series");
             ImGui.Separator();
             
-            if (_itemPicker != null)
+            if (_itemCombo != null)
             {
-                if (_itemPicker.Draw("##ItemToAdd", marketableOnly: false, width: 250))
+                if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
                 {
                     // Item selected
-                    if (_itemPicker.SelectedItemId.HasValue)
+                    if (_itemCombo.SelectedItemId > 0)
                     {
-                        AddSeries(_itemPicker.SelectedItemId.Value, isCurrency: false);
-                        _itemPicker.ClearSelection();
+                        AddSeries(_itemCombo.SelectedItemId, isCurrency: false);
+                        _itemCombo.ClearSelection();
                         ImGui.CloseCurrentPopup();
                     }
                 }
@@ -294,7 +313,7 @@ public class ItemGraphTool : ToolComponent
         });
         
         _cacheIsDirty = true;
-        _configService.Save();
+        NotifyToolSettingsChanged();
     }
     
     private void DrawGraph()
@@ -342,6 +361,7 @@ public class ItemGraphTool : ToolComponent
         _cachedTimeRangeUnit = settings.TimeRangeUnit;
         _cachedIncludeRetainers = settings.IncludeRetainers;
         _cachedShowPerCharacter = settings.ShowPerCharacter;
+        _cachedNameFormat = _configService.Config.CharacterNameFormat;
         _cacheIsDirty = false;
         
         var series = settings.Series;
@@ -355,10 +375,17 @@ public class ItemGraphTool : ToolComponent
         var timeRange = GetTimeRange();
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
         
-        // Batch fetch all item data in a single query
+        // Batch fetch all player item data
         var itemData = DbService.GetAllPointsBatch("Item_", startTime);
         
-        var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
+        // Also fetch retainer data if Include Retainers is enabled
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? retainerData = null;
+        if (settings.IncludeRetainers)
+        {
+            retainerData = DbService.GetAllPointsBatch("ItemRetainer_", startTime);
+        }
+        
+        var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
         if (settings.ShowPerCharacter)
         {
@@ -366,18 +393,27 @@ public class ItemGraphTool : ToolComponent
             foreach (var seriesConfig in series)
             {
                 var baseName = GetSeriesName(seriesConfig);
+                var baseColor = seriesConfig.Color;
                 
                 if (seriesConfig.IsCurrency)
                 {
                     // Get currency data per character
                     var perCharacterSeries = GetCurrencyTimeSeriesPerCharacter(seriesConfig, startTime, baseName);
-                    seriesList.AddRange(perCharacterSeries);
+                    // Apply the same color to all character sub-series for this item/currency
+                    foreach (var (name, samples) in perCharacterSeries)
+                    {
+                        seriesList.Add((name, samples, baseColor));
+                    }
                 }
                 else
                 {
                     // Get item data per character from the pre-fetched batch
-                    var perCharacterSeries = ExtractItemTimeSeriesPerCharacter(seriesConfig, itemData, baseName);
-                    seriesList.AddRange(perCharacterSeries);
+                    var perCharacterSeries = ExtractItemTimeSeriesPerCharacter(seriesConfig, itemData, retainerData, baseName);
+                    // Apply the same color to all character sub-series for this item/currency
+                    foreach (var (name, samples) in perCharacterSeries)
+                    {
+                        seriesList.Add((name, samples, baseColor));
+                    }
                 }
             }
         }
@@ -396,13 +432,13 @@ public class ItemGraphTool : ToolComponent
                 }
                 else
                 {
-                    // Get item data from the pre-fetched batch
-                    samples = ExtractItemTimeSeries(seriesConfig, itemData, settings.IncludeRetainers);
+                    // Get item data from the pre-fetched batch, optionally including retainer data
+                    samples = ExtractItemTimeSeries(seriesConfig, itemData, retainerData);
                 }
                 
                 if (samples.Count > 0)
                 {
-                    seriesList.Add((seriesName, samples));
+                    seriesList.Add((seriesName, samples, seriesConfig.Color));
                 }
             }
         }
@@ -470,23 +506,57 @@ public class ItemGraphTool : ToolComponent
     /// <summary>
     /// Extracts time-series data for an item from the pre-fetched batch data.
     /// Uses historical data from the series/points tables, with fallback to current inventory cache.
+    /// Optionally includes retainer inventory data if retainerBatchData is provided.
     /// </summary>
     private List<(DateTime ts, float value)> ExtractItemTimeSeries(
         ItemColumnConfig config, 
-        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> batchData,
-        bool includeRetainers)
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> playerBatchData,
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? retainerBatchData)
     {
         try
         {
-            var variableName = InventoryCacheService.GetItemVariableName(config.Id);
+            var playerVariableName = InventoryCacheService.GetItemVariableName(config.Id);
+            var retainerVariableName = $"ItemRetainer_{config.Id}";
             
-            if (batchData.TryGetValue(variableName, out var points) && points.Count > 0)
+            // Collect all player points
+            var allPoints = new List<(DateTime timestamp, long value)>();
+            
+            if (playerBatchData.TryGetValue(playerVariableName, out var playerPoints) && playerPoints.Count > 0)
             {
-                // Aggregate across characters by timestamp
-                // Group by timestamp (rounded to minute for aggregation) and sum values
-                var aggregated = points
+                // Group player data by timestamp and sum across characters
+                var playerByTime = playerPoints
                     .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day, 
                         p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                    .Select(g => (ts: g.Key, value: g.Sum(p => p.value)));
+                
+                foreach (var (ts, value) in playerByTime)
+                {
+                    allPoints.Add((ts, value));
+                }
+            }
+            
+            // Add retainer points if provided
+            if (retainerBatchData != null && 
+                retainerBatchData.TryGetValue(retainerVariableName, out var retainerPoints) && 
+                retainerPoints.Count > 0)
+            {
+                // Group retainer data by timestamp and sum across characters
+                var retainerByTime = retainerPoints
+                    .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day, 
+                        p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                    .Select(g => (ts: g.Key, value: g.Sum(p => p.value)));
+                
+                foreach (var (ts, value) in retainerByTime)
+                {
+                    allPoints.Add((ts, value));
+                }
+            }
+            
+            if (allPoints.Count > 0)
+            {
+                // Aggregate by timestamp (player + retainer at same timestamp get summed)
+                var aggregated = allPoints
+                    .GroupBy(p => p.timestamp)
                     .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
                     .OrderBy(p => p.ts)
                     .ToList();
@@ -495,8 +565,7 @@ public class ItemGraphTool : ToolComponent
             }
             
             // Fallback: No historical data yet, show current value as single point
-            // This helps users see their current inventory even before time-series builds up
-            return GetItemCurrentValue(config, includeRetainers);
+            return GetItemCurrentValue(config, retainerBatchData != null);
         }
         catch (Exception ex)
         {
@@ -524,7 +593,6 @@ public class ItemGraphTool : ToolComponent
                 // Skip retainers if not included
                 if (!includeRetainers && cache.SourceType == Models.Inventory.InventorySourceType.Retainer)
                     continue;
-                
                 totalCount += cache.Items
                     .Where(i => i.ItemId == config.Id)
                     .Sum(i => (long)i.Quantity);
@@ -567,12 +635,17 @@ public class ItemGraphTool : ToolComponent
                 return result;
             
             // Group by character
-            var byCharacter = points.GroupBy(p => p.characterId);
+            var byCharacter = points.GroupBy(p => p.characterId).ToList();
+            
+            // Get disambiguated names for all characters
+            var characterIds = byCharacter.Select(g => g.Key);
+            var disambiguatedNames = _cacheService.GetDisambiguatedNames(characterIds);
             
             foreach (var charGroup in byCharacter)
             {
                 var characterId = charGroup.Key;
-                var characterName = DbService.GetCharacterName(characterId) ?? $"Character {characterId}";
+                var characterName = disambiguatedNames.TryGetValue(characterId, out var name) 
+                    ? name : GetCharacterDisplayName(characterId);
                 var seriesName = $"{baseName} ({characterName})";
                 
                 var samples = charGroup
@@ -598,10 +671,12 @@ public class ItemGraphTool : ToolComponent
     
     /// <summary>
     /// Extracts time-series data for an item from the pre-fetched batch data, with separate series for each character.
+    /// Optionally combines player and retainer inventory data when retainerBatchData is provided.
     /// </summary>
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> ExtractItemTimeSeriesPerCharacter(
         ItemColumnConfig config,
         Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> batchData,
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? retainerBatchData,
         string baseName)
     {
         var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
@@ -609,19 +684,48 @@ public class ItemGraphTool : ToolComponent
         try
         {
             var variableName = InventoryCacheService.GetItemVariableName(config.Id);
+            var retainerVariableName = InventoryCacheService.GetRetainerItemVariableName(config.Id);
             
-            if (!batchData.TryGetValue(variableName, out var points) || points.Count == 0)
+            // Get player data
+            batchData.TryGetValue(variableName, out var playerPoints);
+            
+            // Get retainer data if provided
+            List<(ulong characterId, DateTime timestamp, long value)>? retainerPoints = null;
+            retainerBatchData?.TryGetValue(retainerVariableName, out retainerPoints);
+            
+            // Combine all points with a source flag
+            var allPoints = new List<(ulong characterId, DateTime timestamp, long value, bool isRetainer)>();
+            
+            if (playerPoints != null)
+            {
+                foreach (var p in playerPoints)
+                    allPoints.Add((p.characterId, p.timestamp, p.value, false));
+            }
+            
+            if (retainerPoints != null)
+            {
+                foreach (var p in retainerPoints)
+                    allPoints.Add((p.characterId, p.timestamp, p.value, true));
+            }
+            
+            if (allPoints.Count == 0)
                 return result;
             
             // Group by character
-            var byCharacter = points.GroupBy(p => p.characterId);
+            var byCharacter = allPoints.GroupBy(p => p.characterId).ToList();
+            
+            // Get disambiguated names for all characters
+            var characterIds = byCharacter.Select(g => g.Key);
+            var disambiguatedNames = _cacheService.GetDisambiguatedNames(characterIds);
             
             foreach (var charGroup in byCharacter)
             {
                 var characterId = charGroup.Key;
-                var characterName = DbService.GetCharacterName(characterId) ?? $"Character {characterId}";
+                var characterName = disambiguatedNames.TryGetValue(characterId, out var name) 
+                    ? name : GetCharacterDisplayName(characterId);
                 var seriesName = $"{baseName} ({characterName})";
                 
+                // Group by timestamp (minute resolution), summing player and retainer values
                 var samples = charGroup
                     .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
                         p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
@@ -641,6 +745,26 @@ public class ItemGraphTool : ToolComponent
         }
         
         return result;
+    }
+    
+    /// <summary>
+    /// Gets a display name for the provided character ID.
+    /// Uses formatted name from cache service, respecting the name format setting.
+    /// </summary>
+    private string GetCharacterDisplayName(ulong characterId)
+    {
+        // Use cache service which handles display name, game name formatting, and fallbacks
+        var formattedName = _cacheService.GetFormattedCharacterName(characterId);
+        if (!string.IsNullOrEmpty(formattedName))
+            return formattedName;
+
+        // Try runtime lookup for currently-loaded characters (formats it)
+        var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
+        if (!string.IsNullOrEmpty(runtimeName))
+            return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
+
+        // Fallback to ID
+        return $"Character {characterId}";
     }
     
     private TimeSpan? GetTimeRange()
@@ -734,51 +858,17 @@ public class ItemGraphTool : ToolComponent
                 
                 ImGui.PushID(i);
                 
-                // Color picker (small button)
-                var color = seriesConfig.Color ?? new Vector4(1f, 1f, 1f, 1f);
-                var hasColor = seriesConfig.Color.HasValue;
-                
-                // Use a colored button as a color indicator/picker trigger
-                if (hasColor)
+                // Color picker using ColorEdit4 (same style as tool background settings)
+                var color = seriesConfig.Color ?? new Vector4(0.5f, 0.5f, 0.5f, 1f);
+                if (ImGui.ColorEdit4("##color", ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaPreviewHalf))
                 {
-                    ImGui.PushStyleColor(ImGuiCol.Button, color);
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, color * 1.1f);
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, color * 0.9f);
+                    seriesConfig.Color = color;
+                    _cacheIsDirty = true;
+                    settingsChanged = true;
                 }
-                
-                if (ImGui.Button(hasColor ? "##color" : "○##color", new Vector2(20, 0)))
-                {
-                    // Toggle color on/off when clicking the button
-                    if (hasColor)
-                    {
-                        seriesConfig.Color = null;
-                        settingsChanged = true;
-                    }
-                    else
-                    {
-                        ImGui.OpenPopup("ColorPicker");
-                    }
-                }
-                
-                if (hasColor)
-                {
-                    ImGui.PopStyleColor(3);
-                }
-                
-                // Color picker popup
-                if (ImGui.BeginPopup("ColorPicker"))
-                {
-                    if (ImGui.ColorPicker4("##picker", ref color, ImGuiColorEditFlags.NoSidePreview | ImGuiColorEditFlags.NoSmallPreview))
-                    {
-                        seriesConfig.Color = color;
-                        settingsChanged = true;
-                    }
-                    ImGui.EndPopup();
-                }
-                
                 if (ImGui.IsItemHovered())
                 {
-                    ImGui.SetTooltip(hasColor ? "Click to remove color" : "Click to set color");
+                    ImGui.SetTooltip("Series color");
                 }
                 
                 ImGui.SameLine();
@@ -871,19 +961,156 @@ public class ItemGraphTool : ToolComponent
             }
         }
         
-        ImGui.Spacing();
-        
-        if (settings.Series.Count > 0 && ImGui.Button("Clear All"))
-        {
-            settings.Series.Clear();
-            _cacheIsDirty = true;
-            settingsChanged = true;
-        }
-        
         if (settingsChanged)
         {
-            _configService.Save();
+            NotifyToolSettingsChanged();
         }
+    }
+    
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var settings = _instanceSettings;
+        
+        // Serialize series as a list of dictionaries
+        var series = settings.Series.Select(s => new Dictionary<string, object?>
+        {
+            ["Id"] = s.Id,
+            ["CustomName"] = s.CustomName,
+            ["IsCurrency"] = s.IsCurrency,
+            ["Color"] = s.Color.HasValue ? new float[] { s.Color.Value.X, s.Color.Value.Y, s.Color.Value.Z, s.Color.Value.W } : null,
+            ["Width"] = s.Width
+        }).ToList();
+        
+        return new Dictionary<string, object?>
+        {
+            ["Series"] = series,
+            ["IncludeRetainers"] = settings.IncludeRetainers,
+            ["ShowPerCharacter"] = settings.ShowPerCharacter,
+            ["ShowActionButtons"] = settings.ShowActionButtons,
+            ["UseCompactNumbers"] = settings.UseCompactNumbers,
+            
+            // IGraphWidgetSettings properties
+            ["LegendWidth"] = settings.LegendWidth,
+            ["LegendHeightPercent"] = settings.LegendHeightPercent,
+            ["ShowLegend"] = settings.ShowLegend,
+            ["LegendPosition"] = (int)settings.LegendPosition,
+            ["GraphType"] = (int)settings.GraphType,
+            ["ShowXAxisTimestamps"] = settings.ShowXAxisTimestamps,
+            ["ShowCrosshair"] = settings.ShowCrosshair,
+            ["ShowGridLines"] = settings.ShowGridLines,
+            ["ShowCurrentPriceLine"] = settings.ShowCurrentPriceLine,
+            ["ShowValueLabel"] = settings.ShowValueLabel,
+            ["ValueLabelOffsetX"] = settings.ValueLabelOffsetX,
+            ["ValueLabelOffsetY"] = settings.ValueLabelOffsetY,
+            ["AutoScrollEnabled"] = settings.AutoScrollEnabled,
+            ["AutoScrollTimeValue"] = settings.AutoScrollTimeValue,
+            ["AutoScrollTimeUnit"] = (int)settings.AutoScrollTimeUnit,
+            ["AutoScrollNowPosition"] = settings.AutoScrollNowPosition,
+            ["ShowControlsDrawer"] = settings.ShowControlsDrawer,
+            ["TimeRangeValue"] = settings.TimeRangeValue,
+            ["TimeRangeUnit"] = (int)settings.TimeRangeUnit
+        };
+    }
+    
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var target = _instanceSettings;
+        
+        // Import series
+        if (settings.TryGetValue("Series", out var seriesObj) && seriesObj != null)
+        {
+            target.Series.Clear();
+            
+            try
+            {
+                // Handle Newtonsoft.Json JArray (used by ConfigManager)
+                if (seriesObj is Newtonsoft.Json.Linq.JArray jArray)
+                {
+                    foreach (var seriesToken in jArray)
+                    {
+                        if (seriesToken is not Newtonsoft.Json.Linq.JObject seriesJsonObj) continue;
+                        
+                        var item = new ItemColumnConfig
+                        {
+                            Id = seriesJsonObj["Id"]?.ToObject<uint>() ?? 0,
+                            CustomName = seriesJsonObj["CustomName"]?.ToObject<string>(),
+                            IsCurrency = seriesJsonObj["IsCurrency"]?.ToObject<bool>() ?? false,
+                            Width = seriesJsonObj["Width"]?.ToObject<float>() ?? 80f
+                        };
+                        
+                        var colorToken = seriesJsonObj["Color"];
+                        if (colorToken is Newtonsoft.Json.Linq.JArray colorArr && colorArr.Count >= 4)
+                        {
+                            item.Color = new Vector4(
+                                colorArr[0].ToObject<float>(),
+                                colorArr[1].ToObject<float>(),
+                                colorArr[2].ToObject<float>(),
+                                colorArr[3].ToObject<float>());
+                        }
+                        
+                        target.Series.Add(item);
+                    }
+                }
+                // Fallback: Handle System.Text.Json.JsonElement (in case it's used elsewhere)
+                else if (seriesObj is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var seriesJson in jsonElement.EnumerateArray())
+                    {
+                        var item = new ItemColumnConfig
+                        {
+                            Id = seriesJson.TryGetProperty("Id", out var idProp) ? idProp.GetUInt32() : 0,
+                            CustomName = seriesJson.TryGetProperty("CustomName", out var nameProp) && nameProp.ValueKind != System.Text.Json.JsonValueKind.Null ? nameProp.GetString() : null,
+                            IsCurrency = seriesJson.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
+                            Width = seriesJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f
+                        };
+                        
+                        if (seriesJson.TryGetProperty("Color", out var colorProp) && colorProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            var colorArr = colorProp.EnumerateArray().Select(v => v.GetSingle()).ToArray();
+                            if (colorArr.Length >= 4)
+                                item.Color = new Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                        }
+                        
+                        target.Series.Add(item);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[ItemGraphTool] Error importing series: {ex.Message}");
+            }
+        }
+        
+        // Import scalar settings
+        target.IncludeRetainers = GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
+        target.ShowPerCharacter = GetSetting(settings, "ShowPerCharacter", target.ShowPerCharacter);
+        target.ShowActionButtons = GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
+        target.UseCompactNumbers = GetSetting(settings, "UseCompactNumbers", target.UseCompactNumbers);
+        
+        // IGraphWidgetSettings properties
+        target.LegendWidth = GetSetting(settings, "LegendWidth", target.LegendWidth);
+        target.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
+        target.ShowLegend = GetSetting(settings, "ShowLegend", target.ShowLegend);
+        target.LegendPosition = (Widgets.LegendPosition)GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
+        target.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)target.GraphType);
+        target.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
+        target.ShowCrosshair = GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
+        target.ShowGridLines = GetSetting(settings, "ShowGridLines", target.ShowGridLines);
+        target.ShowCurrentPriceLine = GetSetting(settings, "ShowCurrentPriceLine", target.ShowCurrentPriceLine);
+        target.ShowValueLabel = GetSetting(settings, "ShowValueLabel", target.ShowValueLabel);
+        target.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", target.ValueLabelOffsetX);
+        target.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
+        target.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
+        target.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
+        target.AutoScrollTimeUnit = (AutoScrollTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
+        target.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
+        target.TimeRangeValue = GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
+        target.TimeRangeUnit = (TimeRangeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        
+        _cacheIsDirty = true;
     }
     
     public override void Dispose()
