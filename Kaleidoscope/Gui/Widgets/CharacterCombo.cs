@@ -34,7 +34,6 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>
     private readonly HashSet<ulong> _selectedCharacterIds = new();
     private bool _allSelected = true;
     private string _filterText = string.Empty;
-    private bool _multiSelectPopupOpen;
     
     // Special "All" entry
     private static readonly ComboCharacter AllCharacters = new(0, "All Characters", null);
