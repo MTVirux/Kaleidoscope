@@ -20,7 +20,7 @@ public readonly record struct ComboCharacter(ulong Id, string Name, string? Worl
 /// A filtered combo box for selecting characters with favorites support.
 /// Includes an "All Characters" option and supports filtering.
 /// </summary>
-public sealed class CharacterIconCombo : FilterComboCache<ComboCharacter>
+public sealed class CharacterCombo : FilterComboCache<ComboCharacter>
 {
     private readonly FavoritesService _favoritesService;
     private readonly SamplerService _samplerService;
@@ -67,7 +67,7 @@ public sealed class CharacterIconCombo : FilterComboCache<ComboCharacter>
     /// </summary>
     public new event Action<ComboCharacter?, ComboCharacter?>? SelectionChanged;
 
-    public CharacterIconCombo(
+    public CharacterCombo(
         SamplerService samplerService,
         FavoritesService favoritesService,
         ConfigurationService? configService,
@@ -149,7 +149,7 @@ public sealed class CharacterIconCombo : FilterComboCache<ComboCharacter>
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CharacterIconCombo] Error building character list: {ex.Message}");
+            LogService.Debug($"[CharacterCombo] Error building character list: {ex.Message}");
         }
 
         return characters;

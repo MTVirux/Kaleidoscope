@@ -95,7 +95,7 @@ public static class WindowToolRegistrar
                     container.RegisterTool(
                         toolId,
                         definition.DisplayName,
-                        pos => CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, inventoryChangeService),
+                        pos => CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, favoritesService, inventoryChangeService),
                         definition.Description,
                         category);
                 }
@@ -344,11 +344,17 @@ public static class WindowToolRegistrar
         SamplerService samplerService,
         ConfigurationService configService,
         TrackedDataRegistry registry,
+        FavoritesService? favoritesService,
         InventoryChangeService? inventoryChangeService)
     {
         try
         {
-            var component = new DataTrackerComponent(dataType, samplerService, configService, registry, inventoryChangeService);
+            if (favoritesService == null)
+            {
+                LogService.Error($"Cannot create DataTrackerTool for {dataType}: FavoritesService is null");
+                return null;
+            }
+            var component = new DataTrackerComponent(dataType, samplerService, configService, registry, favoritesService, inventoryChangeService);
             return new DataTrackerTool(component, configService) { Position = pos };
         }
         catch (Exception ex)
@@ -629,7 +635,7 @@ public static class WindowToolRegistrar
                 var typeName = id.Substring("DataTracker_".Length);
                 if (Enum.TryParse<TrackedDataType>(typeName, out var dataType))
                 {
-                    return CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, inventoryChangeService);
+                    return CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, favoritesService, inventoryChangeService);
                 }
             }
 

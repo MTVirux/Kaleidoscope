@@ -7,7 +7,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 /// <summary>
 /// Generic helper class for data tracking UI components.
 /// Manages in-memory sample data for display and delegates database operations to KaleidoscopeDbService.
-/// Implements ICharacterDataSource to allow integration with CharacterPickerWidget.
+/// Implements ICharacterDataSource for consistent character data access patterns.
 /// Uses TimeSeriesCacheService for fast reads and background loading to avoid blocking the UI thread.
 /// </summary>
 public class DataTrackerHelper : ICharacterDataSource

@@ -24,7 +24,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.CharacterPicker
         {
             ImGui.TextUnformatted("Character Selection Widget");
             ImGui.Separator();
-            ImGui.TextWrapped("Use CharacterPickerWidget with an ICharacterDataSource for character selection in your tools.");
+            ImGui.TextWrapped("Use CharacterCombo for character selection in your tools.");
             ImGui.Spacing();
             ImGui.TextDisabled("See DataTrackerComponent for example usage.");
         }

@@ -2,8 +2,7 @@ namespace Kaleidoscope.Interfaces;
 
 /// <summary>
 /// Interface for providing character selection data.
-/// Implement this interface to allow components like CharacterPickerWidget
-/// to work with different data sources.
+/// Implement this interface to allow components to work with different data sources.
 /// </summary>
 public interface ICharacterDataSource
 {

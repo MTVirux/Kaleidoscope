@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 public class DataTrackerComponent : IDisposable
 {
     private readonly DataTrackerHelper _helper;
-    private readonly CharacterPickerWidget _characterPicker;
+    private readonly CharacterCombo _characterCombo;
     private readonly ImplotGraphWidget _graphWidget;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
@@ -87,6 +87,7 @@ public class DataTrackerComponent : IDisposable
         SamplerService samplerService,
         ConfigurationService configService,
         TrackedDataRegistry registry,
+        FavoritesService favoritesService,
         InventoryChangeService? inventoryChangeService = null)
     {
         DataType = dataType;
@@ -107,7 +108,9 @@ public class DataTrackerComponent : IDisposable
             ConfigStatic.GilTrackerMaxSamples,
             0f);
 
-        _characterPicker = new CharacterPickerWidget(_helper);
+        // Create character combo with favorites support
+        _characterCombo = new CharacterCombo(samplerService, favoritesService, configService, $"CharacterCombo_{dataType}");
+        _characterCombo.SelectionChanged += OnCharacterSelectionChanged;
 
         // Initialize graph widget using current graph bounds
         var plotId = $"dataplot_{dataType}";
@@ -147,6 +150,22 @@ public class DataTrackerComponent : IDisposable
         {
             _pendingUpdate = true;
         }
+    }
+
+    private void OnCharacterSelectionChanged(ComboCharacter? oldSelection, ComboCharacter? newSelection)
+    {
+        if (newSelection == null) return;
+        
+        if (newSelection.Value.Id == 0)
+        {
+            // "All Characters" selected
+            _helper.LoadAllCharacters();
+        }
+        else
+        {
+            _helper.LoadForCharacter(newSelection.Value.Id);
+        }
+        _pendingUpdate = true;
     }
 
     public bool HasDb => _samplerService.HasDb;
@@ -224,7 +243,10 @@ public class DataTrackerComponent : IDisposable
         // Draw the character picker widget (if not hidden)
         if (!settings.HideCharacterSelector)
         {
-            _characterPicker.Draw();
+            if (_characterCombo.Draw(200))
+            {
+                // Selection changed - handled by OnCharacterSelectionChanged event
+            }
         }
 
         // Update graph display options from settings
@@ -349,6 +371,7 @@ public class DataTrackerComponent : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        _characterCombo.SelectionChanged -= OnCharacterSelectionChanged;
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         if (_inventoryChangeService != null)
         {
