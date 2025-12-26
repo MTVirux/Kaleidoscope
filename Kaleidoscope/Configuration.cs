@@ -293,6 +293,10 @@ public class DataTrackerSettings
     public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     public GraphType GraphType { get; set; } = GraphType.Area;
     
+    // Multi-select character settings
+    public bool MultiSelectEnabled { get; set; } = false;
+    public List<ulong> SelectedCharacterIds { get; set; } = new();
+    
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;

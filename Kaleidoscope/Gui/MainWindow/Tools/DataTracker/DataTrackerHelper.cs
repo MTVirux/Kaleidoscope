@@ -405,6 +405,125 @@ public class DataTrackerHelper : ICharacterDataSource
             LogService.Debug($"[DataTrackerHelper:{DataType}] LoadAllCharacters failed: {ex.Message}");
         }
     }
+    
+    /// <summary>
+    /// Loads aggregated data for a specific subset of characters.
+    /// </summary>
+    /// <param name="characterIds">The character IDs to load data for. If null or empty, loads all characters.</param>
+    public void LoadForCharacters(IReadOnlyList<ulong>? characterIds)
+    {
+        // Handle null/empty as "all characters"
+        if (characterIds == null || characterIds.Count == 0)
+        {
+            LoadAllCharacters();
+            return;
+        }
+        
+        // Single character = simple path
+        if (characterIds.Count == 1)
+        {
+            LoadForCharacter(characterIds[0]);
+            return;
+        }
+        
+        try
+        {
+            // Load data for multiple specific characters
+            var charSet = characterIds.ToHashSet();
+            
+            // Get all points, then filter
+            IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
+            if (_cacheService != null)
+            {
+                allPoints = _cacheService.GetAllCachedPoints(VariableName);
+            }
+            else
+            {
+                allPoints = _dbService.GetAllPoints(VariableName);
+            }
+            
+            // Filter to only requested characters
+            var filteredPoints = allPoints.Where(p => charSet.Contains(p.characterId)).ToList();
+
+            if (filteredPoints.Count == 0)
+            {
+                _samples.Clear();
+                LastValue = 0f;
+                SelectedCharacterId = 0;
+                return;
+            }
+
+            // Group points by character
+            var charPoints = new Dictionary<ulong, List<(DateTime ts, long value)>>();
+            foreach (var (charId, ts, value) in filteredPoints)
+            {
+                if (!charPoints.TryGetValue(charId, out var list))
+                {
+                    list = new List<(DateTime, long)>();
+                    charPoints[charId] = list;
+                }
+                list.Add((ts, value));
+            }
+
+            // Aggregate by timestamp
+            var allTimestamps = new SortedSet<DateTime>();
+            foreach (var kv in charPoints)
+                foreach (var p in kv.Value)
+                    allTimestamps.Add(p.ts);
+
+            var indices = new Dictionary<ulong, int>();
+            var currentValues = new Dictionary<ulong, long>();
+            foreach (var cid in charPoints.Keys)
+            {
+                indices[cid] = 0;
+                currentValues[cid] = 0L;
+            }
+
+            _samples.Clear();
+            var start = Math.Max(0, allTimestamps.Count - _maxSamples);
+            var i = 0;
+            DateTime? firstTs = null;
+            DateTime? lastTs = null;
+
+            foreach (var ts in allTimestamps)
+            {
+                foreach (var kv in charPoints)
+                {
+                    var cid = kv.Key;
+                    var list = kv.Value;
+                    var idx = indices[cid];
+                    while (idx < list.Count && list[idx].ts <= ts)
+                    {
+                        currentValues[cid] = list[idx].value;
+                        idx++;
+                    }
+                    indices[cid] = idx;
+                }
+
+                long sum = 0L;
+                foreach (var v in currentValues.Values) sum += v;
+
+                if (i >= start)
+                {
+                    _samples.Add((float)sum);
+                    firstTs ??= ts;
+                    lastTs = ts;
+                }
+                i++;
+            }
+
+            LastValue = _samples.Count > 0 ? _samples[^1] : 0f;
+            SelectedCharacterId = 0; // Multiple characters = "composite" mode
+            FirstSampleTime = firstTs;
+            LastSampleTime = lastTs;
+            
+            _needsRefresh = false;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTrackerHelper:{DataType}] LoadForCharacters failed: {ex.Message}");
+        }
+    }
 
     #endregion
 
@@ -420,6 +539,17 @@ public class DataTrackerHelper : ICharacterDataSource
             LoadAllCharacters();
         else
             LoadForCharacter(characterId);
+    }
+    
+    /// <summary>
+    /// Selects multiple characters for data loading.
+    /// </summary>
+    /// <param name="characterIds">The character IDs to select. If null or empty, selects all.</param>
+    public void SelectCharacters(IReadOnlyList<ulong>? characterIds)
+    {
+        InvalidateSeriesCache();
+        InvalidateFilteredCache();
+        LoadForCharacters(characterIds);
     }
 
     public string? GetCharacterName(ulong characterId)

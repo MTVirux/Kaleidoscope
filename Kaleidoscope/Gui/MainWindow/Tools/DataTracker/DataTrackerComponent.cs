@@ -111,6 +111,15 @@ public class DataTrackerComponent : IDisposable
         // Create character combo with favorites support
         _characterCombo = new CharacterCombo(samplerService, favoritesService, configService, $"CharacterCombo_{dataType}");
         _characterCombo.SelectionChanged += OnCharacterSelectionChanged;
+        _characterCombo.MultiSelectionChanged += OnMultiSelectionChanged;
+        
+        // Restore multi-select settings from config
+        var settings = GetSettings();
+        _characterCombo.MultiSelectEnabled = settings.MultiSelectEnabled;
+        if (settings.SelectedCharacterIds.Count > 0)
+        {
+            _characterCombo.SetSelection(settings.SelectedCharacterIds);
+        }
 
         // Initialize graph widget using current graph bounds
         var plotId = $"dataplot_{dataType}";
@@ -167,6 +176,24 @@ public class DataTrackerComponent : IDisposable
         }
         _pendingUpdate = true;
     }
+    
+    private void OnMultiSelectionChanged(IReadOnlySet<ulong> selectedIds)
+    {
+        // Load data for selected characters (or all if empty)
+        var idList = selectedIds.Count > 0 ? selectedIds.ToList() : null;
+        _helper.LoadForCharacters(idList);
+        
+        // Save selection to config
+        var settings = GetSettings();
+        settings.SelectedCharacterIds.Clear();
+        if (idList != null)
+        {
+            settings.SelectedCharacterIds.AddRange(idList);
+        }
+        _configService.Save();
+        
+        _pendingUpdate = true;
+    }
 
     public bool HasDb => _samplerService.HasDb;
     
@@ -179,6 +206,14 @@ public class DataTrackerComponent : IDisposable
     /// Sets the hidden series names on the graph widget.
     /// </summary>
     public void SetHiddenSeries(IEnumerable<string>? seriesNames) => _graphWidget.SetHiddenSeries(seriesNames);
+    
+    /// <summary>
+    /// Enables or disables multi-character selection mode.
+    /// </summary>
+    public void SetMultiSelectMode(bool enabled)
+    {
+        _characterCombo.MultiSelectEnabled = enabled;
+    }
 
     public void ClearAllData()
     {
@@ -372,6 +407,7 @@ public class DataTrackerComponent : IDisposable
         _disposed = true;
 
         _characterCombo.SelectionChanged -= OnCharacterSelectionChanged;
+        _characterCombo.MultiSelectionChanged -= OnMultiSelectionChanged;
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         if (_inventoryChangeService != null)
         {

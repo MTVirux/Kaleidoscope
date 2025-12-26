@@ -84,6 +84,15 @@ public class DataTrackerTool : ToolComponent
                 _configService.Save();
             }
             ShowSettingTooltip("Hides the character selection dropdown from the display.", "Off");
+            
+            var multiSelectEnabled = settings.MultiSelectEnabled;
+            if (ImGui.Checkbox("Enable multi-character selection", ref multiSelectEnabled))
+            {
+                settings.MultiSelectEnabled = multiSelectEnabled;
+                _inner.SetMultiSelectMode(multiSelectEnabled);
+                _configService.Save();
+            }
+            ShowSettingTooltip("Allows selecting multiple specific characters instead of just one or all.", "Off");
 
             var showMultipleLines = settings.ShowMultipleLines;
             if (ImGui.Checkbox("Show multiple lines (per character)", ref showMultipleLines))
