@@ -100,7 +100,7 @@ public enum TrackedDataType
 /// </summary>
 public enum TrackedDataCategory
 {
-    Currency,
+    Gil,
     Tomestone,
     Scrip,
     GrandCompany,
@@ -111,5 +111,4 @@ public enum TrackedDataCategory
     Crafting,
     Inventory,
     Retainer,
-    FreeCompanyRetainer
 }

@@ -155,13 +155,12 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
     /// <summary>
     /// Ensures default colors are set for crystal items if not already configured.
-    /// Colors match the CrystalTableTool element colors.
     /// </summary>
     private void EnsureDefaultCrystalColors()
     {
         Config.GameItemColors ??= new Dictionary<uint, uint>();
         
-        // Element colors in ABGR uint format (matching CrystalTableTool.ElementColors)
+        // Element colors in ABGR uint format
         // ABGR format: A << 24 | B << 16 | G << 8 | R
         // Fire: (1.0f, 0.3f, 0.2f, 1.0f) - red/orange → R=255, G=77, B=51, A=255
         // Ice: (0.4f, 0.7f, 1.0f, 1.0f) - light blue → R=102, G=179, B=255, A=255

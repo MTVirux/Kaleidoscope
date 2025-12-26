@@ -256,15 +256,14 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
                         // Track if this is a currency-type change
                         if (_registry.Definitions.TryGetValue(dataType, out var def) &&
-                            def.Category is TrackedDataCategory.Currency or
+                            def.Category is TrackedDataCategory.Gil or
                             TrackedDataCategory.Tomestone or
                             TrackedDataCategory.Scrip or
                             TrackedDataCategory.GrandCompany or
                             TrackedDataCategory.PvP or
                             TrackedDataCategory.Hunt or
                             TrackedDataCategory.GoldSaucer or
-                            TrackedDataCategory.Tribal or
-                            TrackedDataCategory.FreeCompanyRetainer)
+                            TrackedDataCategory.Tribal)
                         {
                             hasCurrencyChange = true;
                         }

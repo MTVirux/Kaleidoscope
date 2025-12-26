@@ -32,7 +32,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Type = TrackedDataType.Gil,
             DisplayName = "Gil",
             ShortName = "Gil",
-            Category = TrackedDataCategory.Currency,
+            Category = TrackedDataCategory.Gil,
             ItemId = 1,
             MaxValue = 999_999_999,
             EnabledByDefault = true,
@@ -391,7 +391,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Type = TrackedDataType.FreeCompanyGil,
             DisplayName = "Free Company Gil",
             ShortName = "FC Gil",
-            Category = TrackedDataCategory.FreeCompanyRetainer,
+            Category = TrackedDataCategory.Gil,
             MaxValue = 999_999_999,
             EnabledByDefault = false,
             Description = "Gil held by your Free Company."
@@ -402,7 +402,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Type = TrackedDataType.RetainerGil,
             DisplayName = "Retainer Gil",
             ShortName = "Ret Gil",
-            Category = TrackedDataCategory.FreeCompanyRetainer,
+            Category = TrackedDataCategory.Gil,
             MaxValue = 999_999_999,
             EnabledByDefault = false,
             Description = "Gil held by your retainers."
