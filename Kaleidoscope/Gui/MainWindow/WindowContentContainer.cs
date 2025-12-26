@@ -202,6 +202,86 @@ public class WindowContentContainer
             return true;
         }
 
+        /// <summary>
+        /// Duplicates a tool by creating a new instance with the same settings.
+        /// </summary>
+        /// <param name="source">The tool to duplicate.</param>
+        private void DuplicateTool(ToolComponent source)
+        {
+            // Find the registration for this tool
+            var registration = _toolRegistry.FirstOrDefault(r => r.Id == source.Id);
+            if (registration == null)
+            {
+                LogService.Debug($"DuplicateTool: no registration found for tool id='{source.Id}'");
+                return;
+            }
+
+            // Create a new instance via the factory
+            var offset = new Vector2(20, 20); // Offset so the duplicate doesn't overlap exactly
+            var newTool = registration.Factory(source.Position + offset);
+            if (newTool == null)
+            {
+                LogService.Debug($"DuplicateTool: factory returned null for tool id='{source.Id}'");
+                return;
+            }
+
+            // Set the new tool's Id to match the registration
+            newTool.Id = registration.Id;
+
+            // Copy visual properties
+            newTool.Size = source.Size;
+            newTool.Visible = source.Visible;
+            newTool.BackgroundEnabled = source.BackgroundEnabled;
+            newTool.HeaderVisible = source.HeaderVisible;
+            newTool.OutlineEnabled = source.OutlineEnabled;
+            newTool.BackgroundColor = source.BackgroundColor;
+
+            // Copy grid coordinates (offset by position already)
+            newTool.GridCol = source.GridCol + (offset.X / (source.Size.X / source.GridColSpan));
+            newTool.GridRow = source.GridRow + (offset.Y / (source.Size.Y / source.GridRowSpan));
+            newTool.GridColSpan = source.GridColSpan;
+            newTool.GridRowSpan = source.GridRowSpan;
+            newTool.HasGridCoords = source.HasGridCoords;
+
+            // Copy custom title (with " (Copy)" suffix if set)
+            if (!string.IsNullOrWhiteSpace(source.CustomTitle))
+            {
+                newTool.CustomTitle = source.CustomTitle + " (Copy)";
+            }
+
+            // Copy tool-specific settings
+            var toolSettings = source.ExportToolSettings();
+            LogService.Debug($"DuplicateTool: exported {toolSettings?.Count ?? 0} settings from source tool");
+            if (toolSettings?.Count > 0)
+            {
+                newTool.ImportToolSettings(toolSettings);
+                LogService.Debug($"DuplicateTool: imported settings to new tool");
+            }
+
+            // Handle hidden series for specific tool types
+            if (source is Tools.DataTracker.DataTrackerTool sourceDataTracker && 
+                newTool is Tools.DataTracker.DataTrackerTool newDataTracker)
+            {
+                var hiddenSeries = sourceDataTracker.HiddenSeries;
+                if (hiddenSeries?.Count > 0)
+                {
+                    newDataTracker.SetHiddenSeries(hiddenSeries);
+                }
+            }
+            else if (source is Tools.CrystalTracker.CrystalTrackerTool sourceCrystalTracker && 
+                     newTool is Tools.CrystalTracker.CrystalTrackerTool newCrystalTracker)
+            {
+                var hiddenSeries = sourceCrystalTracker.HiddenSeries;
+                if (hiddenSeries?.Count > 0)
+                {
+                    newCrystalTracker.SetHiddenSeries(hiddenSeries);
+                }
+            }
+
+            AddTool(newTool);
+            LogService.Debug($"DuplicateTool: duplicated tool id='{source.Id}'");
+        }
+
         public WindowContentContainer(Func<float>? getCellWidthPercent = null, Func<float>? getCellHeightPercent = null, Func<int>? getSubdivisions = null)
         {
             _getCellWidthPercent = getCellWidthPercent ?? (() => 25f);
@@ -443,6 +523,11 @@ public class WindowContentContainer
 
                     if (match != null)
                     {
+                        // Ensure the Id is set from the layout entry for future lookups
+                        if (!string.IsNullOrWhiteSpace(entry.Id))
+                        {
+                            match.Id = entry.Id;
+                        }
                         match.Position = entry.Position;
                         match.Size = entry.Size;
                         match.Visible = entry.Visible;
@@ -488,6 +573,7 @@ public class WindowContentContainer
                             var created = reg.Factory(entry.Position);
                             if (created != null)
                             {
+                                created.Id = reg.Id;
                                 created.Position = entry.Position;
                                 created.Size = entry.Size;
                                 created.Visible = entry.Visible;
@@ -542,6 +628,7 @@ public class WindowContentContainer
                                 if (cand == null) continue;
                                 if (cand.GetType().FullName == entry.Type)
                                 {
+                                    cand.Id = candReg.Id;
                                     cand.Position = entry.Position;
                                     cand.Size = entry.Size;
                                     cand.Visible = entry.Visible;
@@ -620,6 +707,7 @@ public class WindowContentContainer
                                     var inst = Activator.CreateInstance(found) as ToolComponent;
                                     if (inst != null)
                                     {
+                                        inst.Id = entry.Id;
                                         inst.Position = entry.Position;
                                         inst.Size = entry.Size;
                                         inst.Visible = entry.Visible;
@@ -883,6 +971,8 @@ public class WindowContentContainer
                                                 var tool = reg.Factory(_lastContextClickRel);
                                                 if (tool != null)
                                                 {
+                                                    // Set the tool's Id to match the registration so it can be duplicated/found later
+                                                    tool.Id = reg.Id;
                                                     try
                                                     {
                                                         var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
@@ -1450,6 +1540,20 @@ public class WindowContentContainer
                             _renameToolIndex = _contextToolIndex;
                             _renameBuffer = t.CustomTitle ?? t.Title ?? "";
                             _renamePopupOpen = true;
+                        }
+                        
+                        // Duplicate option
+                        if (ImGui.MenuItem("Duplicate"))
+                        {
+                            try
+                            {
+                                DuplicateTool(t);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Error("Failed to duplicate tool", ex);
+                            }
+                            ImGui.CloseCurrentPopup();
                         }
                         
                         ImGui.Separator();
