@@ -31,6 +31,12 @@ public abstract class ToolComponent : IDisposable
     protected void NotifyToolSettingsChanged() => OnToolSettingsChanged?.Invoke();
     
     /// <summary>
+    /// The inherent name of this tool type (e.g., "Data Table", "Data Graph").
+    /// This should not change based on user customization or presets.
+    /// </summary>
+    public virtual string ToolName => "Tool";
+    
+    /// <summary>
     /// The default title for this tool type.
     /// </summary>
     public string Title { get; set; } = "Tool";
@@ -60,7 +66,7 @@ public abstract class ToolComponent : IDisposable
     public float GridRowSpan { get; set; } = 4f;
     public bool HasGridCoords { get; set; } = false;
 
-    public abstract void DrawContent();
+    public abstract void RenderToolContent();
 
     /// <summary>
     /// Gets whether this tool has settings to display.
