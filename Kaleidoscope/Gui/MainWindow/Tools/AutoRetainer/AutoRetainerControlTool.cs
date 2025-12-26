@@ -10,6 +10,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// </summary>
 public class AutoRetainerControlTool : ToolComponent
 {
+    public override string ToolName => "AutoRetainer Control";
+
     private readonly AutoRetainerIpcService? _autoRetainerIpc;
 
     // Default colors (static for reference)
@@ -83,7 +85,7 @@ public class AutoRetainerControlTool : ToolComponent
         Size = new Vector2(350, 450);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {

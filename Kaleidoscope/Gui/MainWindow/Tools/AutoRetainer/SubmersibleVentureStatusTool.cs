@@ -9,6 +9,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// </summary>
 public class SubmersibleVentureStatusTool : ToolComponent
 {
+    public override string ToolName => "Submersible Voyage Status";
+
     private readonly AutoRetainerIpcService? _autoRetainerIpc;
     private readonly ConfigurationService? _configService;
 
@@ -77,7 +79,7 @@ public class SubmersibleVentureStatusTool : ToolComponent
         return TimeSeriesCacheService.FormatName(character.Name, format) ?? character.Name;
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {

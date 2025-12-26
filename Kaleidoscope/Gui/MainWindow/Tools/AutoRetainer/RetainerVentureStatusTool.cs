@@ -23,6 +23,8 @@ public enum VentureSortOrder
 /// </summary>
 public class RetainerVentureStatusTool : ToolComponent
 {
+    public override string ToolName => "Retainer Venture Status";
+
     private readonly AutoRetainerIpcService? _autoRetainerIpc;
     private readonly ConfigurationService? _configService;
 
@@ -91,7 +93,7 @@ public class RetainerVentureStatusTool : ToolComponent
         return TimeSeriesCacheService.FormatName(character.Name, format) ?? character.Name;
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
