@@ -138,7 +138,7 @@ public class SamplerCategory
     {
         return category switch
         {
-            TrackedDataCategory.Currency => "Currency",
+            TrackedDataCategory.Gil => "Gil",
             TrackedDataCategory.Tomestone => "Tomestones",
             TrackedDataCategory.Scrip => "Scrips",
             TrackedDataCategory.GrandCompany => "Grand Company",
@@ -148,7 +148,6 @@ public class SamplerCategory
             TrackedDataCategory.Tribal => "Tribal / FATE",
             TrackedDataCategory.Crafting => "Crafting / Gathering",
             TrackedDataCategory.Inventory => "Inventory",
-            TrackedDataCategory.FreeCompanyRetainer => "FC / Retainer",
             _ => category.ToString()
         };
     }

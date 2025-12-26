@@ -37,8 +37,8 @@ public sealed class ConfigWindow : Window
     private UniversalisCategory? _universalisCategory;
     private ProfilerCategory? _profilerCategory;
     private CharactersCategory? _charactersCategory;
-    private ItemsCategory? _currenciesCategory;
-    private GameItemsCategory? _gameItemsCategory;
+    private CurrenciesCategory? _currenciesCategory;
+    private ItemsCategory? _itemsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -131,8 +131,8 @@ public sealed class ConfigWindow : Window
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
         _profilerCategory = new ProfilerCategory(_profilerService, _configService, _samplerService);
         _charactersCategory = new CharactersCategory(_samplerService, _samplerService.CacheService, _configService, _arIpc);
-        _currenciesCategory = new ItemsCategory(_configService, _registry);
-        _gameItemsCategory = new GameItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService);
+        _currenciesCategory = new CurrenciesCategory(_configService, _registry);
+        _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _samplerService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -210,7 +210,7 @@ public sealed class ConfigWindow : Window
                 _currenciesCategory?.Draw();
                 break;
             case TabIndex.GameItems:
-                _gameItemsCategory?.Draw();
+                _itemsCategory?.Draw();
                 break;
             case TabIndex.Sampler:
                 _samplerCategory?.Draw();

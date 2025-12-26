@@ -253,11 +253,6 @@ public class Configuration : IPluginConfiguration
     /// Settings for the Top Items tool.
     /// </summary>
     public TopItemsSettings TopItems { get; set; } = new();
-
-    /// <summary>
-    /// Settings for the Crystal Table tool.
-    /// </summary>
-    public CrystalTableSettings CrystalTable { get; set; } = new();
     
     /// <summary>
     /// Settings for the Item Table tool.
@@ -429,82 +424,6 @@ public class CrystalTrackerSettings
 }
 
 /// <summary>
-/// Settings for the Crystal Table tool.
-/// </summary>
-public class CrystalTableSettings
-{
-    /// <summary>
-    /// If true, show columns grouped by element (Fire, Ice, etc.).
-    /// </summary>
-    public bool GroupByElement { get; set; } = true;
-
-    /// <summary>
-    /// If true, show columns grouped by tier (Shard, Crystal, Cluster).
-    /// When both GroupByElement and GroupByTier are true, shows detailed element×tier breakdown.
-    /// </summary>
-    public bool GroupByTier { get; set; } = false;
-
-    /// <summary>
-    /// Show a total row at the bottom summing all characters.
-    /// </summary>
-    public bool ShowTotalRow { get; set; } = true;
-
-    /// <summary>
-    /// Colorize element values using their characteristic colors.
-    /// </summary>
-    public bool ColorizeByElement { get; set; } = true;
-
-    /// <summary>
-    /// Allow sorting by clicking column headers.
-    /// </summary>
-    public bool Sortable { get; set; } = true;
-
-    /// <summary>
-    /// In detailed mode, if true sort columns by element first (Fi-Sha, Fi-Cry, Fi-Clu, Ic-Sha...).
-    /// If false, sort by tier first (Fi-Sha, Ic-Sha, Wi-Sha..., Fi-Cry, Ic-Cry...).
-    /// </summary>
-    public bool SortColumnsByElement { get; set; } = true;
-
-    // Element visibility filters
-    public bool ShowFire { get; set; } = true;
-    public bool ShowIce { get; set; } = true;
-    public bool ShowWind { get; set; } = true;
-    public bool ShowEarth { get; set; } = true;
-    public bool ShowLightning { get; set; } = true;
-    public bool ShowWater { get; set; } = true;
-
-    // Tier visibility filters
-    public bool ShowShards { get; set; } = true;
-    public bool ShowCrystals { get; set; } = true;
-    public bool ShowClusters { get; set; } = true;
-
-    /// <summary>
-    /// Returns whether the specified element index is visible.
-    /// </summary>
-    public bool IsElementVisible(int elementIndex) => elementIndex switch
-    {
-        0 => ShowFire,
-        1 => ShowIce,
-        2 => ShowWind,
-        3 => ShowEarth,
-        4 => ShowLightning,
-        5 => ShowWater,
-        _ => true
-    };
-
-    /// <summary>
-    /// Returns whether the specified tier index is visible.
-    /// </summary>
-    public bool IsTierVisible(int tierIndex) => tierIndex switch
-    {
-        0 => ShowShards,
-        1 => ShowCrystals,
-        2 => ShowClusters,
-        _ => true
-    };
-}
-
-/// <summary>
 /// Settings for the Item Table tool.
 /// Implements IItemTableWidgetSettings for automatic widget binding.
 /// </summary>
@@ -554,16 +473,6 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// Whether to show the action buttons row (Add Item, Add Currency, Refresh).
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
-    
-    /// <summary>
-    /// Whether to automatically refresh data.
-    /// </summary>
-    public bool AutoRefresh { get; set; } = true;
-    
-    /// <summary>
-    /// Auto-refresh interval in seconds.
-    /// </summary>
-    public float RefreshIntervalSeconds { get; set; } = 5f;
     
     /// <summary>
     /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
