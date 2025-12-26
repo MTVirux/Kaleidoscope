@@ -369,7 +369,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>
         }
         
         // Draw popup
-        ImGui.SetNextWindowSizeConstraints(new Vector2(250, 150), new Vector2(400, 400));
+        ImGui.SetNextWindowSizeConstraints(new Vector2(280, 200), new Vector2(400, 800));
         if (ImGui.BeginPopup(popupId))
         {
             changed = DrawMultiSelectPopupContent();

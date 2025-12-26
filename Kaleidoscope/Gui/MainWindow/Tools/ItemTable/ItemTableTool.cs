@@ -758,7 +758,9 @@ public class ItemTableTool : ToolComponent
             ["HiddenCharacters"] = settings.HiddenCharacters.ToList(),
             ["GroupingMode"] = (int)settings.GroupingMode,
             ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
-            ["TextColorMode"] = (int)settings.TextColorMode
+            ["TextColorMode"] = (int)settings.TextColorMode,
+            ["UseCharacterFilter"] = settings.UseCharacterFilter,
+            ["SelectedCharacterIds"] = settings.SelectedCharacterIds.ToList()
         };
     }
     
@@ -899,6 +901,29 @@ public class ItemTableTool : ToolComponent
         // Import text color mode
         target.TextColorMode = (Widgets.TableTextColorMode)GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
         
+        // Import character filter settings
+        target.UseCharacterFilter = GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);
+        var selectedIds = ImportUlongList(settings, "SelectedCharacterIds");
+        if (selectedIds != null)
+        {
+            target.SelectedCharacterIds.Clear();
+            target.SelectedCharacterIds.AddRange(selectedIds);
+        }
+        
+        // Update CharacterCombo to reflect imported settings
+        if (_characterCombo != null)
+        {
+            _characterCombo.MultiSelectEnabled = true;
+            if (target.UseCharacterFilter && target.SelectedCharacterIds.Count > 0)
+            {
+                _characterCombo.SetSelection(target.SelectedCharacterIds);
+            }
+            else
+            {
+                _characterCombo.SelectAll();
+            }
+        }
+        
         _pendingRefresh = true;
     }
     
@@ -957,6 +982,44 @@ public class ItemTableTool : ToolComponent
             if (value is System.Collections.IEnumerable enumerable)
             {
                 var result = new HashSet<ulong>();
+                foreach (var item in enumerable)
+                {
+                    if (item is ulong ul)
+                        result.Add(ul);
+                    else if (item is long l)
+                        result.Add((ulong)l);
+                    else if (ulong.TryParse(item?.ToString(), out var parsed))
+                        result.Add(parsed);
+                }
+                return result;
+            }
+        }
+        catch { }
+        
+        return null;
+    }
+    
+    private static List<ulong>? ImportUlongList(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+        
+        try
+        {
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                return jArray.Select(v => v.ToObject<ulong>()).ToList();
+            }
+            // Handle List<ulong> directly
+            if (value is List<ulong> list)
+            {
+                return new List<ulong>(list);
+            }
+            // Handle IEnumerable<object>
+            if (value is System.Collections.IEnumerable enumerable)
+            {
+                var result = new List<ulong>();
                 foreach (var item in enumerable)
                 {
                     if (item is ulong ul)
