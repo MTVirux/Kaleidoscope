@@ -91,13 +91,17 @@ public class CharactersCategory
             {
                 ImGui.TableNextRow();
 
-                // CID column
+                // CID column - clickable to copy to clipboard
                 ImGui.TableNextColumn();
-                ImGui.TextUnformatted(cid.ToString());
+                var cidStr = cid.ToString();
+                if (ImGui.Selectable(cidStr, false, ImGuiSelectableFlags.None, new Vector2(0, 0)))
+                {
+                    ImGui.SetClipboardText(cidStr);
+                }
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.BeginTooltip();
-                    ImGui.TextUnformatted("Content ID (unique identifier)");
+                    ImGui.TextUnformatted("Content ID (unique identifier)\nClick to copy to clipboard");
                     ImGui.EndTooltip();
                 }
 

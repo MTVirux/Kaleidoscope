@@ -265,6 +265,11 @@ public class Configuration : IPluginConfiguration
     public ItemGraphSettings ItemGraph { get; set; } = new();
 
     /// <summary>
+    /// User-created tool presets for quick tool configuration.
+    /// </summary>
+    public List<UserToolPreset> UserToolPresets { get; set; } = new();
+
+    /// <summary>
     /// Settings for the time-series in-memory cache.
     /// </summary>
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
@@ -589,6 +594,11 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// </summary>
     public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
         Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
+    
+    /// <summary>
+    /// Settings for special grouping filters (unlocked when specific item combinations are selected).
+    /// </summary>
+    public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
 }
 
 /// <summary>
@@ -738,4 +748,45 @@ public class ToolLayoutState
     /// Each tool type can store its own settings here for instance-specific persistence.
     /// </summary>
     public Dictionary<string, object?> ToolSettings { get; set; } = new();
+}
+
+/// <summary>
+/// User-created tool preset for saving and loading tool configurations.
+/// </summary>
+public class UserToolPreset
+{
+    /// <summary>
+    /// Unique identifier for this preset.
+    /// </summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    
+    /// <summary>
+    /// User-defined name for this preset.
+    /// </summary>
+    public string Name { get; set; } = "New Preset";
+    
+    /// <summary>
+    /// The tool type ID (e.g., "DataTable", "DataGraph") this preset applies to.
+    /// </summary>
+    public string ToolType { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Optional description of what this preset contains.
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Date/time when this preset was created.
+    /// </summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    /// <summary>
+    /// Date/time when this preset was last modified.
+    /// </summary>
+    public DateTime ModifiedAt { get; set; } = DateTime.UtcNow;
+    
+    /// <summary>
+    /// The serialized tool settings. Uses the same format as ToolLayoutState.ToolSettings.
+    /// </summary>
+    public Dictionary<string, object?> Settings { get; set; } = new();
 }

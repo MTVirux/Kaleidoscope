@@ -1,5 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
+using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -14,6 +16,11 @@ public class CurrenciesCategory
 {
     private readonly ConfigurationService _configService;
     private readonly TrackedDataRegistry _registry;
+    private readonly ITextureProvider? _textureProvider;
+    private readonly ItemDataService? _itemDataService;
+    
+    // Icon size for currency icons
+    private static float IconSize => ImGui.GetTextLineHeight();
     
     // Color editing state
     private TrackedDataType? _editingColorType = null;
@@ -38,10 +45,16 @@ public class CurrenciesCategory
     private static string GetCategoryDisplayName(TrackedDataCategory category)
         => CategoryDisplayNames.TryGetValue(category, out var name) ? name : category.ToString();
 
-    public CurrenciesCategory(ConfigurationService configService, TrackedDataRegistry registry)
+    public CurrenciesCategory(
+        ConfigurationService configService, 
+        TrackedDataRegistry registry,
+        ITextureProvider? textureProvider = null,
+        ItemDataService? itemDataService = null)
     {
         _configService = configService;
         _registry = registry;
+        _textureProvider = textureProvider;
+        _itemDataService = itemDataService;
     }
 
     public void Draw()
@@ -71,24 +84,10 @@ public class CurrenciesCategory
             return;
         }
 
-        // Categories that represent actual currencies (exclude items like crystals)
-        var currencyCategories = new HashSet<TrackedDataCategory>
-        {
-            TrackedDataCategory.Gil,
-            TrackedDataCategory.Tomestone,
-            TrackedDataCategory.Scrip,
-            TrackedDataCategory.GrandCompany,
-            TrackedDataCategory.PvP,
-            TrackedDataCategory.Hunt,
-            TrackedDataCategory.GoldSaucer,
-            TrackedDataCategory.Tribal,
-        };
-
-        // Filter to currency categories only, then apply search filter
-        var currencyDefinitions = definitions.Values.Where(d => currencyCategories.Contains(d.Category));
+        // Apply search filter
         var filteredDefinitions = string.IsNullOrWhiteSpace(_searchFilter)
-            ? currencyDefinitions
-            : currencyDefinitions.Where(d => 
+            ? definitions.Values
+            : definitions.Values.Where(d => 
                 d.DisplayName.Contains(_searchFilter, StringComparison.OrdinalIgnoreCase) ||
                 d.Category.ToString().Contains(_searchFilter, StringComparison.OrdinalIgnoreCase) ||
                 (d.Description?.Contains(_searchFilter, StringComparison.OrdinalIgnoreCase) ?? false));
@@ -111,13 +110,17 @@ public class CurrenciesCategory
         var availableHeight = ImGui.GetContentRegionAvail().Y - 30;
         if (availableHeight < 100) availableHeight = 100;
 
-        if (ImGui.BeginTable("ItemColorsTable", 4, tableFlags, new Vector2(0, availableHeight)))
+        // Account for scrollbar width in fixed columns
+        var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
+        
+        if (ImGui.BeginTable("ItemColorsTable", 5, tableFlags, new Vector2(0, availableHeight)))
         {
             // Setup columns
             ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 100);
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, IconSize + 4);
             ImGui.TableSetupColumn("Currency", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 40);
+            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 55 + scrollbarWidth);
             ImGui.TableSetupScrollFreeze(0, 1);
             ImGui.TableHeadersRow();
 
@@ -141,6 +144,10 @@ public class CurrenciesCategory
                     // Category column
                     ImGui.TableNextColumn();
                     ImGui.TextUnformatted(GetCategoryDisplayName(categoryGroup.Key));
+
+                    // Icon column
+                    ImGui.TableNextColumn();
+                    DrawCurrencyIcon(definition);
 
                     // Item name column
                     ImGui.TableNextColumn();
@@ -310,5 +317,35 @@ public class CurrenciesCategory
         var b = (uint)(Math.Clamp(color.Z, 0f, 1f) * 255f);
         var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
         return r | (g << 8) | (b << 16) | (a << 24);
+    }
+
+    private void DrawCurrencyIcon(TrackedDataDefinition definition)
+    {
+        if (_textureProvider == null || _itemDataService == null || !definition.ItemId.HasValue)
+        {
+            ImGui.Dummy(new Vector2(IconSize));
+            return;
+        }
+
+        try
+        {
+            var iconId = _itemDataService.GetItemIconId(definition.ItemId.Value);
+            if (iconId > 0)
+            {
+                var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                {
+                    ImGui.Image(wrap.Handle, new Vector2(IconSize));
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors - use placeholder
+        }
+
+        // Placeholder if icon not loaded
+        ImGui.Dummy(new Vector2(IconSize));
     }
 }

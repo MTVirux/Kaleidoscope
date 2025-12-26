@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
@@ -20,6 +21,9 @@ public class ItemsCategory
     private readonly FavoritesService? _favoritesService;
     private readonly SamplerService? _samplerService;
     
+    // Icon size for item icons
+    private static float IconSize => ImGui.GetTextLineHeight();
+    
     // Color editing state
     private uint? _editingColorItemId = null;
     private Vector4 _colorEditBuffer = Vector4.One;
@@ -29,10 +33,10 @@ public class ItemsCategory
     private string _trackedItemsSearchFilter = string.Empty;
     
     // Item picker for adding new items (for colors section)
-    private readonly ItemIconCombo? _itemCombo;
+    private readonly ItemComboDropdown? _itemCombo;
     
     // Item picker for tracking items (for tracked items section)
-    private readonly ItemIconCombo? _trackItemCombo;
+    private readonly ItemComboDropdown? _trackItemCombo;
     
     // Cached item names for display
     private readonly Dictionary<uint, string> _itemNameCache = new();
@@ -55,7 +59,7 @@ public class ItemsCategory
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
         {
-            _itemCombo = new ItemIconCombo(
+            _itemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -63,7 +67,7 @@ public class ItemsCategory
                 "GameItemsAdd",
                 marketableOnly: false);
             
-            _trackItemCombo = new ItemIconCombo(
+            _trackItemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -172,13 +176,17 @@ public class ItemsCategory
         uint? itemToDelete = null;
         uint? itemToDeleteHistory = null;
         
-        if (ImGui.BeginTable("TrackedItemsTable", 5, tableFlags, new Vector2(0, availableHeight)))
+        // Account for scrollbar width in fixed columns
+        var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
+        
+        if (ImGui.BeginTable("TrackedItemsTable", 6, tableFlags, new Vector2(0, availableHeight)))
         {
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, IconSize + 4);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("In use by", ImGuiTableColumnFlags.WidthFixed, 80);
             ImGui.TableSetupColumn("Store History", ImGuiTableColumnFlags.WidthFixed, 90);
             ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 70);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 100);
+            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 100 + scrollbarWidth);
             ImGui.TableSetupScrollFreeze(0, 1);
             ImGui.TableHeadersRow();
 
@@ -186,6 +194,10 @@ public class ItemsCategory
             {
                 ImGui.TableNextRow();
                 ImGui.PushID((int)info.ItemId);
+
+                // Icon column
+                ImGui.TableNextColumn();
+                DrawItemIcon(info.ItemId);
 
                 // Item name column
                 ImGui.TableNextColumn();
@@ -284,7 +296,7 @@ public class ItemsCategory
         
         if (_trackItemCombo != null)
         {
-            if (_trackItemCombo.Draw(_trackItemCombo.SelectedItem?.Name ?? "Select item to track...", _trackItemCombo.SelectedItemId, 300, 300))
+            if (_trackItemCombo.Draw(300))
             {
                 if (_trackItemCombo.SelectedItemId > 0)
                 {
@@ -476,13 +488,17 @@ public class ItemsCategory
         var availableHeight = ImGui.GetContentRegionAvail().Y - 30;
         if (availableHeight < 100) availableHeight = 100;
 
-        if (ImGui.BeginTable("GameItemColorsTable", 4, tableFlags, new Vector2(0, availableHeight)))
+        // Account for scrollbar width in fixed columns
+        var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
+        
+        if (ImGui.BeginTable("GameItemColorsTable", 5, tableFlags, new Vector2(0, availableHeight)))
         {
             // Setup columns
             ImGui.TableSetupColumn("ID", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.DefaultSort, 60);
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize | ImGuiTableColumnFlags.NoSort, IconSize + 4);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 40);
+            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 55 + scrollbarWidth);
             ImGui.TableSetupScrollFreeze(0, 1);
             ImGui.TableHeadersRow();
 
@@ -498,7 +514,7 @@ public class ItemsCategory
                 sortedItems = spec.ColumnIndex switch
                 {
                     0 => ascending ? filteredItems.OrderBy(id => id) : filteredItems.OrderByDescending(id => id),
-                    1 => ascending ? filteredItems.OrderBy(id => GetItemName(id)) : filteredItems.OrderByDescending(id => GetItemName(id)),
+                    2 => ascending ? filteredItems.OrderBy(id => GetItemName(id)) : filteredItems.OrderByDescending(id => GetItemName(id)),
                     _ => filteredItems.OrderBy(id => GetItemName(id))
                 };
             }
@@ -512,9 +528,17 @@ public class ItemsCategory
             {
                 ImGui.TableNextRow();
 
-                // ID column
+                // ID column (centered)
                 ImGui.TableNextColumn();
-                ImGui.TextDisabled($"{itemId}");
+                var idText = $"{itemId}";
+                var idTextWidth = ImGui.CalcTextSize(idText).X;
+                var columnWidth = ImGui.GetContentRegionAvail().X;
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (columnWidth - idTextWidth) * 0.5f);
+                ImGui.TextDisabled(idText);
+
+                // Icon column
+                ImGui.TableNextColumn();
+                DrawItemIcon(itemId);
 
                 // Item name column
                 ImGui.TableNextColumn();
@@ -549,7 +573,7 @@ public class ItemsCategory
         
         if (_itemCombo != null)
         {
-            if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item to add...", _itemCombo.SelectedItemId, 300, 300))
+            if (_itemCombo.Draw(300))
             {
                 // Item selected - add it with a default white color
                 if (_itemCombo.SelectedItemId > 0)
@@ -690,5 +714,35 @@ public class ItemsCategory
         var b = (uint)(Math.Clamp(color.Z, 0f, 1f) * 255f);
         var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
         return r | (g << 8) | (b << 16) | (a << 24);
+    }
+
+    private void DrawItemIcon(uint itemId)
+    {
+        if (_textureProvider == null || _itemDataService == null)
+        {
+            ImGui.Dummy(new Vector2(IconSize));
+            return;
+        }
+
+        try
+        {
+            var iconId = _itemDataService.GetItemIconId(itemId);
+            if (iconId > 0)
+            {
+                var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                {
+                    ImGui.Image(wrap.Handle, new Vector2(IconSize));
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors - use placeholder
+        }
+
+        // Placeholder if icon not loaded
+        ImGui.Dummy(new Vector2(IconSize));
     }
 }

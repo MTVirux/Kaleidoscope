@@ -39,6 +39,7 @@ public sealed class ConfigWindow : Window
     private CharactersCategory? _charactersCategory;
     private CurrenciesCategory? _currenciesCategory;
     private ItemsCategory? _itemsCategory;
+    private ToolPresetsCategory? _toolPresetsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -48,13 +49,14 @@ public sealed class ConfigWindow : Window
         public const int General = 0;
         public const int Data = 1;
         public const int Characters = 2;
-        public const int Currencies = 3;
-        public const int GameItems = 4;
+        public const int GameItems = 3;
+        public const int Currencies = 4;
         public const int Sampler = 5;
         public const int Layouts = 6;
-        public const int Windows = 7;
-        public const int Universalis = 8;
-        public const int Profiler = 9; // Hidden tab, only shown with CTRL+ALT
+        public const int ToolPresets = 7;
+        public const int Windows = 8;
+        public const int Universalis = 9;
+        public const int Profiler = 10; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -131,8 +133,9 @@ public sealed class ConfigWindow : Window
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
         _profilerCategory = new ProfilerCategory(_profilerService, _configService, _samplerService);
         _charactersCategory = new CharactersCategory(_samplerService, _samplerService.CacheService, _configService, _arIpc);
-        _currenciesCategory = new CurrenciesCategory(_configService, _registry);
+        _currenciesCategory = new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService);
         _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _samplerService);
+        _toolPresetsCategory = new ToolPresetsCategory(_configService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -175,10 +178,11 @@ public sealed class ConfigWindow : Window
         if (ImGui.Selectable("General", _selectedTab == TabIndex.General)) _selectedTab = TabIndex.General;
         if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
         if (ImGui.Selectable("Characters", _selectedTab == TabIndex.Characters)) _selectedTab = TabIndex.Characters;
-        if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
         if (ImGui.Selectable("Items", _selectedTab == TabIndex.GameItems)) _selectedTab = TabIndex.GameItems;
+        if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
         if (ImGui.Selectable("Sampler", _selectedTab == TabIndex.Sampler)) _selectedTab = TabIndex.Sampler;
         if (ImGui.Selectable("Layouts", _selectedTab == TabIndex.Layouts)) _selectedTab = TabIndex.Layouts;
+        if (ImGui.Selectable("Tool Presets", _selectedTab == TabIndex.ToolPresets)) _selectedTab = TabIndex.ToolPresets;
         if (ImGui.Selectable("Windows", _selectedTab == TabIndex.Windows)) _selectedTab = TabIndex.Windows;
         if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
         
@@ -217,6 +221,9 @@ public sealed class ConfigWindow : Window
                 break;
             case TabIndex.Layouts:
                 _layoutsCategory?.Draw();
+                break;
+            case TabIndex.ToolPresets:
+                _toolPresetsCategory?.Draw();
                 break;
             case TabIndex.Windows:
                 _windowsCategory?.Draw();
