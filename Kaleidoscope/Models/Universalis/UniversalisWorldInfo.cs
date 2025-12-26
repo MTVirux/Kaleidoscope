@@ -77,13 +77,13 @@ public sealed class UniversalisWorldData
         return Worlds.FirstOrDefault(w => w.Id == worldId)?.Name;
     }
 
-    /// <summary>Gets world ID by name.</summary>
+    /// <summary>Gets world ID by name (case-insensitive).</summary>
     public int? GetWorldId(string worldName)
     {
-        return Worlds.FirstOrDefault(w => w.Name == worldName)?.Id;
+        return Worlds.FirstOrDefault(w => string.Equals(w.Name, worldName, StringComparison.OrdinalIgnoreCase))?.Id;
     }
     
-    /// <summary>Gets data center for a world by world name.</summary>
+    /// <summary>Gets data center for a world by world name (case-insensitive).</summary>
     public UniversalisDataCenter? GetDataCenterForWorld(string worldName)
     {
         var worldId = GetWorldId(worldName);
