@@ -1635,39 +1635,6 @@ public class ItemTableWidget : ISettingsProvider
             changed = true;
         }
         
-        var includeRetainers = settings.IncludeRetainers;
-        if (ImGui.Checkbox("Include retainer inventory", ref includeRetainers))
-        {
-            settings.IncludeRetainers = includeRetainers;
-            changed = true;
-        }
-        
-        // Grouping mode
-        var groupingMode = (int)settings.GroupingMode;
-        ImGui.SetNextItemWidth(150);
-        if (ImGui.Combo("Group By", ref groupingMode, "Character\0World\0Data Center\0Region\0All\0"))
-        {
-            settings.GroupingMode = (TableGroupingMode)groupingMode;
-            changed = true;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Group rows by character, world, data center, region, or combine all into one row.\nWorld/DC/Region grouping requires character world information from AutoRetainer.");
-        }
-        
-        // Text color mode
-        var textColorMode = (int)settings.TextColorMode;
-        ImGui.SetNextItemWidth(200);
-        if (ImGui.Combo("Text Color Mode", ref textColorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
-        {
-            settings.TextColorMode = (TableTextColorMode)textColorMode;
-            changed = true;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Determines how cell text colors are applied.\n- Don't use: Only custom column colors are used.\n- Preferred item colors: Use colors from Data > Currencies and Data > Game Items config.\n- Preferred character colors: Use colors from Data > Characters config.");
-        }
-        
         // Show hide character column option only in All mode
         if (settings.GroupingMode == TableGroupingMode.All)
         {
@@ -1711,11 +1678,15 @@ public class ItemTableWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Data Column Alignment"))
+        if (ImGui.TreeNodeEx("Alignment"))
         {
+            // Data column alignment
+            ImGui.TextDisabled("Data Columns");
+            
             // Data horizontal alignment
             var hAlign = (int)settings.HorizontalAlignment;
-            if (ImGui.Combo("Data Horizontal", ref hAlign, "Left\0Center\0Right\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Horizontal##data", ref hAlign, "Left\0Center\0Right\0"))
             {
                 settings.HorizontalAlignment = (TableHorizontalAlignment)hAlign;
                 changed = true;
@@ -1723,20 +1694,20 @@ public class ItemTableWidget : ISettingsProvider
         
             // Data vertical alignment
             var vAlign = (int)settings.VerticalAlignment;
-            if (ImGui.Combo("Data Vertical", ref vAlign, "Top\0Center\0Bottom\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Vertical##data", ref vAlign, "Top\0Center\0Bottom\0"))
             {
                 settings.VerticalAlignment = (TableVerticalAlignment)vAlign;
                 changed = true;
             }
-            ImGui.TreePop();
-        }
-        
-        ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Character Column Alignment"))
-        {
+            
+            ImGui.Spacing();
+            ImGui.TextDisabled("Character Column");
+            
             // Character column horizontal alignment
             var charHAlign = (int)settings.CharacterColumnHorizontalAlignment;
-            if (ImGui.Combo("Character Horizontal", ref charHAlign, "Left\0Center\0Right\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Horizontal##char", ref charHAlign, "Left\0Center\0Right\0"))
             {
                 settings.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)charHAlign;
                 changed = true;
@@ -1744,20 +1715,20 @@ public class ItemTableWidget : ISettingsProvider
         
             // Character column vertical alignment
             var charVAlign = (int)settings.CharacterColumnVerticalAlignment;
-            if (ImGui.Combo("Character Vertical", ref charVAlign, "Top\0Center\0Bottom\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Vertical##char", ref charVAlign, "Top\0Center\0Bottom\0"))
             {
                 settings.CharacterColumnVerticalAlignment = (TableVerticalAlignment)charVAlign;
                 changed = true;
             }
-            ImGui.TreePop();
-        }
-        
-        ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Header Row Alignment"))
-        {
+            
+            ImGui.Spacing();
+            ImGui.TextDisabled("Header Row");
+            
             // Header horizontal alignment
             var headerHAlign = (int)settings.HeaderHorizontalAlignment;
-            if (ImGui.Combo("Header Horizontal", ref headerHAlign, "Left\0Center\0Right\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Horizontal##header", ref headerHAlign, "Left\0Center\0Right\0"))
             {
                 settings.HeaderHorizontalAlignment = (TableHorizontalAlignment)headerHAlign;
                 changed = true;
@@ -1765,7 +1736,8 @@ public class ItemTableWidget : ISettingsProvider
         
             // Header vertical alignment
             var headerVAlign = (int)settings.HeaderVerticalAlignment;
-            if (ImGui.Combo("Header Vertical", ref headerVAlign, "Top\0Center\0Bottom\0"))
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.Combo("Vertical##header", ref headerVAlign, "Top\0Center\0Bottom\0"))
             {
                 settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
                 changed = true;
@@ -1804,96 +1776,6 @@ public class ItemTableWidget : ISettingsProvider
             // Odd row color
             changed |= TableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
             ImGui.TreePop();
-        }
-        
-        // Merged columns section
-        if (settings.MergedColumnGroups.Count > 0)
-        {
-            ImGui.Spacing();
-            
-            if (ImGui.TreeNodeEx($"Merged Columns ({settings.MergedColumnGroups.Count})###MergedCols"))
-            {
-                ImGui.TextDisabled("Hold SHIFT and click/drag on column headers to select, then right-click to merge.");
-                ImGui.Spacing();
-                
-                int? groupToRemove = null;
-                for (int i = 0; i < settings.MergedColumnGroups.Count; i++)
-                {
-                    var group = settings.MergedColumnGroups[i];
-                    ImGui.PushID(i);
-                    
-                    // Unmerge button
-                    if (ImGui.SmallButton("Unmerge"))
-                    {
-                        groupToRemove = i;
-                    }
-                    ImGui.SameLine();
-                    
-                    // Editable name
-                    ImGui.SetNextItemWidth(100);
-                    var name = group.Name;
-                    if (ImGui.InputText("##Name", ref name, 64))
-                    {
-                        group.Name = name;
-                        changed = true;
-                    }
-                    ImGui.SameLine();
-                    
-                    // Show which columns are merged
-                    var columnNames = new List<string>();
-                    foreach (var colIdx in group.ColumnIndices)
-                    {
-                        if (colIdx >= 0 && colIdx < settings.Columns.Count)
-                        {
-                            columnNames.Add(GetColumnHeader(settings.Columns[colIdx]));
-                        }
-                    }
-                    ImGui.TextDisabled($"({string.Join(" + ", columnNames)})");
-                    
-                    // Color option
-                    var hasColor = group.Color.HasValue;
-                    var color = group.Color ?? new Vector4(1f, 1f, 1f, 1f);
-                    if (ImGui.Checkbox("##ColorEnabled", ref hasColor))
-                    {
-                        group.Color = hasColor ? color : null;
-                        changed = true;
-                    }
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.SetTooltip(hasColor ? "Click to use default color" : "Click to enable custom color");
-                    }
-                    ImGui.SameLine();
-                    ImGui.BeginDisabled(!hasColor);
-                    if (ImGui.ColorEdit4("Color##MergedColor", ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar))
-                    {
-                        group.Color = color;
-                        changed = true;
-                    }
-                    ImGui.EndDisabled();
-                    
-                    ImGui.PopID();
-                }
-                
-                // Handle removal after iteration
-                if (groupToRemove.HasValue)
-                {
-                    settings.MergedColumnGroups.RemoveAt(groupToRemove.Value);
-                    changed = true;
-                }
-                
-                ImGui.Spacing();
-                if (ImGui.Button("Unmerge All"))
-                {
-                    settings.MergedColumnGroups.Clear();
-                    changed = true;
-                }
-                ImGui.TreePop();
-            }
-        }
-        else
-        {
-            ImGui.Spacing();
-            ImGui.TextDisabled("Hold SHIFT and click/drag on column headers to select, then right-click to merge.");
         }
         
         // Merged rows section
