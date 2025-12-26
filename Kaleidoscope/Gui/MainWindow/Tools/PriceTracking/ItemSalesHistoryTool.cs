@@ -13,12 +13,14 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// </summary>
 public class ItemSalesHistoryTool : ToolComponent
 {
+    public override string ToolName => "Item Sales History";
+    
     private readonly UniversalisService _universalisService;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
     private readonly SamplerService _samplerService;
-    private readonly ItemIconCombo _itemCombo;
+    private readonly ItemComboDropdown _itemCombo;
 
     // Convenience accessor for database service
     private KaleidoscopeDbService DbService => _samplerService.DbService;
@@ -51,7 +53,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _itemDataService = itemDataService;
         _samplerService = samplerService;
 
-        _itemCombo = new ItemIconCombo(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,
@@ -63,7 +65,7 @@ public class ItemSalesHistoryTool : ToolComponent
         Size = new Vector2(450, 400);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -89,7 +91,7 @@ public class ItemSalesHistoryTool : ToolComponent
         ImGui.SameLine();
 
         // Item picker with icons and favorites
-        if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
+        if (_itemCombo.Draw(250))
         {
             if (_itemCombo.SelectedItemId > 0)
             {

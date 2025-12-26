@@ -14,6 +14,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// </summary>
 public class InventoryValueTool : ToolComponent
 {
+    public override string ToolName => "Inventory Value";
+    
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
@@ -225,7 +227,7 @@ public class InventoryValueTool : ToolComponent
         }
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -285,7 +287,7 @@ public class InventoryValueTool : ToolComponent
         {
             using (ProfilerService.BeginStaticChildScope("DrawMultipleSeries"))
             {
-                _graphWidget.DrawMultipleSeries(_cachedSeriesData);
+                _graphWidget.RenderMultipleSeries(_cachedSeriesData);
             }
         }
         else

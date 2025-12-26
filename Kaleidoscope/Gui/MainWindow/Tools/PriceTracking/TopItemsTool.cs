@@ -30,11 +30,13 @@ public record TooltipMarketData(
 /// </summary>
 public class TopItemsTool : ToolComponent
 {
+    public override string ToolName => "Top Items";
+    
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
-    private readonly ItemIconCombo _itemCombo;
+    private readonly ItemComboDropdown _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
@@ -87,7 +89,7 @@ public class TopItemsTool : ToolComponent
         _instanceSettings = new TopItemsSettings();
         
         // Create item combo for exclusion list (marketable only since we're dealing with prices)
-        _itemCombo = new ItemIconCombo(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,
@@ -254,7 +256,7 @@ public class TopItemsTool : ToolComponent
         }
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -734,7 +736,7 @@ public class TopItemsTool : ToolComponent
 
             // Item picker for adding exclusions
             ImGui.TextDisabled("Add item to exclude:");
-            if (_itemCombo.Draw(_itemCombo.SelectedItem?.Name ?? "Select item...", _itemCombo.SelectedItemId, 250, 300))
+            if (_itemCombo.Draw(250))
             {
                 if (_itemCombo.SelectedItemId > 0)
                 {

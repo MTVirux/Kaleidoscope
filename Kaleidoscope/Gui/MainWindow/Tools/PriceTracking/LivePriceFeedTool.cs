@@ -14,6 +14,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// </summary>
 public class LivePriceFeedTool : ToolComponent
 {
+    public override string ToolName => "Live Price Feed";
+    
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
@@ -61,7 +63,7 @@ public class LivePriceFeedTool : ToolComponent
         Size = new Vector2(450, 300);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
