@@ -1,6 +1,8 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Interfaces;
+using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -72,6 +74,20 @@ public abstract class ToolComponent : IDisposable
     protected virtual bool HasToolSettings => false;
     
     /// <summary>
+    /// Override to provide a settings schema for declarative settings rendering.
+    /// When provided, the schema will be used instead of DrawToolSettings().
+    /// </summary>
+    /// <returns>A SettingsSchema instance, or null to use DrawToolSettings().</returns>
+    protected virtual object? GetToolSettingsSchema() => null;
+    
+    /// <summary>
+    /// Override to provide the settings object instance that the schema binds to.
+    /// Required when GetToolSettingsSchema() returns a schema.
+    /// </summary>
+    /// <returns>The settings instance, or null if not using schema-based settings.</returns>
+    protected virtual object? GetToolSettingsObject() => null;
+    
+    /// <summary>
     /// Draws all settings for this tool, including tool-specific settings and registered component settings.
     /// Override DrawToolSettings to add tool-specific settings that appear before component settings.
     /// All settings sections are wrapped in collapsible headers.
@@ -85,7 +101,23 @@ public abstract class ToolComponent : IDisposable
             {
                 if (ImGui.CollapsingHeader("Tool Settings", ImGuiTreeNodeFlags.DefaultOpen))
                 {
-                    DrawToolSettings();
+                    // Check if tool provides a schema for declarative rendering
+                    var schema = GetToolSettingsSchema();
+                    var settingsObj = GetToolSettingsObject();
+                    
+                    if (schema != null && settingsObj != null)
+                    {
+                        // Use schema-based rendering
+                        if (DrawSettingsFromSchema(schema, settingsObj))
+                        {
+                            NotifyToolSettingsChanged();
+                        }
+                    }
+                    else
+                    {
+                        // Fall back to imperative DrawToolSettings()
+                        DrawToolSettings();
+                    }
                 }
             }
             
@@ -104,6 +136,28 @@ public abstract class ToolComponent : IDisposable
         {
             LogService.Debug($"[ToolComponent] DrawSettings error: {ex.Message}");
         }
+    }
+    
+    /// <summary>
+    /// Draws settings from a schema using the SettingsSchemaRenderer.
+    /// Handles type discovery for the generic schema type.
+    /// </summary>
+    private static bool DrawSettingsFromSchema(object schema, object settings)
+    {
+        // Use reflection to call SettingsSchemaRenderer.Draw<TSettings>(schema, settings)
+        var schemaType = schema.GetType();
+        if (!schemaType.IsGenericType || schemaType.GetGenericTypeDefinition() != typeof(SettingsSchema<>))
+            return false;
+        
+        var settingsType = schemaType.GetGenericArguments()[0];
+        var drawMethod = typeof(SettingsSchemaRenderer)
+            .GetMethod(nameof(SettingsSchemaRenderer.Draw))
+            ?.MakeGenericMethod(settingsType);
+        
+        if (drawMethod == null) return false;
+        
+        var result = drawMethod.Invoke(null, new[] { schema, settings, true });
+        return result is true;
     }
     
     /// <summary>
