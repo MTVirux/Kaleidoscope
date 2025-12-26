@@ -64,6 +64,11 @@ public class RetainerVentureStatusTool : ToolComponent
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
 
     /// <summary>
+    /// Set of retainer identifiers (CID_RetainerName) that are hidden from the list.
+    /// </summary>
+    public HashSet<string> HiddenRetainers { get; set; } = new();
+
+    /// <summary>
     /// Whether ready retainers should appear at the top (true) or bottom (false) of the list.
     /// </summary>
     public bool ReadyOnTop { get; set; } = true;
@@ -172,7 +177,9 @@ public class RetainerVentureStatusTool : ToolComponent
                     ImGui.EndPopup();
                 }
 
-                var sortedRetainers = GetSortedRetainers(character.Retainers, character.Name);
+                // Filter out hidden retainers
+                var visibleRetainers = character.Retainers.Where(r => !IsRetainerHidden(character.CID, r.Name)).ToList();
+                var sortedRetainers = GetSortedRetainers(visibleRetainers, character.Name);
 
                 var isEditMode = StateService.IsEditModeStatic;
                 var tableFlags = ImGuiTableFlags.Resizable | ImGuiTableFlags.Borders;
@@ -186,7 +193,7 @@ public class RetainerVentureStatusTool : ToolComponent
 
                     foreach (var retainer in sortedRetainers)
                     {
-                        DrawRetainerTableRow(retainer, nowUnix, nowMs);
+                        DrawRetainerTableRow(retainer, character.CID, nowUnix, nowMs);
                     }
 
                     ImGui.EndTable();
@@ -222,6 +229,10 @@ public class RetainerVentureStatusTool : ToolComponent
 
             foreach (var retainer in character.Retainers)
             {
+                // Skip hidden retainers
+                if (IsRetainerHidden(character.CID, retainer.Name))
+                    continue;
+                    
                 allRetainers.Add((retainer, character));
             }
         }
@@ -254,7 +265,7 @@ public class RetainerVentureStatusTool : ToolComponent
         }
     }
 
-    private void DrawRetainerTableRow(AutoRetainerRetainerData retainer, long nowUnix, long nowMs)
+    private void DrawRetainerTableRow(AutoRetainerRetainerData retainer, ulong characterCid, long nowUnix, long nowMs)
     {
         ImGui.TableNextRow();
         
@@ -269,6 +280,17 @@ public class RetainerVentureStatusTool : ToolComponent
             var isReady = retainer.VentureEndsAt <= nowUnix;
             var color = isReady ? ReadyColor : ActiveColor;
             ImGui.TextColored(color, retainer.Name);
+        }
+        
+        // Right-click to hide retainer
+        if (ImGui.BeginPopupContextItem($"RetainerContext_{characterCid}_{retainer.Name}"))
+        {
+            if (ImGui.MenuItem("Hide Retainer"))
+            {
+                HiddenRetainers.Add(GetRetainerKey(characterCid, retainer.Name));
+                NotifyToolSettingsChanged();
+            }
+            ImGui.EndPopup();
         }
 
         // Status column
@@ -305,6 +327,17 @@ public class RetainerVentureStatusTool : ToolComponent
             ImGui.TextColored(color, retainer.Name);
         }
 
+        // Right-click to hide retainer
+        if (ImGui.BeginPopupContextItem($"RetainerContext_{character.CID}_{retainer.Name}"))
+        {
+            if (ImGui.MenuItem("Hide Retainer"))
+            {
+                HiddenRetainers.Add(GetRetainerKey(character.CID, retainer.Name));
+                NotifyToolSettingsChanged();
+            }
+            ImGui.EndPopup();
+        }
+
         // Character column (optional)
         if (showCharacter)
         {
@@ -327,6 +360,40 @@ public class RetainerVentureStatusTool : ToolComponent
             var timeRemaining = FormatTimeRemaining(retainer.VentureEndsAt, nowUnix, nowMs);
             ImGui.TextColored(ActiveColor, timeRemaining);
         }
+    }
+
+    /// <summary>
+    /// Gets a unique key for a retainer (CID_RetainerName).
+    /// </summary>
+    private static string GetRetainerKey(ulong characterCid, string retainerName) => $"{characterCid}_{retainerName}";
+
+    /// <summary>
+    /// Checks if a retainer is hidden.
+    /// </summary>
+    private bool IsRetainerHidden(ulong characterCid, string retainerName) => HiddenRetainers.Contains(GetRetainerKey(characterCid, retainerName));
+
+    /// <summary>
+    /// Gets a display name for a hidden retainer key.
+    /// </summary>
+    private string GetRetainerDisplayName(string retainerKey)
+    {
+        var parts = retainerKey.Split('_', 2);
+        if (parts.Length != 2 || !ulong.TryParse(parts[0], out var cid))
+            return retainerKey;
+
+        var retainerName = parts[1];
+        var characterName = "Unknown";
+        
+        if (_characters != null)
+        {
+            var character = _characters.FirstOrDefault(c => c.CID == cid);
+            if (character != null)
+            {
+                characterName = GetFormattedCharacterName(character);
+            }
+        }
+
+        return $"{retainerName} ({characterName})";
     }
 
     private string FormatTimeRemaining(long endTimeUnix, long nowUnix, long nowMs)
@@ -499,7 +566,7 @@ public class RetainerVentureStatusTool : ToolComponent
             }
             else
             {
-                if (ImGui.Button("Unhide All"))
+                if (ImGui.Button("Unhide All##Characters"))
                 {
                     HiddenCharacters.Clear();
                     NotifyToolSettingsChanged();
@@ -532,6 +599,50 @@ public class RetainerVentureStatusTool : ToolComponent
                 if (characterToUnhide.HasValue)
                 {
                     HiddenCharacters.Remove(characterToUnhide.Value);
+                    NotifyToolSettingsChanged();
+                }
+            }
+
+            ImGui.Unindent();
+        }
+
+        // Hidden retainers management
+        if (ImGui.CollapsingHeader("Hidden Retainers"))
+        {
+            ImGui.Indent();
+
+            if (HiddenRetainers.Count == 0)
+            {
+                ImGui.TextColored(DisabledColor, "No hidden retainers");
+                ImGui.TextColored(DisabledColor, "Right-click a retainer to hide it.");
+            }
+            else
+            {
+                if (ImGui.Button("Unhide All##Retainers"))
+                {
+                    HiddenRetainers.Clear();
+                    NotifyToolSettingsChanged();
+                }
+                ImGui.Spacing();
+
+                string? retainerToUnhide = null;
+                foreach (var retainerKey in HiddenRetainers)
+                {
+                    var displayName = GetRetainerDisplayName(retainerKey);
+
+                    ImGui.TextUnformatted(displayName);
+                    ImGui.SameLine();
+                    ImGui.PushID(retainerKey);
+                    if (ImGui.SmallButton("Unhide"))
+                    {
+                        retainerToUnhide = retainerKey;
+                    }
+                    ImGui.PopID();
+                }
+
+                if (retainerToUnhide != null)
+                {
+                    HiddenRetainers.Remove(retainerToUnhide);
                     NotifyToolSettingsChanged();
                 }
             }
@@ -606,6 +717,7 @@ public class RetainerVentureStatusTool : ToolComponent
             ["SortOrder"] = (int)SortOrder,
             ["ReadyOnTop"] = ReadyOnTop,
             ["HiddenCharacters"] = HiddenCharacters.ToList(),
+            ["HiddenRetainers"] = HiddenRetainers.ToList(),
             ["ReadyColorR"] = ReadyColor.X,
             ["ReadyColorG"] = ReadyColor.Y,
             ["ReadyColorB"] = ReadyColor.Z,
@@ -641,6 +753,12 @@ public class RetainerVentureStatusTool : ToolComponent
         if (hiddenChars != null)
         {
             HiddenCharacters = new HashSet<ulong>(hiddenChars);
+        }
+        
+        var hiddenRetainers = GetSetting<List<string>>(settings, "HiddenRetainers", null);
+        if (hiddenRetainers != null)
+        {
+            HiddenRetainers = new HashSet<string>(hiddenRetainers);
         }
         
         ReadyColor = new Vector4(

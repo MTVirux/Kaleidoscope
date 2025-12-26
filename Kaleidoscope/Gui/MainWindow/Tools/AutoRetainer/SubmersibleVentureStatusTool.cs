@@ -50,6 +50,11 @@ public class SubmersibleVentureStatusTool : ToolComponent
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
 
     /// <summary>
+    /// Set of submersible identifiers (CID_SubmersibleName) that are hidden from the list.
+    /// </summary>
+    public HashSet<string> HiddenSubmersibles { get; set; } = new();
+
+    /// <summary>
     /// Whether ready submersibles should appear at the top (true) or bottom (false) of the list.
     /// </summary>
     public bool ReadyOnTop { get; set; } = true;
@@ -160,7 +165,9 @@ public class SubmersibleVentureStatusTool : ToolComponent
                     ImGui.EndPopup();
                 }
 
-                var sortedSubmersibles = GetSortedVessels(submersibles, character.Name);
+                // Filter out hidden submersibles
+                var visibleSubmersibles = submersibles.Where(v => !IsSubmersibleHidden(character.CID, v.Name)).ToList();
+                var sortedSubmersibles = GetSortedVessels(visibleSubmersibles, character.Name);
 
                 var isEditMode = StateService.IsEditModeStatic;
                 var tableFlags = ImGuiTableFlags.Resizable | ImGuiTableFlags.Borders;
@@ -174,7 +181,7 @@ public class SubmersibleVentureStatusTool : ToolComponent
 
                     foreach (var vessel in sortedSubmersibles)
                     {
-                        DrawVesselTableRow(vessel, nowUnix, nowMs);
+                        DrawVesselTableRow(vessel, character.CID, nowUnix, nowMs);
                     }
 
                     ImGui.EndTable();
@@ -210,6 +217,10 @@ public class SubmersibleVentureStatusTool : ToolComponent
 
             foreach (var vessel in character.Vessels.Where(v => v.IsSubmersible))
             {
+                // Skip hidden submersibles
+                if (IsSubmersibleHidden(character.CID, vessel.Name))
+                    continue;
+                    
                 allVessels.Add((vessel, character));
             }
         }
@@ -242,7 +253,7 @@ public class SubmersibleVentureStatusTool : ToolComponent
         }
     }
 
-    private void DrawVesselTableRow(AutoRetainerVesselData vessel, long nowUnix, long nowMs)
+    private void DrawVesselTableRow(AutoRetainerVesselData vessel, ulong characterCid, long nowUnix, long nowMs)
     {
         ImGui.TableNextRow();
         
@@ -257,6 +268,17 @@ public class SubmersibleVentureStatusTool : ToolComponent
             var isReady = vessel.ReturnTime <= nowUnix;
             var color = isReady ? ReadyColor : ActiveColor;
             ImGui.TextColored(color, vessel.Name);
+        }
+        
+        // Right-click to hide submersible
+        if (ImGui.BeginPopupContextItem($"SubmersibleContext_{characterCid}_{vessel.Name}"))
+        {
+            if (ImGui.MenuItem("Hide Submersible"))
+            {
+                HiddenSubmersibles.Add(GetSubmersibleKey(characterCid, vessel.Name));
+                NotifyToolSettingsChanged();
+            }
+            ImGui.EndPopup();
         }
 
         // Status column
@@ -293,6 +315,17 @@ public class SubmersibleVentureStatusTool : ToolComponent
             ImGui.TextColored(color, vessel.Name);
         }
 
+        // Right-click to hide submersible
+        if (ImGui.BeginPopupContextItem($"SubmersibleContext_{character.CID}_{vessel.Name}"))
+        {
+            if (ImGui.MenuItem("Hide Submersible"))
+            {
+                HiddenSubmersibles.Add(GetSubmersibleKey(character.CID, vessel.Name));
+                NotifyToolSettingsChanged();
+            }
+            ImGui.EndPopup();
+        }
+
         // Character column (optional)
         if (showCharacter)
         {
@@ -315,6 +348,40 @@ public class SubmersibleVentureStatusTool : ToolComponent
             var timeRemaining = FormatTimeRemaining(vessel.ReturnTime, nowUnix, nowMs);
             ImGui.TextColored(ActiveColor, timeRemaining);
         }
+    }
+
+    /// <summary>
+    /// Gets a unique key for a submersible (CID_SubmersibleName).
+    /// </summary>
+    private static string GetSubmersibleKey(ulong characterCid, string vesselName) => $"{characterCid}_{vesselName}";
+
+    /// <summary>
+    /// Checks if a submersible is hidden.
+    /// </summary>
+    private bool IsSubmersibleHidden(ulong characterCid, string vesselName) => HiddenSubmersibles.Contains(GetSubmersibleKey(characterCid, vesselName));
+
+    /// <summary>
+    /// Gets a display name for a hidden submersible key.
+    /// </summary>
+    private string GetSubmersibleDisplayName(string submersibleKey)
+    {
+        var parts = submersibleKey.Split('_', 2);
+        if (parts.Length != 2 || !ulong.TryParse(parts[0], out var cid))
+            return submersibleKey;
+
+        var vesselName = parts[1];
+        var characterName = "Unknown";
+        
+        if (_characters != null)
+        {
+            var character = _characters.FirstOrDefault(c => c.CID == cid);
+            if (character != null)
+            {
+                characterName = GetFormattedCharacterName(character);
+            }
+        }
+
+        return $"{vesselName} ({characterName})";
     }
 
     private string FormatTimeRemaining(long endTimeUnix, long nowUnix, long nowMs)
@@ -486,7 +553,7 @@ public class SubmersibleVentureStatusTool : ToolComponent
             }
             else
             {
-                if (ImGui.Button("Unhide All"))
+                if (ImGui.Button("Unhide All##Characters"))
                 {
                     HiddenCharacters.Clear();
                     NotifyToolSettingsChanged();
@@ -519,6 +586,50 @@ public class SubmersibleVentureStatusTool : ToolComponent
                 if (characterToUnhide.HasValue)
                 {
                     HiddenCharacters.Remove(characterToUnhide.Value);
+                    NotifyToolSettingsChanged();
+                }
+            }
+
+            ImGui.Unindent();
+        }
+
+        // Hidden submersibles management
+        if (ImGui.CollapsingHeader("Hidden Submersibles"))
+        {
+            ImGui.Indent();
+
+            if (HiddenSubmersibles.Count == 0)
+            {
+                ImGui.TextColored(DisabledColor, "No hidden submersibles");
+                ImGui.TextColored(DisabledColor, "Right-click a submersible to hide it.");
+            }
+            else
+            {
+                if (ImGui.Button("Unhide All##Submersibles"))
+                {
+                    HiddenSubmersibles.Clear();
+                    NotifyToolSettingsChanged();
+                }
+                ImGui.Spacing();
+
+                string? submersibleToUnhide = null;
+                foreach (var submersibleKey in HiddenSubmersibles)
+                {
+                    var displayName = GetSubmersibleDisplayName(submersibleKey);
+
+                    ImGui.TextUnformatted(displayName);
+                    ImGui.SameLine();
+                    ImGui.PushID(submersibleKey);
+                    if (ImGui.SmallButton("Unhide"))
+                    {
+                        submersibleToUnhide = submersibleKey;
+                    }
+                    ImGui.PopID();
+                }
+
+                if (submersibleToUnhide != null)
+                {
+                    HiddenSubmersibles.Remove(submersibleToUnhide);
                     NotifyToolSettingsChanged();
                 }
             }
@@ -593,6 +704,7 @@ public class SubmersibleVentureStatusTool : ToolComponent
             ["SortOrder"] = (int)SortOrder,
             ["ReadyOnTop"] = ReadyOnTop,
             ["HiddenCharacters"] = HiddenCharacters.ToList(),
+            ["HiddenSubmersibles"] = HiddenSubmersibles.ToList(),
             ["ReadyColorR"] = ReadyColor.X,
             ["ReadyColorG"] = ReadyColor.Y,
             ["ReadyColorB"] = ReadyColor.Z,
@@ -628,6 +740,12 @@ public class SubmersibleVentureStatusTool : ToolComponent
         if (hiddenChars != null)
         {
             HiddenCharacters = new HashSet<ulong>(hiddenChars);
+        }
+        
+        var hiddenSubmersibles = GetSetting<List<string>>(settings, "HiddenSubmersibles", null);
+        if (hiddenSubmersibles != null)
+        {
+            HiddenSubmersibles = new HashSet<string>(hiddenSubmersibles);
         }
         
         ReadyColor = new Vector4(
