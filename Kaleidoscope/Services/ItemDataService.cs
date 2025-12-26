@@ -99,6 +99,29 @@ public sealed class ItemDataService : IService
     }
 
     /// <summary>
+    /// Gets the icon ID for an item.
+    /// </summary>
+    /// <param name="itemId">The item ID to look up.</param>
+    /// <returns>The icon ID, or 0 if not found.</returns>
+    public ushort GetItemIconId(uint itemId)
+    {
+        try
+        {
+            var itemSheet = _dataManager.GetExcelSheet<Item>();
+            if (itemSheet != null && itemSheet.TryGetRow(itemId, out var item))
+            {
+                return item.Icon;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[ItemDataService] Error looking up icon for item {itemId}: {ex.Message}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>
     /// Clears the item name cache.
     /// </summary>
     public void ClearCache()
