@@ -236,7 +236,7 @@ public class ItemSalesHistoryTool : ToolComponent
             var avgPrice = filteredEntries.Average(e => e.PricePerUnit);
             var minPrice = filteredEntries.Min(e => e.PricePerUnit);
             var maxPrice = filteredEntries.Max(e => e.PricePerUnit);
-            ImGui.TextUnformatted($"Showing {filteredEntries.Count} sales | Avg: {FormatGil(avgPrice)} | Min: {FormatGil(minPrice)} | Max: {FormatGil(maxPrice)}");
+            ImGui.TextUnformatted($"Showing {filteredEntries.Count} sales | Avg: {FormatUtils.FormatGil(avgPrice)} | Min: {FormatUtils.FormatGil(minPrice)} | Max: {FormatUtils.FormatGil(maxPrice)}");
             ImGui.Spacing();
         }
 
@@ -260,7 +260,7 @@ public class ItemSalesHistoryTool : ToolComponent
 
                 // Time
                 ImGui.TableNextColumn();
-                var timeAgo = GetTimeAgo(sale.SaleDateTime);
+                var timeAgo = FormatUtils.FormatTimeAgo(sale.SaleDateTime);
                 ImGui.TextUnformatted(timeAgo);
                 if (ImGui.IsItemHovered())
                 {
@@ -269,7 +269,7 @@ public class ItemSalesHistoryTool : ToolComponent
 
                 // Price (with HQ indicator)
                 ImGui.TableNextColumn();
-                var priceText = FormatGil(sale.PricePerUnit);
+                var priceText = FormatUtils.FormatGil(sale.PricePerUnit);
                 if (sale.IsHq)
                 {
                     ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), priceText);
@@ -290,7 +290,7 @@ public class ItemSalesHistoryTool : ToolComponent
                 // Total
                 ImGui.TableNextColumn();
                 var total = (long)sale.PricePerUnit * sale.Quantity;
-                ImGui.TextUnformatted(FormatGil(total));
+                ImGui.TextUnformatted(FormatUtils.FormatGil(total));
 
                 // World
                 ImGui.TableNextColumn();
@@ -335,33 +335,6 @@ public class ItemSalesHistoryTool : ToolComponent
         {
             _isLoading = false;
         }
-    }
-
-    private static string FormatGil(double value)
-    {
-        if (value >= 1_000_000)
-            return $"{value / 1_000_000:F1}M";
-        if (value >= 1_000)
-            return $"{value / 1_000:F1}K";
-        return $"{value:N0}";
-    }
-
-    private static string GetTimeAgo(DateTime dateTime)
-    {
-        var span = DateTime.Now - dateTime;
-
-        if (span.TotalMinutes < 1)
-            return "Just now";
-        if (span.TotalMinutes < 60)
-            return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalHours < 24)
-            return $"{(int)span.TotalHours}h ago";
-        if (span.TotalDays < 7)
-            return $"{(int)span.TotalDays}d ago";
-        if (span.TotalDays < 30)
-            return $"{(int)(span.TotalDays / 7)}w ago";
-
-        return dateTime.ToString("MMM d");
     }
 
     public override bool HasSettings => true;

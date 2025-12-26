@@ -188,7 +188,7 @@ public class ItemDetailsPopup
         if (_marketData != null)
         {
             var displayScope = configuredScope ?? _selectedScope ?? "Unknown";
-            ImGui.TextDisabled($"Scope: {displayScope} | Last Updated: {GetTimeAgo(_marketData.LastUploadDateTime)}");
+            ImGui.TextDisabled($"Scope: {displayScope} | Last Updated: {FormatUtils.FormatTimeAgo(_marketData.LastUploadDateTime)}");
 
             // Price summary
             if (_marketData.MinPrice > 0)
@@ -422,7 +422,7 @@ public class ItemDetailsPopup
 
                 // Time
                 ImGui.TableNextColumn();
-                var timeAgo = GetTimeAgo(sale.SaleDateTime);
+                var timeAgo = FormatUtils.FormatTimeAgo(sale.SaleDateTime);
                 ImGui.TextUnformatted(timeAgo);
                 if (ImGui.IsItemHovered())
                 {
@@ -510,7 +510,7 @@ public class ItemDetailsPopup
 
                 // Make the row selectable for right-click context menu
                 ImGui.TableNextColumn();
-                var timeAgo = GetTimeAgo(sale.Timestamp.ToLocalTime());
+                var timeAgo = FormatUtils.FormatTimeAgo(sale.Timestamp.ToLocalTime());
                 
                 // Use Selectable spanning all columns for right-click detection
                 ImGui.PushID(sale.Id.GetHashCode());
@@ -669,23 +669,5 @@ public class ItemDetailsPopup
         {
             _isLoading = false;
         }
-    }
-
-    private static string GetTimeAgo(DateTime dateTime)
-    {
-        var span = DateTime.Now - dateTime;
-
-        if (span.TotalMinutes < 1)
-            return "Just now";
-        if (span.TotalMinutes < 60)
-            return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalHours < 24)
-            return $"{(int)span.TotalHours}h ago";
-        if (span.TotalDays < 7)
-            return $"{(int)span.TotalDays}d ago";
-        if (span.TotalDays < 30)
-            return $"{(int)(span.TotalDays / 7)}w ago";
-
-        return dateTime.ToString("MMM d");
     }
 }

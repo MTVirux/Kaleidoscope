@@ -391,7 +391,7 @@ public class TopItemsTool : ToolComponent
         var maxItems = Math.Max(1, Settings.MaxItems);
         var gradientStep = 0.33f / maxItems;
         var hue = Math.Max(0, 0.33f - (rank * gradientStep));
-        var color = HsvToRgb(hue, 0.8f, 0.9f);
+        var color = FormatUtils.HsvToRgb(hue, 0.8f, 0.9f);
 
         // Start invisible button for hover detection (covers the whole row)
         var cursorPos = ImGui.GetCursorPos();
@@ -515,7 +515,7 @@ public class TopItemsTool : ToolComponent
 
             // Last updated
             var timeSince = DateTime.UtcNow - item.PriceInfo.LastUpdated;
-            ImGui.TextDisabled($"Updated: {FormatTimeAgo(timeSince)}");
+            ImGui.TextDisabled($"Updated: {FormatUtils.FormatTimeAgo(timeSince)}");
         }
 
         ImGui.Spacing();
@@ -603,7 +603,7 @@ public class TopItemsTool : ToolComponent
 
         // Show world and time
         var saleWorld = sale.WorldName ?? (sale.WorldId.HasValue ? _priceTrackingService.WorldData?.GetWorldName(sale.WorldId.Value) : null);
-        var saleTime = FormatTimeAgo(DateTime.UtcNow - sale.SaleDateTime.ToUniversalTime());
+        var saleTime = FormatUtils.FormatTimeAgo(DateTime.UtcNow - sale.SaleDateTime.ToUniversalTime());
         ImGui.TextDisabled($"  {saleWorld ?? "Unknown World"} • {saleTime}");
     }
 
@@ -658,40 +658,6 @@ public class TopItemsTool : ToolComponent
         // Show world
         var listingWorld = listing.WorldName ?? (listing.WorldId.HasValue ? _priceTrackingService.WorldData?.GetWorldName(listing.WorldId.Value) : null);
         ImGui.TextDisabled($"  {listingWorld ?? "Unknown World"}");
-    }
-
-    private static string FormatTimeAgo(TimeSpan timeSince)
-    {
-        if (timeSince.TotalMinutes < 1)
-            return "just now";
-        if (timeSince.TotalHours < 1)
-            return $"{(int)timeSince.TotalMinutes}m ago";
-        if (timeSince.TotalDays < 1)
-            return $"{(int)timeSince.TotalHours}h ago";
-        return $"{(int)timeSince.TotalDays}d ago";
-    }
-
-    private static Vector4 HsvToRgb(float h, float s, float v)
-    {
-        float r, g, b;
-        
-        int i = (int)(h * 6);
-        float f = h * 6 - i;
-        float p = v * (1 - s);
-        float q = v * (1 - f * s);
-        float t = v * (1 - (1 - f) * s);
-
-        switch (i % 6)
-        {
-            case 0: r = v; g = t; b = p; break;
-            case 1: r = q; g = v; b = p; break;
-            case 2: r = p; g = v; b = t; break;
-            case 3: r = p; g = q; b = v; break;
-            case 4: r = t; g = p; b = v; break;
-            default: r = v; g = p; b = q; break;
-        }
-
-        return new Vector4(r, g, b, 1f);
     }
 
     public override bool HasSettings => true;
