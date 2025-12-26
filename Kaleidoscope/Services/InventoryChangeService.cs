@@ -53,11 +53,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     public event Action? OnCrystalsChanged;
 
     /// <summary>
-    /// Event fired when currency values change (Gil, Tomestones, etc.).
-    /// </summary>
-    public event Action? OnCurrencyChanged;
-
-    /// <summary>
     /// Event fired when a retainer's inventory has stabilized (data is ready to read).
     /// </summary>
     public event Action? OnRetainerInventoryReady;
@@ -239,7 +234,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             }
 
             var changedValues = new Dictionary<TrackedDataType, long>();
-            var hasCurrencyChange = false;
 
             // Check only enabled data types
             foreach (var dataType in enabledTypes)
@@ -253,20 +247,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                     {
                         _lastKnownValues[dataType] = currentValue.Value;
                         changedValues[dataType] = currentValue.Value;
-
-                        // Track if this is a currency-type change
-                        if (_registry.Definitions.TryGetValue(dataType, out var def) &&
-                            def.Category is TrackedDataCategory.Gil or
-                            TrackedDataCategory.Tomestone or
-                            TrackedDataCategory.Scrip or
-                            TrackedDataCategory.GrandCompany or
-                            TrackedDataCategory.PvP or
-                            TrackedDataCategory.Hunt or
-                            TrackedDataCategory.GoldSaucer or
-                            TrackedDataCategory.Tribal)
-                        {
-                            hasCurrencyChange = true;
-                        }
                     }
                 }
                 else
@@ -289,12 +269,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                     catch
                     {
                         // ignore logging failure
-                    }
-
-                    if (hasCurrencyChange)
-                    {
-                        _log.Debug("[InventoryChangeService] Currency-related value change detected");
-                        OnCurrencyChanged?.Invoke();
                     }
                     
                     // Pass the already-captured values to avoid re-reading game memory
