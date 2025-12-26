@@ -1,10 +1,9 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
-using Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
-using Kaleidoscope.Gui.MainWindow.Tools.ItemGraph;
-using Kaleidoscope.Gui.MainWindow.Tools.ItemTable;
+using Kaleidoscope.Gui.MainWindow.Tools.DataGraph;
+using Kaleidoscope.Gui.MainWindow.Tools.DataTable;
 using Kaleidoscope.Gui.MainWindow.Tools.Label;
 using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 using Kaleidoscope.Gui.MainWindow.Tools.Status;
@@ -22,13 +21,12 @@ public static class WindowToolRegistrar
     {
         public const string GettingStarted = "GettingStarted";
         public const string ImPlotReference = "ImPlotReference";
-        public const string CrystalTracker = "CrystalTracker";
         public const string LivePriceFeed = "LivePriceFeed";
         public const string InventoryValue = "InventoryValue";
         public const string TopItems = "TopItems";
         public const string ItemSalesHistory = "ItemSalesHistory";
-        public const string ItemTable = "ItemTable";
-        public const string ItemGraph = "ItemGraph";
+        public const string DataTable = "DataTable";
+        public const string DataGraph = "DataGraph";
         public const string Label = "Label";
         public const string UniversalisWebSocketStatus = "UniversalisWebSocketStatus";
         public const string AutoRetainerStatus = "AutoRetainerStatus";
@@ -45,19 +43,26 @@ public static class WindowToolRegistrar
     }
 
     /// <summary>
-    /// Crystal types that are handled by the unified CrystalTracker tool
-    /// and should not be registered as individual DataTracker tools.
+    /// Registers tools using a bundled context of dependencies.
     /// </summary>
-    private static readonly HashSet<TrackedDataType> ExcludedCrystalTypes = new()
+    public static void RegisterTools(WindowContentContainer container, ToolCreationContext ctx)
     {
-        TrackedDataType.CrystalsTotal,
-        TrackedDataType.FireCrystals,
-        TrackedDataType.IceCrystals,
-        TrackedDataType.WindCrystals,
-        TrackedDataType.EarthCrystals,
-        TrackedDataType.LightningCrystals,
-        TrackedDataType.WaterCrystals
-    };
+        RegisterTools(
+            container,
+            ctx.FilenameService,
+            ctx.SamplerService,
+            ctx.ConfigService,
+            ctx.InventoryChangeService,
+            ctx.Registry,
+            ctx.WebSocketService,
+            ctx.PriceTrackingService,
+            ctx.ItemDataService,
+            ctx.DataManager,
+            ctx.InventoryCacheService,
+            ctx.AutoRetainerIpc,
+            ctx.TextureProvider,
+            ctx.FavoritesService);
+    }
 
     public static void RegisterTools(
         WindowContentContainer container, 
@@ -77,165 +82,145 @@ public static class WindowToolRegistrar
     {
         if (container == null) return;
 
+        // Bundle context for cleaner factory method calls
+        var ctx = new ToolCreationContext(
+            filenameService, samplerService, configService,
+            inventoryChangeService, registry, webSocketService,
+            priceTrackingService, itemDataService, dataManager,
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService);
+
         try
         {
-            // Register all data tracker (graph) tools from the registry
-            // (excluding crystal types which are handled by CrystalTracker)
-            if (registry != null)
-            {
-                foreach (var (dataType, definition) in registry.Definitions)
-                {
-                    // Skip crystal types - they're handled by CrystalTracker
-                    if (ExcludedCrystalTypes.Contains(dataType))
-                        continue;
-
-                    var toolId = ToolIds.DataTracker(dataType);
-                    var category = GetCategoryPath(definition.Category);
-                    
-                    container.RegisterTool(
-                        toolId,
-                        definition.DisplayName,
-                        pos => CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, favoritesService, inventoryChangeService),
-                        definition.Description,
-                        category);
-                }
-            }
-
-            // Register the unified Crystal Tracker tool
-            container.RegisterTool(
-                ToolIds.CrystalTracker,
-                "Crystal Tracker",
-                pos => CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService),
-                "Tracks shards, crystals, and clusters with grouping by character/element and filtering options",
-                "Graph");
-
-            // Register the Item Table tool
-            container.RegisterTool(
-                ToolIds.ItemTable,
-                "Item Table",
-                pos => CreateItemTableTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService),
+            // Register the Data Table tool
+            container.DefineToolType(
+                ToolIds.DataTable,
+                "Data Table",
+                pos => CreateDataTableTool(pos, ctx),
                 "Customizable table for tracking items and currencies across characters",
                 "Table");
 
-            // Register the Item Graph tool
-            container.RegisterTool(
-                ToolIds.ItemGraph,
-                "Item Graph",
-                pos => CreateItemGraphTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService),
+            // Register tool presets from separate file
+            ToolPresets.RegisterPresets(container, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
+
+            // Register the Data Graph tool
+            container.DefineToolType(
+                ToolIds.DataGraph,
+                "Data Graph",
+                pos => CreateDataGraphTool(pos, ctx),
                 "Customizable time-series graph for tracking items and currencies",
                 "Graph");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.GettingStarted,
                 "Getting Started",
-                pos => CreateToolInstance(ToolIds.GettingStarted, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
+                pos => CreateToolFromId(ToolIds.GettingStarted, pos, ctx),
                 "Instructions for new users",
                 "Help");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.ImPlotReference,
                 "Graph Controls",
-                pos => CreateToolInstance(ToolIds.ImPlotReference, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
+                pos => CreateToolFromId(ToolIds.ImPlotReference, pos, ctx),
                 "Instructions for navigating and interacting with graphs",
                 "Help");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.Label,
                 "Label",
-                pos => CreateToolInstance(ToolIds.Label, pos, filenameService, samplerService, configService, registry, inventoryChangeService, webSocketService, priceTrackingService),
+                pos => CreateToolFromId(ToolIds.Label, pos, ctx),
                 "A simple text label for adding notes or annotations to your layout",
                 "Utility");
 
             // Register price tracking tools
             if (webSocketService != null && priceTrackingService != null && itemDataService != null)
             {
-                container.RegisterTool(
+                container.DefineToolType(
                     ToolIds.LivePriceFeed,
                     "Live Price Feed",
-                    pos => CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService, itemDataService, samplerService),
+                    pos => CreateLivePriceFeedTool(pos, ctx),
                     "Real-time feed of Universalis market updates from the WebSocket. Click entries to view full market data via API.",
                     "Universalis");
 
-                container.RegisterTool(
+                container.DefineToolType(
                     ToolIds.InventoryValue,
                     "Inventory Value",
-                    pos => CreateInventoryValueTool(pos, priceTrackingService, samplerService, configService),
+                    pos => CreateInventoryValueTool(pos, ctx),
                     "Tracks the liquid value of character inventories over time",
                     "Universalis");
 
-                container.RegisterTool(
+                container.DefineToolType(
                     ToolIds.TopItems,
                     "Top Items",
-                    pos => CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, textureProvider, favoritesService, inventoryChangeService),
+                    pos => CreateTopItemsTool(pos, ctx),
                     "Shows the most valuable items in character inventories",
                     "Universalis");
 
-                container.RegisterTool(
+                container.DefineToolType(
                     ToolIds.ItemSalesHistory,
                     "Item Sales History",
-                    pos => CreateItemSalesHistoryTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, textureProvider, favoritesService),
+                    pos => CreateItemSalesHistoryTool(pos, ctx),
                     "View sale history for any marketable item from Universalis",
                     "Universalis");
             }
 
             // Register status/utility tools
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.UniversalisWebSocketStatus,
                 "WebSocket Status",
-                pos => CreateUniversalisWebSocketStatusTool(pos, configService, webSocketService),
+                pos => CreateUniversalisWebSocketStatusTool(pos, ctx),
                 "Shows the Universalis WebSocket connection status",
-                "Utility");
+                "Universalis");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.AutoRetainerStatus,
-                "AutoRetainer Status",
-                pos => CreateAutoRetainerStatusTool(pos, autoRetainerIpc),
+                "AutoRetainer IPC Status",
+                pos => CreateAutoRetainerStatusTool(pos, ctx),
                 "Shows the AutoRetainer IPC connection status",
-                "Utility");
+                "AutoRetainer");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.AutoRetainerControl,
                 "AutoRetainer Control",
-                pos => CreateAutoRetainerControlTool(pos, autoRetainerIpc),
+                pos => CreateAutoRetainerControlTool(pos, ctx),
                 "Control AutoRetainer functions via IPC: Multi-Mode, suppress, relog, and view character data",
-                "Utility");
+                "AutoRetainer");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.UniversalisApiStatus,
                 "Universalis API Status",
-                pos => CreateUniversalisApiStatusTool(pos, configService, priceTrackingService),
+                pos => CreateUniversalisApiStatusTool(pos, ctx),
                 "Shows the Universalis REST API status and configuration",
-                "Utility");
+                "Universalis");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.DatabaseSize,
                 "Database Size",
-                pos => CreateDatabaseSizeTool(pos, samplerService),
+                pos => CreateDatabaseSizeTool(pos, ctx),
                 "Shows the current size of the SQLite database file",
                 "Utility");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.CacheSize,
                 "Cache Size",
-                pos => CreateCacheSizeTool(pos, inventoryCacheService),
+                pos => CreateCacheSizeTool(pos, ctx),
                 "Shows the current size of the inventory memory cache",
                 "Utility");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.RetainerVentureStatus,
-                "Retainer Ventures",
-                pos => CreateRetainerVentureStatusTool(pos, autoRetainerIpc, configService),
+                "Ventures Status",
+                pos => CreateRetainerVentureStatusTool(pos, ctx),
                 "Displays retainer venture timers with millisecond precision",
-                "Utility");
+                "AutoRetainer");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.SubmersibleVentureStatus,
-                "Submersible Voyages",
-                pos => CreateSubmersibleVentureStatusTool(pos, autoRetainerIpc, configService),
+                "Submersibles Status",
+                pos => CreateSubmersibleVentureStatusTool(pos, ctx),
                 "Displays submersible voyage timers with millisecond precision",
-                "Utility");
+                "AutoRetainer");
 
-            container.RegisterTool(
+            container.DefineToolType(
                 ToolIds.Fps,
                 "FPS",
                 pos => CreateFpsTool(pos),
@@ -256,106 +241,61 @@ public static class WindowToolRegistrar
         return "Graph";
     }
 
-    private static ToolComponent? CreateCrystalTrackerTool(
-        Vector2 pos,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        InventoryChangeService? inventoryChangeService)
+    private static ToolComponent? CreateDataTableTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            var component = new CrystalTrackerComponent(samplerService, configService, inventoryChangeService);
-            return new CrystalTrackerTool(component, configService) { Position = pos };
+            return new DataTableTool(
+                ctx.SamplerService, 
+                ctx.ConfigService, 
+                ctx.InventoryCacheService, 
+                ctx.Registry, 
+                ctx.ItemDataService, 
+                ctx.DataManager,
+                ctx.TextureProvider,
+                ctx.FavoritesService,
+                ctx.AutoRetainerIpc,
+                ctx.PriceTrackingService) { Position = pos };
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create CrystalTrackerTool", ex);
+            LogService.Error("Failed to create DataTableTool", ex);
             return null;
         }
     }
 
-    private static ToolComponent? CreateItemTableTool(
-        Vector2 pos,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        InventoryCacheService? inventoryCacheService,
-        TrackedDataRegistry? registry,
-        ItemDataService? itemDataService,
-        IDataManager? dataManager,
-        ITextureProvider? textureProvider = null,
-        FavoritesService? favoritesService = null,
-        AutoRetainerIpcService? autoRetainerIpc = null,
-        PriceTrackingService? priceTrackingService = null)
+    private static ToolComponent? CreateDataGraphTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new ItemTableTool(
-                samplerService, 
-                configService, 
-                inventoryCacheService, 
-                registry, 
-                itemDataService, 
-                dataManager,
-                textureProvider,
-                favoritesService,
-                autoRetainerIpc,
-                priceTrackingService) { Position = pos };
+            return new DataGraphTool(
+                ctx.SamplerService, 
+                ctx.ConfigService, 
+                ctx.InventoryCacheService, 
+                ctx.Registry, 
+                ctx.ItemDataService, 
+                ctx.DataManager,
+                ctx.TextureProvider,
+                ctx.FavoritesService) { Position = pos };
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create ItemTableTool", ex);
+            LogService.Error("Failed to create DataGraphTool", ex);
             return null;
         }
     }
 
-    private static ToolComponent? CreateItemGraphTool(
-        Vector2 pos,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        InventoryCacheService? inventoryCacheService,
-        TrackedDataRegistry? registry,
-        ItemDataService? itemDataService,
-        IDataManager? dataManager,
-        ITextureProvider? textureProvider = null,
-        FavoritesService? favoritesService = null)
+    private static ToolComponent? CreateDataTrackerTool(TrackedDataType dataType, Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new ItemGraphTool(
-                samplerService, 
-                configService, 
-                inventoryCacheService, 
-                registry, 
-                itemDataService, 
-                dataManager,
-                textureProvider,
-                favoritesService) { Position = pos };
-        }
-        catch (Exception ex)
-        {
-            LogService.Error("Failed to create ItemGraphTool", ex);
-            return null;
-        }
-    }
-
-    private static ToolComponent? CreateDataTrackerTool(
-        TrackedDataType dataType,
-        Vector2 pos,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        TrackedDataRegistry registry,
-        FavoritesService? favoritesService,
-        InventoryChangeService? inventoryChangeService)
-    {
-        try
-        {
-            if (favoritesService == null)
+            if (ctx.FavoritesService == null || ctx.Registry == null)
             {
-                LogService.Error($"Cannot create DataTrackerTool for {dataType}: FavoritesService is null");
+                LogService.Error($"Cannot create DataTrackerTool for {dataType}: Required service is null");
                 return null;
             }
-            var component = new DataTrackerComponent(dataType, samplerService, configService, registry, favoritesService, inventoryChangeService);
-            return new DataTrackerTool(component, configService) { Position = pos };
+            var component = new DataTrackerComponent(dataType, ctx.SamplerService, ctx.ConfigService, ctx.Registry, ctx.FavoritesService, ctx.InventoryChangeService);
+            return new DataTrackerTool(component, ctx.ConfigService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -364,24 +304,19 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateLivePriceFeedTool(
-        Vector2 pos,
-        UniversalisWebSocketService webSocketService,
-        PriceTrackingService priceTrackingService,
-        ConfigurationService configService,
-        ItemDataService itemDataService,
-        SamplerService samplerService)
+    private static ToolComponent? CreateLivePriceFeedTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            // Get UniversalisService from PriceTrackingService to enable API calls for item details
+            if (ctx.WebSocketService == null || ctx.PriceTrackingService == null || ctx.ItemDataService == null)
+                return null;
             return new LivePriceFeedTool(
-                webSocketService, 
-                priceTrackingService, 
-                configService, 
-                itemDataService,
-                priceTrackingService.UniversalisService,
-                samplerService) { Position = pos };
+                ctx.WebSocketService, 
+                ctx.PriceTrackingService, 
+                ctx.ConfigService, 
+                ctx.ItemDataService,
+                ctx.PriceTrackingService.UniversalisService,
+                ctx.SamplerService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -390,15 +325,13 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateInventoryValueTool(
-        Vector2 pos,
-        PriceTrackingService priceTrackingService,
-        SamplerService samplerService,
-        ConfigurationService configService)
+    private static ToolComponent? CreateInventoryValueTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new InventoryValueTool(priceTrackingService, samplerService, configService) { Position = pos };
+            if (ctx.PriceTrackingService == null)
+                return null;
+            return new InventoryValueTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -407,25 +340,19 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateTopItemsTool(
-        Vector2 pos,
-        PriceTrackingService priceTrackingService,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        ItemDataService itemDataService,
-        IDataManager? dataManager,
-        ITextureProvider? textureProvider,
-        FavoritesService? favoritesService,
-        InventoryChangeService? inventoryChangeService)
+    private static ToolComponent? CreateTopItemsTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            if (dataManager == null || textureProvider == null || favoritesService == null)
+            if (ctx.PriceTrackingService == null || ctx.ItemDataService == null || 
+                ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
-                LogService.Debug("CreateTopItemsTool: Required service is null, tool will have limited functionality");
+                LogService.Debug("CreateTopItemsTool: Required service is null");
                 return null;
             }
-            return new TopItemsTool(priceTrackingService, samplerService, configService, itemDataService, dataManager, textureProvider, favoritesService, inventoryChangeService) { Position = pos };
+            return new TopItemsTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, 
+                ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
+                ctx.InventoryChangeService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -434,32 +361,25 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateItemSalesHistoryTool(
-        Vector2 pos,
-        PriceTrackingService priceTrackingService,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        ItemDataService itemDataService,
-        IDataManager? dataManager,
-        ITextureProvider? textureProvider,
-        FavoritesService? favoritesService)
+    private static ToolComponent? CreateItemSalesHistoryTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            if (dataManager == null || textureProvider == null || favoritesService == null)
+            if (ctx.PriceTrackingService == null || ctx.ItemDataService == null ||
+                ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
                 LogService.Debug("CreateItemSalesHistoryTool: Required service is null");
                 return null;
             }
             return new ItemSalesHistoryTool(
-                priceTrackingService.UniversalisService, 
-                priceTrackingService, 
-                configService, 
-                itemDataService,
-                samplerService,
-                dataManager,
-                textureProvider,
-                favoritesService) { Position = pos };
+                ctx.PriceTrackingService.UniversalisService, 
+                ctx.PriceTrackingService, 
+                ctx.ConfigService, 
+                ctx.ItemDataService,
+                ctx.SamplerService,
+                ctx.DataManager,
+                ctx.TextureProvider,
+                ctx.FavoritesService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -468,14 +388,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateUniversalisWebSocketStatusTool(
-        Vector2 pos,
-        ConfigurationService configService,
-        UniversalisWebSocketService? webSocketService)
+    private static ToolComponent? CreateUniversalisWebSocketStatusTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new UniversalisWebSocketStatusTool(configService, webSocketService) { Position = pos };
+            return new UniversalisWebSocketStatusTool(ctx.ConfigService, ctx.WebSocketService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -484,13 +401,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateAutoRetainerStatusTool(
-        Vector2 pos,
-        AutoRetainerIpcService? autoRetainerIpc)
+    private static ToolComponent? CreateAutoRetainerStatusTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new AutoRetainerStatusTool(autoRetainerIpc) { Position = pos };
+            return new AutoRetainerStatusTool(ctx.AutoRetainerIpc) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -499,13 +414,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateAutoRetainerControlTool(
-        Vector2 pos,
-        AutoRetainerIpcService? autoRetainerIpc)
+    private static ToolComponent? CreateAutoRetainerControlTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new AutoRetainerControlTool(autoRetainerIpc) { Position = pos };
+            return new AutoRetainerControlTool(ctx.AutoRetainerIpc) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -514,14 +427,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateRetainerVentureStatusTool(
-        Vector2 pos,
-        AutoRetainerIpcService? autoRetainerIpc,
-        ConfigurationService? configService)
+    private static ToolComponent? CreateRetainerVentureStatusTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new RetainerVentureStatusTool(autoRetainerIpc, configService) { Position = pos };
+            return new RetainerVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -530,14 +440,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateSubmersibleVentureStatusTool(
-        Vector2 pos,
-        AutoRetainerIpcService? autoRetainerIpc,
-        ConfigurationService? configService)
+    private static ToolComponent? CreateSubmersibleVentureStatusTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new SubmersibleVentureStatusTool(autoRetainerIpc, configService) { Position = pos };
+            return new SubmersibleVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -546,14 +453,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateUniversalisApiStatusTool(
-        Vector2 pos,
-        ConfigurationService configService,
-        PriceTrackingService? priceTrackingService)
+    private static ToolComponent? CreateUniversalisApiStatusTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new UniversalisApiStatusTool(configService, priceTrackingService) { Position = pos };
+            return new UniversalisApiStatusTool(ctx.ConfigService, ctx.PriceTrackingService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -562,13 +466,11 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateDatabaseSizeTool(
-        Vector2 pos,
-        SamplerService samplerService)
+    private static ToolComponent? CreateDatabaseSizeTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new DatabaseSizeTool(samplerService) { Position = pos };
+            return new DatabaseSizeTool(ctx.SamplerService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -577,18 +479,16 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateCacheSizeTool(
-        Vector2 pos,
-        InventoryCacheService? inventoryCacheService)
+    private static ToolComponent? CreateCacheSizeTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            if (inventoryCacheService == null)
+            if (ctx.InventoryCacheService == null)
             {
                 LogService.Debug("CreateCacheSizeTool: InventoryCacheService is null");
                 return null;
             }
-            return new CacheSizeTool(inventoryCacheService) { Position = pos };
+            return new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -610,105 +510,45 @@ public static class WindowToolRegistrar
         }
     }
 
-    public static ToolComponent? CreateToolInstance(
-        string id, 
-        Vector2 pos, 
-        FilenameService filenameService, 
-        SamplerService samplerService, 
-        ConfigurationService configService,
-        TrackedDataRegistry? registry = null,
-        InventoryChangeService? inventoryChangeService = null,
-        UniversalisWebSocketService? webSocketService = null,
-        PriceTrackingService? priceTrackingService = null,
-        ItemDataService? itemDataService = null,
-        IDataManager? dataManager = null,
-        InventoryCacheService? inventoryCacheService = null,
-        AutoRetainerIpcService? autoRetainerIpc = null,
-        ITextureProvider? textureProvider = null,
-        FavoritesService? favoritesService = null)
+    /// <summary>
+    /// Creates a tool instance by ID using a bundled context.
+    /// </summary>
+    public static ToolComponent? CreateToolFromId(string id, Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
             // Check if this is a data tracker tool ID
-            if (id.StartsWith("DataTracker_") && registry != null)
+            if (id.StartsWith("DataTracker_") && ctx.Registry != null)
             {
                 var typeName = id.Substring("DataTracker_".Length);
                 if (Enum.TryParse<TrackedDataType>(typeName, out var dataType))
                 {
-                    return CreateDataTrackerTool(dataType, pos, samplerService, configService, registry, favoritesService, inventoryChangeService);
+                    return CreateDataTrackerTool(dataType, pos, ctx);
                 }
             }
 
-            switch (id)
+            return id switch
             {
-                case ToolIds.CrystalTracker:
-                    return CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService);
-
-                case ToolIds.ItemTable:
-                    return CreateItemTableTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
-
-                case ToolIds.ItemGraph:
-                    return CreateItemGraphTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService);
-
-                case ToolIds.GettingStarted:
-                    return new GettingStartedTool { Position = pos };
-
-                case ToolIds.ImPlotReference:
-                    return new ImPlotReferenceTool { Position = pos };
-
-                case ToolIds.Label:
-                    return new LabelTool(configService) { Position = pos };
-
-                case ToolIds.LivePriceFeed:
-                    if (webSocketService != null && priceTrackingService != null && itemDataService != null)
-                        return CreateLivePriceFeedTool(pos, webSocketService, priceTrackingService, configService, itemDataService, samplerService);
-                    return null;
-
-                case ToolIds.InventoryValue:
-                    if (priceTrackingService != null)
-                        return CreateInventoryValueTool(pos, priceTrackingService, samplerService, configService);
-                    return null;
-
-                case ToolIds.TopItems:
-                    if (priceTrackingService != null && itemDataService != null && dataManager != null && textureProvider != null && favoritesService != null)
-                        return CreateTopItemsTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, textureProvider, favoritesService, inventoryChangeService);
-                    return null;
-
-                case ToolIds.ItemSalesHistory:
-                    if (priceTrackingService != null && itemDataService != null && dataManager != null && textureProvider != null && favoritesService != null)
-                        return CreateItemSalesHistoryTool(pos, priceTrackingService, samplerService, configService, itemDataService, dataManager, textureProvider, favoritesService);
-                    return null;
-
-                case ToolIds.UniversalisWebSocketStatus:
-                    return CreateUniversalisWebSocketStatusTool(pos, configService, webSocketService);
-
-                case ToolIds.AutoRetainerStatus:
-                    return CreateAutoRetainerStatusTool(pos, autoRetainerIpc);
-
-                case ToolIds.AutoRetainerControl:
-                    return CreateAutoRetainerControlTool(pos, autoRetainerIpc);
-
-                case ToolIds.RetainerVentureStatus:
-                    return CreateRetainerVentureStatusTool(pos, autoRetainerIpc, configService);
-
-                case ToolIds.SubmersibleVentureStatus:
-                    return CreateSubmersibleVentureStatusTool(pos, autoRetainerIpc, configService);
-
-                case ToolIds.UniversalisApiStatus:
-                    return CreateUniversalisApiStatusTool(pos, configService, priceTrackingService);
-
-                case ToolIds.DatabaseSize:
-                    return CreateDatabaseSizeTool(pos, samplerService);
-
-                case ToolIds.CacheSize:
-                    return CreateCacheSizeTool(pos, inventoryCacheService);
-
-                case ToolIds.Fps:
-                    return CreateFpsTool(pos);
-
-                default:
-                    return null;
-            }
+                ToolIds.DataTable => CreateDataTableTool(pos, ctx),
+                ToolIds.DataGraph => CreateDataGraphTool(pos, ctx),
+                ToolIds.GettingStarted => new GettingStartedTool { Position = pos },
+                ToolIds.ImPlotReference => new ImPlotReferenceTool { Position = pos },
+                ToolIds.Label => new LabelTool(ctx.ConfigService) { Position = pos },
+                ToolIds.LivePriceFeed => CreateLivePriceFeedTool(pos, ctx),
+                ToolIds.InventoryValue => CreateInventoryValueTool(pos, ctx),
+                ToolIds.TopItems => CreateTopItemsTool(pos, ctx),
+                ToolIds.ItemSalesHistory => CreateItemSalesHistoryTool(pos, ctx),
+                ToolIds.UniversalisWebSocketStatus => CreateUniversalisWebSocketStatusTool(pos, ctx),
+                ToolIds.AutoRetainerStatus => CreateAutoRetainerStatusTool(pos, ctx),
+                ToolIds.AutoRetainerControl => CreateAutoRetainerControlTool(pos, ctx),
+                ToolIds.RetainerVentureStatus => CreateRetainerVentureStatusTool(pos, ctx),
+                ToolIds.SubmersibleVentureStatus => CreateSubmersibleVentureStatusTool(pos, ctx),
+                ToolIds.UniversalisApiStatus => CreateUniversalisApiStatusTool(pos, ctx),
+                ToolIds.DatabaseSize => CreateDatabaseSizeTool(pos, ctx),
+                ToolIds.CacheSize => CreateCacheSizeTool(pos, ctx),
+                ToolIds.Fps => CreateFpsTool(pos),
+                _ => null
+            };
         }
         catch (Exception ex)
         {

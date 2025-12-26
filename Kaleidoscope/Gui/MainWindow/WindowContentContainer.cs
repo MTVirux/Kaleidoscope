@@ -27,6 +27,11 @@ public class WindowContentContainer
     private bool _renamePopupOpen = false;
     private string _renameBuffer = string.Empty;
 
+    // Conversion popup state (for Table <-> Graph conversion)
+    private int _conversionToolIndex = -1;
+    private bool _conversionPopupOpen = false;
+    private List<(uint Id, string Name)>? _itemsWithoutHistory = null;
+
     // Grid resolution modal state
     private bool _gridResolutionPopupOpen = false;
     private LayoutGridSettings _editingGridSettings = new LayoutGridSettings();
@@ -120,6 +125,16 @@ public class WindowContentContainer
 
         // Callback invoked to open the layouts management UI (config window layouts tab).
         public Action? OnManageLayouts;
+
+        // Callback invoked when the user saves a tool as a preset.
+        // Parameters: tool type ID, preset name, serialized settings
+        public Action<string, string, Dictionary<string, object?>>? OnSavePreset;
+
+        // Save as preset state
+        private int _savePresetToolIndex = -1;
+        private bool _savePresetPopupOpen = false;
+        private string _savePresetName = string.Empty;
+        private string _savePresetDescription = string.Empty;
 
         // Callbacks for interaction state changes (dragging/resizing)
         // Host can use these to update the StateService
@@ -268,17 +283,8 @@ public class WindowContentContainer
                     newDataTracker.SetHiddenSeries(hiddenSeries);
                 }
             }
-            else if (source is Tools.CrystalTracker.CrystalTrackerTool sourceCrystalTracker && 
-                     newTool is Tools.CrystalTracker.CrystalTrackerTool newCrystalTracker)
-            {
-                var hiddenSeries = sourceCrystalTracker.HiddenSeries;
-                if (hiddenSeries?.Count > 0)
-                {
-                    newCrystalTracker.SetHiddenSeries(hiddenSeries);
-                }
-            }
 
-            AddTool(newTool);
+            AddToolInstance(newTool);
             LogService.Debug($"DuplicateTool: duplicated tool id='{source.Id}'");
         }
 
@@ -406,7 +412,7 @@ public class WindowContentContainer
         // Register a tool for the "Add tool" menu. The factory receives the click-relative
         // position and should return a configured ToolComponent (position may be adjusted by
         // the container snapping logic afterwards). Factory may return null if tool creation fails.
-        public void RegisterTool(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null, string? categoryPath = null)
+        public void DefineToolType(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null, string? categoryPath = null)
         {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("id");
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -419,10 +425,10 @@ public class WindowContentContainer
             if (idx >= 0) _toolRegistry.RemoveAt(idx);
         }
 
-        public void AddTool(ToolComponent tool)
+        public void AddToolInstance(ToolComponent tool)
         {
             _tools.Add(new ToolEntry(tool));
-            LogService.Debug($"AddTool: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}");
+            LogService.Debug($"AddToolInstance: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}");
             
             // Subscribe to tool settings changes to trigger layout saves
             tool.OnToolSettingsChanged += () => MarkLayoutDirty();
@@ -461,11 +467,6 @@ public class WindowContentContainer
                 if (t is Tools.DataTracker.DataTrackerTool dataTrackerTool)
                 {
                     state.HiddenSeries = dataTrackerTool.HiddenSeries.ToList();
-                }
-                // Export hidden series for CrystalTrackerTool
-                else if (t is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool)
-                {
-                    state.HiddenSeries = crystalTrackerTool.HiddenSeries.ToList();
                 }
                 
                 // Export tool-specific settings
@@ -546,11 +547,6 @@ public class WindowContentContainer
                         {
                             dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
                         }
-                        // Apply hidden series for CrystalTrackerTool
-                        else if (match is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
-                        {
-                            crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                        }
                         // Apply tool-specific settings
                         if (entry.ToolSettings?.Count > 0)
                         {
@@ -594,17 +590,12 @@ public class WindowContentContainer
                                 {
                                     dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
                                 }
-                                // Apply hidden series for CrystalTrackerTool
-                                else if (created is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
-                                {
-                                    crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                }
                                 // Apply tool-specific settings
                                 if (entry.ToolSettings?.Count > 0)
                                 {
                                     created.ImportToolSettings(entry.ToolSettings);
                                 }
-                                AddTool(created);
+                                AddToolInstance(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
                                 matchedIndices.Add(_tools.Count - 1);
                                 LogService.Debug($"ApplyLayout: created tool via registry id='{reg.Id}' for entry '{entry.Id}' (type={entry.Type})");
@@ -649,17 +640,12 @@ public class WindowContentContainer
                                     {
                                         dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
                                     }
-                                    // Apply hidden series for CrystalTrackerTool
-                                    else if (cand is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
-                                    {
-                                        crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                    }
                                     // Apply tool-specific settings
                                     if (entry.ToolSettings?.Count > 0)
                                     {
                                         cand.ImportToolSettings(entry.ToolSettings);
                                     }
-                                    AddTool(cand);
+                                    AddToolInstance(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
                                     matchedIndices.Add(_tools.Count - 1);
                                     LogService.Debug($"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
@@ -727,17 +713,12 @@ public class WindowContentContainer
                                         {
                                             dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
                                         }
-                                        // Apply hidden series for CrystalTrackerTool
-                                        else if (inst is Tools.CrystalTracker.CrystalTrackerTool crystalTrackerTool && entry.HiddenSeries?.Count > 0)
-                                        {
-                                            crystalTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                        }
                                         // Apply tool-specific settings
                                         if (entry.ToolSettings?.Count > 0)
                                         {
                                             inst.ImportToolSettings(entry.ToolSettings);
                                         }
-                                        AddTool(inst);
+                                        AddToolInstance(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
                                         matchedIndices.Add(_tools.Count - 1);
                                         LogService.Debug($"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
@@ -996,7 +977,7 @@ public class WindowContentContainer
                                                     {
                                                         LogService.Debug($"Tool snap error: {ex.Message}");
                                                     }
-                                                    AddTool(tool);
+                                                    AddToolInstance(tool);
                                                 }
                                             }
                                             catch (Exception ex)
@@ -1274,12 +1255,12 @@ public class WindowContentContainer
                 {
                     using (profilerService.BeginToolScope(t.Id, t.DisplayTitle))
                     {
-                        t.DrawContent();
+                        t.RenderToolContent();
                     }
                 }
                 else
                 {
-                    t.DrawContent();
+                    t.RenderToolContent();
                 }
                 
                 // Capture focus state before ending child - must be called inside BeginChild/EndChild block
@@ -1576,6 +1557,49 @@ public class WindowContentContainer
                             _settingsPopupOpen = true;
                         }
 
+                        // Save as Preset option (for DataTable tools - check by type, not Id)
+                        if (t is Tools.DataTable.DataTableTool && OnSavePreset != null)
+                        {
+                            if (ImGui.MenuItem($"Save {t.ToolName} Preset"))
+                            {
+                                ImGui.CloseCurrentPopup();
+                                _savePresetToolIndex = _contextToolIndex;
+                                _savePresetPopupOpen = true;
+                                _savePresetName = string.Empty;
+                                _savePresetDescription = string.Empty;
+                            }
+                        }
+
+                        // Conversion options (Table <-> Graph)
+                        if (t is Tools.DataTable.DataTableTool tableTool)
+                        {
+                            if (ImGui.MenuItem("Convert to Graph"))
+                            {
+                                var itemsWithoutHistory = tableTool.GetItemsWithoutHistoryWithNames();
+                                if (itemsWithoutHistory.Count > 0)
+                                {
+                                    // Show warning popup about items without history
+                                    _conversionToolIndex = _contextToolIndex;
+                                    _itemsWithoutHistory = itemsWithoutHistory.ToList();
+                                    _conversionPopupOpen = true;
+                                }
+                                else
+                                {
+                                    // Convert directly
+                                    ConvertTableToGraph(_contextToolIndex);
+                                }
+                                ImGui.CloseCurrentPopup();
+                            }
+                        }
+                        else if (t is Tools.DataGraph.DataGraphTool)
+                        {
+                            if (ImGui.MenuItem("Convert to Table"))
+                            {
+                                ConvertGraphToTable(_contextToolIndex);
+                                ImGui.CloseCurrentPopup();
+                            }
+                        }
+
                         ImGui.Separator();
                         if (ImGui.MenuItem("Remove component"))
                         {
@@ -1607,6 +1631,270 @@ public class WindowContentContainer
             
             // Tool rename modal
             DrawToolRenameModal();
+            
+            // Tool conversion modal (Table -> Graph with history warning)
+            DrawConversionModal();
+            
+            // Save as Preset modal
+            DrawSavePresetModal();
+        }
+
+        /// <summary>
+        /// Draws the conversion warning modal when converting a table to graph
+        /// and some items don't have historical data enabled.
+        /// </summary>
+        private void DrawConversionModal()
+        {
+            if (_conversionToolIndex < 0 || _conversionToolIndex >= _tools.Count || _itemsWithoutHistory == null)
+                return;
+
+            const string popupName = "Convert to Graph###conversion_warning_popup";
+            var toolToConvert = _tools[_conversionToolIndex].Tool;
+
+            // The popup must be opened each frame until it appears
+            if (_conversionPopupOpen && !ImGui.IsPopupOpen(popupName))
+            {
+                ImGui.OpenPopup(popupName);
+            }
+
+            if (!ImGui.BeginPopupModal(popupName, ref _conversionPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                // Modal not showing - if user closed it, reset state
+                if (!_conversionPopupOpen)
+                {
+                    _conversionToolIndex = -1;
+                    _itemsWithoutHistory = null;
+                }
+                return;
+            }
+
+            ImGui.TextUnformatted("Items Without Historical Data");
+            ImGui.Separator();
+            ImGui.TextWrapped("The following items don't have historical data enabled. They will appear in the graph but won't show any time-series data until history tracking is enabled:");
+            ImGui.Spacing();
+
+            // List items without history
+            ImGui.BeginChild("items_list", new Vector2(350, Math.Min(_itemsWithoutHistory.Count * 22 + 10, 150)), true);
+            foreach (var item in _itemsWithoutHistory)
+            {
+                ImGui.BulletText(item.Name);
+            }
+            ImGui.EndChild();
+
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "To enable history tracking, use the tool's Settings.");
+            ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "Note: This will increase the storage Kaleidoscope uses on your device.");
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // Action buttons
+            if (ImGui.Button("Convert Anyway", new Vector2(120, 0)))
+            {
+                ConvertTableToGraph(_conversionToolIndex);
+                _conversionPopupOpen = false;
+                _conversionToolIndex = -1;
+                _itemsWithoutHistory = null;
+                ImGui.CloseCurrentPopup();
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Open Settings", new Vector2(120, 0)))
+            {
+                // Close conversion popup and open settings for the table tool
+                _settingsToolIndex = _conversionToolIndex;
+                _settingsPopupOpen = true;
+                _conversionPopupOpen = false;
+                _conversionToolIndex = -1;
+                _itemsWithoutHistory = null;
+                ImGui.CloseCurrentPopup();
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Cancel", new Vector2(80, 0)))
+            {
+                _conversionPopupOpen = false;
+                _conversionToolIndex = -1;
+                _itemsWithoutHistory = null;
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.EndPopup();
+        }
+
+        /// <summary>
+        /// Converts a DataTableTool to a DataGraphTool, preserving items/currencies.
+        /// </summary>
+        private void ConvertTableToGraph(int toolIndex)
+        {
+            if (toolIndex < 0 || toolIndex >= _tools.Count)
+                return;
+
+            var entry = _tools[toolIndex];
+            if (entry.Tool is not Tools.DataTable.DataTableTool tableTool)
+                return;
+
+            // Find the registration for DataGraph to create a new instance
+            var graphReg = _toolRegistry.Find(r => r.Id == WindowToolRegistrar.ToolIds.DataGraph);
+            if (graphReg?.Factory == null)
+            {
+                LogService.Error("Cannot convert: DataGraph tool not registered");
+                return;
+            }
+
+            try
+            {
+                // Create a new graph tool at the same position
+                var graphTool = graphReg.Factory(entry.Tool.Position) as Tools.DataGraph.DataGraphTool;
+                if (graphTool == null)
+                {
+                    LogService.Error("Failed to create DataGraph tool during conversion");
+                    return;
+                }
+
+                // Copy position/size/visual properties
+                graphTool.Id = WindowToolRegistrar.ToolIds.DataGraph;
+                graphTool.Position = entry.Tool.Position;
+                graphTool.Size = entry.Tool.Size;
+                graphTool.Visible = entry.Tool.Visible;
+                graphTool.BackgroundEnabled = entry.Tool.BackgroundEnabled;
+                graphTool.HeaderVisible = entry.Tool.HeaderVisible;
+                graphTool.OutlineEnabled = entry.Tool.OutlineEnabled;
+                graphTool.BackgroundColor = entry.Tool.BackgroundColor;
+                graphTool.CustomTitle = entry.Tool.CustomTitle;
+                graphTool.GridCol = entry.Tool.GridCol;
+                graphTool.GridRow = entry.Tool.GridRow;
+                graphTool.GridColSpan = entry.Tool.GridColSpan;
+                graphTool.GridRowSpan = entry.Tool.GridRowSpan;
+                graphTool.HasGridCoords = entry.Tool.HasGridCoords;
+
+                // Copy the columns as series
+                var columns = tableTool.GetColumns();
+                var series = columns.Select(c => new Widgets.ItemColumnConfig
+                {
+                    Id = c.Id,
+                    CustomName = c.CustomName,
+                    IsCurrency = c.IsCurrency,
+                    Color = c.Color,
+                    Width = c.Width,
+                    StoreHistory = c.StoreHistory
+                }).ToList();
+                graphTool.SetSeries(series);
+                
+                // Transfer shared settings from table to graph
+                var tableSettings = tableTool.ExportToolSettings();
+                if (tableSettings != null)
+                {
+                    graphTool.ConfigureSettings(s =>
+                    {
+                        if (tableSettings.TryGetValue("IncludeRetainers", out var ir) && ir is bool includeRetainers)
+                            s.IncludeRetainers = includeRetainers;
+                        if (tableSettings.TryGetValue("ShowActionButtons", out var sab) && sab is bool showActionButtons)
+                            s.ShowActionButtons = showActionButtons;
+                        if (tableSettings.TryGetValue("UseCompactNumbers", out var ucn) && ucn is bool useCompactNumbers)
+                            s.UseCompactNumbers = useCompactNumbers;
+                    });
+                }
+
+                // Replace the old tool with the new one
+                entry.Tool.Dispose();
+                _tools[toolIndex] = new ToolEntry(graphTool);
+                MarkLayoutDirty();
+                
+                LogService.Debug($"Converted DataTable to DataGraph with {series.Count} series");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to convert table to graph", ex);
+            }
+        }
+
+        /// <summary>
+        /// Converts a DataGraphTool to a DataTableTool, preserving items/currencies.
+        /// </summary>
+        private void ConvertGraphToTable(int toolIndex)
+        {
+            if (toolIndex < 0 || toolIndex >= _tools.Count)
+                return;
+
+            var entry = _tools[toolIndex];
+            if (entry.Tool is not Tools.DataGraph.DataGraphTool graphTool)
+                return;
+
+            // Find the registration for DataTable to create a new instance
+            var tableReg = _toolRegistry.Find(r => r.Id == WindowToolRegistrar.ToolIds.DataTable);
+            if (tableReg?.Factory == null)
+            {
+                LogService.Error("Cannot convert: DataTable tool not registered");
+                return;
+            }
+
+            try
+            {
+                // Create a new table tool at the same position
+                var tableTool = tableReg.Factory(entry.Tool.Position) as Tools.DataTable.DataTableTool;
+                if (tableTool == null)
+                {
+                    LogService.Error("Failed to create DataTable tool during conversion");
+                    return;
+                }
+
+                // Copy position/size/visual properties
+                tableTool.Id = WindowToolRegistrar.ToolIds.DataTable;
+                tableTool.Position = entry.Tool.Position;
+                tableTool.Size = entry.Tool.Size;
+                tableTool.Visible = entry.Tool.Visible;
+                tableTool.BackgroundEnabled = entry.Tool.BackgroundEnabled;
+                tableTool.HeaderVisible = entry.Tool.HeaderVisible;
+                tableTool.OutlineEnabled = entry.Tool.OutlineEnabled;
+                tableTool.BackgroundColor = entry.Tool.BackgroundColor;
+                tableTool.CustomTitle = entry.Tool.CustomTitle;
+                tableTool.GridCol = entry.Tool.GridCol;
+                tableTool.GridRow = entry.Tool.GridRow;
+                tableTool.GridColSpan = entry.Tool.GridColSpan;
+                tableTool.GridRowSpan = entry.Tool.GridRowSpan;
+                tableTool.HasGridCoords = entry.Tool.HasGridCoords;
+
+                // Copy the series as columns
+                var series = graphTool.GetSeries();
+                var columns = series.Select(s => new Widgets.ItemColumnConfig
+                {
+                    Id = s.Id,
+                    CustomName = s.CustomName,
+                    IsCurrency = s.IsCurrency,
+                    Color = s.Color,
+                    Width = s.Width,
+                    StoreHistory = s.StoreHistory
+                }).ToList();
+                tableTool.SetColumns(columns);
+                
+                // Transfer shared settings from graph to table
+                var graphSettings = graphTool.ExportToolSettings();
+                if (graphSettings != null)
+                {
+                    tableTool.ConfigureSettings(s =>
+                    {
+                        if (graphSettings.TryGetValue("IncludeRetainers", out var ir) && ir is bool includeRetainers)
+                            s.IncludeRetainers = includeRetainers;
+                        if (graphSettings.TryGetValue("ShowActionButtons", out var sab) && sab is bool showActionButtons)
+                            s.ShowActionButtons = showActionButtons;
+                        if (graphSettings.TryGetValue("UseCompactNumbers", out var ucn) && ucn is bool useCompactNumbers)
+                            s.UseCompactNumbers = useCompactNumbers;
+                    });
+                }
+
+                // Replace the old tool with the new one
+                entry.Tool.Dispose();
+                _tools[toolIndex] = new ToolEntry(tableTool);
+                MarkLayoutDirty();
+                
+                LogService.Debug($"Converted DataGraph to DataTable with {columns.Count} columns");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to convert graph to table", ex);
+            }
         }
 
         /// <summary>
@@ -1697,6 +1985,109 @@ public class WindowContentContainer
             if (!_renamePopupOpen)
             {
                 _renameToolIndex = -1;
+            }
+        }
+
+        /// <summary>
+        /// Draws the save as preset modal if one is currently open.
+        /// </summary>
+        private void DrawSavePresetModal()
+        {
+            if (_savePresetToolIndex < 0 || _savePresetToolIndex >= _tools.Count)
+                return;
+
+            const string popupName = "save_preset_popup";
+            var toolToSave = _tools[_savePresetToolIndex].Tool;
+
+            // The popup must be opened each frame until it appears
+            if (_savePresetPopupOpen && !ImGui.IsPopupOpen(popupName))
+            {
+                ImGui.OpenPopup(popupName);
+            }
+
+            if (!ImGui.BeginPopupModal(popupName, ref _savePresetPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                // Modal not showing - if user closed it, reset state
+                if (!_savePresetPopupOpen)
+                {
+                    _savePresetToolIndex = -1;
+                }
+                return;
+            }
+
+            try
+            {
+                ImGui.TextUnformatted("Save as Preset");
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.TextWrapped("Save the current tool configuration as a reusable preset.");
+                ImGui.Spacing();
+
+                ImGui.TextUnformatted("Preset Name:");
+                ImGui.SetNextItemWidth(300f);
+                ImGui.InputTextWithHint("##presetNameInput", "Enter preset name", ref _savePresetName, 256);
+
+                ImGui.Spacing();
+                ImGui.TextUnformatted("Description (optional):");
+                ImGui.SetNextItemWidth(300f);
+                ImGui.InputTextWithHint("##presetDescInput", "Enter description", ref _savePresetDescription, 512);
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                var canSave = !string.IsNullOrWhiteSpace(_savePresetName);
+                if (!canSave)
+                {
+                    ImGui.BeginDisabled();
+                }
+
+                if (ImGui.Button("Save", new Vector2(80, 0)))
+                {
+                    try
+                    {
+                        var settings = toolToSave.ExportToolSettings();
+                        if (settings != null && OnSavePreset != null)
+                        {
+                            OnSavePreset.Invoke(toolToSave.Id, _savePresetName.Trim(), settings);
+                            LogService.Debug($"Saved preset '{_savePresetName}' for tool type '{toolToSave.Id}'");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Error saving preset", ex);
+                    }
+                    ImGui.CloseCurrentPopup();
+                    _savePresetPopupOpen = false;
+                }
+
+                if (!canSave)
+                {
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    {
+                        ImGui.SetTooltip("Enter a preset name to save");
+                    }
+                }
+
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                {
+                    ImGui.CloseCurrentPopup();
+                    _savePresetPopupOpen = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Error in save preset modal", ex);
+            }
+
+            ImGui.EndPopup();
+
+            if (!_savePresetPopupOpen)
+            {
+                _savePresetToolIndex = -1;
             }
         }
 
