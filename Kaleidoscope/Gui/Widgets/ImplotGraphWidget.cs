@@ -1431,10 +1431,10 @@ public class ImplotGraphWidget : ISettingsProvider
     #region Public Draw Methods
 
     /// <summary>
-    /// Draws the graph with the provided samples using ImPlot (trading platform style).
+    /// Renders the graph with the provided samples using ImPlot (trading platform style).
     /// </summary>
     /// <param name="samples">The sample data to plot.</param>
-    public void Draw(IReadOnlyList<float> samples)
+    public void RenderGraph(IReadOnlyList<float> samples)
     {
         if (samples == null || samples.Count == 0)
         {
@@ -1451,11 +1451,11 @@ public class ImplotGraphWidget : ISettingsProvider
     }
 
     /// <summary>
-    /// Draws multiple data series overlaid on the same graph with time-aligned data.
+    /// Renders multiple data series overlaid on the same graph with time-aligned data.
     /// Uses caching to avoid recomputing prepared data every frame.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
-    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+    public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
     {
         if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
         {
@@ -1505,11 +1505,11 @@ public class ImplotGraphWidget : ISettingsProvider
     }
     
     /// <summary>
-    /// Draws multiple data series overlaid on the same graph with time-aligned data, using custom colors.
+    /// Renders multiple data series overlaid on the same graph with time-aligned data, using custom colors.
     /// Uses caching to avoid recomputing prepared data every frame.
     /// </summary>
     /// <param name="series">List of data series with names, timestamped values, and optional colors.</param>
-    public void DrawMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
+    public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
     {
         if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
         {
