@@ -43,6 +43,8 @@ public class LabelToolSettings
 /// </summary>
 public class LabelTool : ToolComponent
 {
+    public override string ToolName => "Label";
+    
     private readonly ConfigurationService _configService;
     
     // Settings instance and schema
@@ -113,7 +115,7 @@ public class LabelTool : ToolComponent
         set => _settings.VerticalAlign = value;
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {

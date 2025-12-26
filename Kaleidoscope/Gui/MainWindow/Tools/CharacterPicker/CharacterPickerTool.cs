@@ -14,13 +14,15 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.CharacterPicker
 
     public class CharacterPickerTool : ToolComponent
     {
+        public override string ToolName => "Character Picker";
+
         public CharacterPickerTool()
         {
             Title = "Character Picker";
             Size = new Vector2(300, 120);
         }
 
-        public override void DrawContent()
+        public override void RenderToolContent()
         {
             ImGui.TextUnformatted("Character Selection Widget");
             ImGui.Separator();

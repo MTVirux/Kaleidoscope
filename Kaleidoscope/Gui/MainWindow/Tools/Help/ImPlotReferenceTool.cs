@@ -9,13 +9,15 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Help;
 /// </summary>
 public class ImPlotReferenceTool : ToolComponent
 {
+    public override string ToolName => "Graph Controls";
+    
     public ImPlotReferenceTool()
     {
         Title = "Graph Controls";
         Size = new Vector2(340, 320);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {

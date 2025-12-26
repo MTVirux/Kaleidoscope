@@ -10,13 +10,15 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Help;
 /// </summary>
 public class GettingStartedTool : ToolComponent
 {
+    public override string ToolName => "Getting Started";
+    
     public GettingStartedTool()
     {
         Title = "Getting Started";
         Size = new Vector2(400, 300);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
