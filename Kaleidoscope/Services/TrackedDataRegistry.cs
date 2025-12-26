@@ -27,7 +27,7 @@ public sealed class TrackedDataRegistry : IRequiredService
     private void RegisterAllTypes()
     {
         // === Core Currencies ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.Gil,
             DisplayName = "Gil",
@@ -40,7 +40,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         });
 
         // === Tomestones ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TomestonePoetics,
             DisplayName = "Allagan Tomestone of Poetics",
@@ -52,32 +52,32 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Uncapped tomestones for older expansion gear."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TomestoneCapped,
             DisplayName = "Tomestone (Capped)",
             ShortName = "Capped",
             Category = TrackedDataCategory.Tomestone,
-            ItemId = 44123, // Heliometry as of 7.x
+            ItemId = 47, // Heliometry as of 7.x
             MaxValue = 2000,
             EnabledByDefault = true,
             Description = "Weekly-capped tomestones for current expansion gear."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TomestoneUncapped,
             DisplayName = "Tomestone (Uncapped)",
             ShortName = "Uncapped",
             Category = TrackedDataCategory.Tomestone,
-            ItemId = 43693, // Aesthetics as of 7.x
+            ItemId = 46, // Aesthetics as of 7.x
             MaxValue = 2000,
             EnabledByDefault = true,
             Description = "Uncapped tomestones for current expansion."
         });
 
         // === Scrips ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.WhiteCraftersScrip,
             DisplayName = "White Crafters' Scrip",
@@ -89,7 +89,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Crafters' scrips for older recipes."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.PurpleCraftersScrip,
             DisplayName = "Purple Crafters' Scrip",
@@ -101,7 +101,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Crafters' scrips for endgame crafting."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.OrangeCraftersScrip,
             DisplayName = "Orange Crafters' Scrip",
@@ -113,7 +113,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Current crafters' scrips."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.WhiteGatherersScrip,
             DisplayName = "White Gatherers' Scrip",
@@ -125,7 +125,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Gatherers' scrips for older content."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.PurpleGatherersScrip,
             DisplayName = "Purple Gatherers' Scrip",
@@ -137,7 +137,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Gatherers' scrips for endgame gathering."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.OrangeGatherersScrip,
             DisplayName = "Orange Gatherers' Scrip",
@@ -149,7 +149,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Current gatherers' scrips."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.SkybuildersScrip,
             DisplayName = "Skybuilders' Scrip",
@@ -162,52 +162,56 @@ public sealed class TrackedDataRegistry : IRequiredService
         });
 
         // === Grand Company Seals ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.MaelstromSeals,
             DisplayName = "Storm Seals (Maelstrom)",
             ShortName = "Storm",
             Category = TrackedDataCategory.GrandCompany,
+            ItemId = 20,
             MaxValue = 90000,
             EnabledByDefault = true,
             Description = "Maelstrom grand company seals."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TwinAdderSeals,
             DisplayName = "Serpent Seals (Twin Adder)",
             ShortName = "Serpent",
             Category = TrackedDataCategory.GrandCompany,
+            ItemId = 21,
             MaxValue = 90000,
             EnabledByDefault = true,
             Description = "Order of the Twin Adder grand company seals."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.ImmortalFlamesSeals,
             DisplayName = "Flame Seals (Immortal Flames)",
             ShortName = "Flame",
             Category = TrackedDataCategory.GrandCompany,
+            ItemId = 22,
             MaxValue = 90000,
             EnabledByDefault = true,
             Description = "Immortal Flames grand company seals."
         });
 
         // === PvP Currencies ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.WolfMarks,
             DisplayName = "Wolf Marks",
             ShortName = "Wolf",
             Category = TrackedDataCategory.PvP,
+            ItemId = 25,
             MaxValue = 20000,
             EnabledByDefault = true,
             Description = "PvP currency for gear and items."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TrophyCrystals,
             DisplayName = "Trophy Crystals",
@@ -220,18 +224,19 @@ public sealed class TrackedDataRegistry : IRequiredService
         });
 
         // === Hunt Currencies ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.AlliedSeals,
             DisplayName = "Allied Seals",
             ShortName = "Allied",
             Category = TrackedDataCategory.Hunt,
+            ItemId = 27,
             MaxValue = 4000,
             EnabledByDefault = true,
             Description = "ARR/HW hunt currency."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.CenturioSeals,
             DisplayName = "Centurio Seals",
@@ -243,7 +248,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Stormblood hunt currency."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.SackOfNuts,
             DisplayName = "Sack of Nuts",
@@ -256,19 +261,20 @@ public sealed class TrackedDataRegistry : IRequiredService
         });
 
         // === Gold Saucer ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.MGP,
             DisplayName = "Manderville Gold Saucer Points",
             ShortName = "MGP",
             Category = TrackedDataCategory.GoldSaucer,
+            ItemId = 29,
             MaxValue = 9_999_999,
             EnabledByDefault = true,
             Description = "Gold Saucer currency."
         });
 
         // === Tribal ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.BicolorGemstone,
             DisplayName = "Bicolor Gemstones",
@@ -281,7 +287,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         });
 
         // === Ventures ===
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.Ventures,
             DisplayName = "Ventures",
@@ -293,88 +299,33 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Retainer venture tokens."
         });
 
-        // === Crystals ===
-        // Note: Individual crystal types are kept for backwards compatibility and direct API access,
-        // but the CrystalTracker tool provides unified tracking with grouping/filtering.
-        Register(new TrackedDataDefinition
+        // === FC/Retainer ===
+        RegisterTrackedType(new TrackedDataDefinition
         {
-            Type = TrackedDataType.CrystalsTotal,
-            DisplayName = "Crystals (Total)",
-            ShortName = "Crystals",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
+            Type = TrackedDataType.FreeCompanyGil,
+            DisplayName = "Free Company Gil",
+            ShortName = "FC Gil",
+            Category = TrackedDataCategory.Gil,
+            ItemId = 1, // Gil icon
+            MaxValue = 999_999_999,
             EnabledByDefault = false,
-            Description = "Total count of all crystals, clusters, and shards (player + retainers). Use Crystal Tracker tool instead."
+            Description = "Gil held by your Free Company."
         });
 
-        Register(new TrackedDataDefinition
+        RegisterTrackedType(new TrackedDataDefinition
         {
-            Type = TrackedDataType.FireCrystals,
-            DisplayName = "Fire Crystals",
-            ShortName = "Fire",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
+            Type = TrackedDataType.RetainerGil,
+            DisplayName = "Retainer Gil",
+            ShortName = "Ret Gil",
+            Category = TrackedDataCategory.Gil,
+            ItemId = 1, // Gil icon
+            MaxValue = 999_999_999,
             EnabledByDefault = false,
-            Description = "Fire shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
+            Description = "Gil held by your retainers."
         });
 
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.IceCrystals,
-            DisplayName = "Ice Crystals",
-            ShortName = "Ice",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
-            EnabledByDefault = false,
-            Description = "Ice shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
-        });
-
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.WindCrystals,
-            DisplayName = "Wind Crystals",
-            ShortName = "Wind",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
-            EnabledByDefault = false,
-            Description = "Wind shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
-        });
-
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.EarthCrystals,
-            DisplayName = "Earth Crystals",
-            ShortName = "Earth",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
-            EnabledByDefault = false,
-            Description = "Earth shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
-        });
-
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.LightningCrystals,
-            DisplayName = "Lightning Crystals",
-            ShortName = "Lightning",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
-            EnabledByDefault = false,
-            Description = "Lightning shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
-        });
-
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.WaterCrystals,
-            DisplayName = "Water Crystals",
-            ShortName = "Water",
-            Category = TrackedDataCategory.Crafting,
-            MaxValue = 9_999_999,
-            EnabledByDefault = false,
-            Description = "Water shards, crystals, and clusters (player + retainers). Use Crystal Tracker tool instead."
-        });
-
-        // === Inventory Space ===
-        Register(new TrackedDataDefinition
+        // === Inventory Space (last) ===
+        RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.InventoryFreeSlots,
             DisplayName = "Free Inventory Slots",
@@ -384,32 +335,9 @@ public sealed class TrackedDataRegistry : IRequiredService
             EnabledByDefault = false,
             Description = "Number of empty slots in main inventory."
         });
-
-        // === FC/Retainer ===
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.FreeCompanyGil,
-            DisplayName = "Free Company Gil",
-            ShortName = "FC Gil",
-            Category = TrackedDataCategory.Gil,
-            MaxValue = 999_999_999,
-            EnabledByDefault = false,
-            Description = "Gil held by your Free Company."
-        });
-
-        Register(new TrackedDataDefinition
-        {
-            Type = TrackedDataType.RetainerGil,
-            DisplayName = "Retainer Gil",
-            ShortName = "Ret Gil",
-            Category = TrackedDataCategory.Gil,
-            MaxValue = 999_999_999,
-            EnabledByDefault = false,
-            Description = "Gil held by your retainers."
-        });
     }
 
-    private void Register(TrackedDataDefinition definition)
+    private void RegisterTrackedType(TrackedDataDefinition definition)
     {
         _definitions[definition.Type] = definition;
     }
