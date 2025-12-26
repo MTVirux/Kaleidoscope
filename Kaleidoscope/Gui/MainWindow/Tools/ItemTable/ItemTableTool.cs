@@ -23,9 +23,11 @@ public class ItemTableTool : ToolComponent
     private readonly IDataManager? _dataManager;
     private readonly AutoRetainerIpcService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
+    private readonly FavoritesService? _favoritesService;
     
     private readonly ItemTableWidget _tableWidget;
     private readonly ItemIconCombo? _itemCombo;
+    private readonly CharacterCombo? _characterCombo;
     
     // Instance-specific settings (not shared with other tool instances)
     private readonly ItemTableSettings _instanceSettings;
@@ -61,6 +63,7 @@ public class ItemTableTool : ToolComponent
         _dataManager = dataManager;
         _autoRetainerService = autoRetainerService;
         _priceTrackingService = priceTrackingService;
+        _favoritesService = favoritesService;
         
         // Initialize instance-specific settings with defaults
         _instanceSettings = new ItemTableSettings();
@@ -98,8 +101,32 @@ public class ItemTableTool : ToolComponent
                 marketableOnly: false);
         }
         
+        // Create character combo for filtering
+        if (favoritesService != null)
+        {
+            _characterCombo = new CharacterCombo(samplerService, favoritesService, configService, "ItemTableCharFilter");
+            _characterCombo.MultiSelectEnabled = true;
+            _characterCombo.MultiSelectionChanged += OnCharacterSelectionChanged;
+            
+            // Restore selection from settings
+            if (_instanceSettings.UseCharacterFilter && _instanceSettings.SelectedCharacterIds.Count > 0)
+            {
+                _characterCombo.SetSelection(_instanceSettings.SelectedCharacterIds);
+            }
+        }
+        
         // Register widget as settings provider
         RegisterSettingsProvider(_tableWidget);
+    }
+    
+    private void OnCharacterSelectionChanged(IReadOnlySet<ulong> selectedIds)
+    {
+        var settings = Settings;
+        settings.SelectedCharacterIds.Clear();
+        settings.SelectedCharacterIds.AddRange(selectedIds);
+        settings.UseCharacterFilter = selectedIds.Count > 0;
+        _pendingRefresh = true;
+        NotifyToolSettingsChanged();
     }
     
     public override void DrawContent()
@@ -167,11 +194,18 @@ public class ItemTableTool : ToolComponent
             ImGui.OpenPopup("AddCurrencyPopup");
         }
         
+        // Character filter combo
+        if (_characterCombo != null)
+        {
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(180);
+            _characterCombo.Draw(180);
+        }
+        
         // Show column count
         var columnCount = Settings.Columns.Count;
         ImGui.SameLine();
-        ImGui.TextDisabled($"({columnCount} column{(columnCount != 1 ? "s" : "")})");
-    }
+        ImGui.TextDisabled($"({columnCount} column{(columnCount != 1 ? "s" : "")})");    }
     
     private void DrawAddItemPopup()
     {
@@ -316,9 +350,20 @@ public class ItemTableTool : ToolComponent
                 }
             }
             
-            // Initialize rows for all known characters
+            // Get character filter (if using multi-select)
+            HashSet<ulong>? allowedCharacters = null;
+            if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+            {
+                allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
+            }
+            
+            // Initialize rows for all known characters (filtered if applicable)
             foreach (var (charId, name) in characterNames)
             {
+                // Skip characters not in the allowed set (if filtering is enabled)
+                if (allowedCharacters != null && !allowedCharacters.Contains(charId))
+                    continue;
+                
                 var displayName = disambiguatedNames.TryGetValue(charId, out var formatted) 
                     ? formatted : name ?? $"CID:{charId}";
                 

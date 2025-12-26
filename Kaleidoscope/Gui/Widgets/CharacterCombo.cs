@@ -365,7 +365,6 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>
         if (ImGui.Button($"{preview}##{popupId}_btn", new Vector2(width, 0)))
         {
             ImGui.OpenPopup(popupId);
-            _multiSelectPopupOpen = true;
             _filterText = string.Empty;
         }
         
@@ -375,10 +374,6 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>
         {
             changed = DrawMultiSelectPopupContent();
             ImGui.EndPopup();
-        }
-        else
-        {
-            _multiSelectPopupOpen = false;
         }
         
         return changed;

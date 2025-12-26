@@ -552,6 +552,18 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
     
     /// <summary>
+    /// Whether to use multi-select character filtering (show only selected characters).
+    /// When false, shows all characters (with HiddenCharacters for individual hiding).
+    /// </summary>
+    public bool UseCharacterFilter { get; set; } = false;
+    
+    /// <summary>
+    /// List of selected character IDs when UseCharacterFilter is enabled.
+    /// Empty list means "All Characters".
+    /// </summary>
+    public List<ulong> SelectedCharacterIds { get; set; } = new();
+    
+    /// <summary>
     /// Grouping mode for table rows (Character, World, DataCenter, Region, All).
     /// </summary>
     public Kaleidoscope.Gui.Widgets.TableGroupingMode GroupingMode { get; set; } = 
