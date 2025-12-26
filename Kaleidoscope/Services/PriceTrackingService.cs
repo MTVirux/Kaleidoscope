@@ -74,6 +74,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>Event fired when price data is updated (new price received via WebSocket).</summary>
     public event Action<int>? OnPriceDataUpdated;
+    
+    /// <summary>Event fired when world data is loaded/refreshed from Universalis.</summary>
+    public event Action? OnWorldDataLoaded;
 
     public PriceTrackingService(
         IPluginLog log,
@@ -553,6 +556,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _lastWorldDataFetch = DateTime.UtcNow;
 
                 _log.Debug($"[PriceTracking] Loaded {worlds.Count} worlds, {dataCenters.Count} data centers");
+                
+                // Notify subscribers that world data is now available
+                OnWorldDataLoaded?.Invoke();
             }
         }
         catch (Exception ex)
