@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -9,13 +10,10 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// </summary>
 public class UniversalisWebSocketStatusTool : ToolComponent
 {
+    public override string ToolName => "Universalis WebSocket Status";
+    
     private readonly UniversalisWebSocketService? _webSocketService;
     private readonly ConfigurationService _configService;
-
-    private static readonly Vector4 ConnectedColor = new(0.2f, 0.8f, 0.2f, 1f);
-    private static readonly Vector4 DisconnectedColor = new(0.8f, 0.2f, 0.2f, 1f);
-    private static readonly Vector4 DisabledColor = new(0.5f, 0.5f, 0.5f, 1f);
-    private static readonly Vector4 WarningColor = new(0.9f, 0.7f, 0.2f, 1f);
 
     /// <summary>
     /// Whether to show extra details beyond the status indicator.
@@ -33,7 +31,7 @@ public class UniversalisWebSocketStatusTool : ToolComponent
         Size = new Vector2(250, 100);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -41,7 +39,7 @@ public class UniversalisWebSocketStatusTool : ToolComponent
 
             if (_webSocketService == null)
             {
-                DrawStatusIndicator(false, "Not Available", "Service not initialized");
+                UiColors.DrawStatusIndicator(false, "Not Available", "Service not initialized");
                 ImGui.PopTextWrapPos();
                 return;
             }
@@ -51,13 +49,13 @@ public class UniversalisWebSocketStatusTool : ToolComponent
 
             if (!priceTrackingEnabled)
             {
-                DrawStatusIndicator(false, "Disabled", "Price tracking is disabled in settings", DisabledColor);
+                UiColors.DrawStatusIndicator(false, "Disabled", "Price tracking is disabled in settings", UiColors.Disabled);
                 if (ShowDetails)
-                    ImGui.TextColored(DisabledColor, "Enable in Settings > Universalis to connect");
+                    ImGui.TextColored(UiColors.Disabled, "Enable in Settings > Universalis to connect");
             }
             else if (isConnected)
             {
-                DrawStatusIndicator(true, "Connected", "Real-time price feed active");
+                UiColors.DrawStatusIndicator(true, "Connected", "Real-time price feed active");
                 
                 if (ShowDetails)
                 {
@@ -67,9 +65,9 @@ public class UniversalisWebSocketStatusTool : ToolComponent
             }
             else
             {
-                DrawStatusIndicator(false, "Disconnected", "Attempting to connect...");
+                UiColors.DrawStatusIndicator(false, "Disconnected", "Attempting to connect...");
                 if (ShowDetails)
-                    ImGui.TextColored(WarningColor, "Will auto-reconnect when available");
+                    ImGui.TextColored(UiColors.Warning, "Will auto-reconnect when available");
             }
 
             ImGui.PopTextWrapPos();
@@ -77,21 +75,6 @@ public class UniversalisWebSocketStatusTool : ToolComponent
         catch (Exception ex)
         {
             LogService.Debug($"[UniversalisWebSocketStatusTool] Draw error: {ex.Message}");
-        }
-    }
-
-    private void DrawStatusIndicator(bool isConnected, string status, string tooltip, Vector4? overrideColor = null)
-    {
-        var color = overrideColor ?? (isConnected ? ConnectedColor : DisconnectedColor);
-        var icon = isConnected ? "●" : "○";
-        
-        ImGui.TextColored(color, icon);
-        ImGui.SameLine();
-        ImGui.TextUnformatted(status);
-        
-        if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(tooltip))
-        {
-            ImGui.SetTooltip(tooltip);
         }
     }
 

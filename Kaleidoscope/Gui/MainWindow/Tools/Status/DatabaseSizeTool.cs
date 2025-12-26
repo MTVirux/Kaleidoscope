@@ -1,4 +1,6 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -18,12 +20,9 @@ public class DatabaseSizeToolSettings
 /// </summary>
 public class DatabaseSizeTool : ToolComponent
 {
+    public override string ToolName => "Database Size";
+    
     private readonly SamplerService _samplerService;
-
-    private static readonly Vector4 InfoColor = new(0.7f, 0.7f, 0.7f, 1f);
-    private static readonly Vector4 ValueColor = new(0.9f, 0.9f, 0.9f, 1f);
-    private static readonly Vector4 WarningColor = new(0.9f, 0.7f, 0.2f, 1f);
-    private static readonly Vector4 ErrorColor = new(0.8f, 0.2f, 0.2f, 1f);
 
     // Cached values to avoid hitting the file system every frame
     private long _cachedFileSize;
@@ -53,7 +52,7 @@ public class DatabaseSizeTool : ToolComponent
         Size = new Vector2(220, 90);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -63,7 +62,7 @@ public class DatabaseSizeTool : ToolComponent
 
             if (string.IsNullOrEmpty(dbPath))
             {
-                ImGui.TextColored(ErrorColor, "Database not available");
+                ImGui.TextColored(UiColors.Error, "Database not available");
                 ImGui.PopTextWrapPos();
                 return;
             }
@@ -78,14 +77,14 @@ public class DatabaseSizeTool : ToolComponent
 
             if (_cachedFileSize < 0)
             {
-                ImGui.TextColored(ErrorColor, "Unable to read database");
+                ImGui.TextColored(UiColors.Error, "Unable to read database");
             }
             else
             {
-                var sizeStr = FormatFileSize(_cachedFileSize);
-                var color = GetSizeColor(_cachedFileSize);
+                var sizeStr = FormatUtils.FormatByteSize(_cachedFileSize);
+                var color = UiColors.GetSizeColor(_cachedFileSize);
 
-                ImGui.TextColored(InfoColor, "Size:");
+                ImGui.TextColored(UiColors.Info, "Size:");
                 ImGui.SameLine();
                 ImGui.TextColored(color, sizeStr);
 
@@ -94,12 +93,12 @@ public class DatabaseSizeTool : ToolComponent
                     ImGui.Spacing();
                     
                     // Show raw bytes
-                    ImGui.TextColored(InfoColor, $"  {_cachedFileSize:N0} bytes");
+                    ImGui.TextColored(UiColors.Info, $"  {_cachedFileSize:N0} bytes");
                     
                     // Show size tier info
                     if (_cachedFileSize > 100 * 1024 * 1024) // > 100 MB
                     {
-                        ImGui.TextColored(WarningColor, "  Consider pruning old data");
+                        ImGui.TextColored(UiColors.Warning, "  Consider pruning old data");
                     }
                 }
             }
@@ -143,38 +142,6 @@ public class DatabaseSizeTool : ToolComponent
         {
             return -1;
         }
-    }
-
-    private static string FormatFileSize(long bytes)
-    {
-        if (bytes < 0)
-            return "Unknown";
-
-        if (bytes < 1024)
-            return $"{bytes} B";
-
-        if (bytes < 1024 * 1024)
-            return $"{bytes / 1024.0:F1} KB";
-
-        if (bytes < 1024 * 1024 * 1024)
-            return $"{bytes / (1024.0 * 1024.0):F2} MB";
-
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
-    }
-
-    private static Vector4 GetSizeColor(long bytes)
-    {
-        // Color based on size thresholds
-        if (bytes < 10 * 1024 * 1024) // < 10 MB
-            return new Vector4(0.2f, 0.8f, 0.2f, 1f); // Green
-
-        if (bytes < 50 * 1024 * 1024) // < 50 MB
-            return new Vector4(0.9f, 0.9f, 0.9f, 1f); // White
-
-        if (bytes < 100 * 1024 * 1024) // < 100 MB
-            return new Vector4(0.9f, 0.7f, 0.2f, 1f); // Yellow
-
-        return new Vector4(0.8f, 0.4f, 0.2f, 1f); // Orange
     }
 
     public override bool HasSettings => true;

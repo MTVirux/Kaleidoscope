@@ -1,4 +1,6 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -9,10 +11,9 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// </summary>
 public class CacheSizeTool : ToolComponent
 {
+    public override string ToolName => "Cache Size";
+    
     private readonly InventoryCacheService _inventoryCacheService;
-
-    private static readonly Vector4 InfoColor = new(0.7f, 0.7f, 0.7f, 1f);
-    private static readonly Vector4 ValueColor = new(0.9f, 0.9f, 0.9f, 1f);
 
     // Cached values to avoid recalculating every frame
     private int _cachedCharacterCount;
@@ -35,7 +36,7 @@ public class CacheSizeTool : ToolComponent
         Size = new Vector2(220, 110);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -50,20 +51,20 @@ public class CacheSizeTool : ToolComponent
             }
 
             // Size line (primary info)
-            var sizeStr = FormatMemorySize(_estimatedBytes);
-            ImGui.TextColored(InfoColor, "Size:");
+            var sizeStr = FormatUtils.FormatByteSize(_estimatedBytes);
+            ImGui.TextColored(UiColors.Info, "Size:");
             ImGui.SameLine();
-            ImGui.TextColored(ValueColor, $"~{sizeStr}");
+            ImGui.TextColored(UiColors.Value, $"~{sizeStr}");
 
             if (ShowDetails)
             {
                 ImGui.Spacing();
 
                 // Character and entry count
-                ImGui.TextColored(InfoColor, $"  {_cachedCharacterCount} characters, {_cachedEntryCount} entries");
+                ImGui.TextColored(UiColors.Info, $"  {_cachedCharacterCount} characters, {_cachedEntryCount} entries");
 
                 // Item count
-                ImGui.TextColored(InfoColor, $"  {_cachedItemCount:N0} items cached");
+                ImGui.TextColored(UiColors.Info, $"  {_cachedItemCount:N0} items cached");
             }
 
             ImGui.PopTextWrapPos();
@@ -101,23 +102,6 @@ public class CacheSizeTool : ToolComponent
             _cachedItemCount = 0;
             _estimatedBytes = 0;
         }
-    }
-
-    private static string FormatMemorySize(long bytes)
-    {
-        if (bytes < 0)
-            return "Unknown";
-
-        if (bytes < 1024)
-            return $"{bytes} B";
-
-        if (bytes < 1024 * 1024)
-            return $"{bytes / 1024.0:F1} KB";
-
-        if (bytes < 1024 * 1024 * 1024)
-            return $"{bytes / (1024.0 * 1024.0):F2} MB";
-
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
     }
 
     public override bool HasSettings => true;

@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -9,11 +10,10 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// </summary>
 public class UniversalisApiStatusTool : ToolComponent
 {
+    public override string ToolName => "Universalis API Status";
+    
     private readonly ConfigurationService _configService;
     private readonly PriceTrackingService? _priceTrackingService;
-
-    private static readonly Vector4 ConnectedColor = new(0.2f, 0.8f, 0.2f, 1f);
-    private static readonly Vector4 DisconnectedColor = new(0.8f, 0.2f, 0.2f, 1f);
 
     /// <summary>
     /// Whether to show extra details beyond the status indicator.
@@ -31,14 +31,14 @@ public class UniversalisApiStatusTool : ToolComponent
         Size = new Vector2(250, 120);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
             // The REST API is always available if we have the service
-            DrawStatusIndicator(true, "Available", "REST API endpoint");
+            UiColors.DrawStatusIndicator(true, "Available", "REST API endpoint");
 
             if (ShowDetails)
             {
@@ -70,21 +70,6 @@ public class UniversalisApiStatusTool : ToolComponent
         catch (Exception ex)
         {
             LogService.Debug($"[UniversalisApiStatusTool] Draw error: {ex.Message}");
-        }
-    }
-
-    private void DrawStatusIndicator(bool isConnected, string status, string tooltip, Vector4? overrideColor = null)
-    {
-        var color = overrideColor ?? (isConnected ? ConnectedColor : DisconnectedColor);
-        var icon = isConnected ? "●" : "○";
-        
-        ImGui.TextColored(color, icon);
-        ImGui.SameLine();
-        ImGui.TextUnformatted(status);
-        
-        if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(tooltip))
-        {
-            ImGui.SetTooltip(tooltip);
         }
     }
 

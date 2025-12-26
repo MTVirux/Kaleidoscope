@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -20,10 +21,7 @@ public class FpsToolSettings
 /// </summary>
 public class FpsTool : ToolComponent
 {
-    private static readonly Vector4 InfoColor = new(0.7f, 0.7f, 0.7f, 1f);
-    private static readonly Vector4 GoodColor = new(0.2f, 0.8f, 0.2f, 1f);
-    private static readonly Vector4 WarningColor = new(0.9f, 0.7f, 0.2f, 1f);
-    private static readonly Vector4 BadColor = new(0.8f, 0.2f, 0.2f, 1f);
+    public override string ToolName => "FPS";
 
     // Smoothing to avoid jittery display
     private float _smoothedFps;
@@ -71,7 +69,7 @@ public class FpsTool : ToolComponent
         Size = new Vector2(120, 70);
     }
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         try
         {
@@ -87,14 +85,14 @@ public class FpsTool : ToolComponent
             var fpsColor = GetFpsColor(_smoothedFps);
 
             // Display FPS
-            ImGui.TextColored(InfoColor, "FPS:");
+            ImGui.TextColored(UiColors.Info, "FPS:");
             ImGui.SameLine();
             ImGui.TextColored(fpsColor, $"{_smoothedFps:F1}");
 
             if (ShowFrameTime)
             {
                 var frameTimeMs = 1000f / _smoothedFps;
-                ImGui.TextColored(InfoColor, "Frame:");
+                ImGui.TextColored(UiColors.Info, "Frame:");
                 ImGui.SameLine();
                 ImGui.TextColored(fpsColor, $"{frameTimeMs:F2} ms");
             }
@@ -108,10 +106,10 @@ public class FpsTool : ToolComponent
     private Vector4 GetFpsColor(float fps)
     {
         if (fps < BadThreshold)
-            return BadColor;
+            return UiColors.Bad;
         if (fps < WarningThreshold)
-            return WarningColor;
-        return GoodColor;
+            return UiColors.Warning;
+        return UiColors.Good;
     }
 
     protected override bool HasToolSettings => true;
