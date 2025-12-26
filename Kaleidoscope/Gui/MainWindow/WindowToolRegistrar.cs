@@ -1,6 +1,5 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
-using Kaleidoscope.Gui.MainWindow.Tools.CrystalTable;
 using Kaleidoscope.Gui.MainWindow.Tools.CrystalTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
@@ -24,7 +23,6 @@ public static class WindowToolRegistrar
         public const string GettingStarted = "GettingStarted";
         public const string ImPlotReference = "ImPlotReference";
         public const string CrystalTracker = "CrystalTracker";
-        public const string CrystalTable = "CrystalTable";
         public const string LivePriceFeed = "LivePriceFeed";
         public const string InventoryValue = "InventoryValue";
         public const string TopItems = "TopItems";
@@ -110,14 +108,6 @@ public static class WindowToolRegistrar
                 pos => CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService),
                 "Tracks shards, crystals, and clusters with grouping by character/element and filtering options",
                 "Graph");
-
-            // Register the Crystal Table tool
-            container.RegisterTool(
-                ToolIds.CrystalTable,
-                "Crystal Table",
-                pos => CreateCrystalTableTool(pos, samplerService, configService, inventoryChangeService, autoRetainerIpc),
-                "Table view of crystal counts by element and tier for all characters",
-                "Table");
 
             // Register the Item Table tool
             container.RegisterTool(
@@ -280,24 +270,6 @@ public static class WindowToolRegistrar
         catch (Exception ex)
         {
             LogService.Error("Failed to create CrystalTrackerTool", ex);
-            return null;
-        }
-    }
-
-    private static ToolComponent? CreateCrystalTableTool(
-        Vector2 pos,
-        SamplerService samplerService,
-        ConfigurationService configService,
-        InventoryChangeService? inventoryChangeService,
-        AutoRetainerIpcService? autoRetainerIpc = null)
-    {
-        try
-        {
-            return new CrystalTableTool(samplerService, configService, inventoryChangeService, autoRetainerIpc) { Position = pos };
-        }
-        catch (Exception ex)
-        {
-            LogService.Error("Failed to create CrystalTableTool", ex);
             return null;
         }
     }
@@ -665,9 +637,6 @@ public static class WindowToolRegistrar
             {
                 case ToolIds.CrystalTracker:
                     return CreateCrystalTrackerTool(pos, samplerService, configService, inventoryChangeService);
-
-                case ToolIds.CrystalTable:
-                    return CreateCrystalTableTool(pos, samplerService, configService, inventoryChangeService, autoRetainerIpc);
 
                 case ToolIds.ItemTable:
                     return CreateItemTableTool(pos, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
