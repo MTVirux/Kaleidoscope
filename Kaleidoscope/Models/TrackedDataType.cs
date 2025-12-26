@@ -97,6 +97,7 @@ public enum TrackedDataType
 
 /// <summary>
 /// Category for grouping tracked data types in UI.
+/// Order determines display order in dropdowns and config UI.
 /// </summary>
 public enum TrackedDataCategory
 {
@@ -109,6 +110,6 @@ public enum TrackedDataCategory
     GoldSaucer,
     Tribal,
     Crafting,
-    Inventory,
     Retainer,
+    Inventory, // Last - Free Inventory Slots appears at the end
 }
