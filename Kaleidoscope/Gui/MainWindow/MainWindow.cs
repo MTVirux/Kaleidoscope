@@ -327,8 +327,13 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolInstance("GettingStarted", new Vector2(20, 50), _filenameService, _samplerService, _configService, _trackedDataRegistry, _inventoryChangeService, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc);
-                if (gettingStarted != null) _contentContainer?.AddTool(gettingStarted);
+                var ctx = new ToolCreationContext(
+                    _filenameService, _samplerService, _configService,
+                    _inventoryChangeService, _trackedDataRegistry, _webSocketService,
+                    _priceTrackingService, _itemDataService, _dataManager,
+                    _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
+                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), ctx);
+                if (gettingStarted != null) _contentContainer?.AddToolInstance(gettingStarted);
             }
         }
         catch (Exception ex)
@@ -514,6 +519,25 @@ public sealed class MainWindow : Window, IService, IDisposable
         
         // Wire current layout name query
         _contentContainer.GetCurrentLayoutName = () => _layoutEditingService.CurrentLayoutName;
+        
+        // Wire save preset callback
+        _contentContainer.OnSavePreset = (toolType, presetName, settings) =>
+        {
+            var preset = new UserToolPreset
+            {
+                Name = presetName,
+                ToolType = toolType,
+                Settings = settings,
+                CreatedAt = DateTime.UtcNow,
+                ModifiedAt = DateTime.UtcNow
+            };
+            
+            Config.UserToolPresets ??= new List<UserToolPreset>();
+            Config.UserToolPresets.Add(preset);
+            _configService.Save();
+            
+            _log.Information($"Saved user preset '{presetName}' for tool type '{toolType}'");
+        };
     }
 
     private void WireInteractionCallbacks()

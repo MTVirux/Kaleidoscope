@@ -122,22 +122,18 @@ public sealed class FullscreenWindow : Window
     {
         try
         {
-            var gettingStarted = WindowToolRegistrar.CreateToolInstance(
+            var ctx = new ToolCreationContext(
+                _filenameService, _samplerService, _configService,
+                _inventoryChangeService, _trackedDataRegistry, _webSocketService,
+                _priceTrackingService, _itemDataService, _dataManager,
+                _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
+            
+            var gettingStarted = WindowToolRegistrar.CreateToolFromId(
                 "GettingStarted",
                 new System.Numerics.Vector2(20, 50),
-                _filenameService,
-                _samplerService,
-                _configService,
-                _trackedDataRegistry,
-                _inventoryChangeService,
-                _webSocketService,
-                _priceTrackingService,
-                _itemDataService,
-                _dataManager,
-                _inventoryCacheService,
-                _autoRetainerIpc);
+                ctx);
             if (gettingStarted != null)
-                _contentContainer.AddTool(gettingStarted);
+                _contentContainer.AddToolInstance(gettingStarted);
         }
         catch (Exception ex)
         {
@@ -276,6 +272,29 @@ public sealed class FullscreenWindow : Window
                 _log.Debug($"Saved grid settings for layout '{activeName}' [fullscreen]");
             }
             catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnGridSettingsChanged failed: {ex.Message}"); }
+        };
+        
+        // Wire save preset callback
+        _contentContainer.OnSavePreset = (toolType, presetName, settings) =>
+        {
+            try
+            {
+                var preset = new UserToolPreset
+                {
+                    Name = presetName,
+                    ToolType = toolType,
+                    Settings = settings,
+                    CreatedAt = DateTime.UtcNow,
+                    ModifiedAt = DateTime.UtcNow
+                };
+                
+                Config.UserToolPresets ??= new System.Collections.Generic.List<UserToolPreset>();
+                Config.UserToolPresets.Add(preset);
+                _configService.Save();
+                
+                _log.Information($"Saved user preset '{presetName}' for tool type '{toolType}'");
+            }
+            catch (Exception ex) { LogService.Debug($"[FullscreenWindow] OnSavePreset failed: {ex.Message}"); }
         };
     }
 
