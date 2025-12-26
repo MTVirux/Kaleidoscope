@@ -893,6 +893,22 @@ public class ItemGraphTool : ToolComponent
                 
                 ImGui.SameLine();
                 
+                // Store history checkbox (only for items, not currencies)
+                if (!seriesConfig.IsCurrency)
+                {
+                    var storeHistory = seriesConfig.StoreHistory;
+                    if (ImGui.Checkbox("##history", ref storeHistory))
+                    {
+                        seriesConfig.StoreHistory = storeHistory;
+                        settingsChanged = true;
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Store historical time-series data for this item");
+                    }
+                    ImGui.SameLine();
+                }
+                
                 // Move up button
                 ImGui.BeginDisabled(i == 0);
                 if (ImGui.Button("▲##up", new Vector2(20, 0)))
@@ -978,7 +994,8 @@ public class ItemGraphTool : ToolComponent
             ["CustomName"] = s.CustomName,
             ["IsCurrency"] = s.IsCurrency,
             ["Color"] = s.Color.HasValue ? new float[] { s.Color.Value.X, s.Color.Value.Y, s.Color.Value.Z, s.Color.Value.W } : null,
-            ["Width"] = s.Width
+            ["Width"] = s.Width,
+            ["StoreHistory"] = s.StoreHistory
         }).ToList();
         
         return new Dictionary<string, object?>
@@ -1037,7 +1054,8 @@ public class ItemGraphTool : ToolComponent
                             Id = seriesJsonObj["Id"]?.ToObject<uint>() ?? 0,
                             CustomName = seriesJsonObj["CustomName"]?.ToObject<string>(),
                             IsCurrency = seriesJsonObj["IsCurrency"]?.ToObject<bool>() ?? false,
-                            Width = seriesJsonObj["Width"]?.ToObject<float>() ?? 80f
+                            Width = seriesJsonObj["Width"]?.ToObject<float>() ?? 80f,
+                            StoreHistory = seriesJsonObj["StoreHistory"]?.ToObject<bool>() ?? false
                         };
                         
                         var colorToken = seriesJsonObj["Color"];
@@ -1063,7 +1081,8 @@ public class ItemGraphTool : ToolComponent
                             Id = seriesJson.TryGetProperty("Id", out var idProp) ? idProp.GetUInt32() : 0,
                             CustomName = seriesJson.TryGetProperty("CustomName", out var nameProp) && nameProp.ValueKind != System.Text.Json.JsonValueKind.Null ? nameProp.GetString() : null,
                             IsCurrency = seriesJson.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
-                            Width = seriesJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f
+                            Width = seriesJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f,
+                            StoreHistory = seriesJson.TryGetProperty("StoreHistory", out var histProp) && histProp.GetBoolean()
                         };
                         
                         if (seriesJson.TryGetProperty("Color", out var colorProp) && colorProp.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -1071,6 +1090,30 @@ public class ItemGraphTool : ToolComponent
                             var colorArr = colorProp.EnumerateArray().Select(v => v.GetSingle()).ToArray();
                             if (colorArr.Length >= 4)
                                 item.Color = new Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                        }
+                        
+                        target.Series.Add(item);
+                    }
+                }
+                // Handle in-memory List<Dictionary<string, object?>> (from direct ExportToolSettings)
+                else if (seriesObj is System.Collections.IEnumerable enumerable)
+                {
+                    foreach (var obj in enumerable)
+                    {
+                        if (obj is not IDictionary<string, object?> seriesDict) continue;
+                        
+                        var item = new ItemColumnConfig
+                        {
+                            Id = seriesDict.TryGetValue("Id", out var idVal) && idVal != null ? Convert.ToUInt32(idVal) : 0,
+                            CustomName = seriesDict.TryGetValue("CustomName", out var nameVal) ? nameVal?.ToString() : null,
+                            IsCurrency = seriesDict.TryGetValue("IsCurrency", out var currVal) && currVal is bool b && b,
+                            Width = seriesDict.TryGetValue("Width", out var widthVal) && widthVal != null ? Convert.ToSingle(widthVal) : 80f,
+                            StoreHistory = seriesDict.TryGetValue("StoreHistory", out var histVal) && histVal is bool h && h
+                        };
+                        
+                        if (seriesDict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
+                        {
+                            item.Color = new Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
                         }
                         
                         target.Series.Add(item);

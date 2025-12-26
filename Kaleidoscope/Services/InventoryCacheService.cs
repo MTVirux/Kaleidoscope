@@ -510,6 +510,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// Samples tracked item quantities to the time-series database for historical graphing.
     /// Stores player inventory and retainer inventory separately for toggleable display.
     /// Player items stored as "Item_{itemId}", retainer totals as "ItemRetainer_{itemId}".
+    /// Only samples items that have StoreHistory enabled in their configuration.
     /// </summary>
     /// <param name="characterId">The character ID to associate with the samples.</param>
     /// <param name="playerItems">The player's inventory items to check against tracked items.</param>
@@ -517,18 +518,18 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         try
         {
-            // Get the list of tracked item IDs from config (non-currency series)
+            // Get the list of tracked item IDs from config (non-currency series with StoreHistory enabled)
             var trackedItems = _configService.Config.ItemGraph?.Series?
-                .Where(s => !s.IsCurrency)
+                .Where(s => !s.IsCurrency && s.StoreHistory)
                 .Select(s => s.Id)
                 .ToHashSet();
 
-            if (trackedItems == null || trackedItems.Count == 0)
-                return;
+            if (trackedItems == null)
+                trackedItems = new HashSet<uint>();
 
-            // Also check ItemTable for tracked items
+            // Also check ItemTable for tracked items with StoreHistory enabled
             var tableItems = _configService.Config.ItemTable?.Columns?
-                .Where(c => !c.IsCurrency)
+                .Where(c => !c.IsCurrency && c.StoreHistory)
                 .Select(c => c.Id);
             
             if (tableItems != null)
@@ -536,6 +537,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 foreach (var id in tableItems)
                     trackedItems.Add(id);
             }
+            
+            if (trackedItems.Count == 0)
+                return;
 
             // Gather all retainer items from cache for this character
             var retainerItems = new List<InventoryItemSnapshot>();

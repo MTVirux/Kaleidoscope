@@ -124,9 +124,8 @@ public class ItemTableTool : ToolComponent
                 _pendingRefresh = true;
             }
             
-            // Auto-refresh on pending changes or time interval (if enabled)
-            var shouldAutoRefresh = settings.AutoRefresh && 
-                (DateTime.UtcNow - _lastRefresh).TotalSeconds > settings.RefreshIntervalSeconds;
+            // Auto-refresh every 0.5s
+            var shouldAutoRefresh = (DateTime.UtcNow - _lastRefresh).TotalSeconds > 0.5;
             
             if (_pendingRefresh || shouldAutoRefresh)
             {
@@ -166,13 +165,6 @@ public class ItemTableTool : ToolComponent
         if (ImGui.Button("+ Add Currency"))
         {
             ImGui.OpenPopup("AddCurrencyPopup");
-        }
-        
-        ImGui.SameLine();
-        
-        if (ImGui.Button("Refresh"))
-        {
-            _pendingRefresh = true;
         }
         
         // Show column count
@@ -483,35 +475,6 @@ public class ItemTableTool : ToolComponent
             ImGui.SetTooltip("Display large numbers in compact form (e.g., 10M instead of 10,000,000)");
         }
         
-        // Auto-refresh section
-        ImGui.Spacing();
-        var autoRefresh = settings.AutoRefresh;
-        if (ImGui.Checkbox("Auto-Refresh", ref autoRefresh))
-        {
-            settings.AutoRefresh = autoRefresh;
-            NotifyToolSettingsChanged();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Automatically refresh data at regular intervals");
-        }
-        
-        if (autoRefresh)
-        {
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(80);
-            var refreshInterval = settings.RefreshIntervalSeconds;
-            if (ImGui.DragFloat("##RefreshInterval", ref refreshInterval, 0.5f, 1f, 60f, "%.1fs"))
-            {
-                settings.RefreshIntervalSeconds = refreshInterval;
-                NotifyToolSettingsChanged();
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Refresh interval in seconds");
-            }
-        }
-        
         ImGui.Spacing();
         ImGui.Spacing();
         
@@ -605,6 +568,22 @@ public class ItemTableTool : ToolComponent
                 
                 ImGui.SameLine();
                 
+                // Store history checkbox (only for items, not currencies)
+                if (!column.IsCurrency)
+                {
+                    var storeHistory = column.StoreHistory;
+                    if (ImGui.Checkbox("##history", ref storeHistory))
+                    {
+                        column.StoreHistory = storeHistory;
+                        NotifyToolSettingsChanged();
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Store historical time-series data for this item");
+                    }
+                    ImGui.SameLine();
+                }
+                
                 // Move up button
                 ImGui.BeginDisabled(i == 0);
                 if (ImGui.Button("▲##up", new Vector2(20, 0)))
@@ -685,7 +664,8 @@ public class ItemTableTool : ToolComponent
             ["CustomName"] = c.CustomName,
             ["IsCurrency"] = c.IsCurrency,
             ["Color"] = c.Color.HasValue ? new float[] { c.Color.Value.X, c.Color.Value.Y, c.Color.Value.Z, c.Color.Value.W } : null,
-            ["Width"] = c.Width
+            ["Width"] = c.Width,
+            ["StoreHistory"] = c.StoreHistory
         }).ToList();
         
         // Serialize merged column groups
@@ -718,8 +698,6 @@ public class ItemTableTool : ToolComponent
             ["SortColumnIndex"] = settings.SortColumnIndex,
             ["SortAscending"] = settings.SortAscending,
             ["ShowActionButtons"] = settings.ShowActionButtons,
-            ["AutoRefresh"] = settings.AutoRefresh,
-            ["RefreshIntervalSeconds"] = settings.RefreshIntervalSeconds,
             ["UseCompactNumbers"] = settings.UseCompactNumbers,
             ["HeaderColor"] = settings.HeaderColor.HasValue ? new float[] { settings.HeaderColor.Value.X, settings.HeaderColor.Value.Y, settings.HeaderColor.Value.Z, settings.HeaderColor.Value.W } : null,
             ["EvenRowColor"] = settings.EvenRowColor.HasValue ? new float[] { settings.EvenRowColor.Value.X, settings.EvenRowColor.Value.Y, settings.EvenRowColor.Value.Z, settings.EvenRowColor.Value.W } : null,
@@ -764,7 +742,8 @@ public class ItemTableTool : ToolComponent
                             Id = columnObj["Id"]?.ToObject<uint>() ?? 0,
                             CustomName = columnObj["CustomName"]?.ToObject<string>(),
                             IsCurrency = columnObj["IsCurrency"]?.ToObject<bool>() ?? false,
-                            Width = columnObj["Width"]?.ToObject<float>() ?? 80f
+                            Width = columnObj["Width"]?.ToObject<float>() ?? 80f,
+                            StoreHistory = columnObj["StoreHistory"]?.ToObject<bool>() ?? false
                         };
                         
                         var colorToken = columnObj["Color"];
@@ -790,7 +769,8 @@ public class ItemTableTool : ToolComponent
                             Id = columnJson.TryGetProperty("Id", out var idProp) ? idProp.GetUInt32() : 0,
                             CustomName = columnJson.TryGetProperty("CustomName", out var nameProp) && nameProp.ValueKind != System.Text.Json.JsonValueKind.Null ? nameProp.GetString() : null,
                             IsCurrency = columnJson.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
-                            Width = columnJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f
+                            Width = columnJson.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f,
+                            StoreHistory = columnJson.TryGetProperty("StoreHistory", out var histProp) && histProp.GetBoolean()
                         };
                         
                         if (columnJson.TryGetProperty("Color", out var colorProp) && colorProp.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -798,6 +778,30 @@ public class ItemTableTool : ToolComponent
                             var colorArr = colorProp.EnumerateArray().Select(v => v.GetSingle()).ToArray();
                             if (colorArr.Length >= 4)
                                 column.Color = new System.Numerics.Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                        }
+                        
+                        target.Columns.Add(column);
+                    }
+                }
+                // Handle in-memory List<Dictionary<string, object?>> (from direct ExportToolSettings)
+                else if (columnsObj is System.Collections.IEnumerable enumerable)
+                {
+                    foreach (var item in enumerable)
+                    {
+                        if (item is not IDictionary<string, object?> columnDict) continue;
+                        
+                        var column = new ItemColumnConfig
+                        {
+                            Id = columnDict.TryGetValue("Id", out var idVal) && idVal != null ? Convert.ToUInt32(idVal) : 0,
+                            CustomName = columnDict.TryGetValue("CustomName", out var nameVal) ? nameVal?.ToString() : null,
+                            IsCurrency = columnDict.TryGetValue("IsCurrency", out var currVal) && currVal is bool b && b,
+                            Width = columnDict.TryGetValue("Width", out var widthVal) && widthVal != null ? Convert.ToSingle(widthVal) : 80f,
+                            StoreHistory = columnDict.TryGetValue("StoreHistory", out var histVal) && histVal is bool h && h
+                        };
+                        
+                        if (columnDict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
+                        {
+                            column.Color = new System.Numerics.Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
                         }
                         
                         target.Columns.Add(column);
@@ -818,8 +822,6 @@ public class ItemTableTool : ToolComponent
         target.SortColumnIndex = GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
         target.SortAscending = GetSetting(settings, "SortAscending", target.SortAscending);
         target.ShowActionButtons = GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
-        target.AutoRefresh = GetSetting(settings, "AutoRefresh", target.AutoRefresh);
-        target.RefreshIntervalSeconds = GetSetting(settings, "RefreshIntervalSeconds", target.RefreshIntervalSeconds);
         target.UseCompactNumbers = GetSetting(settings, "UseCompactNumbers", target.UseCompactNumbers);
         target.UseFullNameWidth = GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
         target.AutoSizeEqualColumns = GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
@@ -877,6 +879,11 @@ public class ItemTableTool : ToolComponent
                 var arr = jsonElement.EnumerateArray().Select(v => v.GetSingle()).ToArray();
                 if (arr.Length >= 4)
                     return new System.Numerics.Vector4(arr[0], arr[1], arr[2], arr[3]);
+            }
+            // Handle in-memory float[] (from direct ExportToolSettings)
+            if (value is float[] floatArr && floatArr.Length >= 4)
+            {
+                return new System.Numerics.Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
             }
         }
         catch { }
@@ -964,6 +971,40 @@ public class ItemTableTool : ToolComponent
                 }
                 return result;
             }
+            // Handle in-memory List<Dictionary<string, object?>> (from direct ExportToolSettings)
+            else if (value is System.Collections.IEnumerable enumerable)
+            {
+                foreach (var item in enumerable)
+                {
+                    if (item is not IDictionary<string, object?> dict) continue;
+                    
+                    var group = new Widgets.MergedColumnGroup
+                    {
+                        Name = dict.TryGetValue("Name", out var nameVal) ? nameVal?.ToString() ?? "Merged" : "Merged",
+                        Width = dict.TryGetValue("Width", out var widthVal) && widthVal != null ? Convert.ToSingle(widthVal) : 80f
+                    };
+                    
+                    // Import column indices
+                    if (dict.TryGetValue("ColumnIndices", out var indicesVal) && indicesVal is System.Collections.IEnumerable indicesEnum)
+                    {
+                        group.ColumnIndices = new List<int>();
+                        foreach (var idx in indicesEnum)
+                        {
+                            if (idx != null)
+                                group.ColumnIndices.Add(Convert.ToInt32(idx));
+                        }
+                    }
+                    
+                    // Import color
+                    if (dict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
+                    {
+                        group.Color = new System.Numerics.Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                    }
+                    
+                    result.Add(group);
+                }
+                return result.Count > 0 ? result : null;
+            }
         }
         catch (Exception ex)
         {
@@ -1013,6 +1054,39 @@ public class ItemTableTool : ToolComponent
                     result.Add(group);
                 }
                 return result;
+            }
+            // Handle in-memory List<Dictionary<string, object?>> (from direct ExportToolSettings)
+            else if (value is System.Collections.IEnumerable enumerable)
+            {
+                foreach (var item in enumerable)
+                {
+                    if (item is not IDictionary<string, object?> dict) continue;
+                    
+                    var group = new Widgets.MergedRowGroup
+                    {
+                        Name = dict.TryGetValue("Name", out var nameVal) ? nameVal?.ToString() ?? "Merged" : "Merged"
+                    };
+                    
+                    // Import character IDs
+                    if (dict.TryGetValue("CharacterIds", out var idsVal) && idsVal is System.Collections.IEnumerable idsEnum)
+                    {
+                        group.CharacterIds = new List<ulong>();
+                        foreach (var id in idsEnum)
+                        {
+                            if (id != null)
+                                group.CharacterIds.Add(Convert.ToUInt64(id));
+                        }
+                    }
+                    
+                    // Import color
+                    if (dict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
+                    {
+                        group.Color = new System.Numerics.Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
+                    }
+                    
+                    result.Add(group);
+                }
+                return result.Count > 0 ? result : null;
             }
         }
         catch (Exception ex)

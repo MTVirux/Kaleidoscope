@@ -91,6 +91,12 @@ public class ItemColumnConfig
     /// Column width in pixels. 0 means auto-width.
     /// </summary>
     public float Width { get; set; } = 70f;
+    
+    /// <summary>
+    /// Whether to store historical time-series data for this item.
+    /// Only applies to inventory items (not currencies, which are always tracked).
+    /// </summary>
+    public bool StoreHistory { get; set; } = false;
 }
 
 /// <summary>
@@ -1678,7 +1684,7 @@ public class ItemTableWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Column Sizing", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.TreeNodeEx("Column Sizing", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var useFullNameWidth = settings.UseFullNameWidth;
         if (ImGui.Checkbox("Fit character column to name width", ref useFullNameWidth))
@@ -1701,10 +1707,11 @@ public class ItemTableWidget : ISettingsProvider
             {
                 ImGui.SetTooltip("Automatically size all data columns to equal widths.\nCharacter column width takes priority.");
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Data Column Alignment"))
+        if (ImGui.TreeNodeEx("Data Column Alignment"))
         {
             // Data horizontal alignment
             var hAlign = (int)settings.HorizontalAlignment;
@@ -1721,10 +1728,11 @@ public class ItemTableWidget : ISettingsProvider
                 settings.VerticalAlignment = (TableVerticalAlignment)vAlign;
                 changed = true;
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Character Column Alignment"))
+        if (ImGui.TreeNodeEx("Character Column Alignment"))
         {
             // Character column horizontal alignment
             var charHAlign = (int)settings.CharacterColumnHorizontalAlignment;
@@ -1741,10 +1749,11 @@ public class ItemTableWidget : ISettingsProvider
                 settings.CharacterColumnVerticalAlignment = (TableVerticalAlignment)charVAlign;
                 changed = true;
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Header Row Alignment"))
+        if (ImGui.TreeNodeEx("Header Row Alignment"))
         {
             // Header horizontal alignment
             var headerHAlign = (int)settings.HeaderHorizontalAlignment;
@@ -1761,10 +1770,11 @@ public class ItemTableWidget : ISettingsProvider
                 settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
                 changed = true;
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Character Column"))
+        if (ImGui.TreeNodeEx("Character Column"))
         {
             var charWidth = settings.CharacterColumnWidth;
             if (ImGui.SliderFloat("Min Width", ref charWidth, 60f, 200f, "%.0f"))
@@ -1779,10 +1789,11 @@ public class ItemTableWidget : ISettingsProvider
         
             // Character column color
             changed |= TableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Row Colors"))
+        if (ImGui.TreeNodeEx("Row Colors"))
         {
             // Header color
             changed |= TableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
@@ -1792,6 +1803,7 @@ public class ItemTableWidget : ISettingsProvider
         
             // Odd row color
             changed |= TableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
+            ImGui.TreePop();
         }
         
         // Merged columns section
@@ -1799,7 +1811,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (ImGui.CollapsingHeader($"Merged Columns ({settings.MergedColumnGroups.Count})###MergedCols"))
+            if (ImGui.TreeNodeEx($"Merged Columns ({settings.MergedColumnGroups.Count})###MergedCols"))
             {
                 ImGui.TextDisabled("Hold SHIFT and click/drag on column headers to select, then right-click to merge.");
                 ImGui.Spacing();
@@ -1875,6 +1887,7 @@ public class ItemTableWidget : ISettingsProvider
                     settings.MergedColumnGroups.Clear();
                     changed = true;
                 }
+                ImGui.TreePop();
             }
         }
         else
@@ -1888,7 +1901,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (ImGui.CollapsingHeader($"Merged Rows ({settings.MergedRowGroups.Count})###MergedRows"))
+            if (ImGui.TreeNodeEx($"Merged Rows ({settings.MergedRowGroups.Count})###MergedRows"))
             {
                 ImGui.TextDisabled("Hold SHIFT and click/drag on character names to select, then right-click to merge.");
                 ImGui.Spacing();
@@ -1962,6 +1975,7 @@ public class ItemTableWidget : ISettingsProvider
                     settings.MergedRowGroups.Clear();
                     changed = true;
                 }
+                ImGui.TreePop();
             }
         }
         else
@@ -1975,7 +1989,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (ImGui.CollapsingHeader($"Hidden Characters ({settings.HiddenCharacters.Count})###HiddenChars"))
+            if (ImGui.TreeNodeEx($"Hidden Characters ({settings.HiddenCharacters.Count})###HiddenChars"))
             {
                 // Show each hidden character with unhide button
                 ulong? characterToUnhide = null;
@@ -2011,6 +2025,7 @@ public class ItemTableWidget : ISettingsProvider
                 {
                     ImGui.SetTooltip("Unhide all hidden characters");
                 }
+                ImGui.TreePop();
             }
         }
         else
