@@ -1,8 +1,19 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
+
+/// <summary>
+/// Settings class for FpsTool with all configurable properties.
+/// </summary>
+public class FpsToolSettings
+{
+    public bool ShowFrameTime { get; set; } = true;
+    public float WarningThreshold { get; set; } = 30f;
+    public float BadThreshold { get; set; } = 15f;
+}
 
 /// <summary>
 /// A tool that displays the current frames per second.
@@ -17,21 +28,42 @@ public class FpsTool : ToolComponent
     // Smoothing to avoid jittery display
     private float _smoothedFps;
     private const float SmoothingFactor = 0.1f;
+    
+    // Settings instance and schema
+    private readonly FpsToolSettings _settings = new();
+    
+    private static readonly SettingsSchema<FpsToolSettings> Schema = SettingsSchema.For<FpsToolSettings>()
+        .Checkbox(s => s.ShowFrameTime, "Show Frame Time", "Display milliseconds per frame alongside FPS", defaultValue: true)
+        .Spacing()
+        .SliderFloat(s => s.WarningThreshold, "Warning FPS", 10f, 60f, "FPS below this value shows warning color", "%.0f", 30f)
+        .SliderFloat(s => s.BadThreshold, "Critical FPS", 5f, 30f, "FPS below this value shows critical/red color", "%.0f", 15f);
 
     /// <summary>
     /// Whether to show the frame time in milliseconds.
     /// </summary>
-    public bool ShowFrameTime { get; set; } = true;
+    public bool ShowFrameTime
+    {
+        get => _settings.ShowFrameTime;
+        set => _settings.ShowFrameTime = value;
+    }
 
     /// <summary>
     /// FPS threshold below which the color turns to warning.
     /// </summary>
-    public float WarningThreshold { get; set; } = 30f;
+    public float WarningThreshold
+    {
+        get => _settings.WarningThreshold;
+        set => _settings.WarningThreshold = value;
+    }
 
     /// <summary>
     /// FPS threshold below which the color turns to bad/red.
     /// </summary>
-    public float BadThreshold { get; set; } = 15f;
+    public float BadThreshold
+    {
+        get => _settings.BadThreshold;
+        set => _settings.BadThreshold = value;
+    }
 
     public FpsTool()
     {
@@ -83,44 +115,17 @@ public class FpsTool : ToolComponent
     }
 
     protected override bool HasToolSettings => true;
-
-    protected override void DrawToolSettings()
-    {
-        var showFrameTime = ShowFrameTime;
-        if (ImGui.Checkbox("Show Frame Time", ref showFrameTime))
-        {
-            ShowFrameTime = showFrameTime;
-            NotifyToolSettingsChanged();
-        }
-
-        ImGui.Spacing();
-
-        var warningThreshold = WarningThreshold;
-        if (ImGui.SliderFloat("Warning FPS", ref warningThreshold, 10f, 60f, "%.0f"))
-        {
-            WarningThreshold = warningThreshold;
-            NotifyToolSettingsChanged();
-        }
-
-        var badThreshold = BadThreshold;
-        if (ImGui.SliderFloat("Critical FPS", ref badThreshold, 5f, 30f, "%.0f"))
-        {
-            BadThreshold = badThreshold;
-            NotifyToolSettingsChanged();
-        }
-    }
+    
+    protected override object? GetToolSettingsSchema() => Schema;
+    
+    protected override object? GetToolSettingsObject() => _settings;
     
     /// <summary>
     /// Exports tool-specific settings for layout persistence.
     /// </summary>
     public override Dictionary<string, object?>? ExportToolSettings()
     {
-        return new Dictionary<string, object?>
-        {
-            ["ShowFrameTime"] = ShowFrameTime,
-            ["WarningThreshold"] = WarningThreshold,
-            ["BadThreshold"] = BadThreshold
-        };
+        return Schema.ToDictionary(_settings)!;
     }
     
     /// <summary>
@@ -128,10 +133,6 @@ public class FpsTool : ToolComponent
     /// </summary>
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
     {
-        if (settings == null) return;
-        
-        ShowFrameTime = GetSetting(settings, "ShowFrameTime", ShowFrameTime);
-        WarningThreshold = GetSetting(settings, "WarningThreshold", WarningThreshold);
-        BadThreshold = GetSetting(settings, "BadThreshold", BadThreshold);
+        Schema.FromDictionary(_settings, settings);
     }
 }
