@@ -521,7 +521,7 @@ public class GenericTableWidget<TRow> : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Data Column Alignment", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.TreeNodeEx("Data Column Alignment", ImGuiTreeNodeFlags.DefaultOpen))
         {
             // Data horizontal alignment
             var hAlign = (int)settings.DataHorizontalAlignment;
@@ -538,10 +538,11 @@ public class GenericTableWidget<TRow> : ISettingsProvider
                 settings.DataVerticalAlignment = (TableVerticalAlignment)vAlign;
                 changed = true;
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Header Row Alignment"))
+        if (ImGui.TreeNodeEx("Header Row Alignment"))
         {
             // Header horizontal alignment
             var headerHAlign = (int)settings.HeaderHorizontalAlignment;
@@ -558,10 +559,11 @@ public class GenericTableWidget<TRow> : ISettingsProvider
                 settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
                 changed = true;
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Row Colors"))
+        if (ImGui.TreeNodeEx("Row Colors"))
         {
             // Header color
             changed |= DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
@@ -571,6 +573,7 @@ public class GenericTableWidget<TRow> : ISettingsProvider
         
             // Odd row color
             changed |= DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
+            ImGui.TreePop();
         }
         
         if (changed)

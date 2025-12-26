@@ -1052,7 +1052,7 @@ public class ImplotGraphWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Graph Style"))
+        if (ImGui.TreeNodeEx("Graph Style"))
         {
             // Graph type
             var graphType = settings.GraphType;
@@ -1103,10 +1103,11 @@ public class ImplotGraphWidget : ISettingsProvider
             changed = true;
         }
             ShowSettingsTooltip("Shows a horizontal line at the current value.");
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Auto-Scroll"))
+        if (ImGui.TreeNodeEx("Auto-Scroll"))
         {
             // Controls drawer
             var showControlsDrawer = settings.ShowControlsDrawer;
@@ -1159,10 +1160,11 @@ public class ImplotGraphWidget : ISettingsProvider
             }
                 ShowSettingsTooltip("Position of 'now' on the X-axis. 0% = left edge, 100% = right edge.");
             }
+            ImGui.TreePop();
         }
         
         ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Time Range"))
+        if (ImGui.TreeNodeEx("Time Range"))
         {
             var timeRangeValue = settings.TimeRangeValue;
         var timeRangeUnit = settings.TimeRangeUnit;
@@ -1173,6 +1175,7 @@ public class ImplotGraphWidget : ISettingsProvider
                 changed = true;
             }
             ShowSettingsTooltip("Time range to display on the graph.");
+            ImGui.TreePop();
         }
         
         if (changed)
