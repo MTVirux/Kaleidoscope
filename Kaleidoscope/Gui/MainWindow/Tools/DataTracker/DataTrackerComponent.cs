@@ -317,7 +317,7 @@ public class DataTrackerComponent : IDisposable
             {
                 series = _helper.GetAllCharacterSeries(timeCutoff);
             }
-            _graphWidget.DrawMultipleSeries(series);
+            _graphWidget.RenderMultipleSeries(series);
         }
         else
         {
@@ -329,7 +329,7 @@ public class DataTrackerComponent : IDisposable
                     ? _helper.GetFilteredSamples(timeCutoff.Value)
                     : _helper.Samples;
             }
-            _graphWidget.Draw(samples);
+            _graphWidget.RenderGraph(samples);
         }
 
         // Debug: right-click the plot to open a popup listing all data points + timestamps

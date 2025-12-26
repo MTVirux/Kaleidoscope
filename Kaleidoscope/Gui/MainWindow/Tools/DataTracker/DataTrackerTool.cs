@@ -12,6 +12,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 /// </summary>
 public class DataTrackerTool : ToolComponent
 {
+    public override string ToolName => "Data Tracker";
+    
     private readonly DataTrackerComponent _inner;
     private readonly ConfigurationService _configService;
 
@@ -59,7 +61,7 @@ public class DataTrackerTool : ToolComponent
     /// </summary>
     public void SetHiddenSeries(IEnumerable<string>? seriesNames) => _inner.SetHiddenSeries(seriesNames);
 
-    public override void DrawContent()
+    public override void RenderToolContent()
     {
         _inner.Draw();
     }
