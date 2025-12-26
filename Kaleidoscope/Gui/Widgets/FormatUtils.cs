@@ -143,6 +143,28 @@ public static class FormatUtils
     }
 
     /// <summary>
+    /// Formats a byte size in a human-readable format (B, KB, MB, GB).
+    /// </summary>
+    /// <param name="bytes">The size in bytes.</param>
+    /// <returns>Formatted string like "1.5 MB" or "500 KB".</returns>
+    public static string FormatByteSize(long bytes)
+    {
+        if (bytes < 0)
+            return "Unknown";
+
+        if (bytes < 1024)
+            return $"{bytes} B";
+
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F1} KB";
+
+        if (bytes < 1024 * 1024 * 1024)
+            return $"{bytes / (1024.0 * 1024.0):F2} MB";
+
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+
+    /// <summary>
     /// Converts HSV color values to an RGB Vector4.
     /// </summary>
     /// <param name="h">Hue (0-1).</param>
