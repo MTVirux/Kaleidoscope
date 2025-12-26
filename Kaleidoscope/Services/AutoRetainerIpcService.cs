@@ -129,7 +129,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
                 LogService.Verbose($"AutoRetainer IPC connected, found {cids?.Count ?? 0} registered CIDs");
 #endif
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 IsAvailable = false;
                 StartRetryTimer();
@@ -140,7 +140,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
             
             _initialized = true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to initialize AutoRetainer IPC: {ex.Message}");
@@ -216,7 +216,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return cids;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get registered CIDs from AutoRetainer: {ex.Message}");
@@ -428,7 +428,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
             // Note: FC gil is not available via IPC - FCData is stored separately in AutoRetainer
             return new AutoRetainerCharacterData(name, world, gil, cid, enabled, workshopEnabled, retainers, vessels, fcid);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get character data from AutoRetainer for CID {cid}: {ex.Message}\n{ex.StackTrace}");
@@ -504,7 +504,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _isBusy.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get IsBusy from AutoRetainer: {ex.Message}");
@@ -524,7 +524,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _getSuppressed.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get Suppressed from AutoRetainer: {ex.Message}");
@@ -544,7 +544,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _getMultiModeEnabled.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get MultiModeEnabled from AutoRetainer: {ex.Message}");
@@ -564,7 +564,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _areAnyRetainersAvailable.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to check retainer availability from AutoRetainer: {ex.Message}");
@@ -584,7 +584,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _getInventoryFreeSlotCount.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get inventory free slots from AutoRetainer: {ex.Message}");
@@ -604,7 +604,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _canAutoLogin.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to check auto-login availability from AutoRetainer: {ex.Message}");
@@ -624,7 +624,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _getClosestRetainerVentureSecondsRemaining.InvokeFunc(cid);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get closest venture time from AutoRetainer: {ex.Message}");
@@ -644,7 +644,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         {
             return _getEnabledRetainers.InvokeFunc();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to get enabled retainers from AutoRetainer: {ex.Message}");
@@ -699,7 +699,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to set suppressed on AutoRetainer: {ex.Message}");
@@ -723,7 +723,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to set Multi-Mode on AutoRetainer: {ex.Message}");
@@ -747,7 +747,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to abort tasks on AutoRetainer: {ex.Message}");
@@ -771,7 +771,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to disable all functions on AutoRetainer: {ex.Message}");
@@ -795,7 +795,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to enable Multi-Mode on AutoRetainer: {ex.Message}");
@@ -821,7 +821,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return result;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to relog via AutoRetainer: {ex.Message}");
@@ -871,7 +871,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to set character retainers enabled on AutoRetainer: {ex.Message}");
@@ -921,7 +921,7 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
 #endif
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
             LogService.Verbose($"Failed to set character deployables enabled on AutoRetainer: {ex.Message}");
@@ -958,3 +958,5 @@ public sealed class AutoRetainerIpcService : IService, IDisposable
         StopRetryTimer();
     }
 }
+
+
