@@ -2195,7 +2195,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     transaction.Commit();
-                    LogService.Verbose($"[KaleidoscopeDb] Batch saved {priceList.Count} item prices");
                 }
                 catch
                 {
