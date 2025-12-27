@@ -434,19 +434,25 @@ public sealed class ProfilerService : IDisposable, IService
     /// </summary>
     public ChildProfileScope BeginChildScope(string toolId, string childScopeName)
     {
-        if (!IsEnabled) return new ChildProfileScope(null, null, null, null, null);
+        if (!IsEnabled)
+        {
+            return new ChildProfileScope(null, null, null, null, null);
+        }
         
-        string? toolName = null;
         lock (_lock)
         {
-            if (_toolStats.TryGetValue(toolId, out var parentStats))
+            // Get or create parent stats - ensures child scopes work even on the first frame
+            if (!_toolStats.TryGetValue(toolId, out var parentStats))
             {
-                toolName = parentStats.Name;
-                var childStats = parentStats.GetOrCreateChildScope(childScopeName);
-                return new ChildProfileScope(childStats, Stopwatch.StartNew(), this, childScopeName, toolName);
+                // Get tool name from current context if available
+                var toolName = _currentContext?.ToolName ?? toolId;
+                parentStats = new ProfileStats { Name = toolName };
+                _toolStats[toolId] = parentStats;
             }
+            
+            var childStats = parentStats.GetOrCreateChildScope(childScopeName);
+            return new ChildProfileScope(childStats, Stopwatch.StartNew(), this, childScopeName, parentStats.Name);
         }
-        return new ChildProfileScope(null, null, null, null, null);
     }
     
     /// <summary>
@@ -458,7 +464,10 @@ public sealed class ProfilerService : IDisposable, IService
     public static ChildProfileScope BeginStaticChildScope(string scopeName)
     {
         var context = _currentContext;
-        if (context == null) return new ChildProfileScope(null, null, null, null, null);
+        if (context == null)
+        {
+            return new ChildProfileScope(null, null, null, null, null);
+        }
         return context.BeginScope(scopeName);
     }
 

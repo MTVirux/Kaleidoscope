@@ -275,16 +275,25 @@ public class DataTrackerHelper : ICharacterDataSource
             IReadOnlyList<(DateTime timestamp, long value)> points;
             if (_cacheService != null)
             {
-                points = _cacheService.GetCachedPoints(VariableName, characterId);
+                using (ProfilerService.BeginStaticChildScope("CacheGetPoints"))
+                {
+                    points = _cacheService.GetCachedPoints(VariableName, characterId);
+                }
                 // Fall back to DB if cache is empty
                 if (points.Count == 0)
                 {
-                    points = _dbService.GetPoints(VariableName, characterId);
+                    using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
+                    {
+                        points = _dbService.GetPoints(VariableName, characterId);
+                    }
                 }
             }
             else
             {
-                points = _dbService.GetPoints(VariableName, characterId);
+                using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
+                {
+                    points = _dbService.GetPoints(VariableName, characterId);
+                }
             }
 
             _samples.Clear();
@@ -318,11 +327,17 @@ public class DataTrackerHelper : ICharacterDataSource
             IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
             if (_cacheService != null)
             {
-                allPoints = _cacheService.GetAllCachedPoints(VariableName);
+                using (ProfilerService.BeginStaticChildScope("CacheGetAllPoints"))
+                {
+                    allPoints = _cacheService.GetAllCachedPoints(VariableName);
+                }
             }
             else
             {
-                allPoints = _dbService.GetAllPoints(VariableName);
+                using (ProfilerService.BeginStaticChildScope("DbGetAllPoints"))
+                {
+                    allPoints = _dbService.GetAllPoints(VariableName);
+                }
             }
 
             if (allPoints.Count == 0)
@@ -646,7 +661,10 @@ public class DataTrackerHelper : ICharacterDataSource
         // When using cache service, query it directly (it's fast in-memory access)
         if (_cacheService != null)
         {
-            return LoadFilteredSamplesFromDb(cutoffTime);
+            using (ProfilerService.BeginStaticChildScope("LoadFilteredFromCache"))
+            {
+                return LoadFilteredSamplesFromDb(cutoffTime);
+            }
         }
         
         // Fallback: Check if we can use local cached data (only when no cache service)
@@ -663,7 +681,11 @@ public class DataTrackerHelper : ICharacterDataSource
         }
         
         // Load fresh data
-        var result = LoadFilteredSamplesFromDb(cutoffTime);
+        IReadOnlyList<float> result;
+        using (ProfilerService.BeginStaticChildScope("LoadFilteredFromDb"))
+        {
+            result = LoadFilteredSamplesFromDb(cutoffTime);
+        }
         
         // Update cache
         _cachedFilteredSamples = result;
@@ -688,13 +710,16 @@ public class DataTrackerHelper : ICharacterDataSource
                 // Get aggregated points with timestamps
                 // Try cache first for fast access
                 IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> allPoints;
-                if (_cacheService != null)
+                using (ProfilerService.BeginStaticChildScope("FetchAllPoints"))
                 {
-                    allPoints = _cacheService.GetAllCachedPoints(VariableName);
-                }
-                else
-                {
-                    allPoints = _dbService.GetAllPoints(VariableName);
+                    if (_cacheService != null)
+                    {
+                        allPoints = _cacheService.GetAllCachedPoints(VariableName);
+                    }
+                    else
+                    {
+                        allPoints = _dbService.GetAllPoints(VariableName);
+                    }
                 }
                 
                 if (allPoints.Count == 0) return Array.Empty<float>();
@@ -815,19 +840,27 @@ public class DataTrackerHelper : ICharacterDataSource
         // If using cache service, get data directly from it (it handles caching internally)
         if (_cacheService != null)
         {
-            var cachedSeries = _cacheService.GetAllCachedCharacterSeries(VariableName, cutoffTime);
+            IReadOnlyList<(ulong charId, string name, IReadOnlyList<(DateTime ts, long value)> points)> cachedSeries;
+            using (ProfilerService.BeginStaticChildScope("CacheGetCharacterSeries"))
+            {
+                cachedSeries = _cacheService.GetAllCachedCharacterSeries(VariableName, cutoffTime);
+            }
+            
             var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>();
             
-            foreach (var (charId, name, points) in cachedSeries)
+            using (ProfilerService.BeginStaticChildScope("TransformSeries"))
             {
-                if (points.Count == 0) continue;
-                
-                var samples = new List<(DateTime ts, float value)>();
-                var start = Math.Max(0, points.Count - _maxSamples);
-                for (var i = start; i < points.Count; i++)
-                    samples.Add((points[i].ts, (float)points[i].value));
-                
-                result.Add((name, samples));
+                foreach (var (charId, name, points) in cachedSeries)
+                {
+                    if (points.Count == 0) continue;
+                    
+                    var samples = new List<(DateTime ts, float value)>();
+                    var start = Math.Max(0, points.Count - _maxSamples);
+                    for (var i = start; i < points.Count; i++)
+                        samples.Add((points[i].ts, (float)points[i].value));
+                    
+                    result.Add((name, samples));
+                }
             }
             
             return result;
@@ -849,7 +882,11 @@ public class DataTrackerHelper : ICharacterDataSource
         }
 
         // Load fresh data from DB
-        var dbResult = LoadCharacterSeriesFromDb(cutoffTime);
+        List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> dbResult;
+        using (ProfilerService.BeginStaticChildScope("LoadCharacterSeriesFromDb"))
+        {
+            dbResult = LoadCharacterSeriesFromDb(cutoffTime);
+        }
         
         // Update local cache
         lock (_cacheLock)
