@@ -8,6 +8,17 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
+/// Sort order for item lists in the item picker.
+/// </summary>
+public enum ItemSortOrder
+{
+    /// <summary>Sort items alphabetically by name (A-Z).</summary>
+    Alphabetical = 0,
+    /// <summary>Sort items by their game ID (ascending).</summary>
+    ById = 1
+}
+
+/// <summary>
 /// A reusable item picker widget with search and optional marketable-only filter.
 /// </summary>
 public class ItemPickerWidget
@@ -15,6 +26,7 @@ public class ItemPickerWidget
     private readonly IDataManager _dataManager;
     private readonly ItemDataService _itemDataService;
     private readonly PriceTrackingService? _priceTrackingService;
+    private readonly ConfigurationService? _configService;
 
     // Search state
     private string _searchText = string.Empty;
@@ -26,7 +38,28 @@ public class ItemPickerWidget
 
     // All items cache (built on first use)
     private List<(uint Id, string Name)>? _allItemsCache;
+    private List<(uint Id, string Name)>? _allItemsCacheById; // Same items but sorted by ID
     private List<(uint Id, string Name)>? _marketableItemsCache;
+    private List<(uint Id, string Name)>? _marketableItemsCacheById; // Same items but sorted by ID
+    
+    // Sort order - uses configuration service if available, otherwise local fallback
+    private ItemSortOrder _localSortOrder = ItemSortOrder.Alphabetical;
+    private ItemSortOrder SortOrder
+    {
+        get => _configService?.Config.ItemPickerSortOrder ?? _localSortOrder;
+        set
+        {
+            if (_configService != null)
+            {
+                _configService.Config.ItemPickerSortOrder = value;
+                _configService.Save();
+            }
+            else
+            {
+                _localSortOrder = value;
+            }
+        }
+    }
 
     // Configuration
     private const int MaxDisplayedItems = 100;
@@ -51,11 +84,13 @@ public class ItemPickerWidget
     public ItemPickerWidget(
         IDataManager dataManager,
         ItemDataService itemDataService,
-        PriceTrackingService? priceTrackingService = null)
+        PriceTrackingService? priceTrackingService = null,
+        ConfigurationService? configService = null)
     {
         _dataManager = dataManager ?? throw new ArgumentNullException(nameof(dataManager));
         _itemDataService = itemDataService ?? throw new ArgumentNullException(nameof(itemDataService));
         _priceTrackingService = priceTrackingService;
+        _configService = configService;
     }
 
     /// <summary>
@@ -100,10 +135,25 @@ public class ItemPickerWidget
         if (ImGui.BeginCombo(label, preview))
         {
             // Search input at the top of the popup
-            ImGui.SetNextItemWidth(-1);
+            ImGui.SetNextItemWidth(-60);
             if (ImGui.InputTextWithHint("##ItemSearch", "Search items...", ref _searchText, 256))
             {
                 // Search text changed, will filter on next frame
+            }
+            
+            // Sort order toggle button
+            ImGui.SameLine();
+            var sortLabel = SortOrder == ItemSortOrder.Alphabetical ? "A-Z" : "ID";
+            if (ImGui.Button(sortLabel, new Vector2(50, 0)))
+            {
+                SortOrder = SortOrder == ItemSortOrder.Alphabetical ? ItemSortOrder.ById : ItemSortOrder.Alphabetical;
+                _itemsCached = false; // Force refresh
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(SortOrder == ItemSortOrder.Alphabetical 
+                    ? "Currently sorting alphabetically. Click to sort by Item ID." 
+                    : "Currently sorting by Item ID. Click to sort alphabetically.");
             }
 
             // Keep focus on search box when opened
@@ -205,8 +255,23 @@ public class ItemPickerWidget
         var changed = false;
 
         // Search input
-        ImGui.SetNextItemWidth(250);
+        ImGui.SetNextItemWidth(190);
         ImGui.InputTextWithHint("##ItemSearch", "Search items...", ref _searchText, 256);
+        
+        // Sort order toggle button
+        ImGui.SameLine();
+        var sortLabel = SortOrder == ItemSortOrder.Alphabetical ? "A-Z" : "ID";
+        if (ImGui.Button(sortLabel, new Vector2(50, 0)))
+        {
+            SortOrder = SortOrder == ItemSortOrder.Alphabetical ? ItemSortOrder.ById : ItemSortOrder.Alphabetical;
+            _itemsCached = false; // Force refresh
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(SortOrder == ItemSortOrder.Alphabetical 
+                ? "Currently sorting alphabetically. Click to sort by Item ID." 
+                : "Currently sorting by Item ID. Click to sort alphabetically.");
+        }
 
         ImGui.Separator();
 
@@ -291,10 +356,20 @@ public class ItemPickerWidget
         // Build caches if needed
         EnsureItemsCached(marketableOnly);
 
-        // Get the appropriate source list
-        var sourceItems = marketableOnly && _marketableItemsCache != null
-            ? _marketableItemsCache
-            : _allItemsCache;
+        // Get the appropriate source list based on marketable filter and sort order
+        List<(uint Id, string Name)>? sourceItems;
+        if (marketableOnly)
+        {
+            sourceItems = SortOrder == ItemSortOrder.ById 
+                ? _marketableItemsCacheById 
+                : _marketableItemsCache;
+        }
+        else
+        {
+            sourceItems = SortOrder == ItemSortOrder.ById 
+                ? _allItemsCacheById 
+                : _allItemsCache;
+        }
 
         if (sourceItems == null)
         {
@@ -338,13 +413,18 @@ public class ItemPickerWidget
                             _allItemsCache.Add((item.RowId, name));
                         }
                     }
+                    // Sort alphabetically by default
                     _allItemsCache.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+                    
+                    // Create ID-sorted version
+                    _allItemsCacheById = _allItemsCache.OrderBy(x => x.Id).ToList();
                 }
             }
             catch (Exception ex)
             {
                 LogService.Debug($"[ItemPickerWidget] Error building item cache: {ex.Message}");
                 _allItemsCache = new List<(uint, string)>();
+                _allItemsCacheById = new List<(uint, string)>();
             }
         }
 
@@ -357,6 +437,10 @@ public class ItemPickerWidget
                 _marketableItemsCache = _allItemsCache
                     .Where(item => marketableSet.Contains((int)item.Id))
                     .ToList();
+                // Marketable cache inherits alphabetical sort from _allItemsCache
+                
+                // Create ID-sorted version
+                _marketableItemsCacheById = _marketableItemsCache.OrderBy(x => x.Id).ToList();
             }
         }
     }
@@ -367,7 +451,9 @@ public class ItemPickerWidget
     public void ClearCache()
     {
         _allItemsCache = null;
+        _allItemsCacheById = null;
         _marketableItemsCache = null;
+        _marketableItemsCacheById = null;
         _itemsCached = false;
     }
 
