@@ -65,7 +65,10 @@ public class ItemsCategory
                 _favoritesService,
                 null, // No price tracking service - include all items
                 "GameItemsAdd",
-                marketableOnly: false);
+                marketableOnly: false,
+                configService: _configService,
+                trackedDataRegistry: _samplerService?.Registry,
+                excludeCurrencies: true);
             
             _trackItemCombo = new ItemComboDropdown(
                 _textureProvider,
@@ -73,7 +76,10 @@ public class ItemsCategory
                 _favoritesService,
                 null, // No price tracking service - include all items
                 "TrackItemAdd",
-                marketableOnly: false);
+                marketableOnly: false,
+                configService: _configService,
+                trackedDataRegistry: _samplerService?.Registry,
+                excludeCurrencies: true);
         }
     }
 
@@ -94,10 +100,25 @@ public class ItemsCategory
         ImGui.TextUnformatted("Tracked Items - Historical Data");
         ImGui.Separator();
         ImGui.TextWrapped("Add items to track their quantity over time. " +
-            "Enable 'Store History' to record time-series data for graphing.");
+            "Enable historical tracking per-item to record time-series data for graphing.");
         ImGui.Spacing();
         
         var config = _configService.Config;
+        
+        // Show summary of items with tracking enabled
+        var itemsWithTracking = config.ItemsWithHistoricalTracking.Count;
+        if (itemsWithTracking > 0)
+        {
+            ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), 
+                $"{itemsWithTracking} item(s) have historical tracking enabled.");
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+                "No items have historical tracking enabled. Enable tracking per-item below.");
+        }
+        
+        ImGui.Spacing();
         
         // Add item picker
         DrawAddTrackedItemSection(config);
@@ -215,17 +236,25 @@ public class ItemsCategory
                 if (info.InItemGraph) sources.Add("Graph");
                 ImGui.TextDisabled(string.Join(", ", sources));
 
-                // Store History checkbox column
+                // Store History checkbox column (per-item toggle)
                 ImGui.TableNextColumn();
-                var storeHistory = GetStoreHistoryState(info);
+                var storeHistory = config.ItemsWithHistoricalTracking.Contains(info.ItemId);
                 if (ImGui.Checkbox("##storeHistory", ref storeHistory))
                 {
-                    SetStoreHistoryState(info, storeHistory);
+                    if (storeHistory)
+                    {
+                        config.ItemsWithHistoricalTracking.Add(info.ItemId);
+                    }
+                    else
+                    {
+                        config.ItemsWithHistoricalTracking.Remove(info.ItemId);
+                    }
+                    _configService.Save();
                 }
                 if (ImGui.IsItemHovered())
                 {
-                    ImGui.SetTooltip("Enable to record historical time-series data for this item.\n" +
-                        "This allows viewing quantity changes over time in graphs.");
+                    ImGui.SetTooltip("Enable/disable historical tracking for this item.\n" +
+                        "This setting applies across all tools in the project.");
                 }
 
                 // Status column
@@ -285,7 +314,7 @@ public class ItemsCategory
         }
         
         // Summary
-        var recordingCount = filteredItems.Count(i => GetStoreHistoryState(i));
+        var recordingCount = trackedItems.Values.Count(i => config.ItemsWithHistoricalTracking.Contains(i.ItemId));
         ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
             $"{trackedItems.Count} tracked items, {recordingCount} recording history");
     }
@@ -397,29 +426,6 @@ public class ItemsCategory
         {
             LogService.Debug($"[ItemsCategory] No historical data found for item '{itemName}' (ID: {itemId})");
         }
-    }
-    
-    private bool GetStoreHistoryState(TrackedItemInfo info)
-    {
-        // Return true if any config has StoreHistory enabled
-        if (info.ItemTableConfig?.StoreHistory == true) return true;
-        if (info.ItemGraphConfig?.StoreHistory == true) return true;
-        return false;
-    }
-    
-    private void SetStoreHistoryState(TrackedItemInfo info, bool enabled)
-    {
-        // Update all configs for this item
-        if (info.ItemTableConfig != null)
-        {
-            info.ItemTableConfig.StoreHistory = enabled;
-        }
-        if (info.ItemGraphConfig != null)
-        {
-            info.ItemGraphConfig.StoreHistory = enabled;
-        }
-        _configService.Save();
-        LogService.Debug($"[ItemsCategory] Set StoreHistory={enabled} for item {info.ItemId}");
     }
     
     private class TrackedItemInfo

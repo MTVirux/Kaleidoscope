@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -673,55 +674,61 @@ public class AutoRetainerControlTool : ToolComponent
             ImGui.TextUnformatted("Text Colors");
             ImGui.Spacing();
             
-            var readyColor = ReadyColor;
-            if (ImGui.ColorEdit4("##readytext", ref readyColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (readyChanged, newReady) = ImGuiHelpers.ColorPickerWithReset(
+                "##readytext", ReadyColor, DefaultReadyColor, "Ready");
+            if (readyChanged)
             {
-                ReadyColor = readyColor;
+                ReadyColor = newReady;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Ready");
             
-            var enabledColor = EnabledColor;
-            if (ImGui.ColorEdit4("##enabledtext", ref enabledColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (enabledChanged, newEnabled) = ImGuiHelpers.ColorPickerWithReset(
+                "##enabledtext", EnabledColor, DefaultEnabledColor, "Enabled");
+            if (enabledChanged)
             {
-                EnabledColor = enabledColor;
+                EnabledColor = newEnabled;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Enabled");
             
-            var disabledColor = DisabledColor;
-            if (ImGui.ColorEdit4("##disabledtext", ref disabledColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (disabledChanged, newDisabled) = ImGuiHelpers.ColorPickerWithReset(
+                "##disabledtext", DisabledColor, DefaultDisabledColor, "Disabled");
+            if (disabledChanged)
             {
-                DisabledColor = disabledColor;
+                DisabledColor = newDisabled;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Disabled");
             
-            var connectedColor = ConnectedColor;
-            if (ImGui.ColorEdit4("##connectedtext", ref connectedColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (connectedChanged, newConnected) = ImGuiHelpers.ColorPickerWithReset(
+                "##connectedtext", ConnectedColor, DefaultConnectedColor, "Connected/On");
+            if (connectedChanged)
             {
-                ConnectedColor = connectedColor;
+                ConnectedColor = newConnected;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Connected/On");
             
-            var warningColor = WarningColor;
-            if (ImGui.ColorEdit4("##warningtext", ref warningColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (warningChanged, newWarning) = ImGuiHelpers.ColorPickerWithReset(
+                "##warningtext", WarningColor, DefaultWarningColor, "Warning");
+            if (warningChanged)
             {
-                WarningColor = warningColor;
+                WarningColor = newWarning;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Warning");
             
-            var retainerColor = RetainerColor;
-            if (ImGui.ColorEdit4("##retainertext", ref retainerColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (retainerChanged, newRetainer) = ImGuiHelpers.ColorPickerWithReset(
+                "##retainertext", RetainerColor, DefaultRetainerColor, "Retainer/Vessel Name");
+            if (retainerChanged)
             {
-                RetainerColor = retainerColor;
+                RetainerColor = newRetainer;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
@@ -735,40 +742,25 @@ public class AutoRetainerControlTool : ToolComponent
             ImGui.TextUnformatted("Header Progress Colors");
             ImGui.Spacing();
             
-            var progressBarReadyColor = ProgressBarReadyColor;
-            if (ImGui.ColorEdit4("##readyheader", ref progressBarReadyColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (progressReadyChanged, newProgressReady) = ImGuiHelpers.ColorPickerWithReset(
+                "##readyheader", ProgressBarReadyColor, DefaultProgressBarReadyColor, "Ready (green)");
+            if (progressReadyChanged)
             {
-                ProgressBarReadyColor = progressBarReadyColor;
+                ProgressBarReadyColor = newProgressReady;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Ready (green)");
             
-            var progressBarColor = ProgressBarColor;
-            if (ImGui.ColorEdit4("##inprogressheader", ref progressBarColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (progressChanged, newProgress) = ImGuiHelpers.ColorPickerWithReset(
+                "##inprogressheader", ProgressBarColor, DefaultProgressBarColor, "In Progress (red)");
+            if (progressChanged)
             {
-                ProgressBarColor = progressBarColor;
+                ProgressBarColor = newProgress;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("In Progress (red)");
-            
-            ImGui.Spacing();
-            
-            if (ImGui.Button("Reset to Defaults"))
-            {
-                ConnectedColor = DefaultConnectedColor;
-                DisconnectedColor = DefaultDisconnectedColor;
-                WarningColor = DefaultWarningColor;
-                ReadyColor = DefaultReadyColor;
-                DisabledColor = DefaultDisabledColor;
-                EnabledColor = DefaultEnabledColor;
-                HeaderColor = DefaultHeaderColor;
-                RetainerColor = DefaultRetainerColor;
-                ProgressBarColor = DefaultProgressBarColor;
-                ProgressBarReadyColor = DefaultProgressBarReadyColor;
-                NotifyToolSettingsChanged();
-            }
             
             ImGui.Unindent();
         }

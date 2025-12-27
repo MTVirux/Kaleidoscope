@@ -59,7 +59,10 @@ public class ItemSalesHistoryTool : ToolComponent
             favoritesService,
             priceTrackingService,
             "ItemSalesHistory",
-            marketableOnly: true);
+            marketableOnly: true,
+            configService: _configService,
+            trackedDataRegistry: _samplerService.Registry,
+            excludeCurrencies: true);
 
         Title = "Item Sales History";
         Size = new Vector2(450, 400);

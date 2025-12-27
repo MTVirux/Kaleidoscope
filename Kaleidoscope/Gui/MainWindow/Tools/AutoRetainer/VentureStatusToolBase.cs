@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -660,51 +661,45 @@ public abstract class VentureStatusToolBase : ToolComponent
         {
             ImGui.Indent();
 
-            var readyColor = ReadyColor;
-            if (ImGui.ColorEdit4("##ready", ref readyColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (readyChanged, newReady) = ImGuiHelpers.ColorPickerWithReset(
+                "##ready", ReadyColor, DefaultReadyColor, "Ready");
+            if (readyChanged)
             {
-                ReadyColor = readyColor;
+                ReadyColor = newReady;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Ready");
 
-            var activeColor = ActiveColor;
-            if (ImGui.ColorEdit4("##active", ref activeColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (activeChanged, newActive) = ImGuiHelpers.ColorPickerWithReset(
+                "##active", ActiveColor, DefaultActiveColor, "Active");
+            if (activeChanged)
             {
-                ActiveColor = activeColor;
+                ActiveColor = newActive;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Active");
 
-            var disabledColor = DisabledColor;
-            if (ImGui.ColorEdit4("##disabled", ref disabledColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (disabledChanged, newDisabled) = ImGuiHelpers.ColorPickerWithReset(
+                "##disabled", DisabledColor, DefaultDisabledColor, "Disabled/Character");
+            if (disabledChanged)
             {
-                DisabledColor = disabledColor;
+                DisabledColor = newDisabled;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted("Disabled/Character");
 
-            var noVentureColor = NoVentureColor;
-            if (ImGui.ColorEdit4("##noventure", ref noVentureColor, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.NoLabel))
+            var (noVentureChanged, newNoVenture) = ImGuiHelpers.ColorPickerWithReset(
+                "##noventure", NoVentureColor, DefaultNoVentureColor, $"No {VentureNameSingular}");
+            if (noVentureChanged)
             {
-                NoVentureColor = noVentureColor;
+                NoVentureColor = newNoVenture;
                 NotifyToolSettingsChanged();
             }
             ImGui.SameLine();
             ImGui.TextUnformatted($"No {VentureNameSingular}");
-
-            ImGui.Spacing();
-            if (ImGui.Button("Reset Colors"))
-            {
-                ReadyColor = DefaultReadyColor;
-                ActiveColor = DefaultActiveColor;
-                DisabledColor = DefaultDisabledColor;
-                NoVentureColor = DefaultNoVentureColor;
-                NotifyToolSettingsChanged();
-            }
 
             ImGui.Unindent();
         }

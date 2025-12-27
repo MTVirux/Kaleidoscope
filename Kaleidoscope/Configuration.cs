@@ -146,6 +146,11 @@ public class Configuration : IPluginConfiguration
     /// Sort order for character lists throughout the UI.
     /// </summary>
     public CharacterSortOrder CharacterSortOrder { get; set; } = CharacterSortOrder.Alphabetical;
+    
+    /// <summary>
+    /// Sort order for item lists in item pickers (alphabetical or by ID).
+    /// </summary>
+    public Gui.Widgets.ItemSortOrder ItemPickerSortOrder { get; set; } = Gui.Widgets.ItemSortOrder.Alphabetical;
 
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
@@ -207,6 +212,13 @@ public class Configuration : IPluginConfiguration
     public string UniversalisRegionOverride { get; set; } = string.Empty;
 
     // Data Tracking settings
+    /// <summary>
+    /// Set of item IDs that have historical time-series tracking enabled.
+    /// When an item is in this set, its quantities are sampled and stored for graphing over time.
+    /// This is a global setting - enabling tracking for an item affects all tools.
+    /// </summary>
+    public HashSet<uint> ItemsWithHistoricalTracking { get; set; } = new();
+
     /// <summary>
     /// Set of enabled data types for tracking. If null or empty, defaults will be used.
     /// </summary>

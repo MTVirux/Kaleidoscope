@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
@@ -149,7 +150,10 @@ public class DataTool : ToolComponent
                 favoritesService,
                 null,
                 "DataToolItemAdd",
-                marketableOnly: false);
+                marketableOnly: false,
+                configService: configService,
+                trackedDataRegistry: trackedDataRegistry,
+                excludeCurrencies: true);
         }
         
         // Create currency combo
@@ -285,7 +289,7 @@ public class DataTool : ToolComponent
         
         // Check for items without history tracking (only items need this, currencies are always tracked)
         var itemsWithoutHistory = Settings.Columns
-            .Where(c => !c.IsCurrency && !c.StoreHistory)
+            .Where(c => !c.IsCurrency && !_configService.Config.ItemsWithHistoricalTracking.Contains(c.Id))
             .ToList();
         var hasHistoryWarning = itemsWithoutHistory.Count > 0;
         
@@ -293,20 +297,11 @@ public class DataTool : ToolComponent
         var toggleTooltip = isGraphView ? "Switch to Table View" : "Switch to Graph View";
         if (hasHistoryWarning && !isGraphView)
         {
-            toggleTooltip += "\n\n⚠ Warning: The following items do not have historical data enabled:";
-            foreach (var item in itemsWithoutHistory.Take(10))
-            {
-                var itemName = _itemDataService?.GetItemName(item.Id) ?? $"Item #{item.Id}";
-                toggleTooltip += $"\n  • {itemName}";
-            }
-            if (itemsWithoutHistory.Count > 10)
-            {
-                toggleTooltip += $"\n  ... and {itemsWithoutHistory.Count - 10} more";
-            }
-            toggleTooltip += "\n\nThey will not display time-series data in graph view.\nEnable 'Store History' in Settings to track them.";
+            toggleTooltip += $"\n\n⚠ Warning: {itemsWithoutHistory.Count} item(s) do not have historical tracking enabled.";
+            toggleTooltip += "\n\nThese items will not display time-series data in graph view.\nEnable historical tracking in Settings for each item.";
         }
         
-        if (ImGui.Button(toggleLabel, new Vector2(28, 0)))
+        if (ImGuiHelpers.ButtonAutoWidth(toggleLabel, 8f))
         {
             Settings.ViewMode = isGraphView ? DataToolViewMode.Table : DataToolViewMode.Graph;
             UpdateTitle();
@@ -387,40 +382,50 @@ public class DataTool : ToolComponent
     
     private void DrawGraphActionButtons()
     {
-        // Single-select item dropdown
+        // Multi-select item dropdown
         if (_itemCombo != null)
         {
-            if (_itemCombo.Draw(160))
+            var currentItemIds = Settings.Columns
+                .Where(c => !c.IsCurrency)
+                .Select(c => c.Id)
+                .ToHashSet();
+            
+            var comboSelection = _itemCombo.GetMultiSelection();
+            if (!currentItemIds.SetEquals(comboSelection))
             {
-                if (_itemCombo.SelectedItemId > 0)
-                {
-                    AddColumn(_itemCombo.SelectedItemId, isCurrency: false);
-                    _itemCombo.ClearSelection();
-                }
+                _itemCombo.SetMultiSelection(currentItemIds);
             }
+            
+            _itemCombo.DrawMultiSelect(160);
+            
+            var newSelection = _itemCombo.GetMultiSelection();
+            SyncItemColumns(newSelection);
+            
             ImGui.SameLine();
         }
         
-        // Single-select currency dropdown
+        // Multi-select currency dropdown
         if (_currencyCombo != null)
         {
-            if (_currencyCombo.Draw(160))
+            var currentCurrencyTypes = Settings.Columns
+                .Where(c => c.IsCurrency)
+                .Select(c => (TrackedDataType)c.Id)
+                .ToHashSet();
+            
+            var comboSelection = _currencyCombo.GetMultiSelection();
+            if (!currentCurrencyTypes.SetEquals(comboSelection))
             {
-                if (_currencyCombo.SelectedType != default)
-                {
-                    AddColumn((uint)_currencyCombo.SelectedType, isCurrency: true);
-                    _currencyCombo.ClearSelection();
-                }
+                _currencyCombo.SetMultiSelection(currentCurrencyTypes);
             }
+            
+            _currencyCombo.DrawMultiSelect(160);
+            
+            var newSelection = _currencyCombo.GetMultiSelection();
+            SyncCurrencyColumns(newSelection);
+            
             ImGui.SameLine();
         }
         
-        if (ImGui.Button("Refresh"))
-        {
-            _graphCacheIsDirty = true;
-        }
-        
-        ImGui.SameLine();
         ImGui.TextDisabled($"({Settings.Columns.Count} series)");
     }
     
@@ -1526,7 +1531,6 @@ public class DataTool : ToolComponent
     protected override void DrawToolSettings()
     {
         var settings = Settings;
-        var isTableMode = settings.ViewMode == DataToolViewMode.Table;
         
         // View Mode Section
         ImGui.TextUnformatted("View Mode");
@@ -1584,22 +1588,17 @@ public class DataTool : ToolComponent
             }
             if (ImGui.IsItemHovered())
             {
-                var tooltip = isTableMode 
-                    ? "Show expandable rows to see per-retainer item counts" 
-                    : "Show retainer quantities as separate series on the graph.\n\n" +
-                      "Note: Items must have 'Store History' enabled in Column Management,\n" +
+                var tooltip = "Show expandable rows in table view, or separate series per retainer in graph view.\n\n" +
+                      "Note: Historical tracking must be enabled for each item for graph retainer data,\n" +
                       "and you must open each retainer's inventory at least once to collect data.";
                 ImGui.SetTooltip(tooltip);
             }
             
-            // Show warning if in graph mode and no items have StoreHistory enabled
-            if (!isTableMode && showRetainerBreakdown)
+            // Show warning if any items don't have historical tracking
+            var itemsWithoutTracking = settings.Columns.Count(c => !c.IsCurrency && !_configService.Config.ItemsWithHistoricalTracking.Contains(c.Id));
+            if (itemsWithoutTracking > 0)
             {
-                var itemsWithHistory = settings.Columns.Count(c => !c.IsCurrency && c.StoreHistory);
-                if (itemsWithHistory == 0 && settings.Columns.Any(c => !c.IsCurrency))
-                {
-                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "⚠ Enable 'Store History' for items in Column Management");
-                }
+                ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), $"⚠ {itemsWithoutTracking} item(s) without historical tracking");
             }
             
             ImGui.Unindent(16f);
@@ -1635,33 +1634,83 @@ public class DataTool : ToolComponent
         ImGui.Spacing();
         ImGui.Spacing();
         
-        // Column/Series Management (unified section, label changes based on mode)
-        var mergedColumnIndices = new HashSet<int>();
-        foreach (var group in settings.MergedColumnGroups)
-        {
-            foreach (var idx in group.ColumnIndices)
-            {
-                mergedColumnIndices.Add(idx);
-            }
-        }
-        
+        // Column/Series Management with integrated merge functionality
         ColumnManagementWidget.Draw(
             settings.Columns,
+            settings.MergedColumnGroups,
             column => GetSeriesDisplayName(column),
             onSettingsChanged: () => NotifyToolSettingsChanged(),
             onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
-            sectionTitle: isTableMode ? "Column Management" : "Series Management",
+            sectionTitle: "Item / Currency Management",
             emptyMessage: "No items or currencies configured.",
-            mergedColumnIndices: mergedColumnIndices,
             itemLabel: "Item",
-            currencyLabel: "Currency");
+            currencyLabel: "Currency",
+            widgetId: $"datatool_{GetHashCode()}",
+            isItemHistoricalTrackingEnabled: (itemId) => _configService.Config.ItemsWithHistoricalTracking.Contains(itemId),
+            onItemHistoricalTrackingToggled: (itemId, enabled) =>
+            {
+                if (enabled)
+                {
+                    _configService.Config.ItemsWithHistoricalTracking.Add(itemId);
+                }
+                else
+                {
+                    _configService.Config.ItemsWithHistoricalTracking.Remove(itemId);
+                }
+                _configService.Save();
+                _pendingTableRefresh = true;
+                _graphCacheIsDirty = true;
+            });
+        
+        // Source Merging
+        // Compute available row identifiers based on grouping mode
+        var currentGroupingMode = settings.GroupingMode;
+        var availableCharIds = _cachedTableData?.Rows?.Select(r => r.CharacterId).Distinct().ToList() 
+                               ?? new List<ulong>();
+        
+        // For non-Character modes, compute available group keys
+        List<string>? availableGroupKeys = null;
+        if (currentGroupingMode != TableGroupingMode.Character && _cachedTableData?.Rows != null)
+        {
+            availableGroupKeys = currentGroupingMode switch
+            {
+                TableGroupingMode.World => _cachedTableData.Rows
+                    .Select(r => string.IsNullOrEmpty(r.WorldName) ? "Unknown World" : r.WorldName)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList(),
+                TableGroupingMode.DataCenter => _cachedTableData.Rows
+                    .Select(r => string.IsNullOrEmpty(r.DataCenterName) ? "Unknown DC" : r.DataCenterName)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList(),
+                TableGroupingMode.Region => _cachedTableData.Rows
+                    .Select(r => string.IsNullOrEmpty(r.RegionName) ? "Unknown Region" : r.RegionName)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList(),
+                TableGroupingMode.All => new List<string> { "All Characters" },
+                _ => null
+            };
+        }
+        
+        MergeManagementWidget.DrawMergedRows(
+            settings.MergedRowGroups,
+            groupingMode: currentGroupingMode,
+            getCharacterName: GetCharacterDisplayName,
+            availableCharacterIds: availableCharIds,
+            availableGroupKeys: availableGroupKeys,
+            onSettingsChanged: () => NotifyToolSettingsChanged(),
+            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
+            widgetId: $"datatool_rows_{GetHashCode()}");
         
         // Special Grouping
         SpecialGroupingWidget.Draw(
             settings.SpecialGrouping,
             settings.Columns,
             onSettingsChanged: () => NotifyToolSettingsChanged(),
-            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; });
+            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
+            onAddColumn: (id, isCurrency) => AddColumn(id, isCurrency));
     }
     
     public override Dictionary<string, object?>? ExportToolSettings()

@@ -95,7 +95,10 @@ public class TopItemsTool : ToolComponent
             favoritesService,
             priceTrackingService,
             "TopItemsExclude",
-            marketableOnly: true);
+            marketableOnly: true,
+            configService: _configService,
+            trackedDataRegistry: _samplerService.Registry,
+            excludeCurrencies: true);
 
         // Create item details popup for showing listings and sales when clicking an item
         _itemDetailsPopup = new ItemDetailsPopup(

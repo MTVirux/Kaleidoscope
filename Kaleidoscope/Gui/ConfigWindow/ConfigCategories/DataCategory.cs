@@ -95,7 +95,7 @@ public class DataCategory
 
         if (ImGui.BeginPopupModal("config_clear_db_confirm", ref _clearDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted("This will permanently delete all saved GilTracker data from the DB for all characters. Proceed?");
+            ImGui.TextUnformatted("This will permanently delete ALL data from the database (simulating a fresh install). Proceed?");
             if (ImGui.Button("Yes"))
             {
                 try
@@ -206,13 +206,30 @@ public class DataCategory
         ImGui.TextUnformatted("Database Settings");
         ImGui.Separator();
         
-        var config = _configService.SamplerConfig;
-        var cacheSizeMb = config.DatabaseCacheSizeMb;
+        // Show count of items with historical tracking enabled
+        var config = _configService.Config;
+        var itemsWithTracking = config.ItemsWithHistoricalTracking.Count;
+        if (itemsWithTracking > 0)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(0.5f, 1f, 0.5f, 1f), 
+                $"{itemsWithTracking} item(s) have historical tracking enabled.");
+        }
+        else
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
+                "No items have historical tracking enabled.");
+        }
+        ImGui.TextDisabled("Enable historical tracking per-item in the Data Tool settings or Items category.");
+        
+        ImGui.Spacing();
+        
+        var samplerConfig = _configService.SamplerConfig;
+        var cacheSizeMb = samplerConfig.DatabaseCacheSizeMb;
         
         ImGui.SetNextItemWidth(120);
         if (ImGui.SliderInt("Cache Size (MB)", ref cacheSizeMb, 1, 64))
         {
-            config.DatabaseCacheSizeMb = cacheSizeMb;
+            samplerConfig.DatabaseCacheSizeMb = cacheSizeMb;
             _configService.Save();
         }
         

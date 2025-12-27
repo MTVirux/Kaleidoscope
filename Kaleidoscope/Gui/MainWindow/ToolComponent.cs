@@ -127,6 +127,14 @@ public abstract class ToolComponent : IDisposable
                 }
             }
             
+            // Add separator between tool settings and component settings if there are any
+            if (_settingsProviders.Any(p => p.HasSettings))
+            {
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+            }
+            
             // Draw all registered component settings (each in its own collapsible header)
             foreach (var provider in _settingsProviders)
             {
