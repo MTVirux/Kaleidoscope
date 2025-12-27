@@ -820,6 +820,84 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
     
     /// <summary>
+    /// Gets all points for variables matching both a prefix and suffix pattern.
+    /// More efficient than fetching all data and filtering client-side.
+    /// </summary>
+    /// <param name="variablePrefix">Variable name prefix to match (e.g., "ItemRetainerX_")</param>
+    /// <param name="variableSuffix">Variable name suffix to match (e.g., "_1234" for item ID)</param>
+    /// <param name="since">Optional: only get points after this timestamp</param>
+    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchWithSuffix(
+        string variablePrefix, string variableSuffix, DateTime? since = null)
+    {
+        var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                // Use LIKE with both prefix% and %suffix pattern via GLOB or compound WHERE
+                var pattern = variablePrefix + "%" + variableSuffix;
+                
+                if (since.HasValue)
+                {
+                    cmd.CommandText = @"
+                        WITH series_max AS (
+                            SELECT s.id AS series_id, s.variable, s.character_id, MAX(p.timestamp) AS max_ts
+                            FROM series s
+                            JOIN points p ON p.series_id = s.id
+                            WHERE s.variable LIKE $pattern
+                            GROUP BY s.id
+                        )
+                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
+                        FROM series_max sm
+                        JOIN points p ON p.series_id = sm.series_id
+                        WHERE p.timestamp >= $since OR p.timestamp = sm.max_ts
+                        ORDER BY sm.variable, p.timestamp";
+                    cmd.Parameters.AddWithValue("$pattern", pattern);
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                else
+                {
+                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable LIKE $pattern
+                        ORDER BY s.variable, p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$pattern", pattern);
+                }
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var variable = reader.GetString(0);
+                    var charId = (ulong)reader.GetInt64(1);
+                    var ticks = reader.GetInt64(2);
+                    var value = reader.GetInt64(3);
+                    
+                    if (charId == 0) continue;
+                    
+                    if (!result.TryGetValue(variable, out var list))
+                    {
+                        list = new List<(ulong, DateTime, long)>();
+                        result[variable] = list;
+                    }
+                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetPointsBatchWithSuffix failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+    
+    /// <summary>
     /// Gets points within a specific time window for multiple variables.
     /// Optimized for virtualized/windowed loading - only fetches visible data.
     /// For each series, also includes the latest point BEFORE the window for line continuity.
