@@ -196,4 +196,66 @@ public static class SettingsImportHelper
             return defaultValue;
         }
     }
+    
+    /// <summary>
+    /// Converts an object to a Dictionary&lt;string, object?&gt; from various serialized formats.
+    /// Handles Newtonsoft.Json JObject, System.Text.Json.JsonElement, and raw dictionaries.
+    /// </summary>
+    /// <param name="obj">The object to convert.</param>
+    /// <returns>A dictionary, or null if conversion fails.</returns>
+    public static Dictionary<string, object?>? ConvertToDictionary(object? obj)
+    {
+        if (obj == null) return null;
+        
+        try
+        {
+            // Handle Newtonsoft.Json JObject
+            if (obj is Newtonsoft.Json.Linq.JObject jObj)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var prop in jObj.Properties())
+                {
+                    result[prop.Name] = prop.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null 
+                        ? null 
+                        : prop.Value;
+                }
+                return result;
+            }
+            
+            // Handle System.Text.Json.JsonElement
+            if (obj is System.Text.Json.JsonElement jsonElement && 
+                jsonElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var prop in jsonElement.EnumerateObject())
+                {
+                    result[prop.Name] = prop.Value;
+                }
+                return result;
+            }
+            
+            // Handle IDictionary<string, object?>
+            if (obj is IDictionary<string, object?> dict)
+            {
+                return new Dictionary<string, object?>(dict);
+            }
+            
+            // Handle Dictionary<string, object>
+            if (obj is Dictionary<string, object> rawDict)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var kvp in rawDict)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+                return result;
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+        
+        return null;
+    }
 }

@@ -253,8 +253,7 @@ public class ToolPresetsCategory
     {
         return toolType switch
         {
-            WindowToolRegistrar.ToolIds.DataTable => "Data Table",
-            WindowToolRegistrar.ToolIds.DataGraph => "Data Graph",
+            WindowToolRegistrar.ToolIds.Data => "Data",
             _ => toolType
         };
     }

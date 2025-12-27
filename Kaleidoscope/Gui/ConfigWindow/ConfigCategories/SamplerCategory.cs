@@ -148,6 +148,7 @@ public class SamplerCategory
             TrackedDataCategory.Tribal => "Tribal / FATE",
             TrackedDataCategory.Crafting => "Crafting / Gathering",
             TrackedDataCategory.Inventory => "Inventory",
+            TrackedDataCategory.Universalis => "Universalis / Value",
             _ => category.ToString()
         };
     }

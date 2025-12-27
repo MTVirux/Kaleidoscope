@@ -1,6 +1,6 @@
 using System.Numerics;
 using Dalamud.Plugin.Services;
-using Kaleidoscope.Gui.MainWindow.Tools.DataTable;
+using Kaleidoscope.Gui.MainWindow.Tools.Data;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 
@@ -45,7 +45,7 @@ public static class ToolPresets
     }
 
     /// <summary>
-    /// Creates a DataTable pre-configured with all crystal items.
+    /// Creates a DataTool pre-configured with all crystal items (in table view).
     /// </summary>
     public static ToolComponent? CreateCrystalTable(
         Vector2 pos,
@@ -62,7 +62,7 @@ public static class ToolPresets
     {
         try
         {
-            var tool = new DataTableTool(
+            var tool = new DataTool(
                 samplerService,
                 configService,
                 inventoryCacheService,
@@ -94,10 +94,11 @@ public static class ToolPresets
             tool.SetColumns(columns);
             tool.ConfigureSettings(s =>
             {
+                s.ViewMode = DataToolViewMode.Table;
                 s.TextColorMode = Widgets.TableTextColorMode.PreferredItemColors;
                 s.AutoSizeEqualColumns = true;
             });
-            tool.SetPresetName("Crystal Table");
+            tool.PresetName = "Crystal Table";
 
             return tool;
         }

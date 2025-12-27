@@ -40,6 +40,7 @@ public class CurrenciesCategory
         { TrackedDataCategory.Hunt, "Hunt" },
         { TrackedDataCategory.GoldSaucer, "Gold Saucer" },
         { TrackedDataCategory.Tribal, "Tribal" },
+        { TrackedDataCategory.Universalis, "Universalis / Value" },
     };
 
     private static string GetCategoryDisplayName(TrackedDataCategory category)
