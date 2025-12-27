@@ -55,8 +55,12 @@ public class DataTool : ToolComponent
     private int _cachedTimeRangeValue;
     private TimeUnit _cachedTimeRangeUnit;
     private bool _cachedIncludeRetainers;
-    private bool _cachedShowPerCharacter;
     private TableGroupingMode _cachedGroupingMode;
+    
+    // Retainer names cache (refreshed periodically)
+    private Dictionary<ulong, string>? _cachedRetainerNames;
+    private DateTime _lastRetainerNamesCacheRefresh = DateTime.MinValue;
+    private static readonly TimeSpan RetainerNamesCacheExpiry = TimeSpan.FromMinutes(5);
     
     // Shared cached state
     private CharacterNameFormat _cachedNameFormat;
@@ -132,6 +136,9 @@ public class DataTool : ToolComponent
             _instanceSettings,
             () => { _graphCacheIsDirty = true; NotifyToolSettingsChanged(); },
             "Graph Settings");
+        
+        // Subscribe to auto-scroll settings changes from controls drawer
+        _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
         
         // Create item combo
         if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
@@ -611,7 +618,7 @@ public class DataTool : ToolComponent
                     }
                     else
                     {
-                        PopulateItemData(column, rows, settings.IncludeRetainers);
+                        PopulateItemData(column, rows, settings.IncludeRetainers, settings.ShowRetainerBreakdown);
                     }
                 }
             }
@@ -687,6 +694,11 @@ public class DataTool : ToolComponent
     
     private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers)
     {
+        PopulateItemData(column, rows, includeRetainers, false);
+    }
+    
+    private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers, bool showRetainerBreakdown)
+    {
         using (ProfilerService.BeginStaticChildScope("PopulateItem"))
         {
             try
@@ -697,9 +709,6 @@ public class DataTool : ToolComponent
                 
                 foreach (var cache in allInventories)
                 {
-                    if (!includeRetainers && cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
-                        continue;
-                    
                     if (!rows.TryGetValue(cache.CharacterId, out var row))
                         continue;
                     
@@ -707,10 +716,49 @@ public class DataTool : ToolComponent
                         .Where(i => i.ItemId == column.Id)
                         .Sum(i => (long)i.Quantity);
                     
+                    // Initialize ItemCounts if needed
                     if (!row.ItemCounts.ContainsKey(column.Id))
                         row.ItemCounts[column.Id] = 0;
                     
-                    row.ItemCounts[column.Id] += count;
+                    if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Player)
+                    {
+                        // Always add player inventory to total
+                        row.ItemCounts[column.Id] += count;
+                        
+                        // If showing breakdown, also track player-only counts
+                        if (showRetainerBreakdown)
+                        {
+                            row.PlayerItemCounts ??= new Dictionary<uint, long>();
+                            if (!row.PlayerItemCounts.ContainsKey(column.Id))
+                                row.PlayerItemCounts[column.Id] = 0;
+                            row.PlayerItemCounts[column.Id] += count;
+                        }
+                    }
+                    else if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
+                    {
+                        // Add retainer inventory to total if includeRetainers is enabled
+                        if (includeRetainers)
+                        {
+                            row.ItemCounts[column.Id] += count;
+                        }
+                        
+                        // If showing breakdown, track per-retainer counts
+                        if (showRetainerBreakdown && count > 0)
+                        {
+                            var retainerKey = (cache.RetainerId, cache.Name ?? $"Retainer {cache.RetainerId}");
+                            row.RetainerBreakdown ??= new Dictionary<(ulong, string), Dictionary<uint, long>>();
+                            
+                            if (!row.RetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
+                            {
+                                retainerCounts = new Dictionary<uint, long>();
+                                row.RetainerBreakdown[retainerKey] = retainerCounts;
+                            }
+                            
+                            if (!retainerCounts.ContainsKey(column.Id))
+                                retainerCounts[column.Id] = 0;
+                            retainerCounts[column.Id] += count;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -780,6 +828,8 @@ public class DataTool : ToolComponent
         }
     }
     
+    private bool _cachedShowRetainerBreakdown;
+    
     private bool NeedsGraphCacheRefresh()
     {
         if (_graphCacheIsDirty) return true;
@@ -789,7 +839,7 @@ public class DataTool : ToolComponent
         if (_cachedTimeRangeValue != settings.TimeRangeValue) return true;
         if (_cachedTimeRangeUnit != settings.TimeRangeUnit) return true;
         if (_cachedIncludeRetainers != settings.IncludeRetainers) return true;
-        if (_cachedShowPerCharacter != settings.ShowPerCharacter) return true;
+        if (_cachedShowRetainerBreakdown != settings.ShowRetainerBreakdown) return true;
         if (_cachedGroupingMode != settings.GroupingMode) return true;
         if (_cachedNameFormat != _configService.Config.CharacterNameFormat) return true;
         
@@ -805,7 +855,7 @@ public class DataTool : ToolComponent
         _cachedTimeRangeValue = settings.TimeRangeValue;
         _cachedTimeRangeUnit = settings.TimeRangeUnit;
         _cachedIncludeRetainers = settings.IncludeRetainers;
-        _cachedShowPerCharacter = settings.ShowPerCharacter;
+        _cachedShowRetainerBreakdown = settings.ShowRetainerBreakdown;
         _cachedNameFormat = _configService.Config.CharacterNameFormat;
         _cachedGroupingMode = settings.GroupingMode;
         _graphCacheIsDirty = false;
@@ -885,6 +935,7 @@ public class DataTool : ToolComponent
         {
             var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
             string variableName;
+            string? perRetainerVariablePrefix = null;
             
             if (seriesConfig.IsCurrency)
             {
@@ -893,9 +944,17 @@ public class DataTool : ToolComponent
             else
             {
                 variableName = $"Item_{seriesConfig.Id}";
+                // If showing retainer breakdown, we'll fetch per-retainer data
+                if (settings.IncludeRetainers && settings.ShowRetainerBreakdown)
+                {
+                    // Per-retainer data uses pattern: ItemRetainerX_{retainerId}_{itemId}
+                    // We need to search for all matching the item ID at the end
+                    perRetainerVariablePrefix = $"ItemRetainerX_";
+                }
             }
             
             IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points;
+            Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? perRetainerPointsDict = null;
             using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
             {
                 var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
@@ -905,10 +964,52 @@ public class DataTool : ToolComponent
                 
                 points = pts;
                 
+                // Also fetch per-retainer data if breakdown is enabled
+                if (perRetainerVariablePrefix != null)
+                {
+                    // Use optimized query with both prefix and suffix matching
+                    var itemIdSuffix = $"_{seriesConfig.Id}";
+                    perRetainerPointsDict = DbService.GetPointsBatchWithSuffix(perRetainerVariablePrefix, itemIdSuffix, startTime);
+                    
+                    // Merge in pending (cached but not yet flushed) retainer samples for real-time display
+                    if (_inventoryCacheService != null)
+                    {
+                        var pendingSamples = _inventoryCacheService.GetPendingRetainerSamples(perRetainerVariablePrefix, itemIdSuffix);
+                        foreach (var (varName, pendingPoints) in pendingSamples)
+                        {
+                            if (!perRetainerPointsDict.TryGetValue(varName, out var existingList))
+                            {
+                                existingList = new List<(ulong, DateTime, long)>();
+                                perRetainerPointsDict[varName] = existingList;
+                            }
+                            existingList.AddRange(pendingPoints);
+                        }
+                    }
+                    
+                    // If no per-retainer data found, fall back to the old total retainer data
+                    if (perRetainerPointsDict.Count == 0)
+                    {
+                        var fallbackVariableName = $"ItemRetainer_{seriesConfig.Id}";
+                        var fallbackPoints = DbService.GetAllPointsBatch(fallbackVariableName, startTime);
+                        if (fallbackPoints.TryGetValue(fallbackVariableName, out var fallbackPts) && fallbackPts.Count > 0)
+                        {
+                            // Use the old total data with a generic "Retainers" label
+                            perRetainerPointsDict[fallbackVariableName] = fallbackPts;
+                        }
+                    }
+                }
+                
                 // Apply character filter
                 if (allowedCharacters != null)
                 {
                     points = points.Where(p => allowedCharacters.Contains(p.characterId)).ToList();
+                    if (perRetainerPointsDict != null)
+                    {
+                        perRetainerPointsDict = perRetainerPointsDict
+                            .ToDictionary(
+                                kvp => kvp.Key,
+                                kvp => kvp.Value.Where(p => allowedCharacters.Contains(p.characterId)).ToList());
+                    }
                 }
                 
                 if (points.Count == 0)
@@ -918,8 +1019,8 @@ public class DataTool : ToolComponent
             var defaultName = GetSeriesDisplayName(seriesConfig);
             var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
             
-            // Determine grouping based on GroupingMode (respects ShowPerCharacter for backward compat)
-            var groupingMode = settings.ShowPerCharacter ? TableGroupingMode.Character : settings.GroupingMode;
+            // Use GroupingMode directly for graph series grouping
+            var groupingMode = settings.GroupingMode;
             
             if (groupingMode == TableGroupingMode.Character)
             {
@@ -976,6 +1077,13 @@ public class DataTool : ToolComponent
                 // Group by World, DataCenter, or Region
                 var groupedSeries = GroupPointsByLocation(points, groupingMode, defaultName, seriesConfig, settings);
                 result.AddRange(groupedSeries);
+            }
+            
+            // Add per-retainer series if breakdown is enabled and we have retainer data
+            if (perRetainerPointsDict != null && perRetainerPointsDict.Count > 0)
+            {
+                var retainerSeriesResult = BuildPerRetainerSeries(perRetainerPointsDict, seriesConfig.Id, defaultName, settings, groupingMode, seriesConfig);
+                result.AddRange(retainerSeriesResult);
             }
             
             return result;
@@ -1050,6 +1158,221 @@ public class DataTool : ToolComponent
         }
         
         return result;
+    }
+    
+    /// <summary>
+    /// Builds separate series for each individual retainer's inventory data.
+    /// Each retainer gets its own series with distinct name and color.
+    /// </summary>
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> BuildPerRetainerSeries(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> perRetainerPointsDict,
+        uint itemId,
+        string defaultName,
+        DataToolSettings settings,
+        TableGroupingMode groupingMode,
+        ItemColumnConfig seriesConfig)
+    {
+        var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+        
+        // Build a lookup of retainer ID -> retainer name from inventory cache
+        var retainerNames = GetRetainerNamesMap();
+        
+        // Use a color palette for retainers
+        var baseColor = GetEffectiveSeriesColor(seriesConfig, settings, 0);
+        var retainerIndex = 0;
+        
+        foreach (var (variableName, points) in perRetainerPointsDict)
+        {
+            if (points.Count == 0) continue;
+            
+            string retainerName;
+            
+            // Check if this is the old format (ItemRetainer_{itemId}) or new format (ItemRetainerX_{retainerId}_{itemId})
+            if (variableName.StartsWith("ItemRetainerX_"))
+            {
+                // Parse retainer ID from variable name: ItemRetainerX_{retainerId}_{itemId}
+                // Format: ItemRetainerX_12345678_1234
+                var parts = variableName.Split('_');
+                if (parts.Length < 3) continue;
+                
+                if (!ulong.TryParse(parts[1], out var retainerId)) continue;
+                
+                // Get retainer name
+                retainerName = retainerNames.TryGetValue(retainerId, out var name) ? name : $"Retainer {retainerId}";
+            }
+            else
+            {
+                // Old format: ItemRetainer_{itemId} - show as combined "Retainers"
+                retainerName = "Retainers";
+            }
+            
+            // Generate a unique color for this retainer
+            var retainerColor = GetRetainerSeriesColor(baseColor, retainerIndex);
+            
+            if (groupingMode == TableGroupingMode.Character)
+            {
+                // Separate series per character's retainer
+                var byCharacter = points.GroupBy(p => p.characterId);
+                
+                foreach (var charGroup in byCharacter)
+                {
+                    var charName = GetCharacterDisplayName(charGroup.Key);
+                    var seriesName = $"{defaultName} ({charName} - {retainerName})";
+                    
+                    Vector4 seriesColor;
+                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    {
+                        var charColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(retainerIndex);
+                        seriesColor = GetRetainerSeriesColor(charColor, retainerIndex);
+                    }
+                    else
+                    {
+                        seriesColor = retainerColor;
+                    }
+                    
+                    var samples = charGroup
+                        .OrderBy(p => p.timestamp)
+                        .Select(p => (ts: p.timestamp, value: (float)p.value))
+                        .ToList();
+                    
+                    if (samples.Count > 0)
+                    {
+                        result.Add((seriesName, samples, seriesColor));
+                    }
+                }
+            }
+            else if (groupingMode == TableGroupingMode.All)
+            {
+                // Aggregate this retainer's data across all characters by timestamp
+                var aggregated = points
+                    .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                        p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                    .OrderBy(p => p.ts)
+                    .ToList();
+                
+                if (aggregated.Count > 0)
+                {
+                    var seriesName = $"{seriesConfig.CustomName ?? defaultName} ({retainerName})";
+                    result.Add((seriesName, aggregated, retainerColor));
+                }
+            }
+            else
+            {
+                // Group by World, DataCenter, or Region
+                var worldData = _priceTrackingService?.WorldData;
+                var characterWorlds = GetCharacterWorldsMap();
+                
+                var characterGroups = new Dictionary<ulong, string>();
+                foreach (var (charId, worldName) in characterWorlds)
+                {
+                    string groupName = groupingMode switch
+                    {
+                        TableGroupingMode.World => worldName,
+                        TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
+                        TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
+                        _ => "Unknown"
+                    };
+                    characterGroups[charId] = groupName;
+                }
+                
+                var byGroup = points
+                    .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
+                    .OrderBy(g => g.Key);
+                
+                foreach (var group in byGroup)
+                {
+                    var groupName = group.Key;
+                    var seriesName = $"{defaultName} ({groupName} - {retainerName})";
+                    
+                    var aggregated = group
+                        .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                            p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                        .OrderBy(p => p.ts)
+                        .ToList();
+                    
+                    if (aggregated.Count > 0)
+                    {
+                        var seriesColor = settings.TextColorMode == TableTextColorMode.PreferredItemColors
+                            ? retainerColor
+                            : GetRetainerSeriesColor(GetDefaultSeriesColor(0), retainerIndex);
+                        result.Add((seriesName, aggregated, seriesColor));
+                    }
+                }
+            }
+            
+            retainerIndex++;
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Gets a mapping of retainer ID to retainer name from inventory cache.
+    /// Uses a cached result that is refreshed periodically.
+    /// </summary>
+    private Dictionary<ulong, string> GetRetainerNamesMap()
+    {
+        // Return cached result if still valid
+        if (_cachedRetainerNames != null && 
+            (DateTime.UtcNow - _lastRetainerNamesCacheRefresh) < RetainerNamesCacheExpiry)
+        {
+            return _cachedRetainerNames;
+        }
+        
+        var retainerNames = new Dictionary<ulong, string>();
+        try
+        {
+            // Get all inventory caches to find retainer names
+            var allCaches = DbService.GetAllInventoryCachesAllCharacters();
+            foreach (var cache in allCaches)
+            {
+                if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer && 
+                    cache.RetainerId != 0 && 
+                    !string.IsNullOrEmpty(cache.Name))
+                {
+                    retainerNames[cache.RetainerId] = cache.Name;
+                }
+            }
+            
+            // Cache the result
+            _cachedRetainerNames = retainerNames;
+            _lastRetainerNamesCacheRefresh = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] GetRetainerNamesMap error: {ex.Message}");
+        }
+        return retainerNames;
+    }
+    
+    /// <summary>
+    /// Generates a distinct color for a retainer series based on a base color.
+    /// Uses hue rotation to create visually distinct colors.
+    /// </summary>
+    private static Vector4 GetRetainerSeriesColor(Vector4 baseColor, int retainerIndex)
+    {
+        // Create color variations by rotating hue and adjusting saturation
+        var hueShift = (retainerIndex * 0.15f) % 1.0f;
+        
+        // Simple hue rotation approximation
+        var r = baseColor.X;
+        var g = baseColor.Y;
+        var b = baseColor.Z;
+        
+        // Rotate colors based on index
+        var rotation = retainerIndex % 6;
+        return rotation switch
+        {
+            0 => new Vector4(r, g * 0.7f + 0.3f, b * 0.5f, baseColor.W),
+            1 => new Vector4(r * 0.7f, g, b * 0.7f + 0.3f, baseColor.W),
+            2 => new Vector4(r * 0.5f, g * 0.7f + 0.3f, b, baseColor.W),
+            3 => new Vector4(r * 0.7f + 0.3f, g * 0.5f, b * 0.7f, baseColor.W),
+            4 => new Vector4(r * 0.6f, g * 0.8f, b * 0.6f + 0.4f, baseColor.W),
+            5 => new Vector4(r * 0.8f + 0.2f, g * 0.6f + 0.2f, b * 0.5f, baseColor.W),
+            _ => baseColor
+        };
     }
     
     /// <summary>
@@ -1178,6 +1501,7 @@ public class DataTool : ToolComponent
     protected override void DrawToolSettings()
     {
         var settings = Settings;
+        var isTableMode = settings.ViewMode == DataToolViewMode.Table;
         
         // View Mode Section
         ImGui.TextUnformatted("View Mode");
@@ -1196,7 +1520,7 @@ public class DataTool : ToolComponent
         ImGui.Spacing();
         ImGui.Spacing();
         
-        // Display Options
+        // Display Options (shared between both modes)
         ImGui.TextUnformatted("Display Options");
         ImGui.Separator();
         
@@ -1221,6 +1545,41 @@ public class DataTool : ToolComponent
             NotifyToolSettingsChanged();
         }
         
+        // Show retainer breakdown (available in both modes when IncludeRetainers is enabled)
+        if (settings.IncludeRetainers)
+        {
+            ImGui.Indent(16f);
+            var showRetainerBreakdown = settings.ShowRetainerBreakdown;
+            if (ImGui.Checkbox("Show Retainer Breakdown", ref showRetainerBreakdown))
+            {
+                settings.ShowRetainerBreakdown = showRetainerBreakdown;
+                _pendingTableRefresh = true;
+                _graphCacheIsDirty = true;
+                NotifyToolSettingsChanged();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                var tooltip = isTableMode 
+                    ? "Show expandable rows to see per-retainer item counts" 
+                    : "Show retainer quantities as separate series on the graph.\n\n" +
+                      "Note: Items must have 'Store History' enabled in Column Management,\n" +
+                      "and you must open each retainer's inventory at least once to collect data.";
+                ImGui.SetTooltip(tooltip);
+            }
+            
+            // Show warning if in graph mode and no items have StoreHistory enabled
+            if (!isTableMode && showRetainerBreakdown)
+            {
+                var itemsWithHistory = settings.Columns.Count(c => !c.IsCurrency && c.StoreHistory);
+                if (itemsWithHistory == 0 && settings.Columns.Any(c => !c.IsCurrency))
+                {
+                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "⚠ Enable 'Store History' for items in Column Management");
+                }
+            }
+            
+            ImGui.Unindent(16f);
+        }
+        
         // Show action buttons
         var showActionButtons = settings.ShowActionButtons;
         if (ImGui.Checkbox("Show Action Buttons", ref showActionButtons))
@@ -1237,41 +1596,21 @@ public class DataTool : ToolComponent
             NotifyToolSettingsChanged();
         }
         
-        ImGui.Spacing();
-        
-        // Table-specific options
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Table View Options");
-        
+        // Color Mode (applies to both table and graph)
         var textColorMode = (int)settings.TextColorMode;
         ImGui.SetNextItemWidth(200);
         if (ImGui.Combo("Color Mode", ref textColorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
         {
             settings.TextColorMode = (TableTextColorMode)textColorMode;
             _pendingTableRefresh = true;
-            NotifyToolSettingsChanged();
-        }
-        
-        ImGui.Spacing();
-        
-        // Graph-specific options
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Graph View Options");
-        
-        var showPerCharacter = settings.ShowPerCharacter;
-        if (ImGui.Checkbox("Show Per Character", ref showPerCharacter))
-        {
-            settings.ShowPerCharacter = showPerCharacter;
             _graphCacheIsDirty = true;
             NotifyToolSettingsChanged();
         }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Show separate lines for each character instead of aggregating");
-        }
         
         ImGui.Spacing();
         ImGui.Spacing();
         
-        // Column/Series Management
+        // Column/Series Management (unified section, label changes based on mode)
         var mergedColumnIndices = new HashSet<int>();
         foreach (var group in settings.MergedColumnGroups)
         {
@@ -1286,7 +1625,7 @@ public class DataTool : ToolComponent
             column => GetSeriesDisplayName(column),
             onSettingsChanged: () => NotifyToolSettingsChanged(),
             onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
-            sectionTitle: settings.ViewMode == DataToolViewMode.Table ? "Column Management" : "Series Management",
+            sectionTitle: isTableMode ? "Column Management" : "Series Management",
             emptyMessage: "No items or currencies configured.",
             mergedColumnIndices: mergedColumnIndices,
             itemLabel: "Item",
@@ -1362,9 +1701,9 @@ public class DataTool : ToolComponent
             ["HiddenCharacters"] = settings.HiddenCharacters.ToList(),
             ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
             ["TextColorMode"] = (int)settings.TextColorMode,
+            ["ShowRetainerBreakdown"] = settings.ShowRetainerBreakdown,
             
             // Graph-specific
-            ["ShowPerCharacter"] = settings.ShowPerCharacter,
             ["LegendWidth"] = settings.LegendWidth,
             ["LegendHeightPercent"] = settings.LegendHeightPercent,
             ["ShowLegend"] = settings.ShowLegend,
@@ -1441,6 +1780,7 @@ public class DataTool : ToolComponent
         target.HeaderVerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
         target.HideCharacterColumnInAllMode = SettingsImportHelper.GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
         target.TextColorMode = (TableTextColorMode)SettingsImportHelper.GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
+        target.ShowRetainerBreakdown = SettingsImportHelper.GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
         
         // Colors
         target.CharacterColumnColor = SettingsImportHelper.ImportColor(settings, "CharacterColumnColor");
@@ -1452,7 +1792,6 @@ public class DataTool : ToolComponent
         target.HiddenCharacters = SettingsImportHelper.ImportUlongHashSet(settings, "HiddenCharacters") ?? new HashSet<ulong>();
         
         // Graph-specific
-        target.ShowPerCharacter = SettingsImportHelper.GetSetting(settings, "ShowPerCharacter", target.ShowPerCharacter);
         target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
         target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
         target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
@@ -1494,8 +1833,19 @@ public class DataTool : ToolComponent
     
     #endregion
     
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
+    {
+        _instanceSettings.AutoScrollEnabled = enabled;
+        _instanceSettings.AutoScrollTimeValue = timeValue;
+        _instanceSettings.AutoScrollTimeUnit = timeUnit;
+        _instanceSettings.AutoScrollNowPosition = nowPosition;
+        NotifyToolSettingsChanged();
+        _graphCacheIsDirty = true;
+    }
+    
     public override void Dispose()
     {
+        _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
         _characterCombo?.Dispose();
         base.Dispose();
     }

@@ -621,6 +621,12 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
         Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
     
     /// <summary>
+    /// Whether to show expandable retainer breakdown for characters with retainer data.
+    /// When enabled, characters with retainers can be expanded to show per-retainer counts.
+    /// </summary>
+    public bool ShowRetainerBreakdown { get; set; } = false;
+    
+    /// <summary>
     /// Settings for special grouping filters (unlocked when specific item combinations are selected).
     /// </summary>
     public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
@@ -933,12 +939,13 @@ public class DataToolSettings :
     public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
         Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
     
-    // === Graph-Specific Settings (IGraphWidgetSettings implementation) ===
-    
     /// <summary>
-    /// Whether to show separate lines for each character instead of aggregating.
+    /// Whether to show expandable retainer breakdown for characters with retainer data.
+    /// When enabled, characters with retainers can be expanded to show per-retainer counts.
     /// </summary>
-    public bool ShowPerCharacter { get; set; } = false;
+    public bool ShowRetainerBreakdown { get; set; } = false;
+    
+    // === Graph-Specific Settings (IGraphWidgetSettings implementation) ===
     
     /// <summary>Width of the scrollable legend panel.</summary>
     public float LegendWidth { get; set; } = 140f;

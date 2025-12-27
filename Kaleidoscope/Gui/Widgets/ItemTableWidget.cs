@@ -283,6 +283,12 @@ public interface IItemTableWidgetSettings
     /// Mode for determining cell text colors.
     /// </summary>
     TableTextColorMode TextColorMode { get; set; }
+    
+    /// <summary>
+    /// Whether to show expandable retainer breakdown for characters with retainer data.
+    /// When enabled, characters with retainers can be expanded to show per-retainer counts.
+    /// </summary>
+    bool ShowRetainerBreakdown { get; set; }
 }
 
 /// <summary>
@@ -319,6 +325,23 @@ public class ItemTableCharacterRow
     /// Item counts keyed by column ID (item ID or currency type ID).
     /// </summary>
     public Dictionary<uint, long> ItemCounts { get; set; } = new();
+    
+    /// <summary>
+    /// Player-only item counts (excluding retainers) keyed by column ID.
+    /// Only populated when ShowRetainerBreakdown is enabled.
+    /// </summary>
+    public Dictionary<uint, long>? PlayerItemCounts { get; set; }
+    
+    /// <summary>
+    /// Retainer breakdown data: (retainerId, retainerName) -> (columnId -> count).
+    /// Only populated when ShowRetainerBreakdown is enabled.
+    /// </summary>
+    public Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>? RetainerBreakdown { get; set; }
+    
+    /// <summary>
+    /// Whether this character has any retainer data.
+    /// </summary>
+    public bool HasRetainerData => RetainerBreakdown != null && RetainerBreakdown.Count > 0;
 }
 
 /// <summary>
@@ -385,6 +408,9 @@ public class ItemTableWidget : ISettingsProvider
     
     // Track if we just processed a merge action (to skip click handling for one frame)
     private bool _skipNextClick = false;
+    
+    // Track which character rows are expanded to show retainer breakdown
+    private readonly HashSet<ulong> _expandedCharacterIds = new();
     
     /// <summary>
     /// Configuration for this table widget instance.
@@ -590,6 +616,12 @@ public class ItemTableWidget : ISettingsProvider
         public MergedRowGroup? MergedGroup { get; init; }
         /// <summary>Aggregated item counts from all source rows.</summary>
         public Dictionary<uint, long> ItemCounts { get; init; } = new();
+        /// <summary>Player-only item counts (for retainer breakdown display).</summary>
+        public Dictionary<uint, long>? PlayerItemCounts { get; init; }
+        /// <summary>Retainer breakdown data from the source character row.</summary>
+        public Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>? RetainerBreakdown { get; init; }
+        /// <summary>Whether this row has retainer breakdown data available.</summary>
+        public bool HasRetainerData => RetainerBreakdown != null && RetainerBreakdown.Count > 0;
     }
     
     /// <summary>
@@ -662,7 +694,9 @@ public class ItemTableWidget : ISettingsProvider
                     Color = null,
                     SourceCharacterIds = new List<ulong> { row.CharacterId },
                     MergedGroup = null,
-                    ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                    ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                    PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                    RetainerBreakdown = row.RetainerBreakdown
                 });
             }
         }
@@ -682,6 +716,27 @@ public class ItemTableWidget : ISettingsProvider
             {
                 var colId = columns[idx].Id;
                 if (displayRow.ItemCounts.TryGetValue(colId, out var count))
+                {
+                    sum += count;
+                }
+            }
+        }
+        return sum;
+    }
+    
+    /// <summary>
+    /// Calculates the summed value for a display column from a raw item counts dictionary.
+    /// Used for retainer breakdown sub-rows.
+    /// </summary>
+    private static long GetDisplayValueFromCounts(DisplayColumn displayCol, Dictionary<uint, long> itemCounts, IReadOnlyList<ItemColumnConfig> columns)
+    {
+        long sum = 0;
+        foreach (var idx in displayCol.SourceColumnIndices)
+        {
+            if (idx >= 0 && idx < columns.Count)
+            {
+                var colId = columns[idx].Id;
+                if (itemCounts.TryGetValue(colId, out var count))
                 {
                     sum += count;
                 }
@@ -1239,11 +1294,41 @@ public class ItemTableWidget : ISettingsProvider
                         nameColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
                     }
                     
-                    DrawAlignedCellText(
-                        dispRow.Name, 
-                        nameColor, 
-                        settings.CharacterColumnHorizontalAlignment, 
-                        settings.CharacterColumnVerticalAlignment);
+                    // Check if this row has retainer breakdown data and if we should show it
+                    var hasRetainerBreakdown = settings.ShowRetainerBreakdown && dispRow.HasRetainerData && !dispRow.IsMerged;
+                    
+                    if (hasRetainerBreakdown)
+                    {
+                        // Draw expandable tree node for characters with retainers
+                        var isExpanded = _expandedCharacterIds.Contains(primaryCid);
+                        
+                        // Apply color if set
+                        if (nameColor.HasValue)
+                            ImGui.PushStyleColor(ImGuiCol.Text, nameColor.Value);
+                        
+                        // Use a simple arrow + text approach for better table compatibility
+                        var arrowText = isExpanded ? "▼ " : "▶ ";
+                        var clicked = ImGui.Selectable($"{arrowText}{dispRow.Name}", false, ImGuiSelectableFlags.SpanAllColumns);
+                        
+                        if (nameColor.HasValue)
+                            ImGui.PopStyleColor();
+                        
+                        if (clicked)
+                        {
+                            if (isExpanded)
+                                _expandedCharacterIds.Remove(primaryCid);
+                            else
+                                _expandedCharacterIds.Add(primaryCid);
+                        }
+                    }
+                    else
+                    {
+                        DrawAlignedCellText(
+                            dispRow.Name, 
+                            nameColor, 
+                            settings.CharacterColumnHorizontalAlignment, 
+                            settings.CharacterColumnVerticalAlignment);
+                    }
                     
                     // Right-click context menu on character name (only in Character mode for non-merged rows)
                     if (showCharContextMenu && !dispRow.IsMerged && ImGui.BeginPopupContextItem($"CharContext_{primaryCid}"))
@@ -1264,11 +1349,20 @@ public class ItemTableWidget : ISettingsProvider
                 }
                 
                 // Data columns (using display columns which include merged columns)
+                // Check if this row is expanded to show retainer breakdown - if so, show player inventory only in main row
+                var isExpandedForBreakdown = settings.ShowRetainerBreakdown && !dispRow.IsMerged && dispRow.HasRetainerData 
+                    && _expandedCharacterIds.Contains(dispRow.SourceCharacterIds.FirstOrDefault());
+                
                 for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
                 {
                     ImGui.TableNextColumn();
                     var displayCol = displayColumns[dispIdx];
-                    var value = GetDisplayValue(displayCol, dispRow, columns);
+                    
+                    // When expanded with retainer breakdown, show player inventory in main row
+                    // Otherwise show the combined total
+                    var value = (isExpandedForBreakdown && dispRow.PlayerItemCounts != null)
+                        ? GetDisplayValueFromCounts(displayCol, dispRow.PlayerItemCounts, columns)
+                        : GetDisplayValue(displayCol, dispRow, columns);
                     
                     // Handle column selection with SHIFT+click/drag
                     // Check if this display column is selected
@@ -1335,6 +1429,60 @@ public class ItemTableWidget : ISettingsProvider
                         textColor, 
                         settings.HorizontalAlignment, 
                         settings.VerticalAlignment);
+                }
+                
+                // Draw retainer sub-rows if this character is expanded
+                if (settings.ShowRetainerBreakdown && !dispRow.IsMerged && dispRow.HasRetainerData)
+                {
+                    var primaryCidForExpand = dispRow.SourceCharacterIds.FirstOrDefault();
+                    if (_expandedCharacterIds.Contains(primaryCidForExpand))
+                    {
+                        // Draw retainer rows (player inventory is shown in the main row when expanded)
+                        var retainerList = dispRow.RetainerBreakdown!.ToList();
+                        for (int retIdx = 0; retIdx < retainerList.Count; retIdx++)
+                        {
+                            var (retainerKey, retainerCounts) = retainerList[retIdx];
+                            var isLastRetainer = retIdx == retainerList.Count - 1;
+                            rowIndex++;
+                            
+                            ImGui.TableNextRow();
+                            
+                            // Slightly darker background for sub-rows
+                            var subRowBgColor = new Vector4(0.15f, 0.15f, 0.2f, 0.5f);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(subRowBgColor));
+                            
+                            if (!hideCharColumn)
+                            {
+                                ImGui.TableNextColumn();
+                                ImGui.Indent(16f);
+                                var prefix = isLastRetainer ? "└ " : "├ ";
+                                DrawAlignedCellText(
+                                    $"{prefix}{retainerKey.Name}",
+                                    new Vector4(0.7f, 0.7f, 0.7f, 1f),
+                                    settings.CharacterColumnHorizontalAlignment,
+                                    settings.CharacterColumnVerticalAlignment);
+                                ImGui.Unindent(16f);
+                            }
+                            
+                            // Data columns for retainer
+                            for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
+                            {
+                                ImGui.TableNextColumn();
+                                var displayCol = displayColumns[dispIdx];
+                                var subValue = GetDisplayValueFromCounts(displayCol, retainerCounts, columns);
+                                
+                                var subSourceColIdx = displayCol.SourceColumnIndices.FirstOrDefault(-1);
+                                var subSourceCol = subSourceColIdx >= 0 && subSourceColIdx < columns.Count ? columns[subSourceColIdx] : null;
+                                Vector4? subTextColor = GetEffectiveColumnColor(subSourceCol, displayCol, settings, columns);
+                                
+                                DrawAlignedCellText(
+                                    FormatNumber(subValue, useCompact),
+                                    subTextColor,
+                                    settings.HorizontalAlignment,
+                                    settings.VerticalAlignment);
+                            }
+                        }
+                    }
                 }
             }
             
