@@ -1441,7 +1441,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Clears all data from all tables (points, series, character_names, inventory_cache, inventory_items).
+    /// Clears all data from all tables to simulate a fresh install.
     /// </summary>
     public bool ClearAllTables()
     {
@@ -1454,6 +1454,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             {
                 using var cmd = _connection.CreateCommand();
                 
+                // Time-series data
                 cmd.CommandText = "DELETE FROM points";
                 cmd.ExecuteNonQuery();
 
@@ -1463,10 +1464,29 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.CommandText = "DELETE FROM character_names";
                 cmd.ExecuteNonQuery();
 
+                // Inventory data
                 cmd.CommandText = "DELETE FROM inventory_items";
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = "DELETE FROM inventory_cache";
+                cmd.ExecuteNonQuery();
+
+                // Price data
+                cmd.CommandText = "DELETE FROM item_prices";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM price_history";
+                cmd.ExecuteNonQuery();
+
+                // Inventory value history
+                cmd.CommandText = "DELETE FROM inventory_value_items";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "DELETE FROM inventory_value_history";
+                cmd.ExecuteNonQuery();
+
+                // Sale records
+                cmd.CommandText = "DELETE FROM sale_records";
                 cmd.ExecuteNonQuery();
 
                 LogService.Info("[KaleidoscopeDb] Cleared all data from all tables");
