@@ -1,7 +1,6 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 using Kaleidoscope.Gui.MainWindow.Tools.Data;
-using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Gui.MainWindow.Tools.Label;
 using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
@@ -35,9 +34,6 @@ public static class WindowToolRegistrar
         public const string RetainerVentureStatus = "RetainerVentureStatus";
         public const string SubmersibleVentureStatus = "SubmersibleVentureStatus";
         public const string Fps = "Fps";
-        
-        // Data tracker tool IDs are dynamically generated as "DataTracker_{TrackedDataType}"
-        public static string DataTracker(TrackedDataType type) => $"DataTracker_{type}";
     }
 
     /// <summary>
@@ -250,25 +246,6 @@ public static class WindowToolRegistrar
         catch (Exception ex)
         {
             LogService.Error("Failed to create DataTool", ex);
-            return null;
-        }
-    }
-
-    private static ToolComponent? CreateDataTrackerTool(TrackedDataType dataType, Vector2 pos, ToolCreationContext ctx)
-    {
-        try
-        {
-            if (ctx.FavoritesService == null || ctx.Registry == null)
-            {
-                LogService.Error($"Cannot create DataTrackerTool for {dataType}: Required service is null");
-                return null;
-            }
-            var component = new DataTrackerComponent(dataType, ctx.SamplerService, ctx.ConfigService, ctx.Registry, ctx.FavoritesService, ctx.InventoryChangeService);
-            return new DataTrackerTool(component, ctx.ConfigService) { Position = pos };
-        }
-        catch (Exception ex)
-        {
-            LogService.Error($"Failed to create DataTrackerTool for {dataType}", ex);
             return null;
         }
     }
@@ -486,16 +463,6 @@ public static class WindowToolRegistrar
     {
         try
         {
-            // Check if this is a data tracker tool ID
-            if (id.StartsWith("DataTracker_") && ctx.Registry != null)
-            {
-                var typeName = id.Substring("DataTracker_".Length);
-                if (Enum.TryParse<TrackedDataType>(typeName, out var dataType))
-                {
-                    return CreateDataTrackerTool(dataType, pos, ctx);
-                }
-            }
-
             return id switch
             {
                 ToolIds.Data => CreateDataTool(pos, ctx),

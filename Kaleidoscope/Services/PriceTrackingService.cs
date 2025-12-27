@@ -783,7 +783,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>
     /// Takes value snapshots for all known characters.
     /// Uses parallel processing to distribute CPU load across cores.
-    /// Also queues samples to the standard time-series tracking for DataTracker tools.
+    /// Also queues samples to the standard time-series tracking.
     /// </summary>
     private async Task TakeValueSnapshotsAsync()
     {
@@ -820,7 +820,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 // Save to inventory_value_history (existing behavior)
                 DbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
                 
-                // Also queue to standard time-series tracking for DataTracker tools
+                // Also queue to standard time-series tracking
                 // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
                 _samplerService.QueueInventoryValueSample(charId, item, characterName);
             }
@@ -870,7 +870,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             var results = await Task.WhenAll(tasks);
 
-            // Queue to standard time-series tracking for DataTracker tools (frequent updates)
+            // Queue to standard time-series tracking (frequent updates)
             // Note: We don't write to inventory_value_history here - that's still on 15-minute interval
             // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
             foreach (var (charId, total, gil, item, characterName) in results)

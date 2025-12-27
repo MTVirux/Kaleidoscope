@@ -86,9 +86,10 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private bool _pendingPlayerCache = false;
     private bool _pendingRetainerCache = false;
 
-    // Debounce cache for per-retainer time series data
+    // Debounce cache for item time series data (player, retainer totals, and per-retainer)
     // Key: (variableName, characterId), Value: (value, timestamp)
-    private readonly ConcurrentDictionary<(string VariableName, ulong CharacterId), (long Value, DateTime Timestamp)> _pendingRetainerSamples = new();
+    // Data is flushed to DB on logout or plugin unload, not on each sample interval
+    private readonly ConcurrentDictionary<(string VariableName, ulong CharacterId), (long Value, DateTime Timestamp)> _pendingSamples = new();
 
     public InventoryCacheService(
         IPluginLog log,
@@ -141,8 +142,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         _allCharactersCacheDirty = true;
         
-        // Flush pending retainer samples on logout
-        FlushPendingRetainerSamples("logout");
+        // Flush pending item samples on logout
+        FlushPendingSamples("logout");
     }
     
     /// <summary>
@@ -592,9 +593,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     .Where(i => i.ItemId == itemId)
                     .Sum(i => (long)i.Quantity);
                 
-                // Store player inventory
+                // Queue player inventory to cache (debounced)
                 var playerVariableName = $"Item_{itemId}";
-                _samplerService.DbService.SaveSampleIfChanged(playerVariableName, characterId, playerQuantity);
+                _pendingSamples[(playerVariableName, characterId)] = (playerQuantity, DateTime.UtcNow);
                 
                 // Store retainer total (sum across all retainers)
                 long totalRetainerQuantity = 0;
@@ -610,13 +611,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     if (retainerCache.RetainerId != 0)
                     {
                         var perRetainerVariableName = $"ItemRetainerX_{retainerCache.RetainerId}_{itemId}";
-                        _pendingRetainerSamples[(perRetainerVariableName, characterId)] = (retainerQuantity, DateTime.UtcNow);
+                        _pendingSamples[(perRetainerVariableName, characterId)] = (retainerQuantity, DateTime.UtcNow);
                     }
                 }
                 
-                // Store retainer total separately (for backward compatibility and when breakdown is disabled)
+                // Queue retainer total to cache (for backward compatibility and when breakdown is disabled)
                 var retainerVariableName = $"ItemRetainer_{itemId}";
-                _samplerService.DbService.SaveSampleIfChanged(retainerVariableName, characterId, totalRetainerQuantity);
+                _pendingSamples[(retainerVariableName, characterId)] = (totalRetainerQuantity, DateTime.UtcNow);
             }
 
             if (trackedItems.Count > 0)
@@ -631,21 +632,21 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Flushes all pending retainer samples to the database.
-    /// Called on logout, timer expiry, or plugin dispose.
+    /// Flushes all pending item samples to the database.
+    /// Called on logout or plugin dispose.
     /// </summary>
     /// <param name="reason">The reason for flushing (for logging).</param>
-    private void FlushPendingRetainerSamples(string reason)
+    private void FlushPendingSamples(string reason)
     {
-        if (_pendingRetainerSamples.IsEmpty)
+        if (_pendingSamples.IsEmpty)
             return;
         
         var count = 0;
-        var keys = _pendingRetainerSamples.Keys.ToList();
+        var keys = _pendingSamples.Keys.ToList();
         
         foreach (var key in keys)
         {
-            if (_pendingRetainerSamples.TryRemove(key, out var sample))
+            if (_pendingSamples.TryRemove(key, out var sample))
             {
                 _samplerService.DbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
                 count++;
@@ -654,7 +655,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         if (count > 0)
         {
-            _log.Debug($"[InventoryCacheService] Flushed {count} pending retainer samples ({reason})");
+            _log.Debug($"[InventoryCacheService] Flushed {count} pending item samples ({reason})");
         }
     }
 
@@ -673,20 +674,20 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     public static string GetRetainerItemVariableName(uint itemId) => $"ItemRetainer_{itemId}";
 
     /// <summary>
-    /// Gets pending (not yet flushed) retainer samples that match the given prefix and suffix.
+    /// Gets pending (not yet flushed) item samples that match the given prefix and suffix.
     /// Used for real-time display before data is flushed to the database.
     /// </summary>
-    /// <param name="prefix">The variable name prefix (e.g., "ItemRetainerX_").</param>
-    /// <param name="suffix">The variable name suffix (e.g., "_12345" for item ID).</param>
+    /// <param name="prefix">The variable name prefix (e.g., "Item_", "ItemRetainer_", "ItemRetainerX_").</param>
+    /// <param name="suffix">The variable name suffix (e.g., "_12345" for item ID, or empty string).</param>
     /// <returns>Dictionary of variable name to list of (characterId, timestamp, value) tuples.</returns>
-    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPendingRetainerSamples(string prefix, string suffix)
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPendingSamples(string prefix, string suffix)
     {
         var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
         
-        foreach (var kvp in _pendingRetainerSamples)
+        foreach (var kvp in _pendingSamples)
         {
             var variableName = kvp.Key.VariableName;
-            if (variableName.StartsWith(prefix) && variableName.EndsWith(suffix))
+            if (variableName.StartsWith(prefix) && (string.IsNullOrEmpty(suffix) || variableName.EndsWith(suffix)))
             {
                 var characterId = kvp.Key.CharacterId;
                 var (value, timestamp) = kvp.Value;
@@ -713,13 +714,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _clientState.Login -= OnLogin;
         _clientState.Logout -= OnLogout;
         
-        // Flush pending retainer samples before disposing
-        FlushPendingRetainerSamples("dispose");
+        // Flush pending item samples before disposing
+        FlushPendingSamples("dispose");
         
         // Clear memory caches
         _inventoryMemoryCache.Clear();
         _allCharactersCache = null;
-        _pendingRetainerSamples.Clear();
+        _pendingSamples.Clear();
 
         _log.Debug("[InventoryCacheService] Disposed");
     }

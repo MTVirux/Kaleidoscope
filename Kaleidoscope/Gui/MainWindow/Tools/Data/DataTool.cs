@@ -960,7 +960,32 @@ public class DataTool : ToolComponent
                 var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
             
                 if (!allPoints.TryGetValue(variableName, out var pts) || pts.Count == 0)
-                    return null;
+                {
+                    // Try to get from pending samples cache (for real-time display before DB flush)
+                    if (_inventoryCacheService != null && variableName.StartsWith("Item_"))
+                    {
+                        var pendingPlayerSamples = _inventoryCacheService.GetPendingSamples("Item_", $"_{seriesConfig.Id}");
+                        if (pendingPlayerSamples.TryGetValue(variableName, out var pendingPts) && pendingPts.Count > 0)
+                        {
+                            pts = pendingPts;
+                        }
+                    }
+                    
+                    if (pts == null || pts.Count == 0)
+                        return null;
+                }
+                
+                // Merge in pending (cached but not yet flushed) player samples for real-time display
+                if (_inventoryCacheService != null && variableName.StartsWith("Item_"))
+                {
+                    var pendingPlayerSamples = _inventoryCacheService.GetPendingSamples("Item_", $"_{seriesConfig.Id}");
+                    if (pendingPlayerSamples.TryGetValue(variableName, out var pendingPts) && pendingPts.Count > 0)
+                    {
+                        var mutablePoints = pts.ToList();
+                        mutablePoints.AddRange(pendingPts);
+                        pts = mutablePoints;
+                    }
+                }
                 
                 points = pts;
                 
@@ -974,7 +999,7 @@ public class DataTool : ToolComponent
                     // Merge in pending (cached but not yet flushed) retainer samples for real-time display
                     if (_inventoryCacheService != null)
                     {
-                        var pendingSamples = _inventoryCacheService.GetPendingRetainerSamples(perRetainerVariablePrefix, itemIdSuffix);
+                        var pendingSamples = _inventoryCacheService.GetPendingSamples(perRetainerVariablePrefix, itemIdSuffix);
                         foreach (var (varName, pendingPoints) in pendingSamples)
                         {
                             if (!perRetainerPointsDict.TryGetValue(varName, out var existingList))

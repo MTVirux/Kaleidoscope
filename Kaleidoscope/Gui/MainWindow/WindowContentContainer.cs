@@ -268,17 +268,6 @@ public class WindowContentContainer
                 LogService.Debug($"DuplicateTool: imported settings to new tool");
             }
 
-            // Handle hidden series for specific tool types
-            if (source is Tools.DataTracker.DataTrackerTool sourceDataTracker && 
-                newTool is Tools.DataTracker.DataTrackerTool newDataTracker)
-            {
-                var hiddenSeries = sourceDataTracker.HiddenSeries;
-                if (hiddenSeries?.Count > 0)
-                {
-                    newDataTracker.SetHiddenSeries(hiddenSeries);
-                }
-            }
-
             AddToolInstance(newTool);
             LogService.Debug($"DuplicateTool: duplicated tool id='{source.Id}'");
         }
@@ -460,12 +449,6 @@ public class WindowContentContainer
                     HasGridCoords = t.HasGridCoords,
                 };
                 
-                // Export hidden series for DataTrackerTool
-                if (t is Tools.DataTracker.DataTrackerTool dataTrackerTool)
-                {
-                    state.HiddenSeries = dataTrackerTool.HiddenSeries.ToList();
-                }
-                
                 // Export tool-specific settings
                 var toolSettings = t.ExportToolSettings();
                 if (toolSettings != null && toolSettings.Count > 0)
@@ -539,11 +522,6 @@ public class WindowContentContainer
                         match.GridColSpan = entry.GridColSpan;
                         match.GridRowSpan = entry.GridRowSpan;
                         match.HasGridCoords = entry.HasGridCoords;
-                        // Apply hidden series for DataTrackerTool
-                        if (match is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
-                        {
-                            dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                        }
                         // Apply tool-specific settings
                         if (entry.ToolSettings?.Count > 0)
                         {
@@ -582,11 +560,6 @@ public class WindowContentContainer
                                 created.HasGridCoords = entry.HasGridCoords;
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
                                 created.CustomTitle = entry.CustomTitle;
-                                // Apply hidden series for DataTrackerTool
-                                if (created is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
-                                {
-                                    dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                }
                                 // Apply tool-specific settings
                                 if (entry.ToolSettings?.Count > 0)
                                 {
@@ -632,11 +605,6 @@ public class WindowContentContainer
                                     cand.HasGridCoords = entry.HasGridCoords;
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
                                     cand.CustomTitle = entry.CustomTitle;
-                                    // Apply hidden series for DataTrackerTool
-                                    if (cand is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
-                                    {
-                                        dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                    }
                                     // Apply tool-specific settings
                                     if (entry.ToolSettings?.Count > 0)
                                     {
@@ -705,11 +673,6 @@ public class WindowContentContainer
                                         inst.HasGridCoords = entry.HasGridCoords;
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
                                         inst.CustomTitle = entry.CustomTitle;
-                                        // Apply hidden series for DataTrackerTool
-                                        if (inst is Tools.DataTracker.DataTrackerTool dataTrackerTool && entry.HiddenSeries?.Count > 0)
-                                        {
-                                            dataTrackerTool.SetHiddenSeries(entry.HiddenSeries);
-                                        }
                                         // Apply tool-specific settings
                                         if (entry.ToolSettings?.Count > 0)
                                         {

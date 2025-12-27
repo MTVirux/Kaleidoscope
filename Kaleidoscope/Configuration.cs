@@ -223,11 +223,6 @@ public class Configuration : IPluginConfiguration
     };
 
     /// <summary>
-    /// Per-data-type display settings (time range, graph bounds, etc.)
-    /// </summary>
-    public Dictionary<TrackedDataType, DataTrackerSettings> DataTrackerSettings { get; set; } = new();
-
-    /// <summary>
     /// Custom colors for each tracked data type. Used across all tools for consistent coloring.
     /// Stored as ABGR uint format.
     /// </summary>
@@ -298,46 +293,6 @@ public class Configuration : IPluginConfiguration
     /// Settings for the time-series in-memory cache.
     /// </summary>
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
-}
-
-/// <summary>
-/// Per-data-type tracker settings.
-/// </summary>
-public class DataTrackerSettings
-{
-    public bool HideCharacterSelector { get; set; } = false;
-    public bool ShowMultipleLines { get; set; } = false;
-    public int TimeRangeValue { get; set; } = 7;
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
-    public bool ShowXAxisTimestamps { get; set; } = true;
-    public bool ShowEndGap { get; set; } = false;
-    public float EndGapPercent { get; set; } = 5f;
-    public bool ShowValueLabel { get; set; } = false;
-    public float ValueLabelOffsetX { get; set; } = 0f;
-    public float ValueLabelOffsetY { get; set; } = 0f;
-    public float GraphMinValue { get; set; } = 0f;
-    public float GraphMaxValue { get; set; } = 0f; // 0 means use definition default
-    public float LegendWidth { get; set; } = 140f;
-    public float LegendHeightPercent { get; set; } = 25f;
-    public bool ShowLegend { get; set; } = true;
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
-    public GraphType GraphType { get; set; } = GraphType.Area;
-    
-    // Multi-select character settings
-    public bool MultiSelectEnabled { get; set; } = false;
-    public List<ulong> SelectedCharacterIds { get; set; } = new();
-    
-    // Auto-scroll settings
-    public bool AutoScrollEnabled { get; set; } = false;
-    public int AutoScrollTimeValue { get; set; } = 1;
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
-    public float AutoScrollNowPosition { get; set; } = 75f;
-    public bool ShowControlsDrawer { get; set; } = true;
-    
-    /// <summary>
-    /// Calculates the auto-scroll time range in seconds from value and unit.
-    /// </summary>
-    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit.ToSeconds(AutoScrollTimeValue);
 }
 
 /// <summary>
