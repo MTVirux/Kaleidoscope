@@ -20,6 +20,7 @@ namespace Kaleidoscope.Services;
 public sealed class InventoryChangeService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
+    private readonly IClientState _clientState;
     private readonly IGameInventory _gameInventory;
     private readonly IFramework _framework;
     private readonly TrackedDataRegistry _registry;
@@ -62,9 +63,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     public event Action? OnRetainerClosed;
 
-    public InventoryChangeService(IPluginLog log, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)
+    public InventoryChangeService(IPluginLog log, IClientState clientState, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)
     {
         _log = log;
+        _clientState = clientState;
         _gameInventory = gameInventory;
         _framework = framework;
         _registry = registry;
@@ -81,6 +83,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
     private void OnDalamudInventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
     {
+        // Skip processing if not logged in to prevent invalid data
+        if (!_clientState.IsLoggedIn)
+            return;
+
         // Dalamud's inventory change event fired
         // This covers player inventory, armory, crystals, retainer inventories, etc.
         var hasCrystalChange = false;
@@ -154,6 +160,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
     private void OnFrameworkUpdate(IFramework framework)
     {
+        // Skip processing if not logged in to prevent invalid data
+        if (!_clientState.IsLoggedIn)
+            return;
+
         var now = DateTime.UtcNow;
 
         // Process pending inventory events (debounced)
