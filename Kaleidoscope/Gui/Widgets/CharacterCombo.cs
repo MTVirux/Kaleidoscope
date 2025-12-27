@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
@@ -53,13 +54,6 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     
     // Icon sizes
     private static readonly Vector2 StarSize = new(16, 16);
-    
-    // Colors
-    private const uint FavoriteStarOn = 0xFF00CFFF;      // Yellow-gold
-    private const uint FavoriteStarOff = 0x40FFFFFF;     // Dim white
-    private const uint FavoriteStarHovered = 0xFF40DFFF; // Bright gold
-    private const uint WorldColor = 0xFF808080;          // Dim gray for world
-    private const uint SelectedBgColor = 0x40008000;     // Dim green background
 
     /// <summary>
     /// The label for this combo (used for ImGui ID).
@@ -316,7 +310,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
         if (character.World != null)
         {
             ImGui.SameLine();
-            using (ImRaii.PushColor(ImGuiCol.Text, WorldColor))
+            using (ImRaii.PushColor(ImGuiCol.Text, UiColors.WorldColor))
             {
                 var worldText = $"@ {character.World}";
                 var textWidth = ImGui.CalcTextSize(worldText).X;
@@ -362,7 +356,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             ImGui.GetCursorScreenPos(),
             ImGui.GetCursorScreenPos() + StarSize);
 
-        var color = hovering ? FavoriteStarHovered : isFavorite ? FavoriteStarOn : FavoriteStarOff;
+        var color = hovering ? UiColors.FavoriteStarHovered : isFavorite ? UiColors.FavoriteStarOn : UiColors.FavoriteStarOff;
 
         using (ImRaii.PushFont(UiBuilder.IconFont))
         using (ImRaii.PushColor(ImGuiCol.Text, color))
@@ -908,7 +902,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             ImGui.GetWindowDrawList().AddRectFilled(
                 cursorPos,
                 cursorPos + new Vector2(rowWidth, rowHeight),
-                SelectedBgColor);
+                UiColors.SelectedBackground);
         }
         
         // Favorite star
@@ -954,7 +948,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             ImGui.GetWindowDrawList().AddRectFilled(
                 cursorPos,
                 cursorPos + new Vector2(rowWidth, rowHeight),
-                SelectedBgColor);
+                UiColors.SelectedBackground);
         }
         
         // Favorite star
@@ -995,7 +989,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             if (availWidth > textWidth + 20)
             {
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + availWidth - textWidth);
-                using (ImRaii.PushColor(ImGuiCol.Text, WorldColor))
+                using (ImRaii.PushColor(ImGuiCol.Text, UiColors.WorldColor))
                 {
                     ImGui.TextUnformatted(worldText);
                 }

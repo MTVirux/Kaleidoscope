@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using OtterGui.Raii;
@@ -37,12 +38,6 @@ public sealed class CurrencyComboDropdown : IDisposable
     // Icon sizes
     private static readonly Vector2 IconSize = new(20, 20);
     private static readonly Vector2 StarSize = new(16, 16);
-    
-    // Colors
-    private const uint FavoriteStarOn = 0xFF00CFFF;      // Yellow-gold
-    private const uint FavoriteStarOff = 0x40FFFFFF;     // Dim white
-    private const uint FavoriteStarHovered = 0xFF40DFFF; // Bright gold
-    private const uint CategoryColor = 0xFF808080;       // Dim gray for category
 
     /// <summary>
     /// The label for this combo (used for ImGui ID).
@@ -236,7 +231,7 @@ public sealed class CurrencyComboDropdown : IDisposable
             ImGui.GetCursorScreenPos(),
             ImGui.GetCursorScreenPos() + StarSize);
 
-        var color = hovering ? FavoriteStarHovered : isFavorite ? FavoriteStarOn : FavoriteStarOff;
+        var color = hovering ? UiColors.FavoriteStarHovered : isFavorite ? UiColors.FavoriteStarOn : UiColors.FavoriteStarOff;
 
         using (ImRaii.PushFont(UiBuilder.IconFont))
         using (ImRaii.PushColor(ImGuiCol.Text, color))
@@ -329,13 +324,6 @@ public sealed class CurrencyComboDropdown : IDisposable
     {
         if (_selectedTypes.Count == 0)
             return "Select currencies...";
-        
-        if (_selectedTypes.Count == 1)
-        {
-            var type = _selectedTypes.First();
-            var currency = _currencies?.FirstOrDefault(c => c.Type == type);
-            return currency?.Name ?? "1 selected";
-        }
         
         return $"{_selectedTypes.Count} currencies selected";
     }

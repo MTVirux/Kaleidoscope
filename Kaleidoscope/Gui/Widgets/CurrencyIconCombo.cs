@@ -4,6 +4,7 @@ using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using OtterGui.Classes;
@@ -36,12 +37,6 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
     // Icon sizes
     private static readonly Vector2 IconSize = new(20, 20);
     private static readonly Vector2 StarSize = new(16, 16);
-    
-    // Colors
-    private const uint FavoriteStarOn = 0xFF00CFFF;      // Yellow-gold
-    private const uint FavoriteStarOff = 0x40FFFFFF;     // Dim white
-    private const uint FavoriteStarHovered = 0xFF40DFFF; // Bright gold
-    private const uint CategoryColor = 0xFF808080;       // Dim gray for category
 
     /// <summary>
     /// The label for this combo (used for ImGui ID).
@@ -175,7 +170,7 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
         
         // Draw category on right side (dimmed)
         ImGui.SameLine();
-        using (ImRaii.PushColor(ImGuiCol.Text, CategoryColor))
+        using (ImRaii.PushColor(ImGuiCol.Text, UiColors.CategoryColor))
         {
             var categoryText = $"[{currency.Category}]";
             var textWidth = ImGui.CalcTextSize(categoryText).X;
@@ -220,7 +215,7 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
             ImGui.GetCursorScreenPos(),
             ImGui.GetCursorScreenPos() + StarSize);
 
-        var color = hovering ? FavoriteStarHovered : isFavorite ? FavoriteStarOn : FavoriteStarOff;
+        var color = hovering ? UiColors.FavoriteStarHovered : isFavorite ? UiColors.FavoriteStarOn : UiColors.FavoriteStarOff;
 
         using (ImRaii.PushFont(UiBuilder.IconFont))
         using (ImRaii.PushColor(ImGuiCol.Text, color))

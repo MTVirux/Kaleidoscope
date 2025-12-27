@@ -4,6 +4,7 @@ using Dalamud.Interface;
 using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -20,7 +21,10 @@ public sealed class ItemComboDropdown : IDisposable
     private readonly IDataManager _dataManager;
     private readonly FavoritesService _favoritesService;
     private readonly PriceTrackingService? _priceTrackingService;
+    private readonly ConfigurationService? _configService;
+    private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly bool _marketableOnly;
+    private readonly bool _excludeCurrencies;
     
     // Cached items
     private List<ComboItem>? _items;
@@ -35,14 +39,27 @@ public sealed class ItemComboDropdown : IDisposable
     // Shared state
     private string _filterText = string.Empty;
     
+    // Sort order - uses configuration service if available, otherwise local fallback
+    private ItemSortOrder _localSortOrder = ItemSortOrder.Alphabetical;
+    private ItemSortOrder SortOrder
+    {
+        get => _configService?.Config.ItemPickerSortOrder ?? _localSortOrder;
+        set
+        {
+            if (_configService != null)
+            {
+                _configService.Config.ItemPickerSortOrder = value;
+                _configService.Save();
+            }
+            else
+            {
+                _localSortOrder = value;
+            }
+        }
+    }
+    
     // Icon size - use text line height for consistent row height
     private static float IconSize => ImGui.GetTextLineHeight();
-    
-    // Colors
-    private const uint FavoriteStarOn = 0xFF00CFFF;      // Yellow-gold
-    private const uint FavoriteStarOff = 0x40FFFFFF;     // Dim white
-    private const uint FavoriteStarHovered = 0xFF40DFFF; // Bright gold
-    private const uint IdColor = 0xFF808080;             // Dim gray for ID
 
     /// <summary>
     /// The label for this combo (used for ImGui ID).
@@ -94,13 +111,19 @@ public sealed class ItemComboDropdown : IDisposable
         FavoritesService favoritesService,
         PriceTrackingService? priceTrackingService,
         string label,
-        bool marketableOnly = false)
+        bool marketableOnly = false,
+        ConfigurationService? configService = null,
+        TrackedDataRegistry? trackedDataRegistry = null,
+        bool excludeCurrencies = false)
     {
         _textureProvider = textureProvider;
         _dataManager = dataManager;
         _favoritesService = favoritesService;
         _priceTrackingService = priceTrackingService;
+        _configService = configService;
+        _trackedDataRegistry = trackedDataRegistry;
         _marketableOnly = marketableOnly;
+        _excludeCurrencies = excludeCurrencies;
         Label = label;
         
         // Subscribe to favorites changes to rebuild list
@@ -126,6 +149,18 @@ public sealed class ItemComboDropdown : IDisposable
         var items = new List<ComboItem>();
         var favorites = _favoritesService.FavoriteItems;
         var marketable = _priceTrackingService?.MarketableItems;
+        
+        // Build set of currency item IDs to exclude
+        HashSet<uint>? currencyItemIds = null;
+        if (_excludeCurrencies && _trackedDataRegistry != null)
+        {
+            currencyItemIds = new HashSet<uint>();
+            foreach (var def in _trackedDataRegistry.Definitions.Values)
+            {
+                if (def.ItemId.HasValue && def.ItemId.Value > 0)
+                    currencyItemIds.Add(def.ItemId.Value);
+            }
+        }
 
         try
         {
@@ -142,18 +177,27 @@ public sealed class ItemComboDropdown : IDisposable
                 // Skip non-marketable if filter is enabled
                 if (_marketableOnly && marketable != null && !marketable.Contains((int)row.RowId))
                     continue;
+                
+                // Skip currency items if exclusion is enabled
+                if (currencyItemIds != null && currencyItemIds.Contains(row.RowId))
+                    continue;
 
                 items.Add(new ComboItem(row.RowId, name, row.Icon));
             }
 
-            // Sort: favorites first, then alphabetically
+            // Sort: favorites first, then by sort order (alphabetically or by ID)
+            var currentSortOrder = SortOrder;
             items.Sort((a, b) =>
             {
                 var aFav = favorites.Contains(a.Id);
                 var bFav = favorites.Contains(b.Id);
                 if (aFav != bFav)
                     return bFav.CompareTo(aFav); // Favorites first
-                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+                
+                // Within same favorite status, sort by selected order
+                return currentSortOrder == ItemSortOrder.ById 
+                    ? a.Id.CompareTo(b.Id)
+                    : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
             });
         }
         catch (Exception ex)
@@ -215,12 +259,6 @@ public sealed class ItemComboDropdown : IDisposable
     {
         if (_selectedItemIds.Count == 0)
             return "Select items...";
-        if (_selectedItemIds.Count == 1)
-        {
-            var id = _selectedItemIds.First();
-            var item = _items?.FirstOrDefault(i => i.Id == id);
-            return item?.Name ?? $"Item #{id}";
-        }
         return $"{_selectedItemIds.Count} items selected";
     }
     
@@ -228,10 +266,27 @@ public sealed class ItemComboDropdown : IDisposable
     {
         var changed = false;
         
-        // Filter input with fixed width to leave room for Clear button
-        var clearButtonWidth = ImGui.CalcTextSize("Clear").X + ImGui.GetStyle().FramePadding.X * 2 + ImGui.GetStyle().ItemSpacing.X;
-        ImGui.SetNextItemWidth(300 - clearButtonWidth);
+        // Filter input with fixed width to leave room for Clear and Sort buttons
+        var buttonWidth = ImGui.CalcTextSize("Clear").X + ImGui.GetStyle().FramePadding.X * 2;
+        var sortButtonWidth = ImGui.CalcTextSize("A-Z").X + ImGui.GetStyle().FramePadding.X * 2;
+        var totalButtonsWidth = buttonWidth + sortButtonWidth + ImGui.GetStyle().ItemSpacing.X * 2;
+        ImGui.SetNextItemWidth(300 - totalButtonsWidth);
         ImGui.InputTextWithHint("##filter", "Search items...", ref _filterText, 100);
+        
+        // Sort order toggle button
+        ImGui.SameLine();
+        var sortLabel = SortOrder == ItemSortOrder.Alphabetical ? "A-Z" : "ID";
+        if (ImGui.SmallButton(sortLabel))
+        {
+            SortOrder = SortOrder == ItemSortOrder.Alphabetical ? ItemSortOrder.ById : ItemSortOrder.Alphabetical;
+            _needsRebuild = true; // Force rebuild with new sort order
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(SortOrder == ItemSortOrder.Alphabetical 
+                ? "Sorting alphabetically. Click to sort by Item ID." 
+                : "Sorting by Item ID. Click to sort alphabetically.");
+        }
         
         // Quick action buttons
         ImGui.SameLine();
@@ -312,9 +367,24 @@ public sealed class ItemComboDropdown : IDisposable
     {
         var changed = false;
         
-        // Filter input
-        ImGui.SetNextItemWidth(-1);
+        // Filter input with space for sort button
+        ImGui.SetNextItemWidth(-55);
         ImGui.InputTextWithHint("##filter", "Search items...", ref _filterText, 100);
+        
+        // Sort order toggle button
+        ImGui.SameLine();
+        var sortLabel = SortOrder == ItemSortOrder.Alphabetical ? "A-Z" : "ID";
+        if (ImGui.SmallButton(sortLabel))
+        {
+            SortOrder = SortOrder == ItemSortOrder.Alphabetical ? ItemSortOrder.ById : ItemSortOrder.Alphabetical;
+            _needsRebuild = true; // Force rebuild with new sort order
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(SortOrder == ItemSortOrder.Alphabetical 
+                ? "Sorting alphabetically. Click to sort by Item ID." 
+                : "Sorting by Item ID. Click to sort alphabetically.");
+        }
         
         ImGui.Separator();
         
@@ -366,7 +436,7 @@ public sealed class ItemComboDropdown : IDisposable
             ImGui.GetCursorScreenPos(),
             ImGui.GetCursorScreenPos() + starSize);
 
-        var color = hovering ? FavoriteStarHovered : isFavorite ? FavoriteStarOn : FavoriteStarOff;
+        var color = hovering ? UiColors.FavoriteStarHovered : isFavorite ? UiColors.FavoriteStarOn : UiColors.FavoriteStarOff;
 
         using (ImRaii.PushFont(UiBuilder.IconFont))
         using (ImRaii.PushColor(ImGuiCol.Text, color))
