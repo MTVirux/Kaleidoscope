@@ -533,9 +533,9 @@ public class InventoryValueTool : ToolComponent
     }
 
     /// <inheritdoc />
-    public override Dictionary<string, object> ExportToolSettings()
+    public override Dictionary<string, object?>? ExportToolSettings()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object?>
         {
             ["ShowMultipleLines"] = _instanceSettings.ShowMultipleLines,
             ["IncludeRetainers"] = _instanceSettings.IncludeRetainers,
@@ -563,9 +563,10 @@ public class InventoryValueTool : ToolComponent
     }
 
     /// <inheritdoc />
-    public override void ImportToolSettings(Dictionary<string, object> settings)
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
     {
-        if (settings.TryGetValue("ShowMultipleLines", out var showMultipleLines))
+        if (settings == null) return;
+        if (settings.TryGetValue("ShowMultipleLines", out var showMultipleLines) && showMultipleLines != null)
             _instanceSettings.ShowMultipleLines = Convert.ToBoolean(showMultipleLines);
         if (settings.TryGetValue("IncludeRetainers", out var includeRetainers))
             _instanceSettings.IncludeRetainers = Convert.ToBoolean(includeRetainers);

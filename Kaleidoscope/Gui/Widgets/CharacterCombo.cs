@@ -80,7 +80,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     /// <summary>
     /// Gets the currently selected character ID, or 0 for "All" (single-select mode).
     /// </summary>
-    public ulong SelectedCharacterId => CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Id : 0;
+    public ulong SelectedCharacterId => CurrentSelectionIdx >= 0 ? CurrentSelection.Id : 0;
 
     /// <summary>
     /// Whether "All Characters" is selected.
@@ -264,7 +264,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
 
     protected override int UpdateCurrentSelected(int currentSelected)
     {
-        if (CurrentSelection != null && CurrentSelection.Id == _currentCharacterId)
+        if (CurrentSelectionIdx >= 0 && CurrentSelection.Id == _currentCharacterId)
             return currentSelected;
 
         CurrentSelectionIdx = Items.IndexOf(i => i.Id == _currentCharacterId);
@@ -407,8 +407,8 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
         if (MultiSelectEnabled)
             return DrawMultiSelect(width);
             
-        var preview = CurrentSelectionIdx >= 0 && CurrentSelection != null ? ToString(CurrentSelection) : "Select character...";
-        var charId = CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Id : 0ul;
+        var preview = CurrentSelectionIdx >= 0 ? ToString(CurrentSelection) : "Select character...";
+        var charId = CurrentSelectionIdx >= 0 ? CurrentSelection.Id : 0ul;
         return Draw(preview, charId, width, width);
     }
     

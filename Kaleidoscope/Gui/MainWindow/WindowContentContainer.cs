@@ -422,8 +422,10 @@ public class WindowContentContainer
 
         public void AddToolInstance(ToolComponent tool)
         {
+            if (tool == null) return;
+            
             _tools.Add(new ToolEntry(tool));
-            LogService.Debug($"AddToolInstance: added tool '{tool?.Title ?? tool?.Id ?? "<unknown>"}' total={_tools.Count}");
+            LogService.Debug($"AddToolInstance: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
             
             // Subscribe to tool settings changes to trigger layout saves
             tool.OnToolSettingsChanged += () => MarkLayoutDirty();

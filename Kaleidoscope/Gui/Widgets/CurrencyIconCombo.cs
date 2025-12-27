@@ -56,7 +56,7 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
     /// <summary>
     /// Gets the currently selected currency type.
     /// </summary>
-    public TrackedDataType? SelectedType => CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Type : null;
+    public TrackedDataType? SelectedType => CurrentSelectionIdx >= 0 ? CurrentSelection.Type : null;
 
     /// <summary>
     /// Event fired when selection changes.
@@ -132,7 +132,7 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
 
     protected override int UpdateCurrentSelected(int currentSelected)
     {
-        if (CurrentSelection != null && CurrentSelection.Type == _currentType)
+        if (CurrentSelectionIdx >= 0 && CurrentSelection.Type == _currentType)
             return currentSelected;
 
         CurrentSelectionIdx = Items.IndexOf(i => i.Type == _currentType);
@@ -304,8 +304,8 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
     /// <returns>True if selection changed.</returns>
     public bool Draw(float width)
     {
-        var preview = CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Name : "Select currency...";
-        var type = CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Type : default;
+        var preview = CurrentSelectionIdx >= 0 ? CurrentSelection.Name : "Select currency...";
+        var type = CurrentSelectionIdx >= 0 ? CurrentSelection.Type : default;
         return Draw(preview, type, width, width);
     }
 

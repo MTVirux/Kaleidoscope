@@ -55,7 +55,7 @@ public sealed class ItemIconCombo : FilterComboCache<ComboItem>
     /// <summary>
     /// Gets the currently selected item ID, or 0 if none.
     /// </summary>
-    public uint SelectedItemId => CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Id : 0;
+    public uint SelectedItemId => CurrentSelectionIdx >= 0 ? CurrentSelection.Id : 0;
 
     /// <summary>
     /// Event fired when selection changes.
@@ -144,7 +144,7 @@ public sealed class ItemIconCombo : FilterComboCache<ComboItem>
 
     protected override int UpdateCurrentSelected(int currentSelected)
     {
-        if (CurrentSelection != null && CurrentSelection.Id == _currentItemId)
+        if (CurrentSelectionIdx >= 0 && CurrentSelection.Id == _currentItemId)
             return currentSelected;
 
         CurrentSelectionIdx = Items.IndexOf(i => i.Id == _currentItemId);
@@ -198,6 +198,20 @@ public sealed class ItemIconCombo : FilterComboCache<ComboItem>
         }
         
         return ret;
+    }
+
+    protected override void DrawList(float width, float itemHeight)
+    {
+        base.DrawList(width, itemHeight);
+        if (NewSelection != null && Items.Count > NewSelection.Value)
+        {
+            var newItem = Items[NewSelection.Value];
+            if (!Equals(CurrentSelection, newItem))
+            {
+                SelectionChanged?.Invoke(CurrentSelection, newItem);
+            }
+            CurrentSelection = newItem;
+        }
     }
 
     private static void RightAlignText(string text)
@@ -271,8 +285,8 @@ public sealed class ItemIconCombo : FilterComboCache<ComboItem>
     /// <returns>True if selection changed.</returns>
     public bool Draw(float width)
     {
-        var preview = CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Name : "Select item...";
-        var itemId = CurrentSelectionIdx >= 0 && CurrentSelection != null ? CurrentSelection.Id : 0u;
+        var preview = CurrentSelectionIdx >= 0 ? CurrentSelection.Name : "Select item...";
+        var itemId = CurrentSelectionIdx >= 0 ? CurrentSelection.Id : 0u;
         return Draw(preview, itemId, width, width);
     }
 
