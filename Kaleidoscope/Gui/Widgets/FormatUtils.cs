@@ -165,6 +165,76 @@ public static class FormatUtils
     }
 
     /// <summary>
+    /// Formats a countdown timer for display (e.g., "1:23:45" or "5:30").
+    /// Used for retainer ventures, submersible voyages, etc.
+    /// </summary>
+    /// <param name="secondsRemaining">Seconds remaining on the timer.</param>
+    /// <returns>Formatted string like "1:23:45" or "5:30".</returns>
+    public static string FormatCountdown(long secondsRemaining)
+    {
+        if (secondsRemaining <= 0)
+            return "Ready!";
+
+        var timeSpan = TimeSpan.FromSeconds(secondsRemaining);
+        
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+        }
+        
+        return $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+    }
+
+    /// <summary>
+    /// Formats a countdown timer with millisecond precision for real-time display.
+    /// Used for venture/voyage status tools with frequent updates.
+    /// </summary>
+    /// <param name="endTimeUnix">Unix timestamp when the timer ends.</param>
+    /// <param name="nowUnix">Current unix timestamp in seconds.</param>
+    /// <param name="nowMs">Current time in milliseconds for precision.</param>
+    /// <returns>Formatted string like "1:23:45.678" or "Ready!".</returns>
+    public static string FormatCountdownPrecise(long endTimeUnix, long nowUnix, long nowMs)
+    {
+        var endTimeMs = endTimeUnix * 1000;
+        var remainingMs = endTimeMs - nowMs;
+
+        if (remainingMs <= 0)
+            return "Ready!";
+
+        var span = TimeSpan.FromMilliseconds(remainingMs);
+
+        if (span.TotalHours >= 1)
+        {
+            return $"{(int)span.TotalHours}:{span.Minutes:D2}:{span.Seconds:D2}.{span.Milliseconds:D3}";
+        }
+        
+        if (span.TotalMinutes >= 1)
+        {
+            return $"{span.Minutes}:{span.Seconds:D2}.{span.Milliseconds:D3}";
+        }
+        
+        return $"{span.Seconds}.{span.Milliseconds:D3}";
+    }
+
+    /// <summary>
+    /// Formats a countdown timer from a TimeSpan.
+    /// </summary>
+    /// <param name="timeSpan">The remaining time.</param>
+    /// <returns>Formatted string like "1:23:45" or "5:30".</returns>
+    public static string FormatCountdown(TimeSpan timeSpan)
+    {
+        if (timeSpan.TotalSeconds <= 0)
+            return "Ready!";
+
+        if (timeSpan.TotalHours >= 1)
+        {
+            return $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+        }
+        
+        return $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+    }
+
+    /// <summary>
     /// Converts HSV color values to an RGB Vector4.
     /// </summary>
     /// <param name="h">Hue (0-1).</param>

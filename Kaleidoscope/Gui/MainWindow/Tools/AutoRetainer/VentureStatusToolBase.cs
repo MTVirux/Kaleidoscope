@@ -1,5 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -363,7 +364,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
         else
         {
-            var timeRemaining = FormatTimeRemaining(entity.EndTime, nowUnix, nowMs);
+            var timeRemaining = FormatUtils.FormatCountdownPrecise(entity.EndTime, nowUnix, nowMs);
             ImGui.TextColored(ActiveColor, timeRemaining);
         }
     }
@@ -392,30 +393,6 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
 
         return $"{entityName} ({characterName})";
-    }
-
-    private static string FormatTimeRemaining(long endTimeUnix, long nowUnix, long nowMs)
-    {
-        var endTimeMs = endTimeUnix * 1000;
-        var remainingMs = endTimeMs - nowMs;
-
-        if (remainingMs <= 0)
-            return "Ready!";
-
-        var span = TimeSpan.FromMilliseconds(remainingMs);
-
-        if (span.TotalHours >= 1)
-        {
-            return $"{(int)span.TotalHours}:{span.Minutes:D2}:{span.Seconds:D2}.{span.Milliseconds:D3}";
-        }
-        else if (span.TotalMinutes >= 1)
-        {
-            return $"{span.Minutes}:{span.Seconds:D2}.{span.Milliseconds:D3}";
-        }
-        else
-        {
-            return $"{span.Seconds}.{span.Milliseconds:D3}";
-        }
     }
 
     private List<AutoRetainerCharacterData> GetSortedCharacters(long nowUnix)

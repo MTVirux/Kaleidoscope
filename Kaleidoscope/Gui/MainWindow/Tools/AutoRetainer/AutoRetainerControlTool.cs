@@ -1,5 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -481,18 +482,7 @@ public class AutoRetainerControlTool : ToolComponent
             }
             else
             {
-                var timeSpan = TimeSpan.FromSeconds(secondsRemaining);
-                string timeText;
-                
-                if (timeSpan.TotalHours >= 1)
-                {
-                    timeText = $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
-                }
-                else
-                {
-                    timeText = $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
-                }
-                
+                var timeText = FormatUtils.FormatCountdown(secondsRemaining);
                 var timeColor = secondsRemaining < 300 ? WarningColor : DisabledColor; // Yellow if < 5 min
                 ImGui.TextColored(timeColor, timeText);
             }
@@ -534,18 +524,7 @@ public class AutoRetainerControlTool : ToolComponent
             }
             else
             {
-                var timeSpan = TimeSpan.FromSeconds(secondsRemaining);
-                string timeText;
-                
-                if (timeSpan.TotalHours >= 1)
-                {
-                    timeText = $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
-                }
-                else
-                {
-                    timeText = $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
-                }
-                
+                var timeText = FormatUtils.FormatCountdown(secondsRemaining);
                 var timeColor = secondsRemaining < 300 ? WarningColor : DisabledColor; // Yellow if < 5 min
                 ImGui.TextColored(timeColor, timeText);
             }
