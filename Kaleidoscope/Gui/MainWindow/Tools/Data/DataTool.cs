@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
@@ -493,15 +494,24 @@ public class DataTool : ToolComponent
     
     private void DrawTableView()
     {
-        // Auto-refresh every 0.5s
-        var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 0.5;
-        
-        if (_pendingTableRefresh || shouldAutoRefresh)
+        using (ProfilerService.BeginStaticChildScope("TableView"))
         {
-            RefreshTableData();
+            // Auto-refresh every 0.5s
+            var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 0.5;
+            
+            if (_pendingTableRefresh || shouldAutoRefresh)
+            {
+                using (ProfilerService.BeginStaticChildScope("RefreshTableData"))
+                {
+                    RefreshTableData();
+                }
+            }
+            
+            using (ProfilerService.BeginStaticChildScope("DrawTable"))
+            {
+                _tableWidget.Draw(_cachedTableData, Settings);
+            }
         }
-        
-        _tableWidget.Draw(_cachedTableData, Settings);
     }
     
     private void RefreshTableData()
@@ -512,7 +522,11 @@ public class DataTool : ToolComponent
             var allColumns = settings.Columns;
             
             // Apply special grouping filter to get visible columns
-            var columns = SpecialGroupingHelper.ApplySpecialGroupingFilter(allColumns, settings.SpecialGrouping).ToList();
+            List<ItemColumnConfig> columns;
+            using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
+            {
+                columns = SpecialGroupingHelper.ApplySpecialGroupingFilter(allColumns, settings.SpecialGrouping).ToList();
+            }
             
             if (columns.Count == 0)
             {
@@ -527,8 +541,13 @@ public class DataTool : ToolComponent
             }
             
             // Get all character names with disambiguation
-            var characterNames = DbService.GetAllCharacterNamesDict();
-            var disambiguatedNames = CacheService.GetDisambiguatedNames(characterNames.Keys);
+            IReadOnlyDictionary<ulong, string?> characterNames;
+            IReadOnlyDictionary<ulong, string> disambiguatedNames;
+            using (ProfilerService.BeginStaticChildScope("GetCharacterNames"))
+            {
+                characterNames = DbService.GetAllCharacterNamesDict();
+                disambiguatedNames = CacheService.GetDisambiguatedNames(characterNames.Keys);
+            }
             var rows = new Dictionary<ulong, ItemTableCharacterRow>();
             
             // Get world data for DC/Region lookups (from PriceTrackingService)
@@ -582,15 +601,18 @@ public class DataTool : ToolComponent
             }
             
             // Populate data for each column
-            foreach (var column in columns)
+            using (ProfilerService.BeginStaticChildScope("PopulateColumns"))
             {
-                if (column.IsCurrency)
+                foreach (var column in columns)
                 {
-                    PopulateCurrencyData(column, rows);
-                }
-                else
-                {
-                    PopulateItemData(column, rows, settings.IncludeRetainers);
+                    if (column.IsCurrency)
+                    {
+                        PopulateCurrencyData(column, rows);
+                    }
+                    else
+                    {
+                        PopulateItemData(column, rows, settings.IncludeRetainers);
+                    }
                 }
             }
             
@@ -601,12 +623,16 @@ public class DataTool : ToolComponent
             }
             
             // Sort rows
-            var sortedRows = CharacterSortHelper.SortByCharacter(
-                rows.Values,
-                _configService,
-                _autoRetainerService,
-                r => r.CharacterId,
-                r => r.Name).ToList();
+            List<ItemTableCharacterRow> sortedRows;
+            using (ProfilerService.BeginStaticChildScope("SortRows"))
+            {
+                sortedRows = CharacterSortHelper.SortByCharacter(
+                    rows.Values,
+                    _configService,
+                    _autoRetainerService,
+                    r => r.CharacterId,
+                    r => r.Name).ToList();
+            }
             
             _cachedTableData = new PreparedItemTableData
             {
@@ -625,63 +651,72 @@ public class DataTool : ToolComponent
     
     private void PopulateCurrencyData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows)
     {
-        try
+        using (ProfilerService.BeginStaticChildScope("PopulateCurrency"))
         {
-            var dataType = (TrackedDataType)column.Id;
-            var variableName = dataType.ToString();
-            
-            var allPoints = DbService.GetAllPointsBatch(variableName, null);
-            
-            if (allPoints.TryGetValue(variableName, out var points))
+            try
             {
-                var latestByChar = points
-                    .GroupBy(p => p.characterId)
-                    .Select(g => (charId: g.Key, value: g.OrderByDescending(p => p.timestamp).First().value));
+                var dataType = (TrackedDataType)column.Id;
+                var variableName = dataType.ToString();
                 
-                foreach (var (charId, value) in latestByChar)
+                using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
                 {
-                    if (rows.TryGetValue(charId, out var row))
+                    var allPoints = DbService.GetAllPointsBatch(variableName, null);
+                
+                    if (allPoints.TryGetValue(variableName, out var points))
                     {
-                        row.ItemCounts[column.Id] = value;
+                        var latestByChar = points
+                            .GroupBy(p => p.characterId)
+                            .Select(g => (charId: g.Key, value: g.OrderByDescending(p => p.timestamp).First().value));
+                        
+                        foreach (var (charId, value) in latestByChar)
+                        {
+                            if (rows.TryGetValue(charId, out var row))
+                            {
+                                row.ItemCounts[column.Id] = value;
+                            }
+                        }
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug($"[DataTool] PopulateCurrencyData error: {ex.Message}");
+            catch (Exception ex)
+            {
+                LogService.Debug($"[DataTool] PopulateCurrencyData error: {ex.Message}");
+            }
         }
     }
     
     private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers)
     {
-        try
+        using (ProfilerService.BeginStaticChildScope("PopulateItem"))
         {
-            if (_inventoryCacheService == null) return;
-            
-            var allInventories = _inventoryCacheService.GetAllInventories();
-            
-            foreach (var cache in allInventories)
+            try
             {
-                if (!includeRetainers && cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
-                    continue;
+                if (_inventoryCacheService == null) return;
                 
-                if (!rows.TryGetValue(cache.CharacterId, out var row))
-                    continue;
+                var allInventories = _inventoryCacheService.GetAllInventories();
                 
-                var count = cache.Items
-                    .Where(i => i.ItemId == column.Id)
-                    .Sum(i => (long)i.Quantity);
-                
-                if (!row.ItemCounts.ContainsKey(column.Id))
-                    row.ItemCounts[column.Id] = 0;
-                
-                row.ItemCounts[column.Id] += count;
+                foreach (var cache in allInventories)
+                {
+                    if (!includeRetainers && cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
+                        continue;
+                    
+                    if (!rows.TryGetValue(cache.CharacterId, out var row))
+                        continue;
+                    
+                    var count = cache.Items
+                        .Where(i => i.ItemId == column.Id)
+                        .Sum(i => (long)i.Quantity);
+                    
+                    if (!row.ItemCounts.ContainsKey(column.Id))
+                        row.ItemCounts[column.Id] = 0;
+                    
+                    row.ItemCounts[column.Id] += count;
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug($"[DataTool] PopulateItemData error: {ex.Message}");
+            catch (Exception ex)
+            {
+                LogService.Debug($"[DataTool] PopulateItemData error: {ex.Message}");
+            }
         }
     }
     
@@ -712,26 +747,35 @@ public class DataTool : ToolComponent
     
     private void DrawGraphView()
     {
-        _graphWidget.SyncFromBoundSettings();
-        
-        if (NeedsGraphCacheRefresh())
+        using (ProfilerService.BeginStaticChildScope("GraphView"))
         {
-            RefreshGraphData();
-        }
-        
-        if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
-        {
-            _graphWidget.RenderMultipleSeries(_cachedSeriesData);
-        }
-        else
-        {
-            if (Settings.Columns.Count == 0)
+            _graphWidget.SyncFromBoundSettings();
+            
+            if (NeedsGraphCacheRefresh())
             {
-                ImGui.TextDisabled("No items or currencies configured. Add some to start tracking.");
+                using (ProfilerService.BeginStaticChildScope("RefreshGraphData"))
+                {
+                    RefreshGraphData();
+                }
+            }
+            
+            if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
+            {
+                using (ProfilerService.BeginStaticChildScope("RenderGraph"))
+                {
+                    _graphWidget.RenderMultipleSeries(_cachedSeriesData);
+                }
             }
             else
             {
-                ImGui.TextDisabled("No historical data available.");
+                if (Settings.Columns.Count == 0)
+                {
+                    ImGui.TextDisabled("No items or currencies configured. Add some to start tracking.");
+                }
+                else
+                {
+                    ImGui.TextDisabled("No historical data available.");
+                }
             }
         }
     }
@@ -767,7 +811,11 @@ public class DataTool : ToolComponent
         _graphCacheIsDirty = false;
         
         // Apply special grouping filter
-        var series = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping).ToList();
+        List<ItemColumnConfig> series;
+        using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
+        {
+            series = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping).ToList();
+        }
         if (series.Count == 0)
         {
             _cachedSeriesData = null;
@@ -786,12 +834,15 @@ public class DataTool : ToolComponent
         
         var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
-        foreach (var seriesConfig in series)
+        using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
         {
-            var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters);
-            if (seriesData != null)
+            foreach (var seriesConfig in series)
             {
-                seriesList.AddRange(seriesData);
+                var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters);
+                if (seriesData != null)
+                {
+                    seriesList.AddRange(seriesData);
+                }
             }
         }
         
@@ -844,19 +895,25 @@ public class DataTool : ToolComponent
                 variableName = $"Item_{seriesConfig.Id}";
             }
             
-            var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
-            
-            if (!allPoints.TryGetValue(variableName, out var points) || points.Count == 0)
-                return null;
-            
-            // Apply character filter
-            if (allowedCharacters != null)
+            IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points;
+            using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
             {
-                points = points.Where(p => allowedCharacters.Contains(p.characterId)).ToList();
-            }
+                var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
             
-            if (points.Count == 0)
-                return null;
+                if (!allPoints.TryGetValue(variableName, out var pts) || pts.Count == 0)
+                    return null;
+                
+                points = pts;
+                
+                // Apply character filter
+                if (allowedCharacters != null)
+                {
+                    points = points.Where(p => allowedCharacters.Contains(p.characterId)).ToList();
+                }
+                
+                if (points.Count == 0)
+                    return null;
+            }
             
             var defaultName = GetSeriesDisplayName(seriesConfig);
             var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
