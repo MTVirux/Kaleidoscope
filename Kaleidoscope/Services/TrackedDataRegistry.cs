@@ -324,6 +324,18 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Gil held by your retainers."
         });
 
+        RegisterTrackedType(new TrackedDataDefinition
+        {
+            Type = TrackedDataType.FreeCompanyCredits,
+            DisplayName = "Free Company Credits",
+            ShortName = "FC Credits",
+            Category = TrackedDataCategory.GrandCompany,
+            IconId = 65049, // FC Credit currency icon
+            MaxValue = 999_999_999,
+            EnabledByDefault = false,
+            Description = "Free Company credits earned from FC activities, used to purchase FC actions."
+        });
+
         // === Inventory Space (last) ===
         RegisterTrackedType(new TrackedDataDefinition
         {
@@ -440,6 +452,7 @@ public sealed class TrackedDataRegistry : IRequiredService
                 // FC/Retainer - separate tracking for visibility
                 TrackedDataType.FreeCompanyGil => im->GetFreeCompanyGil(),
                 TrackedDataType.RetainerGil => GameStateService.GetAllRetainersGil(),
+                TrackedDataType.FreeCompanyCredits => GameStateService.GetFreeCompanyCredits(),
                 
                 _ => null
             };

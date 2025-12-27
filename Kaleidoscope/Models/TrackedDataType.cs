@@ -93,6 +93,8 @@ public enum TrackedDataType
     FreeCompanyGil = 1100,
     /// <summary>Retainer gil (aggregate).</summary>
     RetainerGil = 1101,
+    /// <summary>Free Company Credits (points for FC actions).</summary>
+    FreeCompanyCredits = 1102,
 
     // === Universalis / Inventory Value (Calculated from market prices) ===
     /// <summary>Market value of inventory items via Universalis prices.</summary>

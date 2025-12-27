@@ -1,5 +1,7 @@
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Kaleidoscope.Services;
 
@@ -171,6 +173,37 @@ public static unsafe class GameStateService
         }
         catch
         {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the Free Company Credits from the FreeCompanyCreditShop agent.
+    /// Based on AutoRetainer implementation: offset 256 in the agent.
+    /// </summary>
+    /// <returns>The FC Credits value, or null if unavailable (e.g., not in FC, data not loaded).</returns>
+    public static long? GetFreeCompanyCredits()
+    {
+        try
+        {
+            var agentModule = AgentModule.Instance();
+            if (agentModule == null) return null;
+
+            var agent = agentModule->GetAgentByInternalId(AgentId.FreeCompanyCreditShop);
+            if (agent == null) return null;
+
+            // FC Credits are stored at offset 256 in the FreeCompanyCreditShop agent
+            // This approach is used by AutoRetainer and is the reliable way to get FC credits
+            var credits = *(int*)((nint)agent + 256);
+            
+            // Return null if credits is 0 or negative (likely means no FC or data not loaded)
+            if (credits <= 0) return null;
+            
+            return credits;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"GetFreeCompanyCredits failed: {ex.Message}");
             return null;
         }
     }
