@@ -80,6 +80,30 @@ public sealed class SamplerService : IDisposable, IRequiredService
         OnInventoryValueHistoryChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Queues inventory item value sample to the background thread for database persistence.
+    /// This integrates calculated Universalis values into the standard time-series tracking.
+    /// Gil is tracked separately via the Gil TrackedDataType.
+    /// </summary>
+    /// <param name="characterId">The character ID.</param>
+    /// <param name="itemValue">Item value component (Universalis prices).</param>
+    /// <param name="characterName">Optional character name for persistence.</param>
+    public void QueueInventoryValueSample(ulong characterId, long itemValue, string? characterName = null)
+    {
+        if (characterId == 0) return;
+
+        // Queue item value only - Gil is tracked via the Gil currency type
+        var itemVariable = Models.TrackedDataType.InventoryValueItems.ToString();
+        _cacheService.AddPoint(itemVariable, characterId, itemValue);
+        _sampleQueue.Writer.TryWrite(new SampleWorkItem(characterId, itemVariable, itemValue, characterName));
+
+        // Cache character name if provided
+        if (!string.IsNullOrEmpty(characterName))
+        {
+            _cacheService.SetCharacterName(characterId, characterName);
+        }
+    }
+
     private readonly AutoRetainerIpcService _arIpc;
 
     public SamplerService(

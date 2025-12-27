@@ -31,6 +31,13 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private DateTime _lastCleanup = DateTime.MinValue;
     private DateTime _lastValueSnapshot = DateTime.MinValue;
 
+    // Event-driven inventory value sampling state
+    private DateTime _lastEventDrivenValueSample = DateTime.MinValue;
+    private volatile bool _pendingValueRecalc = false;
+    private readonly HashSet<int> _pendingPriceUpdateItemIds = new();
+    private readonly object _pendingLock = new();
+    private const int EventDrivenSampleThrottleSeconds = 30; // Min seconds between event-driven samples
+
     // In-memory price cache for quick lookups
     private readonly ConcurrentDictionary<(int itemId, int worldId), (int minNq, int minHq, DateTime updated)> _priceCache = new();
     
@@ -186,6 +193,16 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         var now = DateTime.UtcNow;
 
+        // Event-driven value sampling (triggered by price updates or inventory changes)
+        if (_pendingValueRecalc && 
+            (now - _lastEventDrivenValueSample).TotalSeconds >= EventDrivenSampleThrottleSeconds &&
+            Settings.Enabled)
+        {
+            _pendingValueRecalc = false;
+            _lastEventDrivenValueSample = now;
+            _ = Task.Run(TakeEventDrivenValueSnapshotsAsync);
+        }
+
         // Periodic cleanup
         if ((now - _lastCleanup).TotalMinutes >= Settings.CleanupIntervalMinutes)
         {
@@ -193,7 +210,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             _ = Task.Run(PerformCleanupAsync);
         }
 
-        // Periodic value snapshots
+        // Periodic value snapshots (fallback for when no events trigger updates)
         if ((now - _lastValueSnapshot).TotalMinutes >= ValueSnapshotIntervalMinutes && Settings.Enabled)
         {
             _lastValueSnapshot = now;
@@ -468,6 +485,13 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     foreach (var itemId in itemsToNotify)
                     {
                         OnPriceDataUpdated?.Invoke(itemId);
+                    }
+                    
+                    // Flag pending inventory value recalc if any sale prices updated
+                    // (Sales are what we use for inventory valuation)
+                    if (sales.Count > 0)
+                    {
+                        _pendingValueRecalc = true;
                     }
                 }
                 catch (Exception ex)
@@ -759,6 +783,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>
     /// Takes value snapshots for all known characters.
     /// Uses parallel processing to distribute CPU load across cores.
+    /// Also queues samples to the standard time-series tracking for DataTracker tools.
     /// </summary>
     private async Task TakeValueSnapshotsAsync()
     {
@@ -766,12 +791,16 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try
         {
-            var characterIds = DbService.GetAllCharacterNames()
+            var characterData = DbService.GetAllCharacterNames();
+            var characterIds = characterData
                 .Select(c => c.characterId)
                 .Distinct()
                 .ToList();
 
             if (characterIds.Count == 0) return;
+
+            // Build a lookup for character names
+            var characterNames = characterData.ToDictionary(c => c.characterId, c => c.name);
 
             var includeRetainers = _configService.Config.InventoryValue.IncludeRetainers;
             
@@ -779,15 +808,21 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             var tasks = characterIds.Select(async charId =>
             {
                 var (total, gil, item, contributions) = await CalculateInventoryValueAsync(charId, includeRetainers);
-                return (charId, total, gil, item, contributions);
+                characterNames.TryGetValue(charId, out var name);
+                return (charId, total, gil, item, contributions, name);
             }).ToList();
 
             var results = await Task.WhenAll(tasks);
 
             // Save results to database (must be sequential due to SQLite single-writer)
-            foreach (var (charId, total, gil, item, contributions) in results)
+            foreach (var (charId, total, gil, item, contributions, characterName) in results)
             {
+                // Save to inventory_value_history (existing behavior)
                 DbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
+                
+                // Also queue to standard time-series tracking for DataTracker tools
+                // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
+                _samplerService.QueueInventoryValueSample(charId, item, characterName);
             }
             
             // Re-populate the full cache on background thread so main thread doesn't block
@@ -798,6 +833,56 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             _log.Debug($"[PriceTracking] Error taking value snapshots: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Takes value snapshots triggered by price updates or inventory changes.
+    /// Similar to TakeValueSnapshotsAsync but only writes to time-series tables (not inventory_value_history)
+    /// to avoid duplicating data. The inventory_value_history is still updated on the 15-minute interval.
+    /// </summary>
+    private async Task TakeEventDrivenValueSnapshotsAsync()
+    {
+        if (_disposed) return;
+        
+        try
+        {
+            var characterData = DbService.GetAllCharacterNames();
+            var characterIds = characterData
+                .Select(c => c.characterId)
+                .Distinct()
+                .ToList();
+
+            if (characterIds.Count == 0) return;
+
+            // Build a lookup for character names
+            var characterNames = characterData.ToDictionary(c => c.characterId, c => c.name);
+
+            var includeRetainers = _configService.Config.InventoryValue.IncludeRetainers;
+            
+            // Calculate values for all characters in parallel
+            var tasks = characterIds.Select(async charId =>
+            {
+                var (total, gil, item, _) = await CalculateInventoryValueAsync(charId, includeRetainers);
+                characterNames.TryGetValue(charId, out var name);
+                return (charId, total, gil, item, name);
+            }).ToList();
+
+            var results = await Task.WhenAll(tasks);
+
+            // Queue to standard time-series tracking for DataTracker tools (frequent updates)
+            // Note: We don't write to inventory_value_history here - that's still on 15-minute interval
+            // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
+            foreach (var (charId, total, gil, item, characterName) in results)
+            {
+                _samplerService.QueueInventoryValueSample(charId, item, characterName);
+            }
+
+            _log.Verbose($"[PriceTracking] Event-driven value samples for {characterIds.Count} characters");
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[PriceTracking] Error taking event-driven value snapshots: {ex.Message}");
         }
     }
 
