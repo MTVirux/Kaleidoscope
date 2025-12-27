@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -7,170 +8,466 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
-/// Centralized widget for managing item/currency columns (or series).
+/// Centralized widget for managing item/currency columns (or series) with integrated merge support.
 /// Used by DataTool and related tools to ensure consistent behavior.
 /// </summary>
 public static class ColumnManagementWidget
 {
+    // Selection state for merge operations (keyed by widget instance ID)
+    private static readonly Dictionary<string, HashSet<int>> _selectedIndices = new();
+    
     /// <summary>
-    /// Draws the column/series management UI.
+    /// Draws the column/series management UI with integrated merge functionality.
     /// </summary>
     /// <param name="columns">The list of columns to manage.</param>
+    /// <param name="mergedColumnGroups">The list of merged column groups.</param>
     /// <param name="getDefaultName">Function to get the default display name for a column.</param>
     /// <param name="onSettingsChanged">Callback when any setting changes.</param>
     /// <param name="onRefreshNeeded">Callback when data refresh is needed.</param>
-    /// <param name="sectionTitle">Title for the section (e.g., "Column Management" or "Series Management").</param>
+    /// <param name="sectionTitle">Title for the section (e.g., "Item / Currency Management").</param>
     /// <param name="emptyMessage">Message to show when no columns/series are configured.</param>
-    /// <param name="mergedColumnIndices">Optional set of column indices that are merged (will be skipped).</param>
     /// <param name="itemLabel">Label for items, e.g., "Item" or "Item (historical data)".</param>
     /// <param name="currencyLabel">Label for currencies, e.g., "Currency" or "Currency (historical data)".</param>
+    /// <param name="widgetId">Unique identifier for this widget instance (for selection state).</param>
+    /// <param name="isItemHistoricalTrackingEnabled">Function to check if a specific item has historical tracking enabled.</param>
+    /// <param name="onItemHistoricalTrackingToggled">Callback when historical tracking is toggled for a specific item (itemId, enabled).</param>
     /// <returns>True if any changes were made.</returns>
     public static bool Draw(
         List<ItemColumnConfig> columns,
+        List<MergedColumnGroup> mergedColumnGroups,
         Func<ItemColumnConfig, string> getDefaultName,
         Action? onSettingsChanged = null,
         Action? onRefreshNeeded = null,
         string sectionTitle = "Column Management",
         string emptyMessage = "No columns configured.",
-        HashSet<int>? mergedColumnIndices = null,
         string itemLabel = "Item",
-        string currencyLabel = "Currency")
+        string currencyLabel = "Currency",
+        string widgetId = "default",
+        Func<uint, bool>? isItemHistoricalTrackingEnabled = null,
+        Action<uint, bool>? onItemHistoricalTrackingToggled = null)
     {
         var changed = false;
+        
+        // Ensure selection state exists for this widget
+        if (!_selectedIndices.TryGetValue(widgetId, out var selectedIndices))
+        {
+            selectedIndices = new HashSet<int>();
+            _selectedIndices[widgetId] = selectedIndices;
+        }
+        
+        // Build set of merged column indices
+        var mergedIndices = new HashSet<int>();
+        foreach (var group in mergedColumnGroups)
+        {
+            foreach (var idx in group.ColumnIndices)
+            {
+                mergedIndices.Add(idx);
+            }
+        }
+        
+        // Clean up selection - remove indices that are now merged
+        selectedIndices.RemoveWhere(i => mergedIndices.Contains(i) || i >= columns.Count);
         
         ImGui.TextUnformatted(sectionTitle);
         ImGui.Separator();
         
-        if (columns.Count == 0)
+        if (columns.Count == 0 && mergedColumnGroups.Count == 0)
         {
             ImGui.TextDisabled(emptyMessage);
             return false;
         }
         
-        // Track which column to delete or swap (can't modify list during iteration)
+        // Track which column/group to delete or swap (can't modify list during iteration)
         int deleteIndex = -1;
         int swapUpIndex = -1;
         int swapDownIndex = -1;
+        int groupToUnmerge = -1;
         
-        for (int i = 0; i < columns.Count; i++)
+        // Use an invisible table for alignment
+        // Columns: Select/Indicator | Color | Name | Type | History | Up | Down | Delete/Unmerge
+        var tableFlags = ImGuiTableFlags.None;
+        if (ImGui.BeginTable("##columnTable", 8, tableFlags))
         {
-            // Skip columns that are part of a merged group
-            if (mergedColumnIndices?.Contains(i) == true)
-                continue;
+            // Setup columns with appropriate widths
+            ImGui.TableSetupColumn("##sel", ImGuiTableColumnFlags.WidthFixed, 24f);      // Checkbox or ⊕
+            ImGui.TableSetupColumn("##clr", ImGuiTableColumnFlags.WidthFixed, 28f);      // Color picker
+            ImGui.TableSetupColumn("##name", ImGuiTableColumnFlags.WidthStretch);         // Name input
+            ImGui.TableSetupColumn("##type", ImGuiTableColumnFlags.WidthFixed, 70f);     // Type label or merged count
+            ImGui.TableSetupColumn("##hist", ImGuiTableColumnFlags.WidthFixed, 24f);     // History checkbox
+            ImGui.TableSetupColumn("##up", ImGuiTableColumnFlags.WidthFixed, 24f);       // Move up
+            ImGui.TableSetupColumn("##dn", ImGuiTableColumnFlags.WidthFixed, 24f);       // Move down
+            ImGui.TableSetupColumn("##del", ImGuiTableColumnFlags.WidthFixed, 80f);      // Delete or Unmerge
             
-            var column = columns[i];
-            var defaultName = getDefaultName(column);
-            
-            ImGui.PushID(i);
-            
-            // Color picker
-            var color = column.Color ?? new Vector4(0.5f, 0.5f, 0.5f, 1f);
-            if (ImGui.ColorEdit4("##color", ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaPreviewHalf))
+            // === Draw Merged Groups First ===
+            for (int g = 0; g < mergedColumnGroups.Count; g++)
             {
-                column.Color = color;
-                changed = true;
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Color");
-            }
-            
-            ImGui.SameLine();
-            
-            // Custom name input
-            var customName = column.CustomName ?? string.Empty;
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.InputTextWithHint("##name", defaultName, ref customName, 64))
-            {
-                column.CustomName = string.IsNullOrWhiteSpace(customName) ? null : customName;
-                changed = true;
-            }
-            
-            ImGui.SameLine();
-            
-            // Type label
-            ImGui.TextDisabled(column.IsCurrency ? "[C]" : "[I]");
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(column.IsCurrency ? currencyLabel : itemLabel);
-            }
-            
-            ImGui.SameLine();
-            
-            // Store history checkbox (only for items, not currencies)
-            if (!column.IsCurrency)
-            {
-                var storeHistory = column.StoreHistory;
-                if (ImGui.Checkbox("##history", ref storeHistory))
+                var group = mergedColumnGroups[g];
+                ImGui.PushID($"merged_{g}");
+                ImGui.TableNextRow();
+                
+                // Column 0: Merge indicator
+                ImGui.TableNextColumn();
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.8f, 1.0f, 1.0f));
+                ImGui.TextUnformatted("⊕");
+                ImGui.PopStyleColor();
+                if (ImGui.IsItemHovered())
                 {
-                    column.StoreHistory = storeHistory;
+                    ImGui.SetTooltip("Merged group");
+                }
+                
+                // Column 1: Color picker
+                ImGui.TableNextColumn();
+                var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
+                    "##color", group.Color, ImGuiHelpers.DefaultColor, "Merged group color");
+                if (colorChanged)
+                {
+                    group.Color = newColor;
                     changed = true;
+                    onRefreshNeeded?.Invoke();
+                }
+                
+                // Column 2: Editable name
+                ImGui.TableNextColumn();
+                ImGui.SetNextItemWidth(-1);
+                var name = group.Name;
+                if (ImGui.InputTextWithHint("##name", "Merged", ref name, 64))
+                {
+                    group.Name = name;
+                    changed = true;
+                }
+                
+                // Column 3: Show merged items count
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled($"[{group.ColumnIndices.Count} merged]");
+                if (ImGui.IsItemHovered())
+                {
+                    // Build tooltip with item names
+                    var itemNames = group.ColumnIndices
+                        .Where(idx => idx >= 0 && idx < columns.Count)
+                        .Select(idx => getDefaultName(columns[idx]))
+                        .ToList();
+                    ImGui.SetTooltip(string.Join("\n", itemNames));
+                }
+                
+                // Column 4: Empty (no history for merged groups)
+                ImGui.TableNextColumn();
+                
+                // Column 5: Move up button for merged groups
+                ImGui.TableNextColumn();
+                ImGui.BeginDisabled(g == 0);
+                if (ImGui.Button("▲##up"))
+                {
+                    // Move merged group up
+                    var temp = mergedColumnGroups[g];
+                    mergedColumnGroups[g] = mergedColumnGroups[g - 1];
+                    mergedColumnGroups[g - 1] = temp;
+                    changed = true;
+                }
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    ImGui.SetTooltip("Move up");
+                }
+                
+                // Column 6: Move down button for merged groups
+                ImGui.TableNextColumn();
+                ImGui.BeginDisabled(g == mergedColumnGroups.Count - 1);
+                if (ImGui.Button("▼##down"))
+                {
+                    // Move merged group down
+                    var temp = mergedColumnGroups[g];
+                    mergedColumnGroups[g] = mergedColumnGroups[g + 1];
+                    mergedColumnGroups[g + 1] = temp;
+                    changed = true;
+                }
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    ImGui.SetTooltip("Move down");
+                }
+                
+                // Column 7: Unmerge button
+                ImGui.TableNextColumn();
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.3f, 0.5f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.6f, 1f));
+                if (ImGuiHelpers.ButtonAutoWidth("Unmerge##unmerge"))
+                {
+                    groupToUnmerge = g;
+                }
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Unmerge back to individual items");
+                }
+                
+                ImGui.PopID();
+            }
+            
+            // === Draw Individual (Unmerged) Columns ===
+            for (int i = 0; i < columns.Count; i++)
+            {
+                // Skip columns that are part of a merged group
+                if (mergedIndices.Contains(i))
+                    continue;
+                
+                var column = columns[i];
+                var defaultName = getDefaultName(column);
+                var isSelected = selectedIndices.Contains(i);
+                
+                ImGui.PushID(i);
+                ImGui.TableNextRow();
+                
+                // Column 0: Selection checkbox
+                ImGui.TableNextColumn();
+                if (ImGui.Checkbox("##select", ref isSelected))
+                {
+                    if (isSelected)
+                        selectedIndices.Add(i);
+                    else
+                        selectedIndices.Remove(i);
                 }
                 if (ImGui.IsItemHovered())
                 {
-                    ImGui.SetTooltip("Store historical time-series data for this item");
+                    ImGui.SetTooltip("Select for merging");
                 }
-                ImGui.SameLine();
+                
+                // Column 1: Color picker
+                ImGui.TableNextColumn();
+                var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
+                    "##color", column.Color, ImGuiHelpers.DefaultColor, "Color");
+                if (colorChanged)
+                {
+                    column.Color = newColor;
+                    changed = true;
+                    onRefreshNeeded?.Invoke();
+                }
+                
+                // Column 2: Custom name input
+                ImGui.TableNextColumn();
+                var customName = column.CustomName ?? string.Empty;
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.InputTextWithHint("##name", defaultName, ref customName, 64))
+                {
+                    column.CustomName = string.IsNullOrWhiteSpace(customName) ? null : customName;
+                    changed = true;
+                }
+                
+                // Column 3: Type label
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled(column.IsCurrency ? "[Currency]" : "[Item]");
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip(column.IsCurrency ? currencyLabel : itemLabel);
+                }
+                
+                // Column 4: Store history checkbox (per-item global setting) or greyed-out indicator (currencies)
+                ImGui.TableNextColumn();
+                if (column.IsCurrency)
+                {
+                    // Currencies have history tracking controlled from Kaleidoscope settings
+                    ImGui.BeginDisabled(true);
+                    var currencyHistory = column.StoreHistory;
+                    ImGui.Checkbox("##history", ref currencyHistory);
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    {
+                        ImGui.SetTooltip("Currency historical tracking is controlled globally.\nThis can be changed in Kaleidoscope settings.");
+                    }
+                }
+                else
+                {
+                    // Use per-item global historical tracking setting if available
+                    var storeHistory = isItemHistoricalTrackingEnabled?.Invoke(column.Id) ?? column.StoreHistory;
+                    if (ImGui.Checkbox("##history", ref storeHistory))
+                    {
+                        // Toggle per-item global setting if callback is provided, otherwise use per-column
+                        if (onItemHistoricalTrackingToggled != null)
+                        {
+                            onItemHistoricalTrackingToggled(column.Id, storeHistory);
+                        }
+                        else
+                        {
+                            column.StoreHistory = storeHistory;
+                        }
+                        changed = true;
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        if (onItemHistoricalTrackingToggled != null)
+                        {
+                            ImGui.SetTooltip("Enable/disable historical time-series tracking for this item.\nThis setting applies across all tools in the project.");
+                        }
+                        else
+                        {
+                            ImGui.SetTooltip("Store historical time-series data for this item");
+                        }
+                    }
+                }
+                
+                // Column 5: Move up button
+                ImGui.TableNextColumn();
+                ImGui.BeginDisabled(i == 0);
+                if (ImGui.Button("▲##up"))
+                {
+                    swapUpIndex = i;
+                }
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    ImGui.SetTooltip("Move up");
+                }
+                
+                // Column 6: Move down button
+                ImGui.TableNextColumn();
+                ImGui.BeginDisabled(i == columns.Count - 1);
+                if (ImGui.Button("▼##down"))
+                {
+                    swapDownIndex = i;
+                }
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    ImGui.SetTooltip("Move down");
+                }
+                
+                // Column 7: Delete button
+                ImGui.TableNextColumn();
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));
+                if (ImGui.Button("×##del"))
+                {
+                    deleteIndex = i;
+                }
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Remove");
+                }
+                
+                ImGui.PopID();
             }
             
-            // Move up button
-            ImGui.BeginDisabled(i == 0);
-            if (ImGui.Button("▲##up", new Vector2(20, 0)))
-            {
-                swapUpIndex = i;
-            }
-            ImGui.EndDisabled();
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            {
-                ImGui.SetTooltip("Move up");
-            }
-            
-            ImGui.SameLine();
-            
-            // Move down button
-            ImGui.BeginDisabled(i == columns.Count - 1);
-            if (ImGui.Button("▼##down", new Vector2(20, 0)))
-            {
-                swapDownIndex = i;
-            }
-            ImGui.EndDisabled();
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            {
-                ImGui.SetTooltip("Move down");
-            }
-            
-            ImGui.SameLine();
-            
-            // Delete button
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));
-            if (ImGui.Button("×##del", new Vector2(20, 0)))
-            {
-                deleteIndex = i;
-            }
-            ImGui.PopStyleColor(2);
-            
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Remove");
-            }
-            
-            ImGui.PopID();
+            ImGui.EndTable();
         }
         
-        // Process reordering and deletion after iteration
+        // === Merge Action Bar ===
+        if (selectedIndices.Count >= 2)
+        {
+            ImGui.Spacing();
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.5f, 0.3f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.3f, 0.6f, 0.4f, 1f));
+            if (ImGui.Button($"Merge {selectedIndices.Count} Selected"))
+            {
+                // Create new merged group
+                var newGroup = new MergedColumnGroup
+                {
+                    Name = "Merged",
+                    ColumnIndices = selectedIndices.OrderBy(x => x).ToList(),
+                    Width = 80f
+                };
+                mergedColumnGroups.Add(newGroup);
+                selectedIndices.Clear();
+                changed = true;
+                onRefreshNeeded?.Invoke();
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+            {
+                // Show what will be merged
+                var itemNames = selectedIndices
+                    .Where(idx => idx >= 0 && idx < columns.Count)
+                    .Select(idx => getDefaultName(columns[idx]))
+                    .ToList();
+                ImGui.SetTooltip($"Merge:\n{string.Join("\n", itemNames)}");
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Clear Selection"))
+            {
+                selectedIndices.Clear();
+            }
+        }
+        else if (selectedIndices.Count == 1)
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select at least 2 items to merge");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Clear"))
+            {
+                selectedIndices.Clear();
+            }
+        }
+        
+        // === Process Actions After Iteration ===
+        
+        // Handle unmerge
+        if (groupToUnmerge >= 0)
+        {
+            mergedColumnGroups.RemoveAt(groupToUnmerge);
+            changed = true;
+            onRefreshNeeded?.Invoke();
+        }
+        
+        // Process reordering and deletion
         if (swapUpIndex > 0)
         {
             (columns[swapUpIndex - 1], columns[swapUpIndex]) = (columns[swapUpIndex], columns[swapUpIndex - 1]);
+            
+            // Update merged group indices
+            UpdateMergedIndicesAfterSwap(mergedColumnGroups, swapUpIndex - 1, swapUpIndex);
+            
+            // Update selection
+            if (selectedIndices.Contains(swapUpIndex))
+            {
+                selectedIndices.Remove(swapUpIndex);
+                selectedIndices.Add(swapUpIndex - 1);
+            }
+            else if (selectedIndices.Contains(swapUpIndex - 1))
+            {
+                selectedIndices.Remove(swapUpIndex - 1);
+                selectedIndices.Add(swapUpIndex);
+            }
+            
             changed = true;
         }
         else if (swapDownIndex >= 0 && swapDownIndex < columns.Count - 1)
         {
             (columns[swapDownIndex + 1], columns[swapDownIndex]) = (columns[swapDownIndex], columns[swapDownIndex + 1]);
+            
+            // Update merged group indices
+            UpdateMergedIndicesAfterSwap(mergedColumnGroups, swapDownIndex, swapDownIndex + 1);
+            
+            // Update selection
+            if (selectedIndices.Contains(swapDownIndex))
+            {
+                selectedIndices.Remove(swapDownIndex);
+                selectedIndices.Add(swapDownIndex + 1);
+            }
+            else if (selectedIndices.Contains(swapDownIndex + 1))
+            {
+                selectedIndices.Remove(swapDownIndex + 1);
+                selectedIndices.Add(swapDownIndex);
+            }
+            
             changed = true;
         }
         else if (deleteIndex >= 0)
         {
+            // Remove from selection
+            selectedIndices.Remove(deleteIndex);
+            
+            // Update merged group indices (shift down all indices > deleteIndex)
+            UpdateMergedIndicesAfterDelete(mergedColumnGroups, deleteIndex);
+            
+            // Update selection (shift down all indices > deleteIndex)
+            var updatedSelection = selectedIndices
+                .Select(idx => idx > deleteIndex ? idx - 1 : idx)
+                .ToHashSet();
+            selectedIndices.Clear();
+            foreach (var idx in updatedSelection)
+                selectedIndices.Add(idx);
+            
             columns.RemoveAt(deleteIndex);
             changed = true;
             onRefreshNeeded?.Invoke();
@@ -182,6 +479,73 @@ public static class ColumnManagementWidget
         }
         
         return changed;
+    }
+    
+    private static void UpdateMergedIndicesAfterSwap(List<MergedColumnGroup> groups, int idx1, int idx2)
+    {
+        foreach (var group in groups)
+        {
+            for (int i = 0; i < group.ColumnIndices.Count; i++)
+            {
+                if (group.ColumnIndices[i] == idx1)
+                    group.ColumnIndices[i] = idx2;
+                else if (group.ColumnIndices[i] == idx2)
+                    group.ColumnIndices[i] = idx1;
+            }
+        }
+    }
+    
+    private static void UpdateMergedIndicesAfterDelete(List<MergedColumnGroup> groups, int deletedIndex)
+    {
+        for (int g = groups.Count - 1; g >= 0; g--)
+        {
+            var group = groups[g];
+            
+            // Remove the deleted index from the group
+            group.ColumnIndices.Remove(deletedIndex);
+            
+            // Shift down all indices > deletedIndex
+            for (int i = 0; i < group.ColumnIndices.Count; i++)
+            {
+                if (group.ColumnIndices[i] > deletedIndex)
+                    group.ColumnIndices[i]--;
+            }
+            
+            // Remove the group if it has less than 2 members
+            if (group.ColumnIndices.Count < 2)
+            {
+                groups.RemoveAt(g);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Backward-compatible overload that ignores merged groups.
+    /// </summary>
+    public static bool Draw(
+        List<ItemColumnConfig> columns,
+        Func<ItemColumnConfig, string> getDefaultName,
+        Action? onSettingsChanged = null,
+        Action? onRefreshNeeded = null,
+        string sectionTitle = "Item / Currency Management",
+        string emptyMessage = "No columns configured.",
+        HashSet<int>? mergedColumnIndices = null,
+        string itemLabel = "Item",
+        string currencyLabel = "Currency")
+    {
+        // Create a temporary empty list for backward compatibility
+        var emptyMergedGroups = new List<MergedColumnGroup>();
+        return Draw(
+            columns,
+            emptyMergedGroups,
+            getDefaultName,
+            onSettingsChanged,
+            onRefreshNeeded,
+            sectionTitle,
+            emptyMessage,
+            itemLabel,
+            currencyLabel,
+            "legacy");
     }
     
     /// <summary>
