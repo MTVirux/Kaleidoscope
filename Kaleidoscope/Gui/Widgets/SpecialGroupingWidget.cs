@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -17,15 +18,6 @@ public static class SpecialGroupingWidget
     /// </summary>
     private static readonly List<(SpecialGroupingType type, string name, string tooltip)> AllGroupings = new()
     {
-        (
-            SpecialGroupingType.AllGil,
-            "All Gil Currencies",
-            "Requires all 3 gil currencies:\n" +
-            "• Gil (personal)\n" +
-            "• Free Company Gil\n" +
-            "• Retainer Gil\n\n" +
-            "Unlocks option to merge FC Gil and Retainer Gil into Gil."
-        ),
         (
             SpecialGroupingType.AllCrystals,
             "All Crystals",
@@ -49,7 +41,8 @@ public static class SpecialGroupingWidget
         SpecialGroupingSettings settings,
         IEnumerable<ItemColumnConfig> columns,
         Action? onSettingsChanged = null,
-        Action? onRefreshNeeded = null)
+        Action? onRefreshNeeded = null,
+        Action<uint, bool>? onAddColumn = null)
     {
         var changed = false;
         
@@ -73,8 +66,14 @@ public static class SpecialGroupingWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        ImGui.TextUnformatted("Special Grouping");
-        ImGui.Separator();
+        if (!ImGui.CollapsingHeader("Special Grouping", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            if (changed)
+            {
+                onSettingsChanged?.Invoke();
+            }
+            return changed;
+        }
         
         // Sort so unlocked groupings appear first
         var sortedGroupings = AllGroupings
@@ -85,7 +84,7 @@ public static class SpecialGroupingWidget
         // Draw each grouping
         foreach (var (type, name, tooltip, unlocked) in sortedGroupings)
         {
-            if (DrawSpecialGroupingItem(settings, type, unlocked, name, tooltip, onSettingsChanged, onRefreshNeeded))
+            if (DrawSpecialGroupingItem(settings, type, unlocked, name, tooltip, onSettingsChanged, onRefreshNeeded, onAddColumn))
             {
                 changed = true;
             }
@@ -100,7 +99,7 @@ public static class SpecialGroupingWidget
     }
     
     /// <summary>
-    /// Draws a single special grouping item with checkbox (if unlocked) or disabled text (if locked).
+    /// Draws a single special grouping item with collapsible header (if unlocked) or disabled text with Add button (if locked).
     /// </summary>
     private static bool DrawSpecialGroupingItem(
         SpecialGroupingSettings settings,
@@ -109,49 +108,26 @@ public static class SpecialGroupingWidget
         string name,
         string tooltip,
         Action? onSettingsChanged,
-        Action? onRefreshNeeded)
+        Action? onRefreshNeeded,
+        Action<uint, bool>? onAddColumn)
     {
         var changed = false;
         
         if (unlocked)
         {
-            // Get the appropriate enabled state for this specific grouping type
-            var isEnabled = type switch
-            {
-                SpecialGroupingType.AllCrystals => settings.AllCrystalsEnabled,
-                SpecialGroupingType.AllGil => settings.AllGilEnabled,
-                _ => false
-            };
-            
-            // Green checkmark indicator
+            // Draw as collapsible header with green checkmark (indented since it's nested)
+            ImGui.Indent();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 1.0f, 0.4f, 1.0f));
-            ImGui.TextUnformatted("✓");
+            var headerOpen = ImGui.CollapsingHeader($"✓ {name}##special_{type}", ImGuiTreeNodeFlags.DefaultOpen);
             ImGui.PopStyleColor();
-            ImGui.SameLine();
             
-            if (ImGui.Checkbox($"{name}##special_{type}", ref isEnabled))
-            {
-                // Update the appropriate enabled flag
-                switch (type)
-                {
-                    case SpecialGroupingType.AllCrystals:
-                        settings.AllCrystalsEnabled = isEnabled;
-                        break;
-                    case SpecialGroupingType.AllGil:
-                        settings.AllGilEnabled = isEnabled;
-                        break;
-                }
-                onRefreshNeeded?.Invoke();
-                onSettingsChanged?.Invoke();
-                changed = true;
-            }
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip($"{tooltip}\n\n[UNLOCKED] Click to {(isEnabled ? "disable" : "enable")} filters.");
+                ImGui.SetTooltip(tooltip);
             }
             
-            // Draw the filters if this grouping is enabled
-            if (isEnabled)
+            // Draw the filters inside the collapsible header
+            if (headerOpen)
             {
                 switch (type)
                 {
@@ -165,10 +141,12 @@ public static class SpecialGroupingWidget
                         break;
                 }
             }
+            ImGui.Unindent();
         }
         else
         {
-            // Show locked grouping with lock icon
+            // Show locked grouping with lock icon (indented to match unlocked items)
+            ImGui.Indent();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.5f, 0.5f, 0.5f, 1.0f));
             ImGui.TextUnformatted("🔒");
             ImGui.SameLine();
@@ -179,6 +157,32 @@ public static class SpecialGroupingWidget
             {
                 ImGui.SetTooltip($"{tooltip}\n\n[LOCKED] Add the required items to unlock this filter.");
             }
+            
+            // Show "Add All" button for crystals when locked
+            if (type == SpecialGroupingType.AllCrystals && onAddColumn != null)
+            {
+                ImGui.SameLine();
+                if (ImGuiHelpers.ButtonAutoWidth("Add All##addAllCrystals"))
+                {
+                    // Add all 18 crystal types
+                    var allCrystalIds = SpecialGroupingHelper.GetAllCrystalItemIds();
+                    foreach (var crystalId in allCrystalIds)
+                    {
+                        onAddColumn(crystalId, false); // false = not a currency
+                    }
+                    onRefreshNeeded?.Invoke();
+                    onSettingsChanged?.Invoke();
+                    changed = true;
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Add all 18 crystal types to the table:\n\n" +
+                        "• Fire, Ice, Wind, Earth, Lightning, Water Shards\n" +
+                        "• Fire, Ice, Wind, Earth, Lightning, Water Crystals\n" +
+                        "• Fire, Ice, Wind, Earth, Lightning, Water Clusters");
+                }
+            }
+            ImGui.Unindent();
         }
         
         return changed;
