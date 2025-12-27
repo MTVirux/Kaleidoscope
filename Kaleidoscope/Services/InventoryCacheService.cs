@@ -519,7 +519,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// Stores player inventory and retainer inventory separately for toggleable display.
     /// Player items stored as "Item_{itemId}", retainer totals as "ItemRetainer_{itemId}",
     /// and per-retainer data as "ItemRetainerX_{retainerId}_{itemId}".
-    /// Only samples items that have StoreHistory enabled in their configuration.
+    /// Only samples items that are in the ItemsWithHistoricalTracking set.
     /// </summary>
     /// <param name="characterId">The character ID to associate with the samples.</param>
     /// <param name="playerItems">The player's inventory items to check against tracked items.</param>
@@ -527,18 +527,28 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         try
         {
-            // Get the list of tracked item IDs from config (non-currency series with StoreHistory enabled)
-            var trackedItems = _configService.Config.ItemGraph?.Series?
-                .Where(s => !s.IsCurrency && s.StoreHistory)
-                .Select(s => s.Id)
-                .ToHashSet();
+            // Get the global set of items that have historical tracking enabled
+            var itemsWithTracking = _configService.Config.ItemsWithHistoricalTracking;
+            if (itemsWithTracking.Count == 0)
+                return;
 
-            if (trackedItems == null)
-                trackedItems = new HashSet<uint>();
+            // Get the list of tracked item IDs from all configured sources
+            var trackedItems = new HashSet<uint>();
+            
+            // Check ItemGraph for tracked items that also have historical tracking enabled
+            var graphItems = _configService.Config.ItemGraph?.Series?
+                .Where(s => !s.IsCurrency && itemsWithTracking.Contains(s.Id))
+                .Select(s => s.Id);
+            
+            if (graphItems != null)
+            {
+                foreach (var id in graphItems)
+                    trackedItems.Add(id);
+            }
 
-            // Also check ItemTable for tracked items with StoreHistory enabled
+            // Also check ItemTable for tracked items that have historical tracking enabled
             var tableItems = _configService.Config.ItemTable?.Columns?
-                .Where(c => !c.IsCurrency && c.StoreHistory)
+                .Where(c => !c.IsCurrency && itemsWithTracking.Contains(c.Id))
                 .Select(c => c.Id);
             
             if (tableItems != null)
@@ -547,7 +557,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     trackedItems.Add(id);
             }
             
-            // Also check layout-stored DataTool instances for tracked items with StoreHistory enabled
+            // Also check layout-stored DataTool instances for tracked items with historical tracking enabled
             foreach (var layout in _configService.Config.Layouts)
             {
                 foreach (var tool in layout.Tools)
@@ -560,10 +570,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                             try
                             {
                                 var isCurrency = columnToken["IsCurrency"]?.ToObject<bool>() ?? false;
-                                var storeHistory = columnToken["StoreHistory"]?.ToObject<bool>() ?? false;
                                 var id = columnToken["Id"]?.ToObject<uint>() ?? 0;
                                 
-                                if (!isCurrency && storeHistory && id > 0)
+                                if (!isCurrency && id > 0 && itemsWithTracking.Contains(id))
                                 {
                                     trackedItems.Add(id);
                                 }
