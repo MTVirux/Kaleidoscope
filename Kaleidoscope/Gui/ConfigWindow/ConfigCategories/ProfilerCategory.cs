@@ -15,26 +15,12 @@ public class ProfilerCategory
     private readonly ConfigurationService _configService;
     private readonly SamplerService? _samplerService;
     
-    /// <summary>
-    /// Which stats view to show (Basic, Percentiles, Rolling, All).
-    /// </summary>
-    private int _selectedStatsView;
     private static readonly string[] StatsViewOptions = { "Basic", "Percentiles", "Rolling", "All" };
     
     /// <summary>
-    /// Whether to show the histogram panel.
-    /// </summary>
-    private bool _showHistogram;
-    
-    /// <summary>
-    /// Selected tool for histogram display.
+    /// Selected tool for histogram display (session-only, not persisted).
     /// </summary>
     private string? _selectedHistogramTool;
-    
-    /// <summary>
-    /// Whether to expand child scopes in tool stats.
-    /// </summary>
-    private bool _showChildScopes = true;
 
     public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, SamplerService? samplerService = null)
     {
@@ -115,13 +101,28 @@ public class ProfilerCategory
 
         // Stats view selector
         ImGui.SetNextItemWidth(150);
-        ImGui.Combo("Stats View", ref _selectedStatsView, StatsViewOptions, StatsViewOptions.Length);
+        var selectedStatsView = _configService.Config.ProfilerStatsView;
+        if (ImGui.Combo("Stats View", ref selectedStatsView, StatsViewOptions, StatsViewOptions.Length))
+        {
+            _configService.Config.ProfilerStatsView = selectedStatsView;
+            _configService.Save();
+        }
         
         ImGui.SameLine();
-        ImGui.Checkbox("Show Histogram", ref _showHistogram);
+        var showHistogram = _configService.Config.ProfilerShowHistogram;
+        if (ImGui.Checkbox("Show Histogram", ref showHistogram))
+        {
+            _configService.Config.ProfilerShowHistogram = showHistogram;
+            _configService.Save();
+        }
         
         ImGui.SameLine();
-        ImGui.Checkbox("Show Child Scopes", ref _showChildScopes);
+        var showChildScopes = _configService.Config.ProfilerShowChildScopes;
+        if (ImGui.Checkbox("Show Child Scopes", ref showChildScopes))
+        {
+            _configService.Config.ProfilerShowChildScopes = showChildScopes;
+            _configService.Save();
+        }
 
         ImGui.Spacing();
 
@@ -153,12 +154,12 @@ public class ProfilerCategory
             }
             else
             {
-                DrawStatsTable("Tools", toolStats.Values.ToArray(), _showChildScopes);
+                DrawStatsTable("Tools", toolStats.Values.ToArray(), _configService.Config.ProfilerShowChildScopes);
             }
         }
 
         // Histogram panel
-        if (_showHistogram)
+        if (_configService.Config.ProfilerShowHistogram)
         {
             ImGui.Spacing();
             DrawHistogramPanel();
@@ -211,7 +212,8 @@ public class ProfilerCategory
     {
         if (stats.Length == 0) return;
 
-        var columnCount = _selectedStatsView switch
+        var statsView = _configService.Config.ProfilerStatsView;
+        var columnCount = statsView switch
         {
             0 => 7,  // Basic: Name, Last, Min, Max, Avg, StdDev, Samples
             1 => 6,  // Percentiles: Name, P50, P90, P95, P99, Samples
@@ -250,7 +252,7 @@ public class ProfilerCategory
 
     private void SetupTableColumns()
     {
-        switch (_selectedStatsView)
+        switch (_configService.Config.ProfilerStatsView)
         {
             case 0: // Basic
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.None, 2f);
@@ -312,7 +314,7 @@ public class ProfilerCategory
             ImGui.TextUnformatted(stat.Name);
         }
 
-        switch (_selectedStatsView)
+        switch (_configService.Config.ProfilerStatsView)
         {
             case 0: // Basic
                 ImGui.TableNextColumn();

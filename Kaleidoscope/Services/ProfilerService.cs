@@ -24,12 +24,30 @@ public sealed class ProfilerService : IDisposable, IService
     /// <summary>
     /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
     /// </summary>
-    public double SlowOperationThresholdMs { get; set; } = 5.0;
+    public double SlowOperationThresholdMs
+    {
+        get => Config.ProfilerSlowOperationThresholdMs;
+        set
+        {
+            if (Math.Abs(Config.ProfilerSlowOperationThresholdMs - value) < 0.001) return;
+            Config.ProfilerSlowOperationThresholdMs = value;
+            _configService.Save();
+        }
+    }
     
     /// <summary>
     /// Whether to log slow operations to the Dalamud log.
     /// </summary>
-    public bool LogSlowOperations { get; set; } = true;
+    public bool LogSlowOperations
+    {
+        get => Config.ProfilerLogSlowOperations;
+        set
+        {
+            if (Config.ProfilerLogSlowOperations == value) return;
+            Config.ProfilerLogSlowOperations = value;
+            _configService.Save();
+        }
+    }
     
     /// <summary>
     /// Gets the current profiler context for this thread, if any.

@@ -108,6 +108,31 @@ public class Configuration : IPluginConfiguration
     public bool ProfilerEnabled { get; set; } = false;
 
     /// <summary>
+    /// Whether to log slow operations to the Dalamud log.
+    /// </summary>
+    public bool ProfilerLogSlowOperations { get; set; } = true;
+
+    /// <summary>
+    /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
+    /// </summary>
+    public double ProfilerSlowOperationThresholdMs { get; set; } = 5.0;
+
+    /// <summary>
+    /// Which stats view to show in the profiler (0=Basic, 1=Percentiles, 2=Rolling, 3=All).
+    /// </summary>
+    public int ProfilerStatsView { get; set; } = 0;
+
+    /// <summary>
+    /// Whether to show the histogram panel in the profiler.
+    /// </summary>
+    public bool ProfilerShowHistogram { get; set; } = false;
+
+    /// <summary>
+    /// Whether to expand child scopes in profiler tool stats.
+    /// </summary>
+    public bool ProfilerShowChildScopes { get; set; } = true;
+
+    /// <summary>
     /// Whether developer mode stays visible without holding CTRL+ALT.
     /// </summary>
     public bool DeveloperModeEnabled { get; set; } = false;
