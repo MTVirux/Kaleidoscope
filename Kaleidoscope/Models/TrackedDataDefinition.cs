@@ -54,4 +54,11 @@ public sealed class TrackedDataDefinition
     /// Icon ID from game data, if applicable.
     /// </summary>
     public uint? IconId { get; init; }
+
+    /// <summary>
+    /// Whether this data type is calculated from external data (e.g., Universalis prices) 
+    /// rather than read directly from game memory. Calculated types are sampled on a timer
+    /// by their respective services rather than by InventoryChangeService.
+    /// </summary>
+    public bool IsCalculated { get; init; } = false;
 }

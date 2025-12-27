@@ -335,6 +335,20 @@ public sealed class TrackedDataRegistry : IRequiredService
             EnabledByDefault = false,
             Description = "Number of empty slots in main inventory."
         });
+
+        // === Universalis / Inventory Value (Calculated from market prices) ===
+        RegisterTrackedType(new TrackedDataDefinition
+        {
+            Type = TrackedDataType.InventoryValueItems,
+            DisplayName = "Inventory Value (Items)",
+            ShortName = "Inv Items",
+            Category = TrackedDataCategory.Universalis,
+            ItemId = 0, // No specific item
+            MaxValue = 999_999_999_999, // Items can be worth a lot
+            EnabledByDefault = true,
+            Description = "Market value of inventory items via Universalis. Updates when prices change.",
+            IsCalculated = true
+        });
     }
 
     private void RegisterTrackedType(TrackedDataDefinition definition)

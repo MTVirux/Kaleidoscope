@@ -93,6 +93,10 @@ public enum TrackedDataType
     FreeCompanyGil = 1100,
     /// <summary>Retainer gil (aggregate).</summary>
     RetainerGil = 1101,
+
+    // === Universalis / Inventory Value (Calculated from market prices) ===
+    /// <summary>Market value of inventory items via Universalis prices.</summary>
+    InventoryValueItems = 1200,
 }
 
 /// <summary>
@@ -111,5 +115,6 @@ public enum TrackedDataCategory
     Tribal,
     Crafting,
     Retainer,
-    Inventory, // Last - Free Inventory Slots appears at the end
+    Inventory,
+    Universalis, // Last - Inventory Value appears at the end
 }
