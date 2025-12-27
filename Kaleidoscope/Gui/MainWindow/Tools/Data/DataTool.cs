@@ -1,0 +1,1445 @@
+using System.Numerics;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Helpers;
+using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Models;
+using Kaleidoscope.Models.Universalis;
+using Kaleidoscope.Services;
+using CrystalElement = Kaleidoscope.CrystalElement;
+using CrystalTier = Kaleidoscope.CrystalTier;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
+
+namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
+
+/// <summary>
+/// Unified tool component that can display data as either a table or a graph.
+/// Maintains all settings when switching between views.
+/// </summary>
+public class DataTool : ToolComponent
+{
+    public override string ToolName => "Data";
+    
+    private readonly SamplerService _samplerService;
+    private readonly ConfigurationService _configService;
+    private readonly InventoryCacheService? _inventoryCacheService;
+    private readonly TrackedDataRegistry? _trackedDataRegistry;
+    private readonly ItemDataService? _itemDataService;
+    private readonly IDataManager? _dataManager;
+    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly PriceTrackingService? _priceTrackingService;
+    private readonly FavoritesService? _favoritesService;
+    private readonly ITextureProvider? _textureProvider;
+    
+    // Widgets
+    private readonly ItemTableWidget _tableWidget;
+    private readonly ImplotGraphWidget _graphWidget;
+    private readonly ItemComboDropdown? _itemCombo;
+    private readonly CurrencyComboDropdown? _currencyCombo;
+    private readonly CharacterCombo? _characterCombo;
+    
+    // Instance-specific settings
+    private readonly DataToolSettings _instanceSettings;
+    
+    // Table view cached data
+    private PreparedItemTableData? _cachedTableData;
+    private DateTime _lastTableRefresh = DateTime.MinValue;
+    private volatile bool _pendingTableRefresh = true;
+    
+    // Graph view cached data (tuple format matching ImplotGraphWidget.RenderMultipleSeries)
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
+    private DateTime _lastGraphRefresh = DateTime.MinValue;
+    private volatile bool _graphCacheIsDirty = true;
+    private int _cachedSeriesCount;
+    private int _cachedTimeRangeValue;
+    private TimeUnit _cachedTimeRangeUnit;
+    private bool _cachedIncludeRetainers;
+    private bool _cachedShowPerCharacter;
+    private TableGroupingMode _cachedGroupingMode;
+    
+    // Shared cached state
+    private CharacterNameFormat _cachedNameFormat;
+    private CharacterSortOrder _cachedSortOrder;
+    
+    /// <summary>
+    /// The name of the preset used to create this tool, if any.
+    /// </summary>
+    public string? PresetName { get; set; }
+    
+    private DataToolSettings Settings => _instanceSettings;
+    private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private TimeSeriesCacheService CacheService => _samplerService.CacheService;
+    
+    public DataTool(
+        SamplerService samplerService,
+        ConfigurationService configService,
+        InventoryCacheService? inventoryCacheService = null,
+        TrackedDataRegistry? trackedDataRegistry = null,
+        ItemDataService? itemDataService = null,
+        IDataManager? dataManager = null,
+        ITextureProvider? textureProvider = null,
+        FavoritesService? favoritesService = null,
+        AutoRetainerIpcService? autoRetainerService = null,
+        PriceTrackingService? priceTrackingService = null)
+    {
+        _samplerService = samplerService;
+        _configService = configService;
+        _inventoryCacheService = inventoryCacheService;
+        _trackedDataRegistry = trackedDataRegistry;
+        _itemDataService = itemDataService;
+        _dataManager = dataManager;
+        _autoRetainerService = autoRetainerService;
+        _priceTrackingService = priceTrackingService;
+        _favoritesService = favoritesService;
+        _textureProvider = textureProvider;
+        
+        // Initialize instance-specific settings
+        _instanceSettings = new DataToolSettings();
+        
+        Size = new Vector2(500, 300);
+        UpdateTitle();
+        
+        // Create the table widget
+        _tableWidget = new ItemTableWidget(
+            new ItemTableWidget.TableConfig
+            {
+                TableId = "DataToolTable",
+                NoDataText = "No data yet. Add items or currencies to track."
+            },
+            itemDataService,
+            trackedDataRegistry,
+            configService.Config,
+            samplerService.CacheService);
+        
+        // Bind table widget to settings
+        _tableWidget.BindSettings(
+            _instanceSettings,
+            () => NotifyToolSettingsChanged(),
+            "Table Settings");
+        
+        // Create the graph widget
+        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
+        {
+            PlotId = "DataToolGraph",
+            MinValue = 0f,
+            MaxValue = 100_000_000f,
+            NoDataText = "No historical data available."
+        });
+        
+        // Bind graph widget to settings
+        _graphWidget.BindSettings(
+            _instanceSettings,
+            () => { _graphCacheIsDirty = true; NotifyToolSettingsChanged(); },
+            "Graph Settings");
+        
+        // Create item combo
+        if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
+        {
+            _itemCombo = new ItemComboDropdown(
+                textureProvider,
+                _dataManager,
+                favoritesService,
+                null,
+                "DataToolItemAdd",
+                marketableOnly: false);
+        }
+        
+        // Create currency combo
+        if (textureProvider != null && trackedDataRegistry != null && favoritesService != null)
+        {
+            _currencyCombo = new CurrencyComboDropdown(
+                textureProvider,
+                trackedDataRegistry,
+                favoritesService,
+                "DataToolCurrencyAdd",
+                itemDataService);
+        }
+        
+        // Create character combo
+        if (favoritesService != null)
+        {
+            _characterCombo = new CharacterCombo(
+                samplerService,
+                favoritesService,
+                configService,
+                "DataToolCharFilter",
+                autoRetainerService,
+                priceTrackingService);
+            _characterCombo.MultiSelectEnabled = true;
+            _characterCombo.MultiSelectionChanged += OnCharacterSelectionChanged;
+            
+            // Restore selection from settings
+            if (_instanceSettings.UseCharacterFilter && _instanceSettings.SelectedCharacterIds.Count > 0)
+            {
+                _characterCombo.SetSelection(_instanceSettings.SelectedCharacterIds);
+            }
+        }
+        
+        // Register widgets as settings providers
+        RegisterSettingsProvider(_tableWidget);
+        RegisterSettingsProvider(_graphWidget);
+    }
+    
+    /// <summary>
+    /// Sets the columns/series for this tool. Used by presets.
+    /// </summary>
+    public void SetColumns(List<ItemColumnConfig> columns)
+    {
+        _instanceSettings.Columns.Clear();
+        _instanceSettings.Columns.AddRange(columns);
+        _pendingTableRefresh = true;
+        _graphCacheIsDirty = true;
+    }
+    
+    /// <summary>
+    /// Gets the current columns/series being tracked.
+    /// </summary>
+    public IReadOnlyList<ItemColumnConfig> GetColumns() => _instanceSettings.Columns;
+    
+    /// <summary>
+    /// Configures settings. Used by presets.
+    /// </summary>
+    public void ConfigureSettings(Action<DataToolSettings> configure)
+    {
+        configure(_instanceSettings);
+        _pendingTableRefresh = true;
+        _graphCacheIsDirty = true;
+    }
+    
+    private void UpdateTitle()
+    {
+        var viewSuffix = Settings.ViewMode == DataToolViewMode.Table ? "Table" : "Graph";
+        Title = string.IsNullOrWhiteSpace(PresetName) 
+            ? $"Data {viewSuffix}" 
+            : $"Data {viewSuffix} - {PresetName}";
+    }
+    
+    private void OnCharacterSelectionChanged(IReadOnlySet<ulong> selectedIds)
+    {
+        Settings.SelectedCharacterIds.Clear();
+        Settings.SelectedCharacterIds.AddRange(selectedIds);
+        Settings.UseCharacterFilter = selectedIds.Count > 0;
+        _pendingTableRefresh = true;
+        _graphCacheIsDirty = true;
+        NotifyToolSettingsChanged();
+    }
+    
+    public override void RenderToolContent()
+    {
+        try
+        {
+            // Check if name format changed
+            var currentFormat = _configService.Config.CharacterNameFormat;
+            if (_cachedNameFormat != currentFormat)
+            {
+                _cachedNameFormat = currentFormat;
+                _pendingTableRefresh = true;
+                _graphCacheIsDirty = true;
+            }
+            
+            // Check if sort order changed
+            var currentSortOrder = _configService.Config.CharacterSortOrder;
+            if (_cachedSortOrder != currentSortOrder)
+            {
+                _cachedSortOrder = currentSortOrder;
+                _pendingTableRefresh = true;
+            }
+            
+            // Draw action buttons
+            if (Settings.ShowActionButtons)
+            {
+                DrawActionButtons();
+                ImGui.Separator();
+            }
+            
+            // Draw based on view mode
+            if (Settings.ViewMode == DataToolViewMode.Table)
+            {
+                DrawTableView();
+            }
+            else
+            {
+                DrawGraphView();
+            }
+        }
+        catch (Exception ex)
+        {
+            ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
+            LogService.Debug($"[DataTool] Draw error: {ex.Message}");
+        }
+    }
+    
+    private void DrawActionButtons()
+    {
+        // View toggle button
+        var isGraphView = Settings.ViewMode == DataToolViewMode.Graph;
+        var toggleLabel = isGraphView ? "📊" : "📈";
+        
+        // Check for items without history tracking (only items need this, currencies are always tracked)
+        var itemsWithoutHistory = Settings.Columns
+            .Where(c => !c.IsCurrency && !c.StoreHistory)
+            .ToList();
+        var hasHistoryWarning = itemsWithoutHistory.Count > 0;
+        
+        // Build tooltip
+        var toggleTooltip = isGraphView ? "Switch to Table View" : "Switch to Graph View";
+        if (hasHistoryWarning && !isGraphView)
+        {
+            toggleTooltip += "\n\n⚠ Warning: The following items do not have historical data enabled:";
+            foreach (var item in itemsWithoutHistory.Take(10))
+            {
+                var itemName = _itemDataService?.GetItemName(item.Id) ?? $"Item #{item.Id}";
+                toggleTooltip += $"\n  • {itemName}";
+            }
+            if (itemsWithoutHistory.Count > 10)
+            {
+                toggleTooltip += $"\n  ... and {itemsWithoutHistory.Count - 10} more";
+            }
+            toggleTooltip += "\n\nThey will not display time-series data in graph view.\nEnable 'Store History' in Settings to track them.";
+        }
+        
+        if (ImGui.Button(toggleLabel, new Vector2(28, 0)))
+        {
+            Settings.ViewMode = isGraphView ? DataToolViewMode.Table : DataToolViewMode.Graph;
+            UpdateTitle();
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(toggleTooltip);
+        }
+        
+        ImGui.SameLine();
+        
+        // Character filter combo
+        if (_characterCombo != null)
+        {
+            ImGui.SetNextItemWidth(160);
+            _characterCombo.Draw(160);
+            ImGui.SameLine();
+        }
+        
+        // Item/Currency adding (different behavior for table vs graph)
+        if (Settings.ViewMode == DataToolViewMode.Table)
+        {
+            DrawTableActionButtons();
+        }
+        else
+        {
+            DrawGraphActionButtons();
+        }
+    }
+    
+    private void DrawTableActionButtons()
+    {
+        // Multi-select item dropdown
+        if (_itemCombo != null)
+        {
+            var currentItemIds = Settings.Columns
+                .Where(c => !c.IsCurrency)
+                .Select(c => c.Id)
+                .ToHashSet();
+            
+            var comboSelection = _itemCombo.GetMultiSelection();
+            if (!currentItemIds.SetEquals(comboSelection))
+            {
+                _itemCombo.SetMultiSelection(currentItemIds);
+            }
+            
+            _itemCombo.DrawMultiSelect(160);
+            
+            var newSelection = _itemCombo.GetMultiSelection();
+            SyncItemColumns(newSelection);
+            
+            ImGui.SameLine();
+        }
+        
+        // Multi-select currency dropdown
+        if (_currencyCombo != null)
+        {
+            var currentCurrencyTypes = Settings.Columns
+                .Where(c => c.IsCurrency)
+                .Select(c => (TrackedDataType)c.Id)
+                .ToHashSet();
+            
+            var comboSelection = _currencyCombo.GetMultiSelection();
+            if (!currentCurrencyTypes.SetEquals(comboSelection))
+            {
+                _currencyCombo.SetMultiSelection(currentCurrencyTypes);
+            }
+            
+            _currencyCombo.DrawMultiSelect(160);
+            
+            var newSelection = _currencyCombo.GetMultiSelection();
+            SyncCurrencyColumns(newSelection);
+        }
+    }
+    
+    private void DrawGraphActionButtons()
+    {
+        // Single-select item dropdown
+        if (_itemCombo != null)
+        {
+            if (_itemCombo.Draw(160))
+            {
+                if (_itemCombo.SelectedItemId > 0)
+                {
+                    AddColumn(_itemCombo.SelectedItemId, isCurrency: false);
+                    _itemCombo.ClearSelection();
+                }
+            }
+            ImGui.SameLine();
+        }
+        
+        // Single-select currency dropdown
+        if (_currencyCombo != null)
+        {
+            if (_currencyCombo.Draw(160))
+            {
+                if (_currencyCombo.SelectedType != default)
+                {
+                    AddColumn((uint)_currencyCombo.SelectedType, isCurrency: true);
+                    _currencyCombo.ClearSelection();
+                }
+            }
+            ImGui.SameLine();
+        }
+        
+        if (ImGui.Button("Refresh"))
+        {
+            _graphCacheIsDirty = true;
+        }
+        
+        ImGui.SameLine();
+        ImGui.TextDisabled($"({Settings.Columns.Count} series)");
+    }
+    
+    private void SyncItemColumns(IReadOnlySet<uint> selectedItemIds)
+    {
+        var changed = false;
+        
+        foreach (var itemId in selectedItemIds)
+        {
+            if (!Settings.Columns.Any(c => !c.IsCurrency && c.Id == itemId))
+            {
+                Settings.Columns.Add(new ItemColumnConfig { Id = itemId, IsCurrency = false });
+                changed = true;
+            }
+        }
+        
+        var toRemove = Settings.Columns
+            .Where(c => !c.IsCurrency && !selectedItemIds.Contains(c.Id))
+            .ToList();
+        
+        foreach (var col in toRemove)
+        {
+            Settings.Columns.Remove(col);
+            changed = true;
+        }
+        
+        if (changed)
+        {
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+    }
+    
+    private void SyncCurrencyColumns(IReadOnlySet<TrackedDataType> selectedTypes)
+    {
+        var changed = false;
+        
+        foreach (var type in selectedTypes)
+        {
+            var typeId = (uint)type;
+            if (!Settings.Columns.Any(c => c.IsCurrency && c.Id == typeId))
+            {
+                Settings.Columns.Add(new ItemColumnConfig { Id = typeId, IsCurrency = true });
+                changed = true;
+            }
+        }
+        
+        var toRemove = Settings.Columns
+            .Where(c => c.IsCurrency && !selectedTypes.Contains((TrackedDataType)c.Id))
+            .ToList();
+        
+        foreach (var col in toRemove)
+        {
+            Settings.Columns.Remove(col);
+            changed = true;
+        }
+        
+        if (changed)
+        {
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+    }
+    
+    private void AddColumn(uint id, bool isCurrency)
+    {
+        if (ColumnManagementWidget.AddColumn(Settings.Columns, id, isCurrency))
+        {
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+    }
+    
+    #region Table View
+    
+    private void DrawTableView()
+    {
+        // Auto-refresh every 0.5s
+        var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 0.5;
+        
+        if (_pendingTableRefresh || shouldAutoRefresh)
+        {
+            RefreshTableData();
+        }
+        
+        _tableWidget.Draw(_cachedTableData, Settings);
+    }
+    
+    private void RefreshTableData()
+    {
+        try
+        {
+            var settings = Settings;
+            var allColumns = settings.Columns;
+            
+            // Apply special grouping filter to get visible columns
+            var columns = SpecialGroupingHelper.ApplySpecialGroupingFilter(allColumns, settings.SpecialGrouping).ToList();
+            
+            if (columns.Count == 0)
+            {
+                _cachedTableData = new PreparedItemTableData
+                {
+                    Rows = Array.Empty<ItemTableCharacterRow>(),
+                    Columns = columns
+                };
+                _lastTableRefresh = DateTime.UtcNow;
+                _pendingTableRefresh = false;
+                return;
+            }
+            
+            // Get all character names with disambiguation
+            var characterNames = DbService.GetAllCharacterNamesDict();
+            var disambiguatedNames = CacheService.GetDisambiguatedNames(characterNames.Keys);
+            var rows = new Dictionary<ulong, ItemTableCharacterRow>();
+            
+            // Get world data for DC/Region lookups (from PriceTrackingService)
+            var worldData = _priceTrackingService?.WorldData;
+            
+            // Get character world info from AutoRetainer (maps CID to world name)
+            var characterWorlds = new Dictionary<ulong, string>();
+            if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
+            {
+                var arData = _autoRetainerService.GetAllCharacterData();
+                foreach (var (_, world, _, cid) in arData)
+                {
+                    if (!string.IsNullOrEmpty(world))
+                    {
+                        characterWorlds[cid] = world;
+                    }
+                }
+            }
+            
+            // Get character filter (if using multi-select)
+            HashSet<ulong>? allowedCharacters = null;
+            if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+            {
+                allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
+            }
+            
+            // Initialize rows for all known characters (filtered if applicable)
+            foreach (var (charId, name) in characterNames)
+            {
+                // Skip characters not in the allowed set (if filtering is enabled)
+                if (allowedCharacters != null && !allowedCharacters.Contains(charId))
+                    continue;
+                
+                var displayName = disambiguatedNames.TryGetValue(charId, out var formatted) 
+                    ? formatted : name ?? $"CID:{charId}";
+                
+                // Get world info for this character
+                var charWorldName = characterWorlds.TryGetValue(charId, out var w) ? w : string.Empty;
+                var dcName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetDataCenterForWorld(charWorldName)?.Name ?? string.Empty : string.Empty;
+                var regionName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetRegionForWorld(charWorldName) ?? string.Empty : string.Empty;
+                
+                rows[charId] = new ItemTableCharacterRow
+                {
+                    CharacterId = charId,
+                    Name = displayName,
+                    WorldName = charWorldName,
+                    DataCenterName = dcName,
+                    RegionName = regionName,
+                    ItemCounts = new Dictionary<uint, long>()
+                };
+            }
+            
+            // Populate data for each column
+            foreach (var column in columns)
+            {
+                if (column.IsCurrency)
+                {
+                    PopulateCurrencyData(column, rows);
+                }
+                else
+                {
+                    PopulateItemData(column, rows, settings.IncludeRetainers);
+                }
+            }
+            
+            // Apply gil merging if enabled
+            if (settings.SpecialGrouping.AllGilEnabled && settings.SpecialGrouping.MergeGilCurrencies)
+            {
+                ApplyGilMerging(rows);
+            }
+            
+            // Sort rows
+            var sortedRows = CharacterSortHelper.SortByCharacter(
+                rows.Values,
+                _configService,
+                _autoRetainerService,
+                r => r.CharacterId,
+                r => r.Name).ToList();
+            
+            _cachedTableData = new PreparedItemTableData
+            {
+                Rows = sortedRows,
+                Columns = columns
+            };
+            
+            _lastTableRefresh = DateTime.UtcNow;
+            _pendingTableRefresh = false;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] RefreshTableData error: {ex.Message}");
+        }
+    }
+    
+    private void PopulateCurrencyData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows)
+    {
+        try
+        {
+            var dataType = (TrackedDataType)column.Id;
+            var variableName = dataType.ToString();
+            
+            var allPoints = DbService.GetAllPointsBatch(variableName, null);
+            
+            if (allPoints.TryGetValue(variableName, out var points))
+            {
+                var latestByChar = points
+                    .GroupBy(p => p.characterId)
+                    .Select(g => (charId: g.Key, value: g.OrderByDescending(p => p.timestamp).First().value));
+                
+                foreach (var (charId, value) in latestByChar)
+                {
+                    if (rows.TryGetValue(charId, out var row))
+                    {
+                        row.ItemCounts[column.Id] = value;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] PopulateCurrencyData error: {ex.Message}");
+        }
+    }
+    
+    private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers)
+    {
+        try
+        {
+            if (_inventoryCacheService == null) return;
+            
+            var allInventories = _inventoryCacheService.GetAllInventories();
+            
+            foreach (var cache in allInventories)
+            {
+                if (!includeRetainers && cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
+                    continue;
+                
+                if (!rows.TryGetValue(cache.CharacterId, out var row))
+                    continue;
+                
+                var count = cache.Items
+                    .Where(i => i.ItemId == column.Id)
+                    .Sum(i => (long)i.Quantity);
+                
+                if (!row.ItemCounts.ContainsKey(column.Id))
+                    row.ItemCounts[column.Id] = 0;
+                
+                row.ItemCounts[column.Id] += count;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] PopulateItemData error: {ex.Message}");
+        }
+    }
+    
+    private void ApplyGilMerging(Dictionary<ulong, ItemTableCharacterRow> rows)
+    {
+        var gilId = (uint)TrackedDataType.Gil;
+        var fcGilId = (uint)TrackedDataType.FreeCompanyGil;
+        var retainerGilId = (uint)TrackedDataType.RetainerGil;
+        
+        foreach (var row in rows.Values)
+        {
+            long totalGil = 0;
+            
+            if (row.ItemCounts.TryGetValue(gilId, out var gil))
+                totalGil += gil;
+            if (row.ItemCounts.TryGetValue(fcGilId, out var fcGil))
+                totalGil += fcGil;
+            if (row.ItemCounts.TryGetValue(retainerGilId, out var retainerGil))
+                totalGil += retainerGil;
+            
+            row.ItemCounts[gilId] = totalGil;
+        }
+    }
+    
+    #endregion
+    
+    #region Graph View
+    
+    private void DrawGraphView()
+    {
+        _graphWidget.SyncFromBoundSettings();
+        
+        if (NeedsGraphCacheRefresh())
+        {
+            RefreshGraphData();
+        }
+        
+        if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
+        {
+            _graphWidget.RenderMultipleSeries(_cachedSeriesData);
+        }
+        else
+        {
+            if (Settings.Columns.Count == 0)
+            {
+                ImGui.TextDisabled("No items or currencies configured. Add some to start tracking.");
+            }
+            else
+            {
+                ImGui.TextDisabled("No historical data available.");
+            }
+        }
+    }
+    
+    private bool NeedsGraphCacheRefresh()
+    {
+        if (_graphCacheIsDirty) return true;
+        
+        var settings = Settings;
+        if (_cachedSeriesCount != settings.Columns.Count) return true;
+        if (_cachedTimeRangeValue != settings.TimeRangeValue) return true;
+        if (_cachedTimeRangeUnit != settings.TimeRangeUnit) return true;
+        if (_cachedIncludeRetainers != settings.IncludeRetainers) return true;
+        if (_cachedShowPerCharacter != settings.ShowPerCharacter) return true;
+        if (_cachedGroupingMode != settings.GroupingMode) return true;
+        if (_cachedNameFormat != _configService.Config.CharacterNameFormat) return true;
+        
+        return (DateTime.UtcNow - _lastGraphRefresh).TotalSeconds > 5.0;
+    }
+    
+    private void RefreshGraphData()
+    {
+        var settings = Settings;
+        
+        _lastGraphRefresh = DateTime.UtcNow;
+        _cachedSeriesCount = settings.Columns.Count;
+        _cachedTimeRangeValue = settings.TimeRangeValue;
+        _cachedTimeRangeUnit = settings.TimeRangeUnit;
+        _cachedIncludeRetainers = settings.IncludeRetainers;
+        _cachedShowPerCharacter = settings.ShowPerCharacter;
+        _cachedNameFormat = _configService.Config.CharacterNameFormat;
+        _cachedGroupingMode = settings.GroupingMode;
+        _graphCacheIsDirty = false;
+        
+        // Apply special grouping filter
+        var series = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping).ToList();
+        if (series.Count == 0)
+        {
+            _cachedSeriesData = null;
+            return;
+        }
+        
+        var timeRange = GetTimeRange();
+        var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
+        
+        // Get character filter
+        HashSet<ulong>? allowedCharacters = null;
+        if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+        {
+            allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
+        }
+        
+        var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+        
+        foreach (var seriesConfig in series)
+        {
+            var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters);
+            if (seriesData != null)
+            {
+                seriesList.AddRange(seriesData);
+            }
+        }
+        
+        _cachedSeriesData = seriesList.Count > 0 ? seriesList : null;
+    }
+    
+    private TimeSpan? GetTimeRange()
+    {
+        var settings = Settings;
+        return TimeRangeSelectorWidget.GetTimeSpan(settings.TimeRangeValue, settings.TimeRangeUnit);
+    }
+    
+    /// <summary>
+    /// Gets a display name for the provided character ID.
+    /// Uses formatted name from cache service, respecting the name format setting.
+    /// </summary>
+    private string GetCharacterDisplayName(ulong characterId)
+    {
+        // Use cache service which handles display name, game name formatting, and fallbacks
+        var formattedName = CacheService.GetFormattedCharacterName(characterId);
+        if (!string.IsNullOrEmpty(formattedName))
+            return formattedName;
+
+        // Try runtime lookup for currently-loaded characters (formats it)
+        var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
+        if (!string.IsNullOrEmpty(runtimeName))
+            return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
+
+        // Fallback to ID
+        return $"Character {characterId}";
+    }
+    
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? LoadSeriesData(
+        ItemColumnConfig seriesConfig, 
+        DataToolSettings settings, 
+        DateTime? startTime,
+        HashSet<ulong>? allowedCharacters)
+    {
+        try
+        {
+            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+            string variableName;
+            
+            if (seriesConfig.IsCurrency)
+            {
+                variableName = ((TrackedDataType)seriesConfig.Id).ToString();
+            }
+            else
+            {
+                variableName = $"Item_{seriesConfig.Id}";
+            }
+            
+            var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
+            
+            if (!allPoints.TryGetValue(variableName, out var points) || points.Count == 0)
+                return null;
+            
+            // Apply character filter
+            if (allowedCharacters != null)
+            {
+                points = points.Where(p => allowedCharacters.Contains(p.characterId)).ToList();
+            }
+            
+            if (points.Count == 0)
+                return null;
+            
+            var defaultName = GetSeriesDisplayName(seriesConfig);
+            var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
+            
+            // Determine grouping based on GroupingMode (respects ShowPerCharacter for backward compat)
+            var groupingMode = settings.ShowPerCharacter ? TableGroupingMode.Character : settings.GroupingMode;
+            
+            if (groupingMode == TableGroupingMode.Character)
+            {
+                // Separate series per character
+                var byCharacter = points.GroupBy(p => p.characterId);
+                var charIndex = 0;
+                
+                foreach (var charGroup in byCharacter)
+                {
+                    var charName = GetCharacterDisplayName(charGroup.Key);
+                    var seriesName = $"{defaultName} ({charName})";
+                    
+                    // Determine color: prefer character color in PreferredCharacterColors mode,
+                    // otherwise use item color or fallback
+                    Vector4 seriesColor;
+                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    {
+                        seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
+                    }
+                    else
+                    {
+                        seriesColor = color;
+                    }
+                    
+                    var samples = charGroup
+                        .OrderBy(p => p.timestamp)
+                        .Select(p => (ts: p.timestamp, value: (float)p.value))
+                        .ToList();
+                    
+                    if (samples.Count > 0)
+                    {
+                        result.Add((seriesName, samples, seriesColor));
+                    }
+                    charIndex++;
+                }
+            }
+            else if (groupingMode == TableGroupingMode.All)
+            {
+                // Aggregate all characters by timestamp (round to minute)
+                var aggregated = points
+                    .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day, 
+                        p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                    .OrderBy(p => p.ts)
+                    .ToList();
+                
+                if (aggregated.Count > 0)
+                {
+                    result.Add((seriesConfig.CustomName ?? defaultName, aggregated, color));
+                }
+            }
+            else
+            {
+                // Group by World, DataCenter, or Region
+                var groupedSeries = GroupPointsByLocation(points, groupingMode, defaultName, seriesConfig, settings);
+                result.AddRange(groupedSeries);
+            }
+            
+            return result;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] LoadSeriesData error: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Groups time series points by World, DataCenter, or Region.
+    /// </summary>
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> GroupPointsByLocation(
+        IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points,
+        TableGroupingMode groupingMode,
+        string defaultName,
+        ItemColumnConfig seriesConfig,
+        DataToolSettings settings)
+    {
+        var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+        
+        // Get world data and character info from AutoRetainer
+        var worldData = _priceTrackingService?.WorldData;
+        var characterWorlds = GetCharacterWorldsMap();
+        
+        // Build character -> group name mapping
+        var characterGroups = new Dictionary<ulong, string>();
+        foreach (var (charId, worldName) in characterWorlds)
+        {
+            string groupName = groupingMode switch
+            {
+                TableGroupingMode.World => worldName,
+                TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
+                TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
+                _ => "Unknown"
+            };
+            characterGroups[charId] = groupName;
+        }
+        
+        // Group points by their location group
+        var byGroup = points
+            .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
+            .OrderBy(g => g.Key);
+        
+        var groupIndex = 0;
+        var color = GetEffectiveSeriesColor(seriesConfig, settings, 0);
+        
+        foreach (var group in byGroup)
+        {
+            var groupName = group.Key;
+            var seriesName = $"{defaultName} ({groupName})";
+            
+            // Aggregate points by timestamp within the group
+            var aggregated = group
+                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                .OrderBy(p => p.ts)
+                .ToList();
+            
+            if (aggregated.Count > 0)
+            {
+                // Use different colors per group if not using item colors
+                var seriesColor = settings.TextColorMode == TableTextColorMode.PreferredItemColors 
+                    ? color 
+                    : GetDefaultSeriesColor(groupIndex);
+                result.Add((seriesName, aggregated, seriesColor));
+            }
+            groupIndex++;
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Gets a mapping of character ID to world name from AutoRetainer.
+    /// </summary>
+    private Dictionary<ulong, string> GetCharacterWorldsMap()
+    {
+        var characterWorlds = new Dictionary<ulong, string>();
+        if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
+        {
+            var arData = _autoRetainerService.GetAllCharacterData();
+            foreach (var (_, world, _, cid) in arData)
+            {
+                if (!string.IsNullOrEmpty(world))
+                {
+                    characterWorlds[cid] = world;
+                }
+            }
+        }
+        return characterWorlds;
+    }
+    
+    private string GetSeriesDisplayName(ItemColumnConfig config)
+    {
+        if (!string.IsNullOrEmpty(config.CustomName))
+            return config.CustomName;
+        
+        if (config.IsCurrency)
+        {
+            var dataType = (TrackedDataType)config.Id;
+            var def = _trackedDataRegistry?.GetDefinition(dataType);
+            return def?.DisplayName ?? dataType.ToString();
+        }
+        
+        return _itemDataService?.GetItemName(config.Id) ?? $"Item #{config.Id}";
+    }
+    
+    /// <summary>
+    /// Gets the effective color for a series based on TextColorMode setting.
+    /// </summary>
+    private Vector4 GetEffectiveSeriesColor(ItemColumnConfig config, DataToolSettings settings, int seriesIndex)
+    {
+        // First check if the column has a custom color set
+        if (config.Color.HasValue)
+            return config.Color.Value;
+        
+        // Check TextColorMode for preferred colors
+        if (settings.TextColorMode == TableTextColorMode.PreferredItemColors)
+        {
+            var preferredColor = GetPreferredItemColor(config);
+            if (preferredColor.HasValue)
+                return preferredColor.Value;
+        }
+        
+        // Fallback to default color rotation
+        return GetDefaultSeriesColor(seriesIndex);
+    }
+    
+    /// <summary>
+    /// Gets the preferred color for an item/currency from configuration.
+    /// </summary>
+    private Vector4? GetPreferredItemColor(ItemColumnConfig config)
+    {
+        var configData = _configService.Config;
+        
+        if (config.IsCurrency)
+        {
+            // Check ItemColors (TrackedDataType -> uint)
+            var dataType = (TrackedDataType)config.Id;
+            if (configData.ItemColors.TryGetValue(dataType, out var colorUint))
+                return UintToVector4(colorUint);
+        }
+        else
+        {
+            // Check GameItemColors (item ID -> uint)
+            if (configData.GameItemColors.TryGetValue(config.Id, out var colorUint))
+                return UintToVector4(colorUint);
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the preferred color for a character from the cache service.
+    /// </summary>
+    private Vector4? GetPreferredCharacterColor(ulong characterId)
+    {
+        var charColor = CacheService.GetCharacterTimeSeriesColor(characterId);
+        if (charColor.HasValue)
+            return UintToVector4(charColor.Value);
+        return null;
+    }
+    
+    /// <summary>
+    /// Converts a uint color (ABGR format from ImGui) to Vector4.
+    /// </summary>
+    private static Vector4 UintToVector4(uint color)
+    {
+        var r = (color & 0xFF) / 255f;
+        var g = ((color >> 8) & 0xFF) / 255f;
+        var b = ((color >> 16) & 0xFF) / 255f;
+        var a = ((color >> 24) & 0xFF) / 255f;
+        return new Vector4(r, g, b, a);
+    }
+    
+    private static Vector4 GetDefaultSeriesColor(int index)
+    {
+        var colors = new[]
+        {
+            new Vector4(0.2f, 0.8f, 0.2f, 1.0f),
+            new Vector4(0.2f, 0.6f, 1.0f, 1.0f),
+            new Vector4(1.0f, 0.6f, 0.2f, 1.0f),
+            new Vector4(0.8f, 0.2f, 0.8f, 1.0f),
+            new Vector4(1.0f, 1.0f, 0.2f, 1.0f),
+            new Vector4(0.2f, 1.0f, 1.0f, 1.0f),
+        };
+        return colors[index % colors.Length];
+    }
+    
+    #endregion
+    
+    #region Tool Settings
+    
+    protected override bool HasToolSettings => true;
+    
+    protected override void DrawToolSettings()
+    {
+        var settings = Settings;
+        
+        // View Mode Section
+        ImGui.TextUnformatted("View Mode");
+        ImGui.Separator();
+        
+        var viewMode = (int)settings.ViewMode;
+        if (ImGui.Combo("View", ref viewMode, "Table\0Graph\0"))
+        {
+            settings.ViewMode = (DataToolViewMode)viewMode;
+            UpdateTitle();
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+        
+        ImGui.Spacing();
+        ImGui.Spacing();
+        
+        // Display Options
+        ImGui.TextUnformatted("Display Options");
+        ImGui.Separator();
+        
+        // Grouping mode
+        var groupingMode = (int)settings.GroupingMode;
+        ImGui.SetNextItemWidth(150);
+        if (ImGui.Combo("Group By", ref groupingMode, "Character\0World\0Data Center\0Region\0All\0"))
+        {
+            settings.GroupingMode = (TableGroupingMode)groupingMode;
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+        
+        // Include retainers
+        var includeRetainers = settings.IncludeRetainers;
+        if (ImGui.Checkbox("Include Retainers", ref includeRetainers))
+        {
+            settings.IncludeRetainers = includeRetainers;
+            _pendingTableRefresh = true;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+        
+        // Show action buttons
+        var showActionButtons = settings.ShowActionButtons;
+        if (ImGui.Checkbox("Show Action Buttons", ref showActionButtons))
+        {
+            settings.ShowActionButtons = showActionButtons;
+            NotifyToolSettingsChanged();
+        }
+        
+        // Compact numbers
+        var useCompactNumbers = settings.UseCompactNumbers;
+        if (ImGui.Checkbox("Compact Numbers", ref useCompactNumbers))
+        {
+            settings.UseCompactNumbers = useCompactNumbers;
+            NotifyToolSettingsChanged();
+        }
+        
+        ImGui.Spacing();
+        
+        // Table-specific options
+        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Table View Options");
+        
+        var textColorMode = (int)settings.TextColorMode;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo("Color Mode", ref textColorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
+        {
+            settings.TextColorMode = (TableTextColorMode)textColorMode;
+            _pendingTableRefresh = true;
+            NotifyToolSettingsChanged();
+        }
+        
+        ImGui.Spacing();
+        
+        // Graph-specific options
+        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Graph View Options");
+        
+        var showPerCharacter = settings.ShowPerCharacter;
+        if (ImGui.Checkbox("Show Per Character", ref showPerCharacter))
+        {
+            settings.ShowPerCharacter = showPerCharacter;
+            _graphCacheIsDirty = true;
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Show separate lines for each character instead of aggregating");
+        }
+        
+        ImGui.Spacing();
+        ImGui.Spacing();
+        
+        // Column/Series Management
+        var mergedColumnIndices = new HashSet<int>();
+        foreach (var group in settings.MergedColumnGroups)
+        {
+            foreach (var idx in group.ColumnIndices)
+            {
+                mergedColumnIndices.Add(idx);
+            }
+        }
+        
+        ColumnManagementWidget.Draw(
+            settings.Columns,
+            column => GetSeriesDisplayName(column),
+            onSettingsChanged: () => NotifyToolSettingsChanged(),
+            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
+            sectionTitle: settings.ViewMode == DataToolViewMode.Table ? "Column Management" : "Series Management",
+            emptyMessage: "No items or currencies configured.",
+            mergedColumnIndices: mergedColumnIndices,
+            itemLabel: "Item",
+            currencyLabel: "Currency");
+        
+        // Special Grouping
+        SpecialGroupingWidget.Draw(
+            settings.SpecialGrouping,
+            settings.Columns,
+            onSettingsChanged: () => NotifyToolSettingsChanged(),
+            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; });
+    }
+    
+    public override Dictionary<string, object?>? ExportToolSettings()
+    {
+        var settings = _instanceSettings;
+        
+        // Use centralized column export
+        var columns = ColumnManagementWidget.ExportColumns(settings.Columns);
+        
+        // Serialize merged column groups
+        var mergedColumnGroups = settings.MergedColumnGroups.Select(g => new Dictionary<string, object?>
+        {
+            ["Name"] = g.Name,
+            ["ColumnIndices"] = g.ColumnIndices.ToList(),
+            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null,
+            ["Width"] = g.Width
+        }).ToList();
+        
+        // Serialize merged row groups
+        var mergedRowGroups = settings.MergedRowGroups.Select(g => new Dictionary<string, object?>
+        {
+            ["Name"] = g.Name,
+            ["CharacterIds"] = g.CharacterIds.ToList(),
+            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null
+        }).ToList();
+        
+        return new Dictionary<string, object?>
+        {
+            // View mode
+            ["ViewMode"] = (int)settings.ViewMode,
+            
+            // Shared settings
+            ["Columns"] = columns,
+            ["IncludeRetainers"] = settings.IncludeRetainers,
+            ["ShowActionButtons"] = settings.ShowActionButtons,
+            ["UseCompactNumbers"] = settings.UseCompactNumbers,
+            ["UseCharacterFilter"] = settings.UseCharacterFilter,
+            ["SelectedCharacterIds"] = settings.SelectedCharacterIds.ToList(),
+            ["GroupingMode"] = (int)settings.GroupingMode,
+            ["SpecialGrouping"] = SpecialGroupingWidget.ExportSettings(settings.SpecialGrouping),
+            
+            // Table-specific
+            ["MergedColumnGroups"] = mergedColumnGroups,
+            ["MergedRowGroups"] = mergedRowGroups,
+            ["ShowTotalRow"] = settings.ShowTotalRow,
+            ["Sortable"] = settings.Sortable,
+            ["CharacterColumnWidth"] = settings.CharacterColumnWidth,
+            ["CharacterColumnColor"] = settings.CharacterColumnColor.HasValue ? new float[] { settings.CharacterColumnColor.Value.X, settings.CharacterColumnColor.Value.Y, settings.CharacterColumnColor.Value.Z, settings.CharacterColumnColor.Value.W } : null,
+            ["SortColumnIndex"] = settings.SortColumnIndex,
+            ["SortAscending"] = settings.SortAscending,
+            ["HeaderColor"] = settings.HeaderColor.HasValue ? new float[] { settings.HeaderColor.Value.X, settings.HeaderColor.Value.Y, settings.HeaderColor.Value.Z, settings.HeaderColor.Value.W } : null,
+            ["EvenRowColor"] = settings.EvenRowColor.HasValue ? new float[] { settings.EvenRowColor.Value.X, settings.EvenRowColor.Value.Y, settings.EvenRowColor.Value.Z, settings.EvenRowColor.Value.W } : null,
+            ["OddRowColor"] = settings.OddRowColor.HasValue ? new float[] { settings.OddRowColor.Value.X, settings.OddRowColor.Value.Y, settings.OddRowColor.Value.Z, settings.OddRowColor.Value.W } : null,
+            ["UseFullNameWidth"] = settings.UseFullNameWidth,
+            ["AutoSizeEqualColumns"] = settings.AutoSizeEqualColumns,
+            ["HorizontalAlignment"] = (int)settings.HorizontalAlignment,
+            ["VerticalAlignment"] = (int)settings.VerticalAlignment,
+            ["CharacterColumnHorizontalAlignment"] = (int)settings.CharacterColumnHorizontalAlignment,
+            ["CharacterColumnVerticalAlignment"] = (int)settings.CharacterColumnVerticalAlignment,
+            ["HeaderHorizontalAlignment"] = (int)settings.HeaderHorizontalAlignment,
+            ["HeaderVerticalAlignment"] = (int)settings.HeaderVerticalAlignment,
+            ["HiddenCharacters"] = settings.HiddenCharacters.ToList(),
+            ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
+            ["TextColorMode"] = (int)settings.TextColorMode,
+            
+            // Graph-specific
+            ["ShowPerCharacter"] = settings.ShowPerCharacter,
+            ["LegendWidth"] = settings.LegendWidth,
+            ["LegendHeightPercent"] = settings.LegendHeightPercent,
+            ["ShowLegend"] = settings.ShowLegend,
+            ["LegendPosition"] = (int)settings.LegendPosition,
+            ["GraphType"] = (int)settings.GraphType,
+            ["ShowXAxisTimestamps"] = settings.ShowXAxisTimestamps,
+            ["ShowCrosshair"] = settings.ShowCrosshair,
+            ["ShowGridLines"] = settings.ShowGridLines,
+            ["ShowCurrentPriceLine"] = settings.ShowCurrentPriceLine,
+            ["ShowValueLabel"] = settings.ShowValueLabel,
+            ["ValueLabelOffsetX"] = settings.ValueLabelOffsetX,
+            ["ValueLabelOffsetY"] = settings.ValueLabelOffsetY,
+            ["AutoScrollEnabled"] = settings.AutoScrollEnabled,
+            ["AutoScrollTimeValue"] = settings.AutoScrollTimeValue,
+            ["AutoScrollTimeUnit"] = (int)settings.AutoScrollTimeUnit,
+            ["AutoScrollNowPosition"] = settings.AutoScrollNowPosition,
+            ["ShowControlsDrawer"] = settings.ShowControlsDrawer,
+            ["TimeRangeValue"] = settings.TimeRangeValue,
+            ["TimeRangeUnit"] = (int)settings.TimeRangeUnit
+        };
+    }
+    
+    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+    {
+        if (settings == null) return;
+        
+        var target = _instanceSettings;
+        
+        // View mode
+        target.ViewMode = (DataToolViewMode)SettingsImportHelper.GetSetting(settings, "ViewMode", (int)target.ViewMode);
+        
+        // Columns
+        if (settings.TryGetValue("Columns", out var columnsObj) && columnsObj != null)
+        {
+            target.Columns.Clear();
+            target.Columns.AddRange(ColumnManagementWidget.ImportColumns(columnsObj));
+        }
+        
+        // Shared settings
+        target.IncludeRetainers = SettingsImportHelper.GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
+        target.ShowActionButtons = SettingsImportHelper.GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
+        target.UseCompactNumbers = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", target.UseCompactNumbers);
+        target.UseCharacterFilter = SettingsImportHelper.GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);
+        
+        var selectedIds = SettingsImportHelper.ImportUlongList(settings, "SelectedCharacterIds");
+        if (selectedIds != null)
+        {
+            target.SelectedCharacterIds.Clear();
+            target.SelectedCharacterIds.AddRange(selectedIds);
+        }
+        
+        target.GroupingMode = (TableGroupingMode)SettingsImportHelper.GetSetting(settings, "GroupingMode", (int)target.GroupingMode);
+        
+        // Special grouping
+        if (settings.TryGetValue("SpecialGrouping", out var specialGroupingObj))
+        {
+            var specialGroupingDict = SettingsImportHelper.ConvertToDictionary(specialGroupingObj);
+            SpecialGroupingWidget.ImportSettings(target.SpecialGrouping, specialGroupingDict);
+        }
+        
+        // Table-specific
+        target.ShowTotalRow = SettingsImportHelper.GetSetting(settings, "ShowTotalRow", target.ShowTotalRow);
+        target.Sortable = SettingsImportHelper.GetSetting(settings, "Sortable", target.Sortable);
+        target.CharacterColumnWidth = SettingsImportHelper.GetSetting(settings, "CharacterColumnWidth", target.CharacterColumnWidth);
+        target.SortColumnIndex = SettingsImportHelper.GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
+        target.SortAscending = SettingsImportHelper.GetSetting(settings, "SortAscending", target.SortAscending);
+        target.UseFullNameWidth = SettingsImportHelper.GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
+        target.AutoSizeEqualColumns = SettingsImportHelper.GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
+        target.HorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
+        target.VerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
+        target.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
+        target.CharacterColumnVerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
+        target.HeaderHorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
+        target.HeaderVerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
+        target.HideCharacterColumnInAllMode = SettingsImportHelper.GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
+        target.TextColorMode = (TableTextColorMode)SettingsImportHelper.GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
+        
+        // Colors
+        target.CharacterColumnColor = SettingsImportHelper.ImportColor(settings, "CharacterColumnColor");
+        target.HeaderColor = SettingsImportHelper.ImportColor(settings, "HeaderColor");
+        target.EvenRowColor = SettingsImportHelper.ImportColor(settings, "EvenRowColor");
+        target.OddRowColor = SettingsImportHelper.ImportColor(settings, "OddRowColor");
+        
+        // Hidden characters
+        target.HiddenCharacters = SettingsImportHelper.ImportUlongHashSet(settings, "HiddenCharacters") ?? new HashSet<ulong>();
+        
+        // Graph-specific
+        target.ShowPerCharacter = SettingsImportHelper.GetSetting(settings, "ShowPerCharacter", target.ShowPerCharacter);
+        target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
+        target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
+        target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
+        target.LegendPosition = (LegendPosition)SettingsImportHelper.GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
+        target.GraphType = (GraphType)SettingsImportHelper.GetSetting(settings, "GraphType", (int)target.GraphType);
+        target.ShowXAxisTimestamps = SettingsImportHelper.GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
+        target.ShowCrosshair = SettingsImportHelper.GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
+        target.ShowGridLines = SettingsImportHelper.GetSetting(settings, "ShowGridLines", target.ShowGridLines);
+        target.ShowCurrentPriceLine = SettingsImportHelper.GetSetting(settings, "ShowCurrentPriceLine", target.ShowCurrentPriceLine);
+        target.ShowValueLabel = SettingsImportHelper.GetSetting(settings, "ShowValueLabel", target.ShowValueLabel);
+        target.ValueLabelOffsetX = SettingsImportHelper.GetSetting(settings, "ValueLabelOffsetX", target.ValueLabelOffsetX);
+        target.ValueLabelOffsetY = SettingsImportHelper.GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
+        target.AutoScrollEnabled = SettingsImportHelper.GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
+        target.AutoScrollTimeValue = SettingsImportHelper.GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
+        target.AutoScrollTimeUnit = (TimeUnit)SettingsImportHelper.GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollNowPosition = SettingsImportHelper.GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
+        target.ShowControlsDrawer = SettingsImportHelper.GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
+        target.TimeRangeValue = SettingsImportHelper.GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
+        target.TimeRangeUnit = (TimeUnit)SettingsImportHelper.GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        
+        // Update character combo
+        if (_characterCombo != null)
+        {
+            _characterCombo.MultiSelectEnabled = true;
+            if (target.UseCharacterFilter && target.SelectedCharacterIds.Count > 0)
+            {
+                _characterCombo.SetSelection(target.SelectedCharacterIds);
+            }
+            else
+            {
+                _characterCombo.SelectAll();
+            }
+        }
+        
+        UpdateTitle();
+        _pendingTableRefresh = true;
+        _graphCacheIsDirty = true;
+    }
+    
+    #endregion
+    
+    public override void Dispose()
+    {
+        _characterCombo?.Dispose();
+        base.Dispose();
+    }
+}
