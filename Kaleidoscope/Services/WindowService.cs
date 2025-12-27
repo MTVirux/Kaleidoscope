@@ -135,10 +135,6 @@ public sealed class WindowService : IDisposable, IRequiredService
     {
         DetachEvents(_pluginInterface.UiBuilder);
         _windowSystem.RemoveAllWindows();
-
-        // Dispose windows that implement IDisposable to clean up event subscriptions
         _mainWindow?.Dispose();
-        // Note: FullscreenWindow and ConfigWindow don't require IDisposable
-        // as they don't have event subscriptions or external resources
     }
 }

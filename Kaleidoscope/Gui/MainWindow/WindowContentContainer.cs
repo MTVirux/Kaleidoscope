@@ -10,6 +10,8 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// </summary>
 public class WindowContentContainer
 {
+    #region Fields
+    
     private readonly Func<float> _getCellWidthPercent;
     private readonly Func<float> _getCellHeightPercent;
     private readonly Func<int> _getSubdivisions;
@@ -170,7 +172,10 @@ public class WindowContentContainer
         /// </summary>
         private static float MinToolHeight => MathF.Max(16f, ImGui.GetFrameHeight());
 
-        // Update the global dragging state and notify if changed
+        #endregion
+
+        #region Interaction State
+
         private void SetDraggingState(bool dragging)
         {
             if (_anyDragging == dragging) return;
@@ -211,6 +216,10 @@ public class WindowContentContainer
             LogService.Debug("TryConsumeLayoutDirty: consumed dirty flag");
             return true;
         }
+
+        #endregion
+
+        #region Tool Duplication
 
         /// <summary>
         /// Duplicates a tool by creating a new instance with the same settings.
@@ -271,6 +280,10 @@ public class WindowContentContainer
             AddToolInstance(newTool);
             LogService.Debug($"DuplicateTool: duplicated tool id='{source.Id}'");
         }
+
+        #endregion
+
+        #region Constructor and Grid Settings
 
         public WindowContentContainer(Func<float>? getCellWidthPercent = null, Func<float>? getCellHeightPercent = null, Func<int>? getSubdivisions = null)
         {
@@ -387,7 +400,10 @@ public class WindowContentContainer
         /// </summary>
         public Action<LayoutGridSettings>? OnGridSettingsChanged;
 
-        // Allows the host (e.g. MainWindow) to supply a factory to create tools
+        #endregion
+
+        #region Tool Registration
+
         public void SetToolFactory(Action<string, Vector2> factory)
         {
             _toolFactory = factory;
@@ -421,6 +437,10 @@ public class WindowContentContainer
             
             MarkLayoutDirty();
         }
+
+        #endregion
+
+        #region Layout Export and Import
 
         public List<ToolLayoutState> ExportLayout()
         {
@@ -712,6 +732,10 @@ public class WindowContentContainer
                 }
             }
         }
+
+        #endregion
+
+        #region Drawing
 
         public void Draw(bool editMode) => Draw(editMode, null);
 
@@ -1566,6 +1590,10 @@ public class WindowContentContainer
             DrawSavePresetModal();
         }
 
+        #endregion
+
+        #region Modal Dialogs
+
         /// <summary>
         /// Draws the tool rename modal if one is currently open.
         /// </summary>
@@ -2041,4 +2069,6 @@ public class WindowContentContainer
 
     ImGui.EndPopup();
 }
+
+    #endregion
 }

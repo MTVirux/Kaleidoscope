@@ -440,14 +440,8 @@ public class ItemTableWidget : ISettingsProvider
     
     private readonly TableConfig _config;
     
-    /// <summary>
-    /// Creates a new ItemTableWidget.
-    /// </summary>
-    /// <param name="config">Configuration for the table.</param>
-    /// <param name="itemDataService">Optional item data service for name lookups.</param>
-    /// <param name="trackedDataRegistry">Optional registry for currency name lookups.</param>
-    /// <param name="configuration">Optional configuration for accessing preferred colors.</param>
-    /// <param name="cacheService">Optional cache service for accessing character colors.</param>
+    #region Constructor and Settings Binding
+    
     public ItemTableWidget(
         TableConfig config,
         ItemDataService? itemDataService = null,
@@ -465,9 +459,6 @@ public class ItemTableWidget : ISettingsProvider
     /// <summary>
     /// Binds this widget to a settings object for automatic synchronization.
     /// </summary>
-    /// <param name="settings">The settings object implementing IItemTableWidgetSettings.</param>
-    /// <param name="onSettingsChanged">Callback when settings are changed (e.g., to trigger config save).</param>
-    /// <param name="settingsName">Display name for the settings section.</param>
     public void BindSettings(
         IItemTableWidgetSettings settings,
         Action? onSettingsChanged = null,
@@ -501,18 +492,17 @@ public class ItemTableWidget : ISettingsProvider
         return column.IsCurrency ? $"Currency {column.Id}" : $"Item {column.Id}";
     }
     
-    /// <summary>
-    /// Represents a column to display, either a single column or a merged group.
-    /// </summary>
+    #endregion
+    
+    #region Display Column and Row Types
+    
     private class DisplayColumn
     {
         public bool IsMerged { get; init; }
         public string Header { get; init; } = string.Empty;
         public float Width { get; init; }
         public Vector4? Color { get; init; }
-        /// <summary>Original column indices in the Columns list that this display column represents.</summary>
         public List<int> SourceColumnIndices { get; init; } = new();
-        /// <summary>The merged group reference (if IsMerged is true).</summary>
         public MergedColumnGroup? MergedGroup { get; init; }
     }
     
@@ -828,6 +818,10 @@ public class ItemTableWidget : ISettingsProvider
         var a = ((color >> 24) & 0xFF) / 255f;
         return new Vector4(r, g, b, a);
     }
+    
+    #endregion
+    
+    #region Table Drawing
     
     /// <summary>
     /// Draws the item table.
@@ -1604,6 +1598,10 @@ public class ItemTableWidget : ISettingsProvider
         }
     }
     
+    #endregion
+    
+    #region Sorting and Filtering
+    
     private List<ItemTableCharacterRow> GetSortedRows(
         IReadOnlyList<ItemTableCharacterRow> rows,
         IReadOnlyList<ItemColumnConfig> columns,
@@ -1751,6 +1749,8 @@ public class ItemTableWidget : ISettingsProvider
         TableVerticalAlignment vAlign,
         int columnIndex,
         bool sortable) => TableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable);
+    
+    #endregion
     
     #region ISettingsProvider Implementation
     

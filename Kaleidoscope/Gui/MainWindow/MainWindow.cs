@@ -779,10 +779,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                 _contentContainer?.Draw(tempEdit || _stateService.IsEditMode, _profilerService);
             }
             
-            // Note: Layout changes are now tracked by LayoutEditingService.
-            // The dirty flag is consumed internally and marked in the service.
-            // Auto-save has been removed - user must explicitly save.
-            _contentContainer?.TryConsumeLayoutDirty(); // Clear internal flag if set
+            _contentContainer?.TryConsumeLayoutDirty();
             
             // Detect main window position/size changes and persist them promptly (throttled)
             PersistWindowPositionIfChanged();

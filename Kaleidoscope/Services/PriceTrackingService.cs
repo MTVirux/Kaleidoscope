@@ -12,6 +12,8 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public sealed class PriceTrackingService : IDisposable, IRequiredService
 {
+    #region Fields and Properties
+    
     private readonly IPluginLog _log;
     private readonly IFramework _framework;
     private readonly ConfigurationService _configService;
@@ -84,6 +86,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     
     /// <summary>Event fired when world data is loaded/refreshed from Universalis.</summary>
     public event Action? OnWorldDataLoaded;
+
+    #endregion
+
+    #region Constructor and Initialization
 
     public PriceTrackingService(
         IPluginLog log,
@@ -185,6 +191,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             _log.Error($"[PriceTracking] Initialization failed: {ex.Message}");
         }
     }
+
+    #endregion
+
+    #region Framework Update and Events
 
     private void OnFrameworkUpdate(IFramework framework)
     {
@@ -389,6 +399,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
+    #endregion
+
+    #region Background Processing
+
     /// <summary>
     /// Background worker that processes queued price updates.
     /// Drains the channel in batches and writes to the database on a dedicated thread.
@@ -549,6 +563,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
+    #endregion
+
+    #region World Data and Marketable Items
+
     /// <summary>
     /// Refreshes the cached world/DC data from Universalis.
     /// </summary>
@@ -617,6 +635,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             _log.Warning($"[PriceTracking] Failed to fetch marketable items: {ex.Message}");
         }
     }
+
+    #endregion
+
+    #region Price Fetching and Caching
 
     /// <summary>
     /// Gets the current price for an item.
@@ -712,6 +734,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             return null;
         }
     }
+
+    #endregion
+
+    #region Inventory Value Calculation
 
     /// <summary>
     /// Calculates the liquid value of a character's inventory.
@@ -943,6 +969,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         await Task.CompletedTask;
     }
 
+    #endregion
+
+    #region Inventory Price Fetching
+
     /// <summary>
     /// Fetches prices for all items in the player's inventories.
     /// Uses batch database writes for better performance.
@@ -1092,6 +1122,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
+    #endregion
+
+    #region Top Items Analysis
+
     /// <summary>
     /// Gets the top items by value for a character or all characters.
     /// </summary>
@@ -1165,6 +1199,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         return result;
     }
+
+    #endregion
+
+    #region Service Control
 
     /// <summary>
     /// Enables or disables price tracking.
@@ -1252,6 +1290,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         try { _cts.Dispose(); }
         catch (Exception) { /* Ignore */ }
     }
+
+    #endregion
 }
 
 /// <summary>

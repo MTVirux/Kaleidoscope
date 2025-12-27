@@ -3,8 +3,6 @@ using Kaleidoscope;
 
 namespace Kaleidoscope.Models;
 
-// Note: CrystalElement and CrystalTier enums are defined in Configuration.cs (Kaleidoscope namespace)
-
 /// <summary>
 /// Types of special groupings that can be detected based on item selection.
 /// </summary>

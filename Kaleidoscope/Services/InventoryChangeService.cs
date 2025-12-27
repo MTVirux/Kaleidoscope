@@ -173,9 +173,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             _lastEventTime = now;
 
             _log.Debug($"[InventoryChangeService] Debounced inventory event processed at {now:o}");
-
-            // Note: The debounced inventory update is now handled via CheckForValueChanges
-            // which reads all values and fires OnValuesChanged with the complete set.
         }
 
         // Track retainer state changes for stabilization
