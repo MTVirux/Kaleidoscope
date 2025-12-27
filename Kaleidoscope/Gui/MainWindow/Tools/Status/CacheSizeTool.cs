@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the current size of the inventory memory cache.
 /// </summary>
-public class CacheSizeTool : ToolComponent
+public class CacheSizeTool : StatusToolBase
 {
     public override string ToolName => "Cache Size";
     
@@ -22,11 +22,6 @@ public class CacheSizeTool : ToolComponent
     private long _estimatedBytes;
     private DateTime _lastCacheCheck = DateTime.MinValue;
     private readonly TimeSpan _cacheCheckInterval = TimeSpan.FromSeconds(2);
-
-    /// <summary>
-    /// Whether to show extra details beyond the summary.
-    /// </summary>
-    public bool ShowDetails { get; set; } = true;
 
     public CacheSizeTool(InventoryCacheService inventoryCacheService)
     {
@@ -104,37 +99,4 @@ public class CacheSizeTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
-    protected override bool HasToolSettings => true;
-
-    protected override void DrawToolSettings()
-    {
-        var showDetails = ShowDetails;
-        if (ImGui.Checkbox("Show Details", ref showDetails))
-        {
-            ShowDetails = showDetails;
-            NotifyToolSettingsChanged();
-        }
-    }
-    
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
-    public override Dictionary<string, object?>? ExportToolSettings()
-    {
-        return new Dictionary<string, object?>
-        {
-            ["ShowDetails"] = ShowDetails
-        };
-    }
-    
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
-    public override void ImportToolSettings(Dictionary<string, object?>? settings)
-    {
-        if (settings == null) return;
-        
-        ShowDetails = GetSetting(settings, "ShowDetails", ShowDetails);
-    }
 }

@@ -8,17 +8,12 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the Universalis REST API status and configuration.
 /// </summary>
-public class UniversalisApiStatusTool : ToolComponent
+public class UniversalisApiStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis API Status";
     
     private readonly ConfigurationService _configService;
     private readonly PriceTrackingService? _priceTrackingService;
-
-    /// <summary>
-    /// Whether to show extra details beyond the status indicator.
-    /// </summary>
-    public bool ShowDetails { get; set; } = true;
 
     public UniversalisApiStatusTool(
         ConfigurationService configService,
@@ -73,37 +68,4 @@ public class UniversalisApiStatusTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
-    protected override bool HasToolSettings => true;
-
-    protected override void DrawToolSettings()
-    {
-        var showDetails = ShowDetails;
-        if (ImGui.Checkbox("Show Details", ref showDetails))
-        {
-            ShowDetails = showDetails;
-            NotifyToolSettingsChanged();
-        }
-    }
-    
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
-    public override Dictionary<string, object?>? ExportToolSettings()
-    {
-        return new Dictionary<string, object?>
-        {
-            ["ShowDetails"] = ShowDetails
-        };
-    }
-    
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
-    public override void ImportToolSettings(Dictionary<string, object?>? settings)
-    {
-        if (settings == null) return;
-        
-        ShowDetails = GetSetting(settings, "ShowDetails", ShowDetails);
-    }
 }

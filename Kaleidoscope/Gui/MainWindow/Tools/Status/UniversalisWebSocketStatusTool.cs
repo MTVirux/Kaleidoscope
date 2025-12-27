@@ -8,17 +8,12 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the Universalis WebSocket connection status.
 /// </summary>
-public class UniversalisWebSocketStatusTool : ToolComponent
+public class UniversalisWebSocketStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis WebSocket Status";
     
     private readonly UniversalisWebSocketService? _webSocketService;
     private readonly ConfigurationService _configService;
-
-    /// <summary>
-    /// Whether to show extra details beyond the status indicator.
-    /// </summary>
-    public bool ShowDetails { get; set; } = true;
 
     public UniversalisWebSocketStatusTool(
         ConfigurationService configService,
@@ -78,37 +73,4 @@ public class UniversalisWebSocketStatusTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
-    protected override bool HasToolSettings => true;
-
-    protected override void DrawToolSettings()
-    {
-        var showDetails = ShowDetails;
-        if (ImGui.Checkbox("Show Details", ref showDetails))
-        {
-            ShowDetails = showDetails;
-            NotifyToolSettingsChanged();
-        }
-    }
-    
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
-    public override Dictionary<string, object?>? ExportToolSettings()
-    {
-        return new Dictionary<string, object?>
-        {
-            ["ShowDetails"] = ShowDetails
-        };
-    }
-    
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
-    public override void ImportToolSettings(Dictionary<string, object?>? settings)
-    {
-        if (settings == null) return;
-        
-        ShowDetails = GetSetting(settings, "ShowDetails", ShowDetails);
-    }
 }
