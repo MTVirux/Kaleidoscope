@@ -1,3 +1,4 @@
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
@@ -1528,8 +1529,13 @@ public class WindowContentContainer
                         if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
                         var outline = t.OutlineEnabled;
                         if (ImGui.Checkbox("Show outline", ref outline)) t.OutlineEnabled = outline;
-                        var col = t.BackgroundColor;
-                        if (ImGui.ColorEdit4("Background color", ref col, ImGuiColorEditFlags.AlphaPreviewHalf | ImGuiColorEditFlags.NoInputs)) t.BackgroundColor = col;
+                        
+                        // Background color with right-click to reset
+                        var defaultBgColor = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+                        var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithReset(
+                            "Background color", t.BackgroundColor, defaultBgColor, "Background color");
+                        if (colorChanged) t.BackgroundColor = newColor;
+                        
                         ImGui.Separator();
 
                         // Tool-specific settings (if supported by the tool)
@@ -1637,7 +1643,7 @@ public class WindowContentContainer
                 ImGui.Separator();
                 ImGui.Spacing();
 
-                if (ImGui.Button("OK", new Vector2(80, 0)))
+                if (ImGuiHelpers.ButtonAutoWidth("OK"))
                 {
                     var trimmed = _renameBuffer?.Trim();
                     // If the name is empty or matches the original title, clear the custom title
@@ -1654,13 +1660,13 @@ public class WindowContentContainer
                     _renamePopupOpen = false;
                 }
                 ImGui.SameLine();
-                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
                 {
                     ImGui.CloseCurrentPopup();
                     _renamePopupOpen = false;
                 }
                 ImGui.SameLine();
-                if (ImGui.Button("Reset", new Vector2(80, 0)))
+                if (ImGuiHelpers.ButtonAutoWidth("Reset"))
                 {
                     toolToRename.CustomTitle = null;
                     MarkLayoutDirty();
@@ -1740,7 +1746,7 @@ public class WindowContentContainer
                     ImGui.BeginDisabled();
                 }
 
-                if (ImGui.Button("Save", new Vector2(80, 0)))
+                if (ImGuiHelpers.ButtonAutoWidth("Save"))
                 {
                     try
                     {
@@ -1769,7 +1775,7 @@ public class WindowContentContainer
                 }
 
                 ImGui.SameLine();
-                if (ImGui.Button("Cancel", new Vector2(80, 0)))
+                if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
                 {
                     ImGui.CloseCurrentPopup();
                     _savePresetPopupOpen = false;
@@ -1824,7 +1830,7 @@ public class WindowContentContainer
             }
 
             ImGui.Separator();
-            if (ImGui.Button("Close", new Vector2(80, 0)))
+            if (ImGuiHelpers.ButtonAutoWidth("Close"))
             {
                 _settingsPopupOpen = false;
             }
@@ -1929,7 +1935,7 @@ public class WindowContentContainer
             ImGui.Spacing();
             
             // OK / Cancel buttons
-            if (ImGui.Button("OK", new Vector2(80, 0)))
+            if (ImGuiHelpers.ButtonAutoWidth("OK"))
             {
                 try
                 {
@@ -1951,7 +1957,7 @@ public class WindowContentContainer
             
             ImGui.SameLine();
             
-            if (ImGui.Button("Cancel", new Vector2(80, 0)))
+            if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
             {
                 ImGui.CloseCurrentPopup();
                 _gridResolutionPopupOpen = false;
@@ -2003,7 +2009,7 @@ public class WindowContentContainer
             ImGui.Spacing();
             
             // Save button
-            if (ImGui.Button("Save", new Vector2(80, 0)))
+            if (ImGuiHelpers.ButtonAutoWidth("Save"))
             {
                 try
                 {
@@ -2027,7 +2033,7 @@ public class WindowContentContainer
             ImGui.SameLine();
             
             // Discard button
-            if (ImGui.Button("Discard", new Vector2(80, 0)))
+            if (ImGuiHelpers.ButtonAutoWidth("Discard"))
             {
                 try
                 {
@@ -2051,7 +2057,7 @@ public class WindowContentContainer
         ImGui.SameLine();
 
         // Cancel button
-        if (ImGui.Button("Cancel", new Vector2(80, 0)))
+        if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
         {
             ImGui.CloseCurrentPopup();
             _unsavedChangesPopupOpen = false;

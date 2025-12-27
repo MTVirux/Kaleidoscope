@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -127,6 +128,7 @@ public class MergedColumnGroup
 
 /// <summary>
 /// Represents a group of merged rows that display summed values.
+/// Supports both Character-mode (CharacterIds) and grouped-mode (GroupKeys).
 /// </summary>
 public class MergedRowGroup
 {
@@ -137,8 +139,21 @@ public class MergedRowGroup
     
     /// <summary>
     /// List of character IDs that are merged into this row.
+    /// Used when GroupingMode is Character.
     /// </summary>
     public List<ulong> CharacterIds { get; set; } = new();
+    
+    /// <summary>
+    /// List of group keys (e.g., world names, DC names, region names) that are merged.
+    /// Used when GroupingMode is World, DataCenter, Region, or All.
+    /// </summary>
+    public List<string> GroupKeys { get; set; } = new();
+    
+    /// <summary>
+    /// The grouping mode this merge group was created under.
+    /// Determines whether to use CharacterIds or GroupKeys.
+    /// </summary>
+    public TableGroupingMode GroupingMode { get; set; } = TableGroupingMode.Character;
     
     /// <summary>
     /// Optional custom color for the merged row name. If null, uses default.
@@ -412,6 +427,9 @@ public class ItemTableWidget : ISettingsProvider
     // Track which character rows are expanded to show retainer breakdown
     private readonly HashSet<ulong> _expandedCharacterIds = new();
     
+    // Track which grouped rows (by name) are expanded to show retainer breakdown (for World/DC/Region/All modes)
+    private readonly HashSet<string> _expandedGroupNames = new();
+    
     /// <summary>
     /// Configuration for this table widget instance.
     /// </summary>
@@ -616,78 +634,162 @@ public class ItemTableWidget : ISettingsProvider
     
     /// <summary>
     /// Builds the list of display rows, combining individual rows and merged groups.
+    /// Supports both Character-mode (CharacterIds) and grouped-mode (GroupKeys) merging.
     /// </summary>
     private List<DisplayRow> BuildDisplayRows(IReadOnlyList<ItemTableCharacterRow> rows, IItemTableWidgetSettings settings, IReadOnlyList<ItemColumnConfig> columns)
     {
         var displayRows = new List<DisplayRow>();
-        var mergedCharacterIds = new HashSet<ulong>();
+        var groupingMode = settings.GroupingMode;
+        var isCharacterMode = groupingMode == TableGroupingMode.Character;
         
-        // First, collect all character IDs that are part of a merged group
-        foreach (var group in settings.MergedRowGroups)
+        if (isCharacterMode)
         {
-            foreach (var cid in group.CharacterIds)
+            // Character mode: merge by CharacterIds
+            var mergedCharacterIds = new HashSet<ulong>();
+            
+            // First, collect all character IDs that are part of a merged group (only Character-mode groups)
+            foreach (var group in settings.MergedRowGroups.Where(g => g.GroupingMode == TableGroupingMode.Character))
             {
-                mergedCharacterIds.Add(cid);
-            }
-        }
-        
-        // Track which merged groups we've already added
-        var addedMergedGroups = new HashSet<MergedRowGroup>();
-        
-        // Iterate through all rows in order
-        foreach (var row in rows)
-        {
-            if (mergedCharacterIds.Contains(row.CharacterId))
-            {
-                // This row is part of a merged group - find which one
-                var group = settings.MergedRowGroups.FirstOrDefault(g => g.CharacterIds.Contains(row.CharacterId));
-                if (group != null && !addedMergedGroups.Contains(group))
+                foreach (var cid in group.CharacterIds)
                 {
-                    addedMergedGroups.Add(group);
-                    
-                    // Aggregate item counts from all characters in this merged group
-                    var aggregatedCounts = new Dictionary<uint, long>();
-                    foreach (var cid in group.CharacterIds)
+                    mergedCharacterIds.Add(cid);
+                }
+            }
+            
+            // Track which merged groups we've already added
+            var addedMergedGroups = new HashSet<MergedRowGroup>();
+            
+            // Iterate through all rows in order
+            foreach (var row in rows)
+            {
+                if (mergedCharacterIds.Contains(row.CharacterId))
+                {
+                    // This row is part of a merged group - find which one
+                    var group = settings.MergedRowGroups.FirstOrDefault(g => 
+                        g.GroupingMode == TableGroupingMode.Character && g.CharacterIds.Contains(row.CharacterId));
+                    if (group != null && !addedMergedGroups.Contains(group))
                     {
-                        var sourceRow = rows.FirstOrDefault(r => r.CharacterId == cid);
-                        if (sourceRow != null)
+                        addedMergedGroups.Add(group);
+                        
+                        // Aggregate item counts from all characters in this merged group
+                        var aggregatedCounts = new Dictionary<uint, long>();
+                        foreach (var cid in group.CharacterIds)
                         {
-                            foreach (var kvp in sourceRow.ItemCounts)
+                            var sourceRow = rows.FirstOrDefault(r => r.CharacterId == cid);
+                            if (sourceRow != null)
                             {
-                                if (aggregatedCounts.TryGetValue(kvp.Key, out var existing))
-                                    aggregatedCounts[kvp.Key] = existing + kvp.Value;
-                                else
-                                    aggregatedCounts[kvp.Key] = kvp.Value;
+                                foreach (var kvp in sourceRow.ItemCounts)
+                                {
+                                    if (aggregatedCounts.TryGetValue(kvp.Key, out var existing))
+                                        aggregatedCounts[kvp.Key] = existing + kvp.Value;
+                                    else
+                                        aggregatedCounts[kvp.Key] = kvp.Value;
+                                }
                             }
                         }
+                        
+                        displayRows.Add(new DisplayRow
+                        {
+                            IsMerged = true,
+                            Name = group.Name,
+                            Color = group.Color,
+                            SourceCharacterIds = group.CharacterIds.ToList(),
+                            MergedGroup = group,
+                            ItemCounts = aggregatedCounts
+                        });
                     }
-                    
+                    // Skip other rows in the same merged group
+                }
+                else
+                {
+                    // Regular row (not merged)
                     displayRows.Add(new DisplayRow
                     {
-                        IsMerged = true,
-                        Name = group.Name,
-                        Color = group.Color,
-                        SourceCharacterIds = group.CharacterIds.ToList(),
-                        MergedGroup = group,
-                        ItemCounts = aggregatedCounts
+                        IsMerged = false,
+                        Name = row.Name,
+                        Color = null,
+                        SourceCharacterIds = new List<ulong> { row.CharacterId },
+                        MergedGroup = null,
+                        ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        RetainerBreakdown = row.RetainerBreakdown
                     });
                 }
-                // Skip other rows in the same merged group
             }
-            else
+        }
+        else
+        {
+            // Grouped mode (World/DC/Region/All): merge by GroupKeys (row.Name)
+            var mergedGroupKeys = new HashSet<string>();
+            
+            // Collect all group keys that are part of a merged group (matching current mode)
+            foreach (var group in settings.MergedRowGroups.Where(g => g.GroupingMode == groupingMode))
             {
-                // Regular row (not merged)
-                displayRows.Add(new DisplayRow
+                foreach (var key in group.GroupKeys)
                 {
-                    IsMerged = false,
-                    Name = row.Name,
-                    Color = null,
-                    SourceCharacterIds = new List<ulong> { row.CharacterId },
-                    MergedGroup = null,
-                    ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-                    PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-                    RetainerBreakdown = row.RetainerBreakdown
-                });
+                    mergedGroupKeys.Add(key);
+                }
+            }
+            
+            // Track which merged groups we've already added
+            var addedMergedGroups = new HashSet<MergedRowGroup>();
+            
+            // Iterate through all rows in order
+            foreach (var row in rows)
+            {
+                if (mergedGroupKeys.Contains(row.Name))
+                {
+                    // This row is part of a merged group - find which one
+                    var group = settings.MergedRowGroups.FirstOrDefault(g => 
+                        g.GroupingMode == groupingMode && g.GroupKeys.Contains(row.Name));
+                    if (group != null && !addedMergedGroups.Contains(group))
+                    {
+                        addedMergedGroups.Add(group);
+                        
+                        // Aggregate item counts from all group keys in this merged group
+                        var aggregatedCounts = new Dictionary<uint, long>();
+                        foreach (var key in group.GroupKeys)
+                        {
+                            var sourceRow = rows.FirstOrDefault(r => r.Name == key);
+                            if (sourceRow != null)
+                            {
+                                foreach (var kvp in sourceRow.ItemCounts)
+                                {
+                                    if (aggregatedCounts.TryGetValue(kvp.Key, out var existing))
+                                        aggregatedCounts[kvp.Key] = existing + kvp.Value;
+                                    else
+                                        aggregatedCounts[kvp.Key] = kvp.Value;
+                                }
+                            }
+                        }
+                        
+                        displayRows.Add(new DisplayRow
+                        {
+                            IsMerged = true,
+                            Name = group.Name,
+                            Color = group.Color,
+                            SourceCharacterIds = new List<ulong>(), // No individual char IDs in grouped mode
+                            MergedGroup = group,
+                            ItemCounts = aggregatedCounts
+                        });
+                    }
+                    // Skip other rows in the same merged group
+                }
+                else
+                {
+                    // Regular row (not merged)
+                    displayRows.Add(new DisplayRow
+                    {
+                        IsMerged = false,
+                        Name = row.Name,
+                        Color = null,
+                        SourceCharacterIds = new List<ulong>(),
+                        MergedGroup = null,
+                        ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        RetainerBreakdown = row.RetainerBreakdown
+                    });
+                }
             }
         }
         
@@ -1294,7 +1396,11 @@ public class ItemTableWidget : ISettingsProvider
                     if (hasRetainerBreakdown)
                     {
                         // Draw expandable tree node for characters with retainers
-                        var isExpanded = _expandedCharacterIds.Contains(primaryCid);
+                        // Use character ID for Character mode, row name for grouped modes
+                        var isCharacterMode = settings.GroupingMode == TableGroupingMode.Character;
+                        var isExpanded = isCharacterMode 
+                            ? _expandedCharacterIds.Contains(primaryCid)
+                            : _expandedGroupNames.Contains(dispRow.Name);
                         
                         // Apply color if set
                         if (nameColor.HasValue)
@@ -1309,10 +1415,20 @@ public class ItemTableWidget : ISettingsProvider
                         
                         if (clicked)
                         {
-                            if (isExpanded)
-                                _expandedCharacterIds.Remove(primaryCid);
+                            if (isCharacterMode)
+                            {
+                                if (isExpanded)
+                                    _expandedCharacterIds.Remove(primaryCid);
+                                else
+                                    _expandedCharacterIds.Add(primaryCid);
+                            }
                             else
-                                _expandedCharacterIds.Add(primaryCid);
+                            {
+                                if (isExpanded)
+                                    _expandedGroupNames.Remove(dispRow.Name);
+                                else
+                                    _expandedGroupNames.Add(dispRow.Name);
+                            }
                         }
                     }
                     else
@@ -1345,7 +1461,9 @@ public class ItemTableWidget : ISettingsProvider
                 // Data columns (using display columns which include merged columns)
                 // Check if this row is expanded to show retainer breakdown - if so, show player inventory only in main row
                 var isExpandedForBreakdown = settings.ShowRetainerBreakdown && !dispRow.IsMerged && dispRow.HasRetainerData 
-                    && _expandedCharacterIds.Contains(dispRow.SourceCharacterIds.FirstOrDefault());
+                    && (settings.GroupingMode == TableGroupingMode.Character 
+                        ? _expandedCharacterIds.Contains(dispRow.SourceCharacterIds.FirstOrDefault())
+                        : _expandedGroupNames.Contains(dispRow.Name));
                 
                 for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
                 {
@@ -1429,7 +1547,10 @@ public class ItemTableWidget : ISettingsProvider
                 if (settings.ShowRetainerBreakdown && !dispRow.IsMerged && dispRow.HasRetainerData)
                 {
                     var primaryCidForExpand = dispRow.SourceCharacterIds.FirstOrDefault();
-                    if (_expandedCharacterIds.Contains(primaryCidForExpand))
+                    var isExpandedForSubRows = settings.GroupingMode == TableGroupingMode.Character
+                        ? _expandedCharacterIds.Contains(primaryCidForExpand)
+                        : _expandedGroupNames.Contains(dispRow.Name);
+                    if (isExpandedForSubRows)
                     {
                         // Draw retainer rows (player inventory is shown in the main row when expanded)
                         var retainerList = dispRow.RetainerBreakdown!.ToList();
@@ -1689,6 +1810,50 @@ public class ItemTableWidget : ISettingsProvider
                 aggregateRow.ItemCounts[column.Id] = sum;
             }
             
+            // Aggregate PlayerItemCounts from all source rows
+            var aggregatedPlayerCounts = new Dictionary<uint, long>();
+            foreach (var sourceRow in rows)
+            {
+                if (sourceRow.PlayerItemCounts != null)
+                {
+                    foreach (var kvp in sourceRow.PlayerItemCounts)
+                    {
+                        if (aggregatedPlayerCounts.TryGetValue(kvp.Key, out var existing))
+                            aggregatedPlayerCounts[kvp.Key] = existing + kvp.Value;
+                        else
+                            aggregatedPlayerCounts[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
+            if (aggregatedPlayerCounts.Count > 0)
+                aggregateRow.PlayerItemCounts = aggregatedPlayerCounts;
+            
+            // Aggregate RetainerBreakdown from all source rows
+            var aggregatedRetainerBreakdown = new Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>();
+            foreach (var sourceRow in rows)
+            {
+                if (sourceRow.RetainerBreakdown != null)
+                {
+                    foreach (var (retainerKey, counts) in sourceRow.RetainerBreakdown)
+                    {
+                        if (!aggregatedRetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
+                        {
+                            retainerCounts = new Dictionary<uint, long>();
+                            aggregatedRetainerBreakdown[retainerKey] = retainerCounts;
+                        }
+                        foreach (var kvp in counts)
+                        {
+                            if (retainerCounts.TryGetValue(kvp.Key, out var existing))
+                                retainerCounts[kvp.Key] = existing + kvp.Value;
+                            else
+                                retainerCounts[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+            }
+            if (aggregatedRetainerBreakdown.Count > 0)
+                aggregateRow.RetainerBreakdown = aggregatedRetainerBreakdown;
+            
             return new List<ItemTableCharacterRow> { aggregateRow };
         }
         
@@ -1722,6 +1887,50 @@ public class ItemTableWidget : ISettingsProvider
                 var sum = group.Sum(r => r.ItemCounts.TryGetValue(column.Id, out var c) ? c : 0);
                 aggregateRow.ItemCounts[column.Id] = sum;
             }
+            
+            // Aggregate PlayerItemCounts from all source rows in this group
+            var aggregatedPlayerCounts = new Dictionary<uint, long>();
+            foreach (var sourceRow in group)
+            {
+                if (sourceRow.PlayerItemCounts != null)
+                {
+                    foreach (var kvp in sourceRow.PlayerItemCounts)
+                    {
+                        if (aggregatedPlayerCounts.TryGetValue(kvp.Key, out var existing))
+                            aggregatedPlayerCounts[kvp.Key] = existing + kvp.Value;
+                        else
+                            aggregatedPlayerCounts[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
+            if (aggregatedPlayerCounts.Count > 0)
+                aggregateRow.PlayerItemCounts = aggregatedPlayerCounts;
+            
+            // Aggregate RetainerBreakdown from all source rows in this group
+            var aggregatedRetainerBreakdown = new Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>();
+            foreach (var sourceRow in group)
+            {
+                if (sourceRow.RetainerBreakdown != null)
+                {
+                    foreach (var (retainerKey, counts) in sourceRow.RetainerBreakdown)
+                    {
+                        if (!aggregatedRetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
+                        {
+                            retainerCounts = new Dictionary<uint, long>();
+                            aggregatedRetainerBreakdown[retainerKey] = retainerCounts;
+                        }
+                        foreach (var kvp in counts)
+                        {
+                            if (retainerCounts.TryGetValue(kvp.Key, out var existing))
+                                retainerCounts[kvp.Key] = existing + kvp.Value;
+                            else
+                                retainerCounts[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+            }
+            if (aggregatedRetainerBreakdown.Count > 0)
+                aggregateRow.RetainerBreakdown = aggregatedRetainerBreakdown;
             
             result.Add(aggregateRow);
         }
@@ -1969,25 +2178,13 @@ public class ItemTableWidget : ISettingsProvider
                     ImGui.TextDisabled($"({string.Join(" + ", charNames)})");
                     
                     // Color option
-                    var hasColor = group.Color.HasValue;
-                    var color = group.Color ?? new Vector4(1f, 1f, 1f, 1f);
-                    if (ImGui.Checkbox("##ColorEnabled", ref hasColor))
+                    var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
+                        "Color##MergedRowColor", group.Color, new Vector4(1f, 1f, 1f, 1f), "Merged row color");
+                    if (colorChanged)
                     {
-                        group.Color = hasColor ? color : null;
+                        group.Color = newColor;
                         changed = true;
                     }
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.SetTooltip(hasColor ? "Click to use default color" : "Click to enable custom color");
-                    }
-                    ImGui.SameLine();
-                    ImGui.BeginDisabled(!hasColor);
-                    if (ImGui.ColorEdit4("Color##MergedRowColor", ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar))
-                    {
-                        group.Color = color;
-                        changed = true;
-                    }
-                    ImGui.EndDisabled();
                     
                     ImGui.PopID();
                 }

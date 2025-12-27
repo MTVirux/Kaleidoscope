@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using OtterGui.Text;
@@ -164,13 +165,15 @@ public static class SettingsSchemaRenderer
         where TSettings : class
     {
         var value = def.Getter(settings);
-        if (ImGui.ColorEdit4(def.Label, ref value))
+        // DefaultValue will be the actual Vector4 or default(Vector4) - use Vector4.One as fallback
+        var defaultValue = def.DefaultValue != default ? def.DefaultValue : Vector4.One;
+        var (changed, newValue) = ImGuiHelpers.ColorPickerWithReset(
+            def.Label, value, defaultValue, def.Tooltip);
+        if (changed)
         {
-            def.Setter(settings, value);
-            return true;
+            def.Setter(settings, newValue);
         }
-        ShowTooltip(def, showTooltips);
-        return false;
+        return changed;
     }
     
     private static bool DrawEnumControl<TSettings>(SettingDefinitionBase def, TSettings settings, bool showTooltips)

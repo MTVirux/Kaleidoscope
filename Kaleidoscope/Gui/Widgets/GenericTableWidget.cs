@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -589,30 +590,13 @@ public class GenericTableWidget<TRow> : ISettingsProvider
     /// </summary>
     private static bool DrawColorOption(string label, Vector4? currentColor, Action<Vector4?> setColor)
     {
-        var changed = false;
-        var hasColor = currentColor.HasValue;
-        var color = currentColor ?? new Vector4(0.3f, 0.3f, 0.3f, 0.5f);
-        
-        if (ImGui.Checkbox($"##{label}Enabled", ref hasColor))
+        var defaultColor = new Vector4(0.3f, 0.3f, 0.3f, 0.5f);
+        var (changed, newColor) = ImGuiHelpers.ColorPickerWithClear(
+            label, currentColor, defaultColor, label);
+        if (changed)
         {
-            setColor(hasColor ? color : null);
-            changed = true;
+            setColor(newColor);
         }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip(hasColor ? "Click to use default color" : "Click to enable custom color");
-        }
-        
-        ImGui.SameLine();
-        
-        ImGui.BeginDisabled(!hasColor);
-        if (ImGui.ColorEdit4(label, ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar))
-        {
-            setColor(color);
-            changed = true;
-        }
-        ImGui.EndDisabled();
-        
         return changed;
     }
     
@@ -794,30 +778,13 @@ public static class TableHelpers
     /// <returns>True if the color was changed.</returns>
     public static bool DrawColorOption(string label, Vector4? currentColor, Action<Vector4?> setColor)
     {
-        var changed = false;
-        var hasColor = currentColor.HasValue;
-        var color = currentColor ?? new Vector4(0.3f, 0.3f, 0.3f, 0.5f);
-        
-        if (ImGui.Checkbox($"##{label}Enabled", ref hasColor))
+        var defaultColor = new Vector4(0.3f, 0.3f, 0.3f, 0.5f);
+        var (changed, newColor) = ImGuiHelpers.ColorPickerWithClear(
+            label, currentColor, defaultColor, label);
+        if (changed)
         {
-            setColor(hasColor ? color : null);
-            changed = true;
+            setColor(newColor);
         }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip(hasColor ? "Click to use default color" : "Click to enable custom color");
-        }
-        
-        ImGui.SameLine();
-        
-        ImGui.BeginDisabled(!hasColor);
-        if (ImGui.ColorEdit4(label, ref color, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar))
-        {
-            setColor(color);
-            changed = true;
-        }
-        ImGui.EndDisabled();
-        
         return changed;
     }
     
