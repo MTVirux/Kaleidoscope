@@ -1,9 +1,8 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
+using Kaleidoscope.Gui.MainWindow.Tools.Data;
 using Kaleidoscope.Gui.MainWindow.Tools.DataTracker;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
-using Kaleidoscope.Gui.MainWindow.Tools.DataGraph;
-using Kaleidoscope.Gui.MainWindow.Tools.DataTable;
 using Kaleidoscope.Gui.MainWindow.Tools.Label;
 using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 using Kaleidoscope.Gui.MainWindow.Tools.Status;
@@ -25,8 +24,7 @@ public static class WindowToolRegistrar
         public const string InventoryValue = "InventoryValue";
         public const string TopItems = "TopItems";
         public const string ItemSalesHistory = "ItemSalesHistory";
-        public const string DataTable = "DataTable";
-        public const string DataGraph = "DataGraph";
+        public const string Data = "Data";
         public const string Label = "Label";
         public const string UniversalisWebSocketStatus = "UniversalisWebSocketStatus";
         public const string AutoRetainerStatus = "AutoRetainerStatus";
@@ -91,24 +89,16 @@ public static class WindowToolRegistrar
 
         try
         {
-            // Register the Data Table tool
+            // Register the unified Data tool (combines table and graph views)
             container.DefineToolType(
-                ToolIds.DataTable,
-                "Data Table",
-                pos => CreateDataTableTool(pos, ctx),
-                "Customizable table for tracking items and currencies across characters",
-                "Table");
+                ToolIds.Data,
+                "Data",
+                pos => CreateDataTool(pos, ctx),
+                "Unified tool for tracking items and currencies - switch between table and graph views while preserving all settings",
+                "Data");
 
             // Register tool presets from separate file
             ToolPresets.RegisterPresets(container, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
-
-            // Register the Data Graph tool
-            container.DefineToolType(
-                ToolIds.DataGraph,
-                "Data Graph",
-                pos => CreateDataGraphTool(pos, ctx),
-                "Customizable time-series graph for tracking items and currencies",
-                "Graph");
 
             container.DefineToolType(
                 ToolIds.GettingStarted,
@@ -241,11 +231,11 @@ public static class WindowToolRegistrar
         return "Graph";
     }
 
-    private static ToolComponent? CreateDataTableTool(Vector2 pos, ToolCreationContext ctx)
+    private static ToolComponent? CreateDataTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new DataTableTool(
+            return new DataTool(
                 ctx.SamplerService, 
                 ctx.ConfigService, 
                 ctx.InventoryCacheService, 
@@ -259,28 +249,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTableTool", ex);
-            return null;
-        }
-    }
-
-    private static ToolComponent? CreateDataGraphTool(Vector2 pos, ToolCreationContext ctx)
-    {
-        try
-        {
-            return new DataGraphTool(
-                ctx.SamplerService, 
-                ctx.ConfigService, 
-                ctx.InventoryCacheService, 
-                ctx.Registry, 
-                ctx.ItemDataService, 
-                ctx.DataManager,
-                ctx.TextureProvider,
-                ctx.FavoritesService) { Position = pos };
-        }
-        catch (Exception ex)
-        {
-            LogService.Error("Failed to create DataGraphTool", ex);
+            LogService.Error("Failed to create DataTool", ex);
             return null;
         }
     }
@@ -529,8 +498,7 @@ public static class WindowToolRegistrar
 
             return id switch
             {
-                ToolIds.DataTable => CreateDataTableTool(pos, ctx),
-                ToolIds.DataGraph => CreateDataGraphTool(pos, ctx),
+                ToolIds.Data => CreateDataTool(pos, ctx),
                 ToolIds.GettingStarted => new GettingStartedTool { Position = pos },
                 ToolIds.ImPlotReference => new ImPlotReferenceTool { Position = pos },
                 ToolIds.Label => new LabelTool(ctx.ConfigService) { Position = pos },
