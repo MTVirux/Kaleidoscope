@@ -36,50 +36,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private List<InventoryCacheEntry>? _allCharactersCache;
     private bool _allCharactersCacheDirty = true;
 
-    // Player inventory containers to scan
-    private static readonly InventoryType[] PlayerInventoryContainers = new[]
-    {
-        InventoryType.Inventory1,
-        InventoryType.Inventory2,
-        InventoryType.Inventory3,
-        InventoryType.Inventory4,
-        InventoryType.EquippedItems,
-        InventoryType.Crystals,
-        InventoryType.Currency,
-        InventoryType.KeyItems,
-        InventoryType.ArmoryMainHand,
-        InventoryType.ArmoryOffHand,
-        InventoryType.ArmoryHead,
-        InventoryType.ArmoryBody,
-        InventoryType.ArmoryHands,
-        InventoryType.ArmoryLegs,
-        InventoryType.ArmoryFeets,
-        InventoryType.ArmoryEar,
-        InventoryType.ArmoryNeck,
-        InventoryType.ArmoryWrist,
-        InventoryType.ArmoryRings,
-        InventoryType.ArmorySoulCrystal,
-        InventoryType.SaddleBag1,
-        InventoryType.SaddleBag2,
-        InventoryType.PremiumSaddleBag1,
-        InventoryType.PremiumSaddleBag2,
-    };
-
-    // Retainer inventory containers to scan
-    private static readonly InventoryType[] RetainerInventoryContainers = new[]
-    {
-        InventoryType.RetainerPage1,
-        InventoryType.RetainerPage2,
-        InventoryType.RetainerPage3,
-        InventoryType.RetainerPage4,
-        InventoryType.RetainerPage5,
-        InventoryType.RetainerPage6,
-        InventoryType.RetainerPage7,
-        InventoryType.RetainerEquippedItems,
-        InventoryType.RetainerCrystals,
-        InventoryType.RetainerMarket,
-    };
-
     private ulong _lastCachedRetainerId = 0;
     private DateTime _lastPlayerCacheTime = DateTime.MinValue;
     private readonly TimeSpan _playerCacheInterval = TimeSpan.FromSeconds(30);
@@ -240,7 +196,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             entry.Gil = im->GetGil();
 
             // Scan all player inventory containers
-            foreach (var containerType in PlayerInventoryContainers)
+            foreach (var containerType in InventoryConstants.PlayerInventoryContainers)
             {
                 ScanContainer(im, containerType, entry.Items);
             }
@@ -300,7 +256,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
 
             // Scan all retainer inventory containers
-            foreach (var containerType in RetainerInventoryContainers)
+            foreach (var containerType in InventoryConstants.RetainerInventoryContainers)
             {
                 ScanContainer(im, containerType, entry.Items);
             }
