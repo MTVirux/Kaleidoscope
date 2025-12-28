@@ -16,7 +16,7 @@ public sealed class QuickAccessBarWidget
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
     private readonly ConfigurationService? _configurationService;
-    private readonly SamplerService? _samplerService;
+    private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly UniversalisWebSocketService? _webSocketService;
     private readonly AutoRetainerIpcService? _autoRetainerService;
     private readonly Action? _onFullscreenToggle;
@@ -70,7 +70,7 @@ public sealed class QuickAccessBarWidget
     /// <param name="stateService">State service for edit/lock/fullscreen state.</param>
     /// <param name="layoutEditingService">Layout editing service for dirty state.</param>
     /// <param name="configurationService">Configuration service for layout access (optional).</param>
-    /// <param name="samplerService">Sampler service for database status (optional).</param>
+    /// <param name="CurrencyTrackerService">Currency tracking service for database status (optional).</param>
     /// <param name="webSocketService">WebSocket service for Universalis connection status (optional).</param>
     /// <param name="autoRetainerService">AutoRetainer IPC service for plugin integration status (optional).</param>
     /// <param name="onFullscreenToggle">Callback to toggle fullscreen mode.</param>
@@ -82,7 +82,7 @@ public sealed class QuickAccessBarWidget
         StateService stateService,
         LayoutEditingService layoutEditingService,
         ConfigurationService? configurationService = null,
-        SamplerService? samplerService = null,
+        CurrencyTrackerService? CurrencyTrackerService = null,
         UniversalisWebSocketService? webSocketService = null,
         AutoRetainerIpcService? autoRetainerService = null,
         Action? onFullscreenToggle = null,
@@ -94,7 +94,7 @@ public sealed class QuickAccessBarWidget
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _layoutEditingService = layoutEditingService ?? throw new ArgumentNullException(nameof(layoutEditingService));
         _configurationService = configurationService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _webSocketService = webSocketService;
         _autoRetainerService = autoRetainerService;
         _onFullscreenToggle = onFullscreenToggle;
@@ -177,7 +177,7 @@ public sealed class QuickAccessBarWidget
         
         // Count status indicators (only show if services are provided)
         var statusCount = 0;
-        if (_samplerService != null) statusCount++;
+        if (_currencyTrackerService != null) statusCount++;
         if (_webSocketService != null) statusCount++;
         if (_autoRetainerService != null) statusCount++;
         
@@ -378,9 +378,9 @@ public sealed class QuickAccessBarWidget
             var statusY = barPos.Y + (BarHeight - StatusIndicatorSize) / 2f;
             
             // Database status
-            if (_samplerService != null)
+            if (_currencyTrackerService != null)
             {
-                var hasDb = _samplerService.HasDb;
+                var hasDb = _currencyTrackerService.HasDb;
                 DrawStatusIndicator(dl, ref currentX, statusY,
                     hasDb ? StatusConnectedColor : StatusDisconnectedColor,
                     hasDb ? "Database: Connected" : "Database: Unavailable");

@@ -21,7 +21,9 @@ public class LivePriceFeedTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
     private readonly UniversalisService _universalisService;
-    private readonly SamplerService? _samplerService;
+    private readonly CurrencyTrackerService? _currencyTrackerService;
+    private readonly InventoryCacheService? _inventoryCacheService;
+    private readonly CharacterDataService? _characterDataService;
     private readonly LivePriceFeedSettings _instanceSettings;
 
     // World selection widget for filtering
@@ -42,14 +44,18 @@ public class LivePriceFeedTool : ToolComponent
         ConfigurationService configService,
         ItemDataService itemDataService,
         UniversalisService universalisService,
-        SamplerService? samplerService = null)
+        CurrencyTrackerService? CurrencyTrackerService = null,
+        InventoryCacheService? inventoryCacheService = null,
+        CharacterDataService? characterDataService = null)
     {
         _webSocketService = webSocketService;
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
         _universalisService = universalisService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
+        _inventoryCacheService = inventoryCacheService;
+        _characterDataService = characterDataService;
         _instanceSettings = new LivePriceFeedSettings();
 
         // Create item details popup for viewing market data when clicking entries
@@ -57,7 +63,9 @@ public class LivePriceFeedTool : ToolComponent
             _universalisService,
             _itemDataService,
             _priceTrackingService,
-            _samplerService);
+            _currencyTrackerService,
+            _inventoryCacheService,
+            _characterDataService);
 
         Title = "Live Price Feed";
         Size = new Vector2(450, 300);

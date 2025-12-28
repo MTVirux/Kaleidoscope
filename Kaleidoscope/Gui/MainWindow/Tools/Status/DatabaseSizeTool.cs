@@ -22,7 +22,7 @@ public class DatabaseSizeTool : ToolComponent
 {
     public override string ToolName => "Database Size";
     
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
 
     // Cached values to avoid hitting the file system every frame
     private long _cachedFileSize;
@@ -44,9 +44,9 @@ public class DatabaseSizeTool : ToolComponent
         set => _settings.ShowDetails = value;
     }
 
-    public DatabaseSizeTool(SamplerService samplerService)
+    public DatabaseSizeTool(CurrencyTrackerService CurrencyTrackerService)
     {
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
 
         Title = "Database Size";
         Size = new Vector2(220, 90);
@@ -58,7 +58,7 @@ public class DatabaseSizeTool : ToolComponent
         {
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
-            var dbPath = _samplerService.DbService?.DbPath;
+            var dbPath = _currencyTrackerService.DbService?.DbPath;
 
             if (string.IsNullOrEmpty(dbPath))
             {

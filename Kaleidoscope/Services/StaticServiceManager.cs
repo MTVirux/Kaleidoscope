@@ -45,7 +45,7 @@ public static class StaticServiceManager
             .AddSingleton<TrackedDataRegistry>()
             .AddSingleton<InventoryChangeService>()
             .AddSingleton<TimeSeriesCacheService>()
-            .AddSingleton<SamplerService>()
+            .AddSingleton<CurrencyTrackerService>()
             .AddSingleton<InventoryCacheService>()
             .AddSingleton<ProfilerService>()
             .AddSingleton<CommandService>();

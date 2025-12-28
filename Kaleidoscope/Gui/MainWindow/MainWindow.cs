@@ -22,7 +22,7 @@ public sealed class MainWindow : Window, IService, IDisposable
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly FilenameService _filenameService;
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
@@ -77,30 +77,30 @@ public sealed class MainWindow : Window, IService, IDisposable
     /// <summary>
     /// Gets whether the database is available.
     /// </summary>
-    public bool HasDb => _samplerService.HasDb;
+    public bool HasDb => _currencyTrackerService.HasDb;
 
     public void ClearAllData()
     {
-        try { _samplerService.ClearAllData(); }
+        try { _currencyTrackerService.ClearAllData(); }
         catch (Exception ex) { _log.Error($"ClearAllData failed: {ex.Message}"); }
     }
 
     public int CleanUnassociatedCharacters()
     {
-        try { return _samplerService.CleanUnassociatedCharacters(); }
+        try { return _currencyTrackerService.CleanUnassociatedCharacters(); }
         catch (Exception ex) { _log.Error($"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
     }
 
     public string? ExportCsv()
     {
-        try { return _samplerService.ExportCsv(TrackedDataType.Gil); }
+        try { return _currencyTrackerService.ExportCsv(TrackedDataType.Gil); }
         catch (Exception ex) { _log.Error($"ExportCsv failed: {ex.Message}"); return null; }
     }
 
     public MainWindow(
         IPluginLog log,
         ConfigurationService configService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
@@ -120,7 +120,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     {
         _log = log;
         _configService = configService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _filenameService = filenameService;
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;
@@ -319,7 +319,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             () => Config.GridSubdivisions);
 
         // Register available tools
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _currencyTrackerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
 
         // Apply saved layout or add defaults
         ApplyInitialLayout();
@@ -331,7 +331,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             if (exported.Count == 0)
             {
                 var ctx = new ToolCreationContext(
-                    _filenameService, _samplerService, _configService, _characterDataService,
+                    _filenameService, _currencyTrackerService, _configService, _characterDataService,
                     _inventoryChangeService, _trackedDataRegistry, _webSocketService,
                     _priceTrackingService, _itemDataService, _dataManager,
                     _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
@@ -568,7 +568,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             _stateService,
             _layoutEditingService,
             _configService,
-            _samplerService,
+            _currencyTrackerService,
             _webSocketService,
             _autoRetainerIpc,
             onFullscreenToggle: () =>

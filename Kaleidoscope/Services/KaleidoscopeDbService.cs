@@ -10,8 +10,8 @@ namespace Kaleidoscope.Services;
 /// </summary>
 /// <remarks>
 /// This service is intentionally not marked with IService because it is created
-/// manually by SamplerService to share the database connection. If you need to use
-/// this service directly, inject SamplerService and access its DbService property.
+/// manually by CurrencyTrackerService to share the database connection. If you need to use
+/// this service directly, inject CurrencyTrackerService and access its DbService property.
 /// 
 /// Uses WAL mode with a separate read-only connection for better concurrent read performance.
 /// The write connection uses a lock to ensure single-writer semantics.

@@ -15,30 +15,35 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 public record TopItemPriceInfo(int UnitPrice, int WorldId, DateTime LastUpdated);
 
 /// <summary>
-/// Cached market data for tooltip display.
+/// Cached local sale data for tooltip display.
+/// </summary>
+public record LocalSaleInfo(int WorldId, int PricePerUnit, int Quantity, bool IsHq, DateTime Timestamp);
+
+/// <summary>
+/// Cached market data for tooltip display (from local database).
 /// </summary>
 public record TooltipMarketData(
-    MarketListing? LowestListing,
-    MarketSale? LatestSale,
+    List<LocalSaleInfo>? RecentSales,
     DateTime FetchedAt,
     bool IsLoading = false,
-    string? Error = null);
+    string? Warning = null);
 
 /// <summary>
 /// Tool component that shows the top items by value from character inventories.
 /// Displays items that contribute the most to total liquid value.
 /// </summary>
-public class TopItemsTool : ToolComponent
+public class TopInventoryValueTool : ToolComponent
 {
     public override string ToolName => "Top Items";
     
     private readonly PriceTrackingService _priceTrackingService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
     private readonly CharacterDataService _characterDataService;
     private readonly ItemDataService _itemDataService;
     private readonly ItemComboDropdown _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
+    private readonly InventoryCacheService? _inventoryCacheService;
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
     // Flag for pending refresh (set by event handlers, processed on next Draw)
@@ -67,26 +72,28 @@ public class TopItemsTool : ToolComponent
     private readonly TopItemsSettings _instanceSettings;
     
     private TopItemsSettings Settings => _instanceSettings;
-    private KaleidoscopeDbService DbService => _samplerService.DbService;
-    private TimeSeriesCacheService CacheService => _samplerService.CacheService;
+    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
+    private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
 
-    public TopItemsTool(
+    public TopInventoryValueTool(
         PriceTrackingService priceTrackingService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         ConfigurationService configService,
         CharacterDataService characterDataService,
         ItemDataService itemDataService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
         FavoritesService favoritesService,
-        InventoryChangeService? inventoryChangeService = null)
+        InventoryChangeService? inventoryChangeService = null,
+        InventoryCacheService? inventoryCacheService = null)
     {
         _priceTrackingService = priceTrackingService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _configService = configService;
         _characterDataService = characterDataService;
         _itemDataService = itemDataService;
         _inventoryChangeService = inventoryChangeService;
+        _inventoryCacheService = inventoryCacheService;
 
         // Initialize instance settings (persisted with layout)
         _instanceSettings = new TopItemsSettings();
@@ -100,7 +107,7 @@ public class TopItemsTool : ToolComponent
             "TopItemsExclude",
             marketableOnly: true,
             configService: _configService,
-            trackedDataRegistry: _samplerService.Registry,
+            trackedDataRegistry: _currencyTrackerService.Registry,
             excludeCurrencies: true);
 
         // Create item details popup for showing listings and sales when clicking an item
@@ -108,7 +115,9 @@ public class TopItemsTool : ToolComponent
             priceTrackingService.UniversalisService,
             itemDataService,
             priceTrackingService,
-            samplerService);
+            CurrencyTrackerService,
+            inventoryCacheService,
+            characterDataService);
 
         Title = "Top Items";
         Size = new Vector2(400, 350);
@@ -151,7 +160,7 @@ public class TopItemsTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopItemsTool] Error refreshing characters: {ex.Message}");
+            LogService.Debug($"[TopInventoryValueTool] Error refreshing characters: {ex.Message}");
         }
     }
 
@@ -237,7 +246,7 @@ public class TopItemsTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopItemsTool] Error refreshing: {ex.Message}");
+            LogService.Debug($"[TopInventoryValueTool] Error refreshing: {ex.Message}");
         }
         finally
         {
@@ -284,7 +293,7 @@ public class TopItemsTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[TopItemsTool] Draw error: {ex.Message}");
+            LogService.Debug($"[TopInventoryValueTool] Draw error: {ex.Message}");
         }
     }
 
@@ -436,7 +445,7 @@ public class TopItemsTool : ToolComponent
         }
 
         // Mark as loading and start fetch
-        _tooltipCache[itemId] = new TooltipMarketData(null, null, DateTime.UtcNow, IsLoading: true);
+        _tooltipCache[itemId] = new TooltipMarketData(null, DateTime.UtcNow, IsLoading: true);
         _ = FetchTooltipDataAsync(itemId);
     }
 
@@ -444,41 +453,30 @@ public class TopItemsTool : ToolComponent
     {
         try
         {
-            var scope = _priceTrackingService.UniversalisService.GetConfiguredScope();
-            if (string.IsNullOrEmpty(scope))
+            // Check if sales channel is subscribed for the warning
+            string? warning = null;
+            if (!_priceTrackingService.IsSocketConnected)
             {
-                _tooltipCache[itemId] = new TooltipMarketData(null, null, DateTime.UtcNow, Error: "No scope configured");
-                return;
+                warning = "WebSocket not connected - prices may be stale";
+            }
+            else if (!_priceTrackingService.WebSocketService.IsSalesChannelSubscribed())
+            {
+                warning = "Sales channel not subscribed - enable in Universalis settings";
             }
 
-            var marketData = await _priceTrackingService.UniversalisService.GetMarketBoardDataAsync(
-                scope,
-                (uint)itemId,
-                listings: 10,
-                entries: 10);
+            // Get recent sales from local database (no scope needed - uses all recorded data)
+            var dbSales = _currencyTrackerService.DbService.GetSaleRecords(itemId, limit: 5);
+            
+            var recentSales = dbSales
+                .Select(s => new LocalSaleInfo(s.WorldId, s.PricePerUnit, s.Quantity, s.IsHq, s.Timestamp))
+                .ToList();
 
-            if (marketData == null)
-            {
-                _tooltipCache[itemId] = new TooltipMarketData(null, null, DateTime.UtcNow, Error: "Failed to fetch");
-                return;
-            }
-
-            // Get the lowest listing (by price per unit)
-            var lowestListing = marketData.Listings?
-                .OrderBy(l => l.PricePerUnit)
-                .FirstOrDefault();
-
-            // Get the most recent sale
-            var latestSale = marketData.RecentHistory?
-                .OrderByDescending(s => s.Timestamp)
-                .FirstOrDefault();
-
-            _tooltipCache[itemId] = new TooltipMarketData(lowestListing, latestSale, DateTime.UtcNow);
+            _tooltipCache[itemId] = new TooltipMarketData(recentSales, DateTime.UtcNow, Warning: warning);
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopItemsTool] Error fetching tooltip data for item {itemId}: {ex.Message}");
-            _tooltipCache[itemId] = new TooltipMarketData(null, null, DateTime.UtcNow, Error: ex.Message);
+            LogService.Debug($"[TopInventoryValueTool] Error fetching tooltip data for item {itemId}: {ex.Message}");
+            _tooltipCache[itemId] = new TooltipMarketData(null, DateTime.UtcNow, Warning: $"Error: {ex.Message}");
         }
     }
 
@@ -516,139 +514,83 @@ public class TopItemsTool : ToolComponent
         {
             if (tooltipData.IsLoading)
             {
-                ImGui.TextDisabled("Loading market data...");
-            }
-            else if (!string.IsNullOrEmpty(tooltipData.Error))
-            {
-                ImGui.TextColored(new Vector4(1, 0.5f, 0.5f, 1), $"Error: {tooltipData.Error}");
+                ImGui.TextDisabled("Loading sales data...");
             }
             else
             {
-                // Draw Latest Sale table
-                DrawLatestSaleTable(tooltipData.LatestSale);
-                
-                ImGui.Spacing();
-                
-                // Draw Lowest Listing table
-                DrawLowestListingTable(tooltipData.LowestListing);
+                // Show warning if present (e.g., websocket not connected or sales channel not subscribed)
+                if (!string.IsNullOrEmpty(tooltipData.Warning))
+                {
+                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), $"⚠ {tooltipData.Warning}");
+                    ImGui.Spacing();
+                }
+
+                // Draw Recent Sales table
+                DrawRecentSalesTable(tooltipData.RecentSales);
             }
         }
         else
         {
-            ImGui.TextDisabled("Hover to load market data...");
+            ImGui.TextDisabled("Hover to load sales data...");
         }
 
         ImGui.Spacing();
-        ImGui.TextDisabled("Click to view full listings & sales");
+        ImGui.TextDisabled("Click to view full details");
 
         ImGui.EndTooltip();
     }
 
-    private void DrawLatestSaleTable(MarketSale? sale)
+    private void DrawRecentSalesTable(List<LocalSaleInfo>? sales)
     {
-        ImGui.TextUnformatted("Latest Sale:");
+        ImGui.TextUnformatted("Recent Sales (from WebSocket):");
         
-        if (sale == null)
+        if (sales == null || sales.Count == 0)
         {
-            ImGui.TextDisabled("  No recent sales");
+            ImGui.TextDisabled("  No sales recorded");
+            ImGui.TextDisabled("  (Enable WebSocket sales tracking to record sales)");
             return;
         }
 
-        if (ImGui.BeginTable("##LatestSaleTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+        if (ImGui.BeginTable("##RecentSalesTable", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
             ImGui.TableSetupColumn("HQ", ImGuiTableColumnFlags.WidthFixed, 25);
             ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 70);
             ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 35);
-            ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Buyer", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableHeadersRow();
 
-            ImGui.TableNextRow();
-            
-            // HQ
-            ImGui.TableNextColumn();
-            if (sale.IsHq)
-                ImGui.TextColored(new Vector4(0.9f, 0.9f, 0.3f, 1f), "★");
-            else
-                ImGui.TextDisabled("-");
-            
-            // Price
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(FormatUtils.FormatGil(sale.PricePerUnit));
-            
-            // Qty
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(sale.Quantity.ToString());
-            
-            // Total
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(FormatUtils.FormatGil(sale.Total));
-            
-            // Buyer
-            ImGui.TableNextColumn();
-            var buyerName = string.IsNullOrEmpty(sale.BuyerName) ? "Unknown" : sale.BuyerName;
-            ImGui.TextUnformatted(buyerName);
+            foreach (var sale in sales)
+            {
+                ImGui.TableNextRow();
+                
+                // HQ
+                ImGui.TableNextColumn();
+                if (sale.IsHq)
+                    ImGui.TextColored(new Vector4(0.9f, 0.9f, 0.3f, 1f), "★");
+                else
+                    ImGui.TextDisabled("-");
+                
+                // Price
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(FormatUtils.FormatGil(sale.PricePerUnit));
+                
+                // Qty
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(sale.Quantity.ToString());
+                
+                // World + Time
+                ImGui.TableNextColumn();
+                var worldName = _priceTrackingService.WorldData?.GetWorldName(sale.WorldId) ?? $"World {sale.WorldId}";
+                var timeAgo = FormatUtils.FormatTimeAgo(DateTime.UtcNow - sale.Timestamp);
+                ImGui.TextUnformatted($"{worldName}");
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip(timeAgo);
+                }
+            }
 
             ImGui.EndTable();
         }
-
-        // Show world and time
-        var saleWorld = sale.WorldName ?? (sale.WorldId.HasValue ? _priceTrackingService.WorldData?.GetWorldName(sale.WorldId.Value) : null);
-        var saleTime = FormatUtils.FormatTimeAgo(DateTime.UtcNow - sale.SaleDateTime.ToUniversalTime());
-        ImGui.TextDisabled($"  {saleWorld ?? "Unknown World"} • {saleTime}");
-    }
-
-    private void DrawLowestListingTable(MarketListing? listing)
-    {
-        ImGui.TextUnformatted("Lowest Current Listing:");
-        
-        if (listing == null)
-        {
-            ImGui.TextDisabled("  No current listings");
-            return;
-        }
-
-        if (ImGui.BeginTable("##LowestListingTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
-        {
-            ImGui.TableSetupColumn("HQ", ImGuiTableColumnFlags.WidthFixed, 25);
-            ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 70);
-            ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 35);
-            ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Retainer", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
-
-            ImGui.TableNextRow();
-            
-            // HQ
-            ImGui.TableNextColumn();
-            if (listing.IsHq)
-                ImGui.TextColored(new Vector4(0.9f, 0.9f, 0.3f, 1f), "★");
-            else
-                ImGui.TextDisabled("-");
-            
-            // Price
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(FormatUtils.FormatGil(listing.PricePerUnit));
-            
-            // Qty
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(listing.Quantity.ToString());
-            
-            // Total
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(FormatUtils.FormatGil(listing.Total));
-            
-            // Retainer
-            ImGui.TableNextColumn();
-            var retainerName = string.IsNullOrEmpty(listing.RetainerName) ? "Unknown" : listing.RetainerName;
-            ImGui.TextUnformatted(retainerName);
-
-            ImGui.EndTable();
-        }
-
-        // Show world
-        var listingWorld = listing.WorldName ?? (listing.WorldId.HasValue ? _priceTrackingService.WorldData?.GetWorldName(listing.WorldId.Value) : null);
-        ImGui.TextDisabled($"  {listingWorld ?? "Unknown World"}");
     }
 
     public override bool HasSettings => true;
@@ -785,7 +727,7 @@ public class TopItemsTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopItemsTool] Settings error: {ex.Message}");
+            LogService.Debug($"[TopInventoryValueTool] Settings error: {ex.Message}");
         }
     }
 

@@ -19,11 +19,11 @@ public class ItemSalesHistoryTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ItemComboDropdown _itemCombo;
 
     // Convenience accessor for database service
-    private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
 
     // State
     private MarketHistory? _currentHistory;
@@ -42,7 +42,7 @@ public class ItemSalesHistoryTool : ToolComponent
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
         ItemDataService itemDataService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
         FavoritesService favoritesService)
@@ -51,7 +51,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
 
         _itemCombo = new ItemComboDropdown(
             textureProvider,
@@ -61,7 +61,7 @@ public class ItemSalesHistoryTool : ToolComponent
             "ItemSalesHistory",
             marketableOnly: true,
             configService: _configService,
-            trackedDataRegistry: _samplerService.Registry,
+            trackedDataRegistry: _currencyTrackerService.Registry,
             excludeCurrencies: true);
 
         Title = "Item Sales History";

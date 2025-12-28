@@ -2179,9 +2179,9 @@ public class ImplotGraphWidget : ISettingsProvider
             var labelMin = new Vector2(labelPos.X - padding, labelPos.Y - textSize.Y / 2 - padding);
             var labelMax = new Vector2(labelPos.X + textSize.X + padding, labelPos.Y + textSize.Y / 2 + padding);
             
-            if (IsPointInLegend(labelPos) || IsPointInControlsDrawer(labelPos) ||
-                IsPointInLegend(labelMin) || IsPointInControlsDrawer(labelMin) ||
-                IsPointInLegend(labelMax) || IsPointInControlsDrawer(labelMax))
+            if (IsPointInLegend(labelPos) ||
+                IsPointInLegend(labelMin) ||
+                IsPointInLegend(labelMax))
             {
                 continue;
             }
@@ -2508,6 +2508,7 @@ public class ImplotGraphWidget : ISettingsProvider
     /// </summary>
     private void DrawControlsDrawer()
     {
+        // Use plot draw list to render within the plot's z-order (respects window layering)
         var drawList = ImPlot.GetPlotDrawList();
         var plotPos = ImPlot.GetPlotPos();
         var plotSize = ImPlot.GetPlotSize();
@@ -2524,9 +2525,10 @@ public class ImplotGraphWidget : ISettingsProvider
         var drawerContentHeight = rowHeight; // Auto-scroll checkbox
         if (_config.AutoScrollEnabled)
         {
-            drawerContentHeight += rowHeight; // Value input row
-            drawerContentHeight += rowHeight; // Unit selector row
-            drawerContentHeight += rowHeight; // Position slider row
+            drawerContentHeight += rowHeight; // Value input row (- value +)
+            drawerContentHeight += rowHeight; // Unit selector row (m h d w)
+            drawerContentHeight += rowHeight; // Position label row
+            drawerContentHeight += rowHeight; // Slider row + percentage text
         }
         var drawerHeight = drawerPadding * 2 + drawerContentHeight;
         

@@ -19,7 +19,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private readonly ConfigurationService _configService;
     private readonly UniversalisService _universalisService;
     private readonly UniversalisWebSocketService _webSocketService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly InventoryCacheService _inventoryCacheService;
     private readonly ListingsService _listingsService;
     private readonly ItemDataService _itemDataService;
@@ -62,7 +62,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
-    private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
 
     /// <summary>Gets the cached world data.</summary>
     public UniversalisWorldData? WorldData => _worldData;
@@ -82,6 +82,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>Gets whether the WebSocket is currently connected for real-time price updates.</summary>
     public bool IsSocketConnected => _webSocketService.IsConnected;
 
+    /// <summary>Gets the WebSocket service for checking subscription status.</summary>
+    public UniversalisWebSocketService WebSocketService => _webSocketService;
+
     /// <summary>Event fired when price data is updated (new price received via WebSocket).</summary>
     public event Action<int>? OnPriceDataUpdated;
     
@@ -98,7 +101,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         ConfigurationService configService,
         UniversalisService universalisService,
         UniversalisWebSocketService webSocketService,
-        SamplerService samplerService,
+        CurrencyTrackerService currencyTrackerService,
         InventoryCacheService inventoryCacheService,
         ListingsService listingsService,
         ItemDataService itemDataService,
@@ -109,7 +112,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _configService = configService;
         _universalisService = universalisService;
         _webSocketService = webSocketService;
-        _samplerService = samplerService;
+        _currencyTrackerService = currencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _listingsService = listingsService;
         _itemDataService = itemDataService;
@@ -631,6 +634,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         {
             // Expected during shutdown
         }
+        catch (ObjectDisposedException)
+        {
+            // Expected during rapid plugin reload - CTS disposed before cancellation signaled
+        }
         catch (Exception ex)
         {
             LogService.Error($"[PriceTracking] Background worker crashed: {ex.Message}", ex);
@@ -1034,7 +1041,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 
                 // Also queue to standard time-series tracking
                 // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
-                _samplerService.QueueInventoryValueSample(charId, item, characterName);
+                _currencyTrackerService.QueueInventoryValueSample(charId, item, characterName);
             }
             
             // Re-populate the full cache on background thread so main thread doesn't block
@@ -1087,7 +1094,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
             foreach (var (charId, total, gil, item, characterName) in results)
             {
-                _samplerService.QueueInventoryValueSample(charId, item, characterName);
+                _currencyTrackerService.QueueInventoryValueSample(charId, item, characterName);
             }
 
             _log.Verbose($"[PriceTracking] Event-driven value samples for {characterIds.Count} characters");

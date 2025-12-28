@@ -26,7 +26,7 @@ public readonly record struct ComboCharacter(ulong Id, string Name, string? Worl
 public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposable
 {
     private readonly FavoritesService _favoritesService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService? _configService;
     private readonly AutoRetainerIpcService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
@@ -113,18 +113,18 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     public event Action<IReadOnlySet<ulong>>? MultiSelectionChanged;
 
     public CharacterCombo(
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         FavoritesService favoritesService,
         ConfigurationService? configService,
         string label,
         AutoRetainerIpcService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
         : base(
-            () => BuildCharacterList(samplerService, favoritesService, configService, autoRetainerService, priceTrackingService),
+            () => BuildCharacterList(CurrencyTrackerService, favoritesService, configService, autoRetainerService, priceTrackingService),
             MouseWheelType.Control,
             new Logger())
     {
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _favoritesService = favoritesService;
         _configService = configService;
         _autoRetainerService = autoRetainerService;
@@ -160,7 +160,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     }
 
     private static IReadOnlyList<ComboCharacter> BuildCharacterList(
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         FavoritesService favoritesService,
         ConfigurationService? configService,
         AutoRetainerIpcService? autoRetainerService = null,
@@ -168,7 +168,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     {
         var characters = new List<ComboCharacter>();
         var favorites = favoritesService.FavoriteCharacters;
-        var cacheService = samplerService.CacheService;
+        var cacheService = CurrencyTrackerService.CacheService;
         var nameFormat = configService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
         
         // Get world data for DC/Region lookups
@@ -183,7 +183,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             characters.Add(AllCharacters);
 
             // Get all characters from database
-            var dbCharacters = samplerService.DbService.GetAllCharacterNames()
+            var dbCharacters = CurrencyTrackerService.DbService.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();
@@ -619,7 +619,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
     {
         var characters = new List<ComboCharacter>();
         var favorites = _favoritesService.FavoriteCharacters;
-        var cacheService = _samplerService.CacheService;
+        var cacheService = _currencyTrackerService.CacheService;
         var nameFormat = _configService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
         
         // Get world data for DC/Region lookups
@@ -634,7 +634,7 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             characters.Add(AllCharacters);
 
             // Get all characters from database
-            var dbCharacters = _samplerService.DbService.GetAllCharacterNames()
+            var dbCharacters = _currencyTrackerService.DbService.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();

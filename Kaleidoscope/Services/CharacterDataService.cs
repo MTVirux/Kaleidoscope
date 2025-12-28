@@ -25,12 +25,12 @@ public sealed record CharacterInfo(
 
 /// <summary>
 /// Centralized service for character data access, caching, and formatting.
-/// Consolidates character loading logic from CharacterCombo, DataTool, InventoryValueTool, and TopItemsTool.
+/// Consolidates character loading logic from CharacterCombo, DataTool, InventoryValueTool, and TopInventoryValueTool.
 /// </summary>
 public sealed class CharacterDataService : IService, IDisposable
 {
     private readonly IPluginLog _log;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
     private readonly AutoRetainerIpcService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
@@ -53,14 +53,14 @@ public sealed class CharacterDataService : IService, IDisposable
 
     public CharacterDataService(
         IPluginLog log,
-        SamplerService samplerService,
+        CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         FavoritesService favoritesService,
         AutoRetainerIpcService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _log = log;
-        _samplerService = samplerService;
+        _currencyTrackerService = currencyTrackerService;
         _configService = configService;
         _favoritesService = favoritesService;
         _autoRetainerService = autoRetainerService;
@@ -224,8 +224,8 @@ public sealed class CharacterDataService : IService, IDisposable
     {
         try
         {
-            var dbService = _samplerService.DbService;
-            var cacheService = _samplerService.CacheService;
+            var dbService = _currencyTrackerService.DbService;
+            var cacheService = _currencyTrackerService.CacheService;
             var worldData = _priceTrackingService?.WorldData;
             var nameFormat = _configService.Config.CharacterNameFormat;
 

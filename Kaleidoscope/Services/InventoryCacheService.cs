@@ -21,7 +21,7 @@ namespace Kaleidoscope.Services;
 public sealed class InventoryCacheService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly IObjectTable _objectTable;
     private readonly IFramework _framework;
     private readonly InventoryChangeService _inventoryChangeService;
@@ -49,7 +49,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     public InventoryCacheService(
         IPluginLog log,
-        SamplerService samplerService,
+        CurrencyTrackerService currencyTrackerService,
         IObjectTable objectTable,
         IFramework framework,
         InventoryChangeService inventoryChangeService,
@@ -57,7 +57,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         ConfigurationService configService)
     {
         _log = log;
-        _samplerService = samplerService;
+        _currencyTrackerService = currencyTrackerService;
         _objectTable = objectTable;
         _framework = framework;
         _inventoryChangeService = inventoryChangeService;
@@ -202,7 +202,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
 
             // Save to database
-            _samplerService.DbService.SaveInventoryCache(entry);
+            _currencyTrackerService.DbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
             
             // Sample tracked items to time-series for historical graphing
@@ -262,7 +262,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
 
             // Save to database
-            _samplerService.DbService.SaveInventoryCache(entry);
+            _currencyTrackerService.DbService.SaveInventoryCache(entry);
             _lastCachedRetainerId = retainerId;
             
             // Invalidate memory cache since DB was updated
@@ -270,7 +270,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             
             // Re-sample tracked items now that retainer data has been updated
             // Get player inventory cache to combine with new retainer data
-            var playerCache = _samplerService.DbService.GetInventoryCache(
+            var playerCache = _currencyTrackerService.DbService.GetInventoryCache(
                 characterId, InventorySourceType.Player, 0);
             if (playerCache != null)
             {
@@ -310,7 +310,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 if (retainerId == 0) continue;
 
                 // Check if we already have a cache for this retainer
-                var existing = _samplerService.DbService.GetInventoryCache(
+                var existing = _currencyTrackerService.DbService.GetInventoryCache(
                     characterId, 
                     InventorySourceType.Retainer, 
                     retainerId);
@@ -323,7 +323,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                         existing.Gil = retainer->Gil;
                         existing.Name = retainer->NameString;
                         existing.UpdatedAt = DateTime.UtcNow;
-                        _samplerService.DbService.SaveInventoryCache(existing);
+                        _currencyTrackerService.DbService.SaveInventoryCache(existing);
                     }
                 }
                 else
@@ -331,7 +331,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     // Create a placeholder entry (inventory items will be filled when retainer is opened)
                     var entry = InventoryCacheEntry.ForRetainer(characterId, retainerId, retainer->NameString);
                     entry.Gil = retainer->Gil;
-                    _samplerService.DbService.SaveInventoryCache(entry);
+                    _currencyTrackerService.DbService.SaveInventoryCache(entry);
                     _log.Debug($"[InventoryCacheService] Created placeholder for retainer '{retainer->NameString}'");
                 }
             }
@@ -398,7 +398,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         }
         
         // Cache miss - load from database
-        var entries = _samplerService.DbService.GetAllInventoryCaches(characterId);
+        var entries = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId);
         
         // Store in memory cache (this data is static for offline characters)
         _inventoryMemoryCache[characterId] = entries;
@@ -429,7 +429,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         }
         
         // Cache miss or dirty - reload from database
-        _allCharactersCache = _samplerService.DbService.GetAllInventoryCachesAllCharacters();
+        _allCharactersCache = _currencyTrackerService.DbService.GetAllInventoryCachesAllCharacters();
         _allCharactersCacheDirty = false;
         
         // Also populate per-character cache for individual lookups
@@ -449,7 +449,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         var characterId = GameStateService.PlayerContentId;
         if (characterId == 0) return 0;
 
-        var summary = _samplerService.DbService.GetItemCountSummary(characterId, itemId);
+        var summary = _currencyTrackerService.DbService.GetItemCountSummary(characterId, itemId);
         return summary.TryGetValue(itemId, out var count) ? count : 0;
     }
 
@@ -458,7 +458,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     public long GetTotalItemCountAllCharacters(uint itemId)
     {
-        var summary = _samplerService.DbService.GetItemCountSummary(null, itemId);
+        var summary = _currencyTrackerService.DbService.GetItemCountSummary(null, itemId);
         return summary.TryGetValue(itemId, out var count) ? count : 0;
     }
 
@@ -546,7 +546,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 return;
 
             // Gather all retainer caches for this character (with retainer info)
-            var retainerCaches = _samplerService.DbService.GetAllInventoryCaches(characterId)
+            var retainerCaches = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId)
                 .Where(c => c.SourceType == InventorySourceType.Retainer)
                 .ToList();
 
@@ -613,7 +613,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             if (_pendingSamples.TryRemove(key, out var sample))
             {
-                _samplerService.DbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
+                _currencyTrackerService.DbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
                 count++;
             }
         }

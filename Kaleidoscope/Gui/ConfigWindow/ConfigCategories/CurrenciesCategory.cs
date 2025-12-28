@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -9,8 +10,9 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
 /// <summary>
-/// Currency/resource color management category in the config window.
-/// Provides options to set custom colors for tracked data types used across all tools.
+/// Currency/resource color management and tracking category in the config window.
+/// Provides options to set custom colors for tracked data types used across all tools,
+/// and displays which currencies are being tracked (always enabled).
 /// </summary>
 public class CurrenciesCategory
 {
@@ -60,6 +62,26 @@ public class CurrenciesCategory
 
     public void Draw()
     {
+        // Currency Tracking Settings Section
+        ImGui.TextUnformatted("Currency Tracking");
+        ImGui.Separator();
+        ImGui.TextWrapped("All currencies are automatically tracked. Historical data is recorded for all currency types below.");
+        ImGui.Spacing();
+
+        // Show tracking status (always enabled)
+        var trackingEnabled = true;
+        ImGui.BeginDisabled();
+        ImGui.Checkbox("Currency tracking enabled", ref trackingEnabled);
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            ImGui.SetTooltip("Currency tracking is always enabled and cannot be turned off.");
+        }
+
+        ImGui.Spacing();
+        ImGui.Spacing();
+
+        // Currency & Resource Colors Section
         ImGui.TextUnformatted("Currency & Resource Colors");
         ImGui.Separator();
         ImGui.TextWrapped("Set a custom color for each tracked currency or resource. " +
@@ -114,12 +136,13 @@ public class CurrenciesCategory
         // Account for scrollbar width in fixed columns
         var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
         
-        if (ImGui.BeginTable("ItemColorsTable", 5, tableFlags, new Vector2(0, availableHeight)))
+        if (ImGui.BeginTable("ItemColorsTable", 6, tableFlags, new Vector2(0, availableHeight)))
         {
             // Setup columns
             ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 100);
             ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, IconSize + 4);
             ImGui.TableSetupColumn("Currency", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableSetupColumn("Tracked", ImGuiTableColumnFlags.WidthFixed, 60);
             ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
             ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 55 + scrollbarWidth);
             ImGui.TableSetupScrollFreeze(0, 1);
@@ -160,6 +183,19 @@ public class CurrenciesCategory
                         ImGui.EndTooltip();
                     }
 
+                    // Tracked column (always enabled, read-only)
+                    ImGui.TableNextColumn();
+                    ImGui.PushID($"tracked_{(int)definition.Type}");
+                    var isTracked = true;
+                    ImGui.BeginDisabled();
+                    ImGui.Checkbox("##tracked", ref isTracked);
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    {
+                        ImGui.SetTooltip("Currency tracking is always enabled and cannot be turned off.");
+                    }
+                    ImGui.PopID();
+
                     // Color column
                     ImGui.TableNextColumn();
                     DrawColorCell(definition.Type, config);
@@ -197,7 +233,7 @@ public class CurrenciesCategory
         }
         else if (hasColor)
         {
-            colorValue = UintToVector4(colorUint);
+            colorValue = ColorUtils.UintToVector4(colorUint);
         }
         else
         {
@@ -242,7 +278,7 @@ public class CurrenciesCategory
             // Save when the user finishes editing
             if (ImGui.IsItemDeactivatedAfterEdit())
             {
-                SaveItemColor(dataType, Vector4ToUint(_colorEditBuffer));
+                SaveItemColor(dataType, ColorUtils.Vector4ToUint(_colorEditBuffer));
                 _editingColorType = null;
             }
         }
@@ -294,30 +330,6 @@ public class CurrenciesCategory
         {
             LogService.Error($"Failed to save item color for {dataType}", ex);
         }
-    }
-
-    /// <summary>
-    /// Converts a uint color (ABGR format from ImGui) to Vector4.
-    /// </summary>
-    private static Vector4 UintToVector4(uint color)
-    {
-        var r = (color & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = ((color >> 16) & 0xFF) / 255f;
-        var a = ((color >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-
-    /// <summary>
-    /// Converts a Vector4 color to uint (ABGR format for ImGui).
-    /// </summary>
-    private static uint Vector4ToUint(Vector4 color)
-    {
-        var r = (uint)(Math.Clamp(color.X, 0f, 1f) * 255f);
-        var g = (uint)(Math.Clamp(color.Y, 0f, 1f) * 255f);
-        var b = (uint)(Math.Clamp(color.Z, 0f, 1f) * 255f);
-        var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
-        return r | (g << 8) | (b << 16) | (a << 24);
     }
 
     private void DrawCurrencyIcon(TrackedDataDefinition definition)

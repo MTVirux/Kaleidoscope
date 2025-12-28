@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// </summary>
 public class DataCategory
 {
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerIpcService _autoRetainerIpc;
     private readonly ConfigurationService _configService;
 
@@ -21,9 +21,9 @@ public class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(SamplerService samplerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
+    public DataCategory(CurrencyTrackerService CurrencyTrackerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
     {
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;
         _configService = configService;
     }
@@ -35,12 +35,12 @@ public class DataCategory
         ImGui.Spacing();
         ImGui.TextUnformatted("Data Management");
         ImGui.Separator();
-        var hasDb = _samplerService.HasDb;
+        var hasDb = _currencyTrackerService.HasDb;
         if (ImGui.Button("Export Gil CSV") && hasDb)
         {
             try
             {
-                var fileName = _samplerService.ExportCsv(TrackedDataType.Gil);
+                var fileName = _currencyTrackerService.ExportCsv(TrackedDataType.Gil);
                 if (!string.IsNullOrEmpty(fileName)) ImGui.TextUnformatted($"Exported to {fileName}");
             }
             catch (Exception ex)
@@ -100,7 +100,7 @@ public class DataCategory
             {
                 try
                 {
-                    _samplerService.ClearAllData();
+                    _currencyTrackerService.ClearAllData();
                     LogService.Info("Cleared all GilTracker data");
                 }
                 catch (Exception ex)
@@ -124,7 +124,7 @@ public class DataCategory
             {
                 try
                 {
-                    var count = _samplerService.CleanUnassociatedCharacters();
+                    var count = _currencyTrackerService.CleanUnassociatedCharacters();
                     LogService.Info($"Cleaned {count} unassociated character records");
                 }
                 catch (Exception ex)
@@ -161,19 +161,19 @@ public class DataCategory
                         if (cid == 0 || string.IsNullOrEmpty(name)) continue;
                         
                         // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
-                        _samplerService.DbService?.SaveCharacterName(cid, name);
+                        _currencyTrackerService.DbService?.SaveCharacterName(cid, name);
                         
                         // Create a series if it doesn't exist
-                        var seriesId = _samplerService.DbService?.GetOrCreateSeries("Gil", cid);
+                        var seriesId = _currencyTrackerService.DbService?.GetOrCreateSeries("Gil", cid);
                         if (seriesId.HasValue)
                         {
                             // Check if we already have data for this character
-                            var existingValue = _samplerService.DbService?.GetLastValueForCharacter("Gil", cid);
+                            var existingValue = _currencyTrackerService.DbService?.GetLastValueForCharacter("Gil", cid);
                             
                             // AutoRetainer data takes priority - add sample if gil differs from latest
                             if (existingValue == null || (long)existingValue.Value != gil)
                             {
-                                _samplerService.DbService?.SaveSampleIfChanged("Gil", cid, gil);
+                                _currencyTrackerService.DbService?.SaveSampleIfChanged("Gil", cid, gil);
                                 if (existingValue != null) updatedCount++;
                             }
                             _importCount++;
@@ -223,31 +223,10 @@ public class DataCategory
         
         ImGui.Spacing();
         
-        var samplerConfig = _configService.SamplerConfig;
-        var cacheSizeMb = samplerConfig.DatabaseCacheSizeMb;
-        
-        ImGui.SetNextItemWidth(120);
-        if (ImGui.SliderInt("Cache Size (MB)", ref cacheSizeMb, 1, 64))
-        {
-            samplerConfig.DatabaseCacheSizeMb = cacheSizeMb;
-            _configService.Save();
-        }
-        
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.TextUnformatted("SQLite page cache stored in RAM.");
-            ImGui.TextUnformatted("Higher values improve read performance.");
-            ImGui.TextUnformatted("Each connection uses this amount (2 connections total).");
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Recommended: 4-16 MB");
-            ImGui.TextUnformatted("Requires plugin reload to take effect.");
-            ImGui.EndTooltip();
-        }
-        
+        // Reference to Storage category for cache/size settings
+        var currencyTrackerConfig = _configService.CurrencyTrackerConfig;
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
-            $"Current: {cacheSizeMb * 2} MB total (2 connections × {cacheSizeMb} MB)");
+            "Database and cache size settings have been moved to the Storage category.");
+        ImGui.TextDisabled($"Current cache: {currencyTrackerConfig.DatabaseCacheSizeMb * 2} MB total (2 connections × {currencyTrackerConfig.DatabaseCacheSizeMb} MB)");
     }
 }

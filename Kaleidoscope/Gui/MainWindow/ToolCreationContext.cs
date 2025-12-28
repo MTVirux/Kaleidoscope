@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// </summary>
 public sealed record ToolCreationContext(
     FilenameService FilenameService,
-    SamplerService SamplerService,
+    CurrencyTrackerService CurrencyTrackerService,
     ConfigurationService ConfigService,
     CharacterDataService? CharacterDataService = null,
     InventoryChangeService? InventoryChangeService = null,

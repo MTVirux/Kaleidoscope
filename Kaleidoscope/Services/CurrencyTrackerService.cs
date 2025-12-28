@@ -6,7 +6,7 @@ using System.Threading.Channels;
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Background service that samples game data (currencies, inventories) and persists it via KaleidoscopeDbService.
+/// Background service that tracks currency data (gil, tomestones, etc.) and persists it via KaleidoscopeDbService.
 /// Uses event-driven hooks for real-time updates with a fallback periodic sync.
 /// Database writes are offloaded to a background thread to avoid game lag.
 /// </summary>
@@ -15,7 +15,7 @@ namespace Kaleidoscope.Services;
 /// Fallback: Periodic timer sync to catch any missed updates (runs less frequently).
 /// Threading: Game data reads happen on main thread, database writes happen on background thread.
 /// </remarks>
-public sealed class SamplerService : IDisposable, IRequiredService
+public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly FilenameService _filenames;
@@ -30,16 +30,10 @@ public sealed class SamplerService : IDisposable, IRequiredService
     private readonly Task _backgroundWorker;
     private readonly CancellationTokenSource _cts = new();
 
-    private volatile bool _enabled = true;
-
     /// <summary>
-    /// Gets or sets whether sampling is enabled.
+    /// Gets whether currency tracking is enabled. Always returns true as tracking cannot be disabled.
     /// </summary>
-    public bool Enabled
-    {
-        get => _enabled;
-        set => _enabled = value;
-    }
+    public bool Enabled => true;
 
     /// <summary>
     /// Gets the effective sampling interval in milliseconds.
@@ -106,7 +100,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
 
     private readonly AutoRetainerIpcService _arIpc;
 
-    public SamplerService(
+    public CurrencyTrackerService(
         IPluginLog log,
         FilenameService filenames,
         ConfigurationService configService,
@@ -124,7 +118,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         _cacheService = cacheService;
 
         // Create the database service with configured cache size
-        var cacheSizeMb = configService.SamplerConfig.DatabaseCacheSizeMb;
+        var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
 
         // Initialize background work queue (unbounded, single consumer)
@@ -145,9 +139,6 @@ public sealed class SamplerService : IDisposable, IRequiredService
         // Perform one-time migration of stored names
         _dbService.MigrateStoredNames();
 
-        // Load initial values from config
-        _enabled = configService.SamplerConfig.SamplerEnabled;
-
         // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
 
@@ -157,7 +148,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         // Subscribe to inventory change events - uses pre-captured values to avoid re-reading game memory
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
 
-        _log.Information("[SamplerService] Initialized with background thread for database writes");
+        _log.Information("[CurrencyTrackerService] Initialized with background thread for database writes");
     }
 
     /// <summary>
@@ -228,7 +219,6 @@ public sealed class SamplerService : IDisposable, IRequiredService
     /// </summary>
     private void OnValuesChanged(IReadOnlyDictionary<TrackedDataType, long> changedValues)
     {
-        if (!_enabled) return;
         if (changedValues.Count == 0) return;
 
         try
@@ -270,7 +260,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[SamplerService] OnValuesChanged error: {ex.Message}");
+            _log.Debug($"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
 
@@ -302,7 +292,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[SamplerService] Background write error: {ex.Message}");
+                        LogService.Debug($"[CurrencyTrackerService] Background write error: {ex.Message}");
                     }
                 }
             }
@@ -311,9 +301,13 @@ public sealed class SamplerService : IDisposable, IRequiredService
         {
             // Expected during shutdown
         }
+        catch (ObjectDisposedException)
+        {
+            // Expected during rapid plugin reload - CTS disposed before cancellation signaled
+        }
         catch (Exception ex)
         {
-            LogService.Error($"[SamplerService] Background worker crashed: {ex.Message}", ex);
+            LogService.Error($"[CurrencyTrackerService] Background worker crashed: {ex.Message}", ex);
         }
     }
 
@@ -326,7 +320,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         var cacheConfig = _configService.Config.TimeSeriesCacheConfig;
         if (!cacheConfig.PrePopulateOnStartup)
         {
-            _log.Debug("[SamplerService] Cache pre-population disabled");
+            _log.Debug("[CurrencyTrackerService] Cache pre-population disabled");
             return;
         }
 
@@ -339,7 +333,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
             // Load character names first (with game name, display name, and color)
             var characterData = _dbService.GetAllCharacterDataExtended();
             _cacheService.PopulateCharacterNames(characterData);
-            _log.Debug($"[SamplerService] Loaded {characterData.Count} character names into cache");
+            _log.Debug($"[CurrencyTrackerService] Loaded {characterData.Count} character names into cache");
 
             // Load data for each tracked data type
             foreach (var dataType in _registry.Definitions.Keys)
@@ -365,11 +359,11 @@ public sealed class SamplerService : IDisposable, IRequiredService
                 }
             }
 
-            _log.Information($"[SamplerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
+            _log.Information($"[CurrencyTrackerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
         }
         catch (Exception ex)
         {
-            _log.Error($"[SamplerService] Failed to populate cache from database: {ex.Message}");
+            _log.Error($"[CurrencyTrackerService] Failed to populate cache from database: {ex.Message}");
         }
     }
 
@@ -482,7 +476,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
         catch (AggregateException) { /* Expected if task was canceled */ }
         catch (Exception ex)
         {
-            LogService.Debug($"[SamplerService] Background worker shutdown error: {ex.Message}");
+            LogService.Debug($"[CurrencyTrackerService] Background worker shutdown error: {ex.Message}");
         }
 
         _cts.Dispose();

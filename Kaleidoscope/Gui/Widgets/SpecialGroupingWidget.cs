@@ -52,12 +52,25 @@ public static class SpecialGroupingWidget
         // Update the active grouping setting if detection changed
         if (settings.ActiveGrouping != detectedGrouping)
         {
+            var previousGrouping = settings.ActiveGrouping;
             settings.ActiveGrouping = detectedGrouping;
             
             // If grouping was lost, disable filtering
             if (detectedGrouping == SpecialGroupingType.None)
             {
                 settings.Enabled = false;
+            }
+            
+            // Disable individual flags when their grouping is no longer detected
+            if (previousGrouping.HasFlag(SpecialGroupingType.AllCrystals) && 
+                !detectedGrouping.HasFlag(SpecialGroupingType.AllCrystals))
+            {
+                settings.AllCrystalsEnabled = false;
+            }
+            if (previousGrouping.HasFlag(SpecialGroupingType.AllGil) && 
+                !detectedGrouping.HasFlag(SpecialGroupingType.AllGil))
+            {
+                settings.AllGilEnabled = false;
             }
             
             changed = true;
@@ -115,6 +128,25 @@ public static class SpecialGroupingWidget
         
         if (unlocked)
         {
+            // Ensure the enabled flag is set when the grouping is unlocked
+            switch (type)
+            {
+                case SpecialGroupingType.AllCrystals:
+                    if (!settings.AllCrystalsEnabled)
+                    {
+                        settings.AllCrystalsEnabled = true;
+                        changed = true;
+                    }
+                    break;
+                case SpecialGroupingType.AllGil:
+                    if (!settings.AllGilEnabled)
+                    {
+                        settings.AllGilEnabled = true;
+                        changed = true;
+                    }
+                    break;
+            }
+            
             // Draw as collapsible header with green checkmark (indented since it's nested)
             ImGui.Indent();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 1.0f, 0.4f, 1.0f));

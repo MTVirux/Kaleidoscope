@@ -100,13 +100,19 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
                 def.Category));
         }
 
-        // Sort: favorites first, then by category, then alphabetically
+        // Sort: favorites first, then primary currencies, then by category, then alphabetically
         currencies.Sort((a, b) =>
         {
             var aFav = favorites.Contains(a.Type);
             var bFav = favorites.Contains(b.Type);
             if (aFav != bFav)
                 return bFav.CompareTo(aFav); // Favorites first
+            
+            // Primary currencies get priority in specific order
+            var aPrimary = GetPrimaryCurrencyOrder(a.Type);
+            var bPrimary = GetPrimaryCurrencyOrder(b.Type);
+            if (aPrimary != bPrimary)
+                return aPrimary.CompareTo(bPrimary);
             
             // Then by category
             var catCompare = a.Category.CompareTo(b.Category);
@@ -118,6 +124,19 @@ public sealed class CurrencyIconCombo : FilterComboCache<ComboCurrency>
 
         return currencies;
     }
+
+    /// <summary>
+    /// Returns the sort order for primary currencies. Lower values sort first.
+    /// Non-primary currencies return int.MaxValue to sort after primary ones.
+    /// </summary>
+    private static int GetPrimaryCurrencyOrder(TrackedDataType type) => type switch
+    {
+        TrackedDataType.Gil => 0,                    // Character Gil first
+        TrackedDataType.RetainerGil => 1,            // Retainer Gil second
+        TrackedDataType.FreeCompanyGil => 2,         // Free Company Gil third
+        TrackedDataType.InventoryValueItems => 3,    // Inventory Value (in Gil) fourth
+        _ => int.MaxValue                            // All others after
+    };
 
     protected override string ToString(ComboCurrency obj)
         => obj.Name;

@@ -12,17 +12,18 @@ namespace Kaleidoscope.Gui.ConfigWindow;
 /// Configuration window for plugin settings.
 /// </summary>
 /// <remarks>
-/// Provides a sidebar-based navigation between General, Data, Sampler, and Layouts configuration categories.
+/// Provides a sidebar-based navigation between General, Data, Characters, Currencies, and Layouts configuration categories.
 /// </remarks>
 public sealed class ConfigWindow : Window
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerIpcService _arIpc;
     private readonly TrackedDataRegistry _registry;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly UniversalisWebSocketService _webSocketService;
+    private readonly UniversalisService _universalisService;
     private readonly ProfilerService _profilerService;
 
     private Configuration Config => _configService.Config;
@@ -31,15 +32,16 @@ public sealed class ConfigWindow : Window
     private TitleBarButton? _lockButton;
     private GeneralCategory? _generalCategory;
     private DataCategory? _dataCategory;
-    private SamplerCategory? _samplerCategory;
     private LayoutsCategory? _layoutsCategory;
-    private WindowsCategory? _windowsCategory;
+    private CustomizationCategory? _customizationCategory;
     private UniversalisCategory? _universalisCategory;
     private ProfilerCategory? _profilerCategory;
     private CharactersCategory? _charactersCategory;
     private CurrenciesCategory? _currenciesCategory;
     private ItemsCategory? _itemsCategory;
     private ToolPresetsCategory? _toolPresetsCategory;
+    private StorageCategory? _storageCategory;
+    private TestsCategory? _testsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -51,12 +53,13 @@ public sealed class ConfigWindow : Window
         public const int Characters = 2;
         public const int GameItems = 3;
         public const int Currencies = 4;
-        public const int Sampler = 5;
-        public const int Layouts = 6;
-        public const int ToolPresets = 7;
-        public const int Windows = 8;
-        public const int Universalis = 9;
+        public const int Layouts = 5;
+        public const int ToolPresets = 6;
+        public const int Customization = 7;
+        public const int Universalis = 8;
+        public const int Storage = 9;
         public const int Profiler = 10; // Hidden tab, only shown with CTRL+ALT
+        public const int Tests = 11; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -71,11 +74,12 @@ public sealed class ConfigWindow : Window
     public ConfigWindow(
         IPluginLog log,
         ConfigurationService configService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
         UniversalisWebSocketService webSocketService,
+        UniversalisService universalisService,
         ProfilerService profilerService,
         ItemDataService itemDataService,
         IDataManager dataManager,
@@ -85,11 +89,12 @@ public sealed class ConfigWindow : Window
     {
         _log = log;
         _configService = configService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _arIpc = arIpc;
         _registry = registry;
         _priceTrackingService = priceTrackingService;
         _webSocketService = webSocketService;
+        _universalisService = universalisService;
         _profilerService = profilerService;
 
         var lockTb = new TitleBarButton
@@ -126,16 +131,17 @@ public sealed class ConfigWindow : Window
 
         // Create category renderers
         _generalCategory = new GeneralCategory(_configService);
-        _dataCategory = new DataCategory(_samplerService, _arIpc, _configService);
-        _samplerCategory = new SamplerCategory(_samplerService, _configService, _registry);
+        _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService);
         _layoutsCategory = new LayoutsCategory(_configService);
-        _windowsCategory = new WindowsCategory(Config, _configService.Save);
+        _customizationCategory = new CustomizationCategory(Config, _configService.Save);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
-        _profilerCategory = new ProfilerCategory(_profilerService, _configService, _samplerService);
-        _charactersCategory = new CharactersCategory(_samplerService, _samplerService.CacheService, _configService, _arIpc);
+        _profilerCategory = new ProfilerCategory(_profilerService, _configService, _currencyTrackerService);
+        _charactersCategory = new CharactersCategory(_currencyTrackerService, _currencyTrackerService.CacheService, _configService, _arIpc);
         _currenciesCategory = new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService);
-        _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _samplerService);
+        _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService);
         _toolPresetsCategory = new ToolPresetsCategory(_configService);
+        _storageCategory = new StorageCategory(_configService, _currencyTrackerService);
+        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -176,22 +182,23 @@ public sealed class ConfigWindow : Window
         // Sidebar
         ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
         if (ImGui.Selectable("General", _selectedTab == TabIndex.General)) _selectedTab = TabIndex.General;
-        if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
         if (ImGui.Selectable("Characters", _selectedTab == TabIndex.Characters)) _selectedTab = TabIndex.Characters;
         if (ImGui.Selectable("Items", _selectedTab == TabIndex.GameItems)) _selectedTab = TabIndex.GameItems;
         if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
-        if (ImGui.Selectable("Sampler", _selectedTab == TabIndex.Sampler)) _selectedTab = TabIndex.Sampler;
         if (ImGui.Selectable("Layouts", _selectedTab == TabIndex.Layouts)) _selectedTab = TabIndex.Layouts;
         if (ImGui.Selectable("Tool Presets", _selectedTab == TabIndex.ToolPresets)) _selectedTab = TabIndex.ToolPresets;
-        if (ImGui.Selectable("Windows", _selectedTab == TabIndex.Windows)) _selectedTab = TabIndex.Windows;
+        if (ImGui.Selectable("Customization", _selectedTab == TabIndex.Customization)) _selectedTab = TabIndex.Customization;
         if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
+        if (ImGui.Selectable("Storage", _selectedTab == TabIndex.Storage)) _selectedTab = TabIndex.Storage;
         
-        // Only show Profiler tab when CTRL+ALT are held
+        // Only show Developer section when CTRL+ALT are held or developer mode is enabled
         if (showProfiler)
         {
             ImGui.Separator();
             ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
+            if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
             if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
+            if (ImGui.Selectable("Tests", _selectedTab == TabIndex.Tests)) _selectedTab = TabIndex.Tests;
         }
         ImGui.EndChild();
 
@@ -216,25 +223,32 @@ public sealed class ConfigWindow : Window
             case TabIndex.GameItems:
                 _itemsCategory?.Draw();
                 break;
-            case TabIndex.Sampler:
-                _samplerCategory?.Draw();
-                break;
             case TabIndex.Layouts:
                 _layoutsCategory?.Draw();
                 break;
             case TabIndex.ToolPresets:
                 _toolPresetsCategory?.Draw();
                 break;
-            case TabIndex.Windows:
-                _windowsCategory?.Draw();
+            case TabIndex.Customization:
+                _customizationCategory?.Draw();
                 break;
             case TabIndex.Universalis:
                 _universalisCategory?.Draw();
+                break;
+            case TabIndex.Storage:
+                _storageCategory?.Draw();
                 break;
             case TabIndex.Profiler:
                 // Only draw profiler if CTRL+ALT are still held, otherwise reset to General
                 if (showProfiler)
                     _profilerCategory?.Draw();
+                else
+                    _selectedTab = TabIndex.General;
+                break;
+            case TabIndex.Tests:
+                // Only draw tests if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
+                if (showProfiler)
+                    _testsCategory?.Draw();
                 else
                     _selectedTab = TabIndex.General;
                 break;

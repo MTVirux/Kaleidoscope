@@ -44,7 +44,7 @@ public static class WindowToolRegistrar
         RegisterTools(
             container,
             ctx.FilenameService,
-            ctx.SamplerService,
+            ctx.CurrencyTrackerService,
             ctx.ConfigService,
             ctx.CharacterDataService,
             ctx.InventoryChangeService,
@@ -62,7 +62,7 @@ public static class WindowToolRegistrar
     public static void RegisterTools(
         WindowContentContainer container, 
         FilenameService filenameService, 
-        SamplerService samplerService, 
+        CurrencyTrackerService CurrencyTrackerService, 
         ConfigurationService configService,
         CharacterDataService? characterDataService = null,
         InventoryChangeService? inventoryChangeService = null,
@@ -80,7 +80,7 @@ public static class WindowToolRegistrar
 
         // Bundle context for cleaner factory method calls
         var ctx = new ToolCreationContext(
-            filenameService, samplerService, configService, characterDataService,
+            filenameService, CurrencyTrackerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService);
@@ -96,7 +96,7 @@ public static class WindowToolRegistrar
                 "Data");
 
             // Register tool presets from separate file
-            ToolPresets.RegisterPresets(container, samplerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
+            ToolPresets.RegisterPresets(container, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
 
             container.DefineToolType(
                 ToolIds.GettingStarted,
@@ -139,7 +139,7 @@ public static class WindowToolRegistrar
                 container.DefineToolType(
                     ToolIds.TopItems,
                     "Top Items",
-                    pos => CreateTopItemsTool(pos, ctx),
+                    pos => CreateTopInventoryValueTool(pos, ctx),
                     "Shows the most valuable items in character inventories",
                     "Universalis");
 
@@ -234,7 +234,7 @@ public static class WindowToolRegistrar
         try
         {
             return new DataTool(
-                ctx.SamplerService, 
+                ctx.CurrencyTrackerService, 
                 ctx.ConfigService, 
                 ctx.InventoryCacheService, 
                 ctx.Registry, 
@@ -264,7 +264,7 @@ public static class WindowToolRegistrar
                 ctx.ConfigService, 
                 ctx.ItemDataService,
                 ctx.PriceTrackingService.UniversalisService,
-                ctx.SamplerService) { Position = pos };
+                ctx.CurrencyTrackerService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -279,7 +279,7 @@ public static class WindowToolRegistrar
         {
             if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null)
                 return null;
-            return new InventoryValueTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, ctx.CharacterDataService) { Position = pos };
+            return new InventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -288,23 +288,23 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateTopItemsTool(Vector2 pos, ToolCreationContext ctx)
+    private static ToolComponent? CreateTopInventoryValueTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
             if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null || ctx.ItemDataService == null || 
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
-                LogService.Debug("CreateTopItemsTool: Required service is null");
+                LogService.Debug("CreateTopInventoryValueTool: Required service is null");
                 return null;
             }
-            return new TopItemsTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, ctx.CharacterDataService,
+            return new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
                 ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
                 ctx.InventoryChangeService) { Position = pos };
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create TopItemsTool", ex);
+            LogService.Error("Failed to create TopInventoryValueTool", ex);
             return null;
         }
     }
@@ -324,7 +324,7 @@ public static class WindowToolRegistrar
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
                 ctx.ItemDataService,
-                ctx.SamplerService,
+                ctx.CurrencyTrackerService,
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
@@ -418,7 +418,7 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new DatabaseSizeTool(ctx.SamplerService) { Position = pos };
+            return new DatabaseSizeTool(ctx.CurrencyTrackerService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -473,7 +473,7 @@ public static class WindowToolRegistrar
                 ToolIds.Label => new LabelTool(ctx.ConfigService) { Position = pos },
                 ToolIds.LivePriceFeed => CreateLivePriceFeedTool(pos, ctx),
                 ToolIds.InventoryValue => CreateInventoryValueTool(pos, ctx),
-                ToolIds.TopItems => CreateTopItemsTool(pos, ctx),
+                ToolIds.TopItems => CreateTopInventoryValueTool(pos, ctx),
                 ToolIds.ItemSalesHistory => CreateItemSalesHistoryTool(pos, ctx),
                 ToolIds.UniversalisWebSocketStatus => CreateUniversalisWebSocketStatusTool(pos, ctx),
                 ToolIds.AutoRetainerStatus => CreateAutoRetainerStatusTool(pos, ctx),

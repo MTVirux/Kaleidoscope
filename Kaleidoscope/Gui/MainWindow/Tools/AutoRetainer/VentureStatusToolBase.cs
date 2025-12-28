@@ -324,6 +324,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         {
             ImGui.TableNextColumn();
             ImGui.TextColored(DisabledColor, GetFormattedCharacterName(character));
+            DrawCharacterColumnContextMenu(character.CID, entity.Name);
         }
 
         ImGui.TableNextColumn();
@@ -337,6 +338,19 @@ public abstract class VentureStatusToolBase : ToolComponent
             if (ImGui.MenuItem($"Hide {EntityNameSingular}"))
             {
                 HiddenEntities.Add(GetEntityKey(characterCid, entityName));
+                NotifyToolSettingsChanged();
+            }
+            ImGui.EndPopup();
+        }
+    }
+
+    private void DrawCharacterColumnContextMenu(ulong characterCid, string entityName)
+    {
+        if (ImGui.BeginPopupContextItem($"CharColContext_{characterCid}_{entityName}"))
+        {
+            if (ImGui.MenuItem("Hide Character"))
+            {
+                HiddenCharacters.Add(characterCid);
                 NotifyToolSettingsChanged();
             }
             ImGui.EndPopup();

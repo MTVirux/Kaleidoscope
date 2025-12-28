@@ -23,7 +23,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     public Configuration Config { get; private set; }
     public ConfigManager ConfigManager { get; private set; }
     public GeneralConfig GeneralConfig { get; private set; }
-    public SamplerConfig SamplerConfig { get; private set; }
+    public CurrencyTrackerConfig CurrencyTrackerConfig { get; private set; }
     public WindowConfig WindowConfig { get; private set; }
 
     /// <summary>
@@ -50,7 +50,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
         GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-        SamplerConfig = ConfigManager.LoadOrCreate("sampler.json", () => new SamplerConfig { SamplerEnabled = false, SamplerIntervalMs = ConfigStatic.DefaultSamplerIntervalMs });
+        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig { TrackingEnabled = true, TrackingIntervalMs = ConfigStatic.DefaultTrackingIntervalMs });
         WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig
         {
             PinMainWindow = Config.PinMainWindow,
@@ -265,13 +265,13 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             };
             ConfigManager.Save("general.json", g);
 
-            var s = new SamplerConfig
+            var s = new CurrencyTrackerConfig
             {
-                SamplerEnabled = SamplerConfig.SamplerEnabled,
-                SamplerIntervalMs = SamplerConfig.SamplerIntervalMs,
-                DatabaseCacheSizeMb = SamplerConfig.DatabaseCacheSizeMb
+                TrackingEnabled = true, // Always enabled, cannot be turned off
+                TrackingIntervalMs = CurrencyTrackerConfig.TrackingIntervalMs,
+                DatabaseCacheSizeMb = CurrencyTrackerConfig.DatabaseCacheSizeMb
             };
-            ConfigManager.Save("sampler.json", s);
+            ConfigManager.Save("currencytracker.json", s);
 
             var w = new WindowConfig
             {

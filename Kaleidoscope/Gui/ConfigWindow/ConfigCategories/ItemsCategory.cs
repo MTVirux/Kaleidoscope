@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -19,7 +20,7 @@ public class ItemsCategory
     private readonly IDataManager? _dataManager;
     private readonly ITextureProvider? _textureProvider;
     private readonly FavoritesService? _favoritesService;
-    private readonly SamplerService? _samplerService;
+    private readonly CurrencyTrackerService? _currencyTrackerService;
     
     // Icon size for item icons
     private static float IconSize => ImGui.GetTextLineHeight();
@@ -47,14 +48,14 @@ public class ItemsCategory
         IDataManager? dataManager = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        SamplerService? samplerService = null)
+        CurrencyTrackerService? CurrencyTrackerService = null)
     {
         _configService = configService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
@@ -67,7 +68,7 @@ public class ItemsCategory
                 "GameItemsAdd",
                 marketableOnly: false,
                 configService: _configService,
-                trackedDataRegistry: _samplerService?.Registry,
+                trackedDataRegistry: _currencyTrackerService?.Registry,
                 excludeCurrencies: true);
             
             _trackItemCombo = new ItemComboDropdown(
@@ -78,7 +79,7 @@ public class ItemsCategory
                 "TrackItemAdd",
                 marketableOnly: false,
                 configService: _configService,
-                trackedDataRegistry: _samplerService?.Registry,
+                trackedDataRegistry: _currencyTrackerService?.Registry,
                 excludeCurrencies: true);
         }
     }
@@ -397,13 +398,13 @@ public class ItemsCategory
     
     private void DeleteItemHistory(uint itemId)
     {
-        if (_samplerService == null)
+        if (_currencyTrackerService == null)
         {
-            LogService.Debug("[ItemsCategory] Cannot delete item history: SamplerService not available");
+            LogService.Debug("[ItemsCategory] Cannot delete item history: CurrencyTrackerService not available");
             return;
         }
         
-        var dbService = _samplerService.DbService;
+        var dbService = _currencyTrackerService.DbService;
         
         // Delete player inventory history
         var playerVariable = InventoryCacheService.GetItemVariableName(itemId);
@@ -414,8 +415,8 @@ public class ItemsCategory
         var retainerDeleted = dbService.ClearAllData(retainerVariable);
         
         // Invalidate the time-series cache for these variables
-        _samplerService.CacheService.InvalidateVariable(playerVariable);
-        _samplerService.CacheService.InvalidateVariable(retainerVariable);
+        _currencyTrackerService.CacheService.InvalidateVariable(playerVariable);
+        _currencyTrackerService.CacheService.InvalidateVariable(retainerVariable);
         
         var itemName = GetItemName(itemId);
         if (playerDeleted || retainerDeleted)
@@ -615,7 +616,7 @@ public class ItemsCategory
         }
         else if (hasColor)
         {
-            colorValue = UintToVector4(colorUint);
+            colorValue = ColorUtils.UintToVector4(colorUint);
         }
         else
         {
@@ -639,7 +640,7 @@ public class ItemsCategory
         // Save when the user finishes editing
         if (ImGui.IsItemDeactivatedAfterEdit())
         {
-            SaveGameItemColor(itemId, Vector4ToUint(_colorEditBuffer));
+            SaveGameItemColor(itemId, ColorUtils.Vector4ToUint(_colorEditBuffer));
             _editingColorItemId = null;
         }
         
@@ -696,30 +697,6 @@ public class ItemsCategory
         {
             LogService.Error($"Failed to save game item color for {itemId}", ex);
         }
-    }
-
-    /// <summary>
-    /// Converts a uint color (ABGR format from ImGui) to Vector4.
-    /// </summary>
-    private static Vector4 UintToVector4(uint color)
-    {
-        var r = (color & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = ((color >> 16) & 0xFF) / 255f;
-        var a = ((color >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-
-    /// <summary>
-    /// Converts a Vector4 color to uint (ABGR format for ImGui).
-    /// </summary>
-    private static uint Vector4ToUint(Vector4 color)
-    {
-        var r = (uint)(Math.Clamp(color.X, 0f, 1f) * 255f);
-        var g = (uint)(Math.Clamp(color.Y, 0f, 1f) * 255f);
-        var b = (uint)(Math.Clamp(color.Z, 0f, 1f) * 255f);
-        var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
-        return r | (g << 8) | (b << 16) | (a << 24);
     }
 
     private void DrawItemIcon(uint itemId)

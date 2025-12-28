@@ -1,7 +1,8 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
+using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
@@ -11,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// </summary>
 public class CharactersCategory
 {
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly TimeSeriesCacheService _cacheService;
     private readonly AutoRetainerIpcService _autoRetainerService;
 
@@ -25,9 +26,9 @@ public class CharactersCategory
     private ulong _editingColorCid = 0;
     private Vector4 _colorEditBuffer = Vector4.One;
 
-    public CharactersCategory(SamplerService samplerService, TimeSeriesCacheService cacheService, ConfigurationService configService, AutoRetainerIpcService autoRetainerService)
+    public CharactersCategory(CurrencyTrackerService CurrencyTrackerService, TimeSeriesCacheService cacheService, ConfigurationService configService, AutoRetainerIpcService autoRetainerService)
     {
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _cacheService = cacheService;
         _configService = configService;
         _autoRetainerService = autoRetainerService;
@@ -55,7 +56,7 @@ public class CharactersCategory
             _needsRefresh = false;
         }
 
-        if (!_samplerService.HasDb)
+        if (!_currencyTrackerService.HasDb)
         {
             ImGui.TextColored(new Vector4(1f, 0.5f, 0.5f, 1f), "Database not available");
             return;
@@ -157,7 +158,7 @@ public class CharactersCategory
                 }
                 else if (timeSeriesColor.HasValue)
                 {
-                    colorValue = UintToVector4(timeSeriesColor.Value);
+                    colorValue = ColorUtils.UintToVector4(timeSeriesColor.Value);
                 }
                 else
                 {
@@ -205,7 +206,7 @@ public class CharactersCategory
                     // Save when the user finishes editing (releases mouse button or closes picker)
                     if (ImGui.IsItemDeactivatedAfterEdit())
                     {
-                        SaveTimeSeriesColor(cid, Vector4ToUint(_colorEditBuffer));
+                        SaveTimeSeriesColor(cid, ColorUtils.Vector4ToUint(_colorEditBuffer));
                         _editingColorCid = 0;
                     }
                     
@@ -279,11 +280,11 @@ public class CharactersCategory
 
     private void RefreshCharacterList()
     {
-        if (!_samplerService.HasDb) return;
+        if (!_currencyTrackerService.HasDb) return;
         
         try
         {
-            _characters = _samplerService.DbService?.GetAllCharacterDataExtended() ?? new();
+            _characters = _currencyTrackerService.DbService?.GetAllCharacterDataExtended() ?? new();
             
             // Apply configured sort order
             var sortOrder = _configService.Config.CharacterSortOrder;
@@ -368,13 +369,13 @@ public class CharactersCategory
             if (string.IsNullOrEmpty(trimmed)) trimmed = null;
 
             // Save to database
-            _samplerService.DbService?.SaveCharacterDisplayName(cid, trimmed);
+            _currencyTrackerService.DbService?.SaveCharacterDisplayName(cid, trimmed);
             
             // Update cache service
             _cacheService.SetCharacterDisplayName(cid, trimmed);
             
             // Invalidate DB cache to pick up changes
-            _samplerService.DbService?.InvalidateCharacterNameCache();
+            _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug($"[CharactersCategory] Saved display name for {cid}: {trimmed ?? "(cleared)"}");
         }
@@ -395,13 +396,13 @@ public class CharactersCategory
         try
         {
             // Save to database
-            _samplerService.DbService?.SaveCharacterTimeSeriesColor(cid, color);
+            _currencyTrackerService.DbService?.SaveCharacterTimeSeriesColor(cid, color);
             
             // Update cache service
             _cacheService.SetCharacterTimeSeriesColor(cid, color);
             
             // Invalidate DB cache to pick up changes
-            _samplerService.DbService?.InvalidateCharacterNameCache();
+            _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug($"[CharactersCategory] Saved time series color for {cid}: {color?.ToString("X8") ?? "(cleared)"}");
         }
@@ -465,29 +466,5 @@ public class CharactersCategory
         {
             ImGui.TextColored(new Vector4(1f, 0.7f, 0.3f, 1f), "AutoRetainer not available - using alphabetical order.");
         }
-    }
-
-    /// <summary>
-    /// Converts a uint color (ABGR format from ImGui) to Vector4.
-    /// </summary>
-    private static Vector4 UintToVector4(uint color)
-    {
-        var r = (color & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = ((color >> 16) & 0xFF) / 255f;
-        var a = ((color >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-
-    /// <summary>
-    /// Converts a Vector4 color to uint (ABGR format for ImGui).
-    /// </summary>
-    private static uint Vector4ToUint(Vector4 color)
-    {
-        var r = (uint)(Math.Clamp(color.X, 0f, 1f) * 255f);
-        var g = (uint)(Math.Clamp(color.Y, 0f, 1f) * 255f);
-        var b = (uint)(Math.Clamp(color.Z, 0f, 1f) * 255f);
-        var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
-        return r | (g << 8) | (b << 16) | (a << 24);
     }
 }

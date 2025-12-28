@@ -22,7 +22,7 @@ public class DataTool : ToolComponent
 {
     public override string ToolName => "Data";
     
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _CurrencyTrackerService;
     private readonly ConfigurationService _configService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly TrackedDataRegistry? _trackedDataRegistry;
@@ -73,11 +73,11 @@ public class DataTool : ToolComponent
     public string? PresetName { get; set; }
     
     private DataToolSettings Settings => _instanceSettings;
-    private KaleidoscopeDbService DbService => _samplerService.DbService;
-    private TimeSeriesCacheService CacheService => _samplerService.CacheService;
+    private KaleidoscopeDbService DbService => _CurrencyTrackerService.DbService;
+    private TimeSeriesCacheService CacheService => _CurrencyTrackerService.CacheService;
     
     public DataTool(
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         ConfigurationService configService,
         InventoryCacheService? inventoryCacheService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
@@ -88,7 +88,7 @@ public class DataTool : ToolComponent
         AutoRetainerIpcService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
-        _samplerService = samplerService;
+        _CurrencyTrackerService = CurrencyTrackerService;
         _configService = configService;
         _inventoryCacheService = inventoryCacheService;
         _trackedDataRegistry = trackedDataRegistry;
@@ -115,7 +115,7 @@ public class DataTool : ToolComponent
             itemDataService,
             trackedDataRegistry,
             configService.Config,
-            samplerService.CacheService);
+            CurrencyTrackerService.CacheService);
         
         // Bind table widget to settings
         _tableWidget.BindSettings(
@@ -171,7 +171,7 @@ public class DataTool : ToolComponent
         if (favoritesService != null)
         {
             _characterCombo = new CharacterCombo(
-                samplerService,
+                CurrencyTrackerService,
                 favoritesService,
                 configService,
                 "DataToolCharFilter",
@@ -833,7 +833,7 @@ public class DataTool : ToolComponent
         }
     }
     
-    private bool _cachedShowRetainerBreakdown;
+    private bool _cachedShowRetainerBreakdownInGraph;
     
     private bool NeedsGraphCacheRefresh()
     {
@@ -844,7 +844,7 @@ public class DataTool : ToolComponent
         if (_cachedTimeRangeValue != settings.TimeRangeValue) return true;
         if (_cachedTimeRangeUnit != settings.TimeRangeUnit) return true;
         if (_cachedIncludeRetainers != settings.IncludeRetainers) return true;
-        if (_cachedShowRetainerBreakdown != settings.ShowRetainerBreakdown) return true;
+        if (_cachedShowRetainerBreakdownInGraph != settings.ShowRetainerBreakdownInGraph) return true;
         if (_cachedGroupingMode != settings.GroupingMode) return true;
         if (_cachedNameFormat != _configService.Config.CharacterNameFormat) return true;
         
@@ -860,21 +860,30 @@ public class DataTool : ToolComponent
         _cachedTimeRangeValue = settings.TimeRangeValue;
         _cachedTimeRangeUnit = settings.TimeRangeUnit;
         _cachedIncludeRetainers = settings.IncludeRetainers;
-        _cachedShowRetainerBreakdown = settings.ShowRetainerBreakdown;
+        _cachedShowRetainerBreakdownInGraph = settings.ShowRetainerBreakdownInGraph;
         _cachedNameFormat = _configService.Config.CharacterNameFormat;
         _cachedGroupingMode = settings.GroupingMode;
         _graphCacheIsDirty = false;
         
-        // Apply special grouping filter
+        // Build set of indices that are part of merged groups with ShowInGraph enabled
+        var mergedIndicesWithGraph = new HashSet<int>();
+        foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
+        {
+            foreach (var idx in group.ColumnIndices)
+            {
+                mergedIndicesWithGraph.Add(idx);
+            }
+        }
+        
+        // Apply special grouping filter and visibility filter
+        // Skip individual columns that are part of a merged group that has ShowInGraph enabled
         List<ItemColumnConfig> series;
         using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
         {
-            series = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping).ToList();
-        }
-        if (series.Count == 0)
-        {
-            _cachedSeriesData = null;
-            return;
+            var filteredColumns = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping);
+            series = filteredColumns
+                .Where((c, idx) => c.ShowInGraph && !mergedIndicesWithGraph.Contains(idx))
+                .ToList();
         }
         
         var timeRange = GetTimeRange();
@@ -889,14 +898,30 @@ public class DataTool : ToolComponent
         
         var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
+        // Calculate total item/currency count (excluding merged groups)
+        // When there are multiple items, we show item names in legend; when single item, show character/grouping breakdown
+        var totalItemCount = series.Count + settings.MergedColumnGroups.Count(g => g.ShowInGraph);
+        var isSingleItem = totalItemCount == 1;
+        
         using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
         {
+            // Load individual (non-merged) series
             foreach (var seriesConfig in series)
             {
-                var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters);
+                var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters, isSingleItem);
                 if (seriesData != null)
                 {
                     seriesList.AddRange(seriesData);
+                }
+            }
+            
+            // Load merged group series
+            foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
+            {
+                var mergedSeriesData = LoadMergedSeriesData(group, settings, startTime, allowedCharacters, isSingleItem);
+                if (mergedSeriesData != null)
+                {
+                    seriesList.AddRange(mergedSeriesData);
                 }
             }
         }
@@ -934,7 +959,8 @@ public class DataTool : ToolComponent
         ItemColumnConfig seriesConfig, 
         DataToolSettings settings, 
         DateTime? startTime,
-        HashSet<ulong>? allowedCharacters)
+        HashSet<ulong>? allowedCharacters,
+        bool isSingleItem = true)
     {
         try
         {
@@ -949,8 +975,8 @@ public class DataTool : ToolComponent
             else
             {
                 variableName = $"Item_{seriesConfig.Id}";
-                // If showing retainer breakdown, we'll fetch per-retainer data
-                if (settings.IncludeRetainers && settings.ShowRetainerBreakdown)
+                // If showing retainer breakdown in graph, we'll fetch per-retainer data
+                if (settings.IncludeRetainers && settings.ShowRetainerBreakdownInGraph)
                 {
                     // Per-retainer data uses pattern: ItemRetainerX_{retainerId}_{itemId}
                     // We need to search for all matching the item ID at the end
@@ -993,6 +1019,52 @@ public class DataTool : ToolComponent
                 }
                 
                 points = pts;
+                
+                // If IncludeRetainers is enabled but ShowRetainerBreakdownInGraph is disabled,
+                // we need to add retainer totals to the main series (not show them separately)
+                if (settings.IncludeRetainers && !settings.ShowRetainerBreakdownInGraph && !seriesConfig.IsCurrency)
+                {
+                    var retainerVariableName = $"ItemRetainer_{seriesConfig.Id}";
+                    var retainerPoints = DbService.GetAllPointsBatch(retainerVariableName, startTime);
+                    
+                    if (retainerPoints.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
+                    {
+                        // Merge in pending retainer samples for real-time display
+                        if (_inventoryCacheService != null)
+                        {
+                            var pendingRetainerSamples = _inventoryCacheService.GetPendingSamples("ItemRetainer_", $"_{seriesConfig.Id}");
+                            if (pendingRetainerSamples.TryGetValue(retainerVariableName, out var pendingPts) && pendingPts.Count > 0)
+                            {
+                                var mutableRetainerPoints = retainerPts.ToList();
+                                mutableRetainerPoints.AddRange(pendingPts);
+                                retainerPts = mutableRetainerPoints;
+                            }
+                        }
+                        
+                        // Merge retainer data with player data by adding values at matching timestamps
+                        // Group by (characterId, rounded timestamp) and sum values
+                        var mergedDict = new Dictionary<(ulong charId, DateTime ts), long>();
+                        
+                        foreach (var p in points)
+                        {
+                            var key = (p.characterId, new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc));
+                            mergedDict[key] = mergedDict.GetValueOrDefault(key) + p.value;
+                        }
+                        
+                        foreach (var p in retainerPts)
+                        {
+                            var key = (p.characterId, new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc));
+                            mergedDict[key] = mergedDict.GetValueOrDefault(key) + p.value;
+                        }
+                        
+                        points = mergedDict
+                            .Select(kvp => (characterId: kvp.Key.charId, timestamp: kvp.Key.ts, value: kvp.Value))
+                            .OrderBy(p => p.timestamp)
+                            .ToList();
+                    }
+                }
                 
                 // Also fetch per-retainer data if breakdown is enabled
                 if (perRetainerVariablePrefix != null)
@@ -1049,8 +1121,9 @@ public class DataTool : ToolComponent
             var defaultName = GetSeriesDisplayName(seriesConfig);
             var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
             
-            // Use GroupingMode directly for graph series grouping
-            var groupingMode = settings.GroupingMode;
+            // Use GroupingMode for graph series grouping when there's only one item/currency.
+            // When there are multiple items, always aggregate to show per-item in legend.
+            var groupingMode = isSingleItem ? settings.GroupingMode : TableGroupingMode.All;
             
             if (groupingMode == TableGroupingMode.Character)
             {
@@ -1061,7 +1134,8 @@ public class DataTool : ToolComponent
                 foreach (var charGroup in byCharacter)
                 {
                     var charName = GetCharacterDisplayName(charGroup.Key);
-                    var seriesName = $"{defaultName} ({charName})";
+                    // When there's only one item/currency, show just the grouping name in the legend
+                    var seriesName = isSingleItem ? charName : $"{defaultName} ({charName})";
                     
                     // Determine color: prefer character color in PreferredCharacterColors mode,
                     // otherwise use item color or fallback
@@ -1105,7 +1179,7 @@ public class DataTool : ToolComponent
             else
             {
                 // Group by World, DataCenter, or Region
-                var groupedSeries = GroupPointsByLocation(points, groupingMode, defaultName, seriesConfig, settings);
+                var groupedSeries = GroupPointsByLocation(points, groupingMode, defaultName, seriesConfig, settings, isSingleItem);
                 result.AddRange(groupedSeries);
             }
             
@@ -1126,6 +1200,201 @@ public class DataTool : ToolComponent
     }
     
     /// <summary>
+    /// Loads and combines series data for a merged column group.
+    /// When isSingleItem is true, respects the grouping mode to create per-character/world/etc. series.
+    /// </summary>
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? LoadMergedSeriesData(
+        MergedColumnGroup group,
+        DataToolSettings settings,
+        DateTime? startTime,
+        HashSet<ulong>? allowedCharacters,
+        bool isSingleItem = true)
+    {
+        try
+        {
+            // Get the member columns
+            var memberColumns = group.ColumnIndices
+                .Where(idx => idx >= 0 && idx < settings.Columns.Count)
+                .Select(idx => settings.Columns[idx])
+                .ToList();
+            
+            if (memberColumns.Count == 0)
+                return null;
+            
+            // Collect all points from all member columns (now with character ID)
+            var allPoints = new List<(ulong characterId, DateTime ts, long value)>();
+            
+            foreach (var column in memberColumns)
+            {
+                string variableName;
+                if (column.IsCurrency)
+                {
+                    variableName = ((TrackedDataType)column.Id).ToString();
+                }
+                else
+                {
+                    variableName = $"Item_{column.Id}";
+                }
+                
+                var pointsDict = DbService.GetAllPointsBatch(variableName, startTime);
+                if (pointsDict.TryGetValue(variableName, out var pts) && pts.Count > 0)
+                {
+                    // Filter by allowed characters if specified
+                    var filteredPoints = allowedCharacters != null
+                        ? pts.Where(p => allowedCharacters.Contains(p.characterId))
+                        : pts;
+                    
+                    // Add points with character ID
+                    foreach (var p in filteredPoints)
+                    {
+                        allPoints.Add((p.characterId, p.timestamp, p.value));
+                    }
+                }
+                
+                // Also include retainer data if IncludeRetainers is enabled
+                if (settings.IncludeRetainers && !column.IsCurrency)
+                {
+                    var retainerVariableName = $"ItemRetainer_{column.Id}";
+                    var retainerPointsDict = DbService.GetAllPointsBatch(retainerVariableName, startTime);
+                    if (retainerPointsDict.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
+                    {
+                        var filteredRetainerPoints = allowedCharacters != null
+                            ? retainerPts.Where(p => allowedCharacters.Contains(p.characterId))
+                            : retainerPts;
+                        
+                        foreach (var p in filteredRetainerPoints)
+                        {
+                            allPoints.Add((p.characterId, p.timestamp, p.value));
+                        }
+                    }
+                }
+            }
+            
+            if (allPoints.Count == 0)
+                return null;
+            
+            // Use the merged group's color if set, otherwise use first member's color
+            var baseColor = group.Color;
+            if (!baseColor.HasValue && memberColumns.Count > 0 && memberColumns[0].Color.HasValue)
+            {
+                baseColor = memberColumns[0].Color;
+            }
+            
+            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+            
+            // Use GroupingMode for series grouping when there's only one item/merged group.
+            // When there are multiple items, always aggregate to show per-item in legend.
+            var groupingMode = isSingleItem ? settings.GroupingMode : TableGroupingMode.All;
+            
+            if (groupingMode == TableGroupingMode.Character)
+            {
+                // Separate series per character
+                var byCharacter = allPoints.GroupBy(p => p.characterId);
+                var charIndex = 0;
+                
+                foreach (var charGroup in byCharacter)
+                {
+                    var charName = GetCharacterDisplayName(charGroup.Key);
+                    // When there's only one merged group, show just the grouping name in the legend
+                    var seriesName = isSingleItem ? charName : $"{group.Name} ({charName})";
+                    
+                    // Determine color
+                    Vector4 seriesColor;
+                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    {
+                        seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
+                    }
+                    else
+                    {
+                        seriesColor = baseColor ?? GetDefaultSeriesColor(charIndex);
+                    }
+                    
+                    // Group by timestamp within this character and sum values
+                    var samples = charGroup
+                        .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
+                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                        .OrderBy(p => p.ts)
+                        .ToList();
+                    
+                    if (samples.Count > 0)
+                    {
+                        result.Add((seriesName, samples, seriesColor));
+                    }
+                    charIndex++;
+                }
+            }
+            else if (groupingMode == TableGroupingMode.All)
+            {
+                // Aggregate all into a single series
+                var groupedPoints = allPoints
+                    .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
+                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                    .OrderBy(p => p.ts)
+                    .ToList();
+                
+                if (groupedPoints.Count > 0)
+                {
+                    result.Add((group.Name, groupedPoints, baseColor));
+                }
+            }
+            else
+            {
+                // Group by World, DataCenter, or Region
+                var worldData = _priceTrackingService?.WorldData;
+                var characterWorlds = GetCharacterWorldsMap();
+                
+                // Build character -> group name mapping
+                var characterGroups = new Dictionary<ulong, string>();
+                foreach (var (charId, worldName) in characterWorlds)
+                {
+                    string groupName = groupingMode switch
+                    {
+                        TableGroupingMode.World => worldName,
+                        TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
+                        TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
+                        _ => "Unknown"
+                    };
+                    characterGroups[charId] = groupName;
+                }
+                
+                // Group points by their location group
+                var byGroup = allPoints
+                    .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
+                    .OrderBy(g => g.Key);
+                
+                var groupIndex = 0;
+                foreach (var locationGroup in byGroup)
+                {
+                    var locationName = locationGroup.Key;
+                    // When there's only one merged group, show just the grouping name in the legend
+                    var seriesName = isSingleItem ? locationName : $"{group.Name} ({locationName})";
+                    
+                    // Aggregate points by timestamp within the group
+                    var aggregated = locationGroup
+                        .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
+                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
+                        .OrderBy(p => p.ts)
+                        .ToList();
+                    
+                    if (aggregated.Count > 0)
+                    {
+                        var seriesColor = baseColor ?? GetDefaultSeriesColor(groupIndex);
+                        result.Add((seriesName, aggregated, seriesColor));
+                    }
+                    groupIndex++;
+                }
+            }
+            
+            return result.Count > 0 ? result : null;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DataTool] LoadMergedSeriesData error: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
     /// Groups time series points by World, DataCenter, or Region.
     /// </summary>
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> GroupPointsByLocation(
@@ -1133,7 +1402,8 @@ public class DataTool : ToolComponent
         TableGroupingMode groupingMode,
         string defaultName,
         ItemColumnConfig seriesConfig,
-        DataToolSettings settings)
+        DataToolSettings settings,
+        bool isSingleItem = true)
     {
         var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
@@ -1166,7 +1436,8 @@ public class DataTool : ToolComponent
         foreach (var group in byGroup)
         {
             var groupName = group.Key;
-            var seriesName = $"{defaultName} ({groupName})";
+            // When there's only one item/currency, show just the grouping name in the legend
+            var seriesName = isSingleItem ? groupName : $"{defaultName} ({groupName})";
             
             // Aggregate points by timestamp within the group
             var aggregated = group
@@ -1473,13 +1744,13 @@ public class DataTool : ToolComponent
             // Check ItemColors (TrackedDataType -> uint)
             var dataType = (TrackedDataType)config.Id;
             if (configData.ItemColors.TryGetValue(dataType, out var colorUint))
-                return UintToVector4(colorUint);
+                return ColorUtils.UintToVector4(colorUint);
         }
         else
         {
             // Check GameItemColors (item ID -> uint)
             if (configData.GameItemColors.TryGetValue(config.Id, out var colorUint))
-                return UintToVector4(colorUint);
+                return ColorUtils.UintToVector4(colorUint);
         }
         
         return null;
@@ -1492,20 +1763,8 @@ public class DataTool : ToolComponent
     {
         var charColor = CacheService.GetCharacterTimeSeriesColor(characterId);
         if (charColor.HasValue)
-            return UintToVector4(charColor.Value);
+            return ColorUtils.UintToVector4(charColor.Value);
         return null;
-    }
-    
-    /// <summary>
-    /// Converts a uint color (ABGR format from ImGui) to Vector4.
-    /// </summary>
-    private static Vector4 UintToVector4(uint color)
-    {
-        var r = (color & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = ((color >> 16) & 0xFF) / 255f;
-        var a = ((color >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
     }
     
     private static Vector4 GetDefaultSeriesColor(int index)
@@ -1574,31 +1833,47 @@ public class DataTool : ToolComponent
             NotifyToolSettingsChanged();
         }
         
-        // Show retainer breakdown (available in both modes when IncludeRetainers is enabled)
+        // Show retainer breakdown options (available when IncludeRetainers is enabled)
         if (settings.IncludeRetainers)
         {
             ImGui.Indent(16f);
-            var showRetainerBreakdown = settings.ShowRetainerBreakdown;
-            if (ImGui.Checkbox("Show Retainer Breakdown", ref showRetainerBreakdown))
+            
+            // Table mode retainer breakdown
+            var showRetainerBreakdownTable = settings.ShowRetainerBreakdown;
+            if (ImGui.Checkbox("Retainer Breakdown (Table)", ref showRetainerBreakdownTable))
             {
-                settings.ShowRetainerBreakdown = showRetainerBreakdown;
+                settings.ShowRetainerBreakdown = showRetainerBreakdownTable;
                 _pendingTableRefresh = true;
+                NotifyToolSettingsChanged();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Show expandable rows for each character to view per-retainer item counts.");
+            }
+            
+            // Graph mode retainer breakdown
+            var showRetainerBreakdownGraph = settings.ShowRetainerBreakdownInGraph;
+            if (ImGui.Checkbox("Retainer Breakdown (Graph)", ref showRetainerBreakdownGraph))
+            {
+                settings.ShowRetainerBreakdownInGraph = showRetainerBreakdownGraph;
                 _graphCacheIsDirty = true;
                 NotifyToolSettingsChanged();
             }
             if (ImGui.IsItemHovered())
             {
-                var tooltip = "Show expandable rows in table view, or separate series per retainer in graph view.\n\n" +
-                      "Note: Historical tracking must be enabled for each item for graph retainer data,\n" +
-                      "and you must open each retainer's inventory at least once to collect data.";
-                ImGui.SetTooltip(tooltip);
+                ImGui.SetTooltip("Show separate series for each retainer's inventory in graph view.\n\n" +
+                      "Note: Historical tracking must be enabled for each item,\n" +
+                      "and you must open each retainer's inventory at least once to collect data.");
             }
             
-            // Show warning if any items don't have historical tracking
-            var itemsWithoutTracking = settings.Columns.Count(c => !c.IsCurrency && !_configService.Config.ItemsWithHistoricalTracking.Contains(c.Id));
-            if (itemsWithoutTracking > 0)
+            // Show warning if any items don't have historical tracking (only relevant for graph mode)
+            if (showRetainerBreakdownGraph)
             {
-                ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), $"⚠ {itemsWithoutTracking} item(s) without historical tracking");
+                var itemsWithoutTracking = settings.Columns.Count(c => !c.IsCurrency && !_configService.Config.ItemsWithHistoricalTracking.Contains(c.Id));
+                if (itemsWithoutTracking > 0)
+                {
+                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), $"⚠ {itemsWithoutTracking} item(s) without historical tracking");
+                }
             }
             
             ImGui.Unindent(16f);
@@ -1618,6 +1893,19 @@ public class DataTool : ToolComponent
         {
             settings.UseCompactNumbers = useCompactNumbers;
             NotifyToolSettingsChanged();
+        }
+        
+        // Hide zero rows
+        var hideZeroRows = settings.HideZeroRows;
+        if (ImGui.Checkbox("Hide Zero Rows", ref hideZeroRows))
+        {
+            settings.HideZeroRows = hideZeroRows;
+            _pendingTableRefresh = true;
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Hide rows where all column values are zero.");
         }
         
         // Color Mode (applies to both table and graph)
@@ -1656,6 +1944,22 @@ public class DataTool : ToolComponent
                 else
                 {
                     _configService.Config.ItemsWithHistoricalTracking.Remove(itemId);
+                }
+                _configService.Save();
+                _pendingTableRefresh = true;
+                _graphCacheIsDirty = true;
+            },
+            isCurrencyHistoricalTrackingEnabled: (currencyId) => _configService.Config.EnabledTrackedDataTypes.Contains((TrackedDataType)currencyId),
+            onCurrencyHistoricalTrackingToggled: (currencyId, enabled) =>
+            {
+                var dataType = (TrackedDataType)currencyId;
+                if (enabled)
+                {
+                    _configService.Config.EnabledTrackedDataTypes.Add(dataType);
+                }
+                else
+                {
+                    _configService.Config.EnabledTrackedDataTypes.Remove(dataType);
                 }
                 _configService.Save();
                 _pendingTableRefresh = true;
@@ -1726,7 +2030,9 @@ public class DataTool : ToolComponent
             ["Name"] = g.Name,
             ["ColumnIndices"] = g.ColumnIndices.ToList(),
             ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null,
-            ["Width"] = g.Width
+            ["Width"] = g.Width,
+            ["ShowInTable"] = g.ShowInTable,
+            ["ShowInGraph"] = g.ShowInGraph
         }).ToList();
         
         // Serialize merged row groups
@@ -1776,6 +2082,7 @@ public class DataTool : ToolComponent
             ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
             ["TextColorMode"] = (int)settings.TextColorMode,
             ["ShowRetainerBreakdown"] = settings.ShowRetainerBreakdown,
+            ["ShowRetainerBreakdownInGraph"] = settings.ShowRetainerBreakdownInGraph,
             
             // Graph-specific
             ["LegendWidth"] = settings.LegendWidth,
@@ -1856,6 +2163,22 @@ public class DataTool : ToolComponent
         target.TextColorMode = (TableTextColorMode)SettingsImportHelper.GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
         target.ShowRetainerBreakdown = SettingsImportHelper.GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
         
+        // Import merged column groups
+        if (settings.TryGetValue("MergedColumnGroups", out var mergedColGroupsObj) && mergedColGroupsObj != null)
+        {
+            target.MergedColumnGroups.Clear();
+            var groups = ImportMergedColumnGroups(mergedColGroupsObj);
+            target.MergedColumnGroups.AddRange(groups);
+        }
+        
+        // Import merged row groups
+        if (settings.TryGetValue("MergedRowGroups", out var mergedRowGroupsObj) && mergedRowGroupsObj != null)
+        {
+            target.MergedRowGroups.Clear();
+            var groups = ImportMergedRowGroups(mergedRowGroupsObj);
+            target.MergedRowGroups.AddRange(groups);
+        }
+        
         // Colors
         target.CharacterColumnColor = SettingsImportHelper.ImportColor(settings, "CharacterColumnColor");
         target.HeaderColor = SettingsImportHelper.ImportColor(settings, "HeaderColor");
@@ -1915,6 +2238,99 @@ public class DataTool : ToolComponent
         _instanceSettings.AutoScrollNowPosition = nowPosition;
         NotifyToolSettingsChanged();
         _graphCacheIsDirty = true;
+    }
+    
+    /// <summary>
+    /// Imports merged column groups from various serialized formats.
+    /// </summary>
+    private static List<MergedColumnGroup> ImportMergedColumnGroups(object? obj)
+    {
+        var result = new List<MergedColumnGroup>();
+        if (obj == null) return result;
+        
+        try
+        {
+            System.Collections.IEnumerable? enumerable = null;
+            
+            if (obj is Newtonsoft.Json.Linq.JArray jArray)
+                enumerable = jArray;
+            else if (obj is System.Collections.IEnumerable e)
+                enumerable = e;
+            
+            if (enumerable == null) return result;
+            
+            foreach (var item in enumerable)
+            {
+                var dict = SettingsImportHelper.ConvertToDictionary(item);
+                if (dict == null) continue;
+                
+                var group = new MergedColumnGroup
+                {
+                    Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
+                    Width = SettingsImportHelper.GetSetting(dict, "Width", 80f),
+                    Color = SettingsImportHelper.ImportColor(dict, "Color"),
+                    ShowInTable = SettingsImportHelper.GetSetting(dict, "ShowInTable", true),
+                    ShowInGraph = SettingsImportHelper.GetSetting(dict, "ShowInGraph", true)
+                };
+                
+                var indices = SettingsImportHelper.ImportIntList(dict, "ColumnIndices");
+                if (indices != null)
+                    group.ColumnIndices = indices;
+                
+                result.Add(group);
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Imports merged row groups from various serialized formats.
+    /// </summary>
+    private static List<MergedRowGroup> ImportMergedRowGroups(object? obj)
+    {
+        var result = new List<MergedRowGroup>();
+        if (obj == null) return result;
+        
+        try
+        {
+            System.Collections.IEnumerable? enumerable = null;
+            
+            if (obj is Newtonsoft.Json.Linq.JArray jArray)
+                enumerable = jArray;
+            else if (obj is System.Collections.IEnumerable e)
+                enumerable = e;
+            
+            if (enumerable == null) return result;
+            
+            foreach (var item in enumerable)
+            {
+                var dict = SettingsImportHelper.ConvertToDictionary(item);
+                if (dict == null) continue;
+                
+                var group = new MergedRowGroup
+                {
+                    Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
+                    Color = SettingsImportHelper.ImportColor(dict, "Color")
+                };
+                
+                var charIds = SettingsImportHelper.ImportUlongList(dict, "CharacterIds");
+                if (charIds != null)
+                    group.CharacterIds = charIds;
+                
+                result.Add(group);
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+        
+        return result;
     }
     
     public override void Dispose()

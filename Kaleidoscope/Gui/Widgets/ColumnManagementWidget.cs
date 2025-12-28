@@ -31,6 +31,8 @@ public static class ColumnManagementWidget
     /// <param name="widgetId">Unique identifier for this widget instance (for selection state).</param>
     /// <param name="isItemHistoricalTrackingEnabled">Function to check if a specific item has historical tracking enabled.</param>
     /// <param name="onItemHistoricalTrackingToggled">Callback when historical tracking is toggled for a specific item (itemId, enabled).</param>
+    /// <param name="isCurrencyHistoricalTrackingEnabled">Function to check if a specific currency (TrackedDataType as uint) has historical tracking enabled.</param>
+    /// <param name="onCurrencyHistoricalTrackingToggled">Callback when historical tracking is toggled for a specific currency (TrackedDataType as uint, enabled).</param>
     /// <returns>True if any changes were made.</returns>
     public static bool Draw(
         List<ItemColumnConfig> columns,
@@ -44,7 +46,9 @@ public static class ColumnManagementWidget
         string currencyLabel = "Currency",
         string widgetId = "default",
         Func<uint, bool>? isItemHistoricalTrackingEnabled = null,
-        Action<uint, bool>? onItemHistoricalTrackingToggled = null)
+        Action<uint, bool>? onItemHistoricalTrackingToggled = null,
+        Func<uint, bool>? isCurrencyHistoricalTrackingEnabled = null,
+        Action<uint, bool>? onCurrencyHistoricalTrackingToggled = null)
     {
         var changed = false;
         
@@ -84,9 +88,9 @@ public static class ColumnManagementWidget
         int groupToUnmerge = -1;
         
         // Use an invisible table for alignment
-        // Columns: Select/Indicator | Color | Name | Type | History | Up | Down | Delete/Unmerge
+        // Columns: Select/Indicator | Color | Name | Type | History | Table | Graph | Up | Down | Delete/Unmerge
         var tableFlags = ImGuiTableFlags.None;
-        if (ImGui.BeginTable("##columnTable", 8, tableFlags))
+        if (ImGui.BeginTable("##columnTable", 10, tableFlags))
         {
             // Setup columns with appropriate widths
             ImGui.TableSetupColumn("##sel", ImGuiTableColumnFlags.WidthFixed, 24f);      // Checkbox or ⊕
@@ -94,6 +98,8 @@ public static class ColumnManagementWidget
             ImGui.TableSetupColumn("##name", ImGuiTableColumnFlags.WidthStretch);         // Name input
             ImGui.TableSetupColumn("##type", ImGuiTableColumnFlags.WidthFixed, 70f);     // Type label or merged count
             ImGui.TableSetupColumn("##hist", ImGuiTableColumnFlags.WidthFixed, 24f);     // History checkbox
+            ImGui.TableSetupColumn("##tbl", ImGuiTableColumnFlags.WidthFixed, 24f);      // Show in Table checkbox
+            ImGui.TableSetupColumn("##grph", ImGuiTableColumnFlags.WidthFixed, 24f);     // Show in Graph checkbox
             ImGui.TableSetupColumn("##up", ImGuiTableColumnFlags.WidthFixed, 24f);       // Move up
             ImGui.TableSetupColumn("##dn", ImGuiTableColumnFlags.WidthFixed, 24f);       // Move down
             ImGui.TableSetupColumn("##del", ImGuiTableColumnFlags.WidthFixed, 80f);      // Delete or Unmerge
@@ -149,10 +155,127 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip(string.Join("\n", itemNames));
                 }
                 
-                // Column 4: Empty (no history for merged groups)
+                // Column 4: Historical tracking indicator for merged groups
                 ImGui.TableNextColumn();
+                {
+                    // Get member columns and check their historical tracking status
+                    var memberColumns = group.ColumnIndices
+                        .Where(idx => idx >= 0 && idx < columns.Count)
+                        .Select(idx => columns[idx])
+                        .ToList();
+                    
+                    // Count items with historical tracking (check currencies against currency tracking settings)
+                    var trackedCount = memberColumns.Count(c => 
+                        c.IsCurrency 
+                            ? (isCurrencyHistoricalTrackingEnabled?.Invoke(c.Id) ?? true)
+                            : (isItemHistoricalTrackingEnabled?.Invoke(c.Id) ?? c.StoreHistory));
+                    var totalCount = memberColumns.Count;
+                    
+                    // Determine state: all, some, or none
+                    bool allTracked = trackedCount == totalCount;
+                    bool noneTracked = trackedCount == 0;
+                    bool someTracked = !allTracked && !noneTracked;
+                    
+                    // Draw a visual indicator based on state
+                    if (allTracked)
+                    {
+                        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.9f, 0.4f, 1.0f));
+                        ImGui.TextUnformatted("✓");
+                        ImGui.PopStyleColor();
+                        if (ImGui.IsItemHovered())
+                        {
+                            ImGui.SetTooltip("All items in this group have historical tracking enabled.");
+                        }
+                    }
+                    else if (noneTracked)
+                    {
+                        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.6f, 0.6f, 0.6f, 1.0f));
+                        ImGui.TextUnformatted("○");
+                        ImGui.PopStyleColor();
+                        if (ImGui.IsItemHovered())
+                        {
+                            ImGui.SetTooltip("No items in this group have historical tracking enabled.");
+                        }
+                    }
+                    else
+                    {
+                        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1.0f, 0.8f, 0.2f, 1.0f));
+                        ImGui.TextUnformatted("◐");
+                        ImGui.PopStyleColor();
+                        if (ImGui.IsItemHovered())
+                        {
+                            // Build list of items without tracking
+                            var untrackedItems = memberColumns
+                                .Where(c => c.IsCurrency
+                                    ? !(isCurrencyHistoricalTrackingEnabled?.Invoke(c.Id) ?? true)
+                                    : !(isItemHistoricalTrackingEnabled?.Invoke(c.Id) ?? c.StoreHistory))
+                                .Select(c => getDefaultName(c))
+                                .ToList();
+                            ImGui.SetTooltip($"Some items have historical tracking enabled ({trackedCount}/{totalCount}).\n\nItems without tracking:\n{string.Join("\n", untrackedItems)}");
+                        }
+                    }
+                }
                 
-                // Column 5: Move up button for merged groups
+                // Column 5: Show in Table checkbox for merged groups
+                ImGui.TableNextColumn();
+                {
+                    var showInTable = group.ShowInTable;
+                    if (ImGui.Checkbox("##showInTable", ref showInTable))
+                    {
+                        group.ShowInTable = showInTable;
+                        changed = true;
+                        onRefreshNeeded?.Invoke();
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Show this merged group in table view");
+                    }
+                }
+                
+                // Column 6: Show in Graph - enabled only when all items have historical tracking
+                ImGui.TableNextColumn();
+                {
+                    // Get member columns and check their historical tracking status
+                    var memberColumns = group.ColumnIndices
+                        .Where(idx => idx >= 0 && idx < columns.Count)
+                        .Select(idx => columns[idx])
+                        .ToList();
+                    
+                    // Check if all items have historical tracking (check currencies against currency tracking settings)
+                    var untrackedItems = memberColumns
+                        .Where(c => c.IsCurrency
+                            ? !(isCurrencyHistoricalTrackingEnabled?.Invoke(c.Id) ?? true)
+                            : !(isItemHistoricalTrackingEnabled?.Invoke(c.Id) ?? c.StoreHistory))
+                        .Select(c => getDefaultName(c))
+                        .ToList();
+                    
+                    bool hasUntrackedItems = untrackedItems.Count > 0;
+                    
+                    // Enable the checkbox only when all items have historical tracking
+                    ImGui.BeginDisabled(hasUntrackedItems);
+                    var showInGraph = group.ShowInGraph;
+                    if (ImGui.Checkbox("##showInGraph", ref showInGraph))
+                    {
+                        group.ShowInGraph = showInGraph;
+                        changed = true;
+                        onRefreshNeeded?.Invoke();
+                    }
+                    ImGui.EndDisabled();
+                    
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    {
+                        if (hasUntrackedItems)
+                        {
+                            ImGui.SetTooltip($"Graph view is disabled because the following items don't have historical tracking enabled:\n{string.Join("\n", untrackedItems)}");
+                        }
+                        else
+                        {
+                            ImGui.SetTooltip("Show this merged group as a combined series in graph view.\nThe graph will display the sum of all items in this group.");
+                        }
+                    }
+                };
+                
+                // Column 7: Move up button for merged groups
                 ImGui.TableNextColumn();
                 ImGui.BeginDisabled(g == 0);
                 if (ImGui.Button("▲##up"))
@@ -169,7 +292,7 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip("Move up");
                 }
                 
-                // Column 6: Move down button for merged groups
+                // Column 8: Move down button for merged groups
                 ImGui.TableNextColumn();
                 ImGui.BeginDisabled(g == mergedColumnGroups.Count - 1);
                 if (ImGui.Button("▼##down"))
@@ -186,7 +309,7 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip("Move down");
                 }
                 
-                // Column 7: Unmerge button
+                // Column 9: Unmerge button
                 ImGui.TableNextColumn();
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.3f, 0.5f, 1f));
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.6f, 1f));
@@ -260,18 +383,34 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip(column.IsCurrency ? currencyLabel : itemLabel);
                 }
                 
-                // Column 4: Store history checkbox (per-item global setting) or greyed-out indicator (currencies)
+                // Column 4: Store history checkbox (per-item global setting) or currency tracking setting
                 ImGui.TableNextColumn();
                 if (column.IsCurrency)
                 {
-                    // Currencies have history tracking controlled from Kaleidoscope settings
-                    ImGui.BeginDisabled(true);
-                    var currencyHistory = column.StoreHistory;
-                    ImGui.Checkbox("##history", ref currencyHistory);
-                    ImGui.EndDisabled();
-                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    // Currencies have history tracking controlled by the currency tracking settings
+                    var currencyHistory = isCurrencyHistoricalTrackingEnabled?.Invoke(column.Id) ?? column.StoreHistory;
+                    if (onCurrencyHistoricalTrackingToggled != null)
                     {
-                        ImGui.SetTooltip("Currency historical tracking is controlled globally.\nThis can be changed in Kaleidoscope settings.");
+                        if (ImGui.Checkbox("##history", ref currencyHistory))
+                        {
+                            onCurrencyHistoricalTrackingToggled(column.Id, currencyHistory);
+                            changed = true;
+                        }
+                        if (ImGui.IsItemHovered())
+                        {
+                            ImGui.SetTooltip("Currency tracking is always enabled and cannot be turned off.");
+                        }
+                    }
+                    else
+                    {
+                        // No callback provided - show disabled checkbox
+                        ImGui.BeginDisabled(true);
+                        ImGui.Checkbox("##history", ref currencyHistory);
+                        ImGui.EndDisabled();
+                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                        {
+                            ImGui.SetTooltip("Currency historical tracking is controlled globally.\nThis can be changed in Kaleidoscope settings.");
+                        }
                     }
                 }
                 else
@@ -304,7 +443,35 @@ public static class ColumnManagementWidget
                     }
                 }
                 
-                // Column 5: Move up button
+                // Column 5: Show in Table checkbox
+                ImGui.TableNextColumn();
+                var showInTable = column.ShowInTable;
+                if (ImGui.Checkbox("##showInTable", ref showInTable))
+                {
+                    column.ShowInTable = showInTable;
+                    changed = true;
+                    onRefreshNeeded?.Invoke();
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Show this item/currency in table view");
+                }
+                
+                // Column 6: Show in Graph checkbox
+                ImGui.TableNextColumn();
+                var showInGraph = column.ShowInGraph;
+                if (ImGui.Checkbox("##showInGraph", ref showInGraph))
+                {
+                    column.ShowInGraph = showInGraph;
+                    changed = true;
+                    onRefreshNeeded?.Invoke();
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Show this item/currency in graph view");
+                }
+                
+                // Column 7: Move up button
                 ImGui.TableNextColumn();
                 ImGui.BeginDisabled(i == 0);
                 if (ImGui.Button("▲##up"))
@@ -317,7 +484,7 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip("Move up");
                 }
                 
-                // Column 6: Move down button
+                // Column 8: Move down button
                 ImGui.TableNextColumn();
                 ImGui.BeginDisabled(i == columns.Count - 1);
                 if (ImGui.Button("▼##down"))
@@ -330,7 +497,7 @@ public static class ColumnManagementWidget
                     ImGui.SetTooltip("Move down");
                 }
                 
-                // Column 7: Delete button
+                // Column 9: Delete button
                 ImGui.TableNextColumn();
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));

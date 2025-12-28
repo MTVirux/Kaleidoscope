@@ -17,7 +17,7 @@ public class InventoryValueTool : ToolComponent
     public override string ToolName => "Inventory Value";
     
     private readonly PriceTrackingService _priceTrackingService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
     private readonly CharacterDataService _characterDataService;
     private readonly TimeSeriesCacheService? _cacheService;
@@ -47,19 +47,19 @@ public class InventoryValueTool : ToolComponent
     private long? _cachedDbMaxTimestamp;
 
     private InventoryValueSettings Settings => _instanceSettings;
-    private KaleidoscopeDbService DbService => _samplerService.DbService;
+    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
 
     public InventoryValueTool(
         PriceTrackingService priceTrackingService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         ConfigurationService configService,
         CharacterDataService characterDataService)
     {
         _priceTrackingService = priceTrackingService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _configService = configService;
         _characterDataService = characterDataService;
-        _cacheService = samplerService.CacheService;
+        _cacheService = CurrencyTrackerService.CacheService;
         _instanceSettings = new InventoryValueSettings();
 
         Title = "Inventory Value";
@@ -94,7 +94,7 @@ public class InventoryValueTool : ToolComponent
         _graphWidget.OnAutoScrollSettingsChanged += OnAutoScrollSettingsChanged;
         
         // Subscribe to inventory value history changes (e.g., when sale records are deleted)
-        _samplerService.OnInventoryValueHistoryChanged += OnInventoryValueHistoryChanged;
+        _currencyTrackerService.OnInventoryValueHistoryChanged += OnInventoryValueHistoryChanged;
         
         // Subscribe to cache updates from background thread
         if (_cacheService != null)
@@ -594,7 +594,7 @@ public class InventoryValueTool : ToolComponent
     public override void Dispose()
     {
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;
-        _samplerService.OnInventoryValueHistoryChanged -= OnInventoryValueHistoryChanged;
+        _currencyTrackerService.OnInventoryValueHistoryChanged -= OnInventoryValueHistoryChanged;
         if (_cacheService != null)
         {
             _cacheService.OnInventoryValueCacheInvalidated -= OnCacheInvalidated;

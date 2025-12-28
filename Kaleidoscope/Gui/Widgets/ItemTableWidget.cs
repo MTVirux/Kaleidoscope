@@ -98,6 +98,16 @@ public class ItemColumnConfig
     /// Only applies to inventory items (not currencies, which are always tracked).
     /// </summary>
     public bool StoreHistory { get; set; } = false;
+    
+    /// <summary>
+    /// Whether to show this item/currency in table view.
+    /// </summary>
+    public bool ShowInTable { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to show this item/currency in graph view.
+    /// </summary>
+    public bool ShowInGraph { get; set; } = true;
 }
 
 /// <summary>
@@ -124,6 +134,17 @@ public class MergedColumnGroup
     /// Width of the merged column in pixels.
     /// </summary>
     public float Width { get; set; } = 80f;
+    
+    /// <summary>
+    /// Whether to show this merged group in table view.
+    /// </summary>
+    public bool ShowInTable { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to show this merged group in graph view.
+    /// Only applicable when all member items have historical tracking enabled.
+    /// </summary>
+    public bool ShowInGraph { get; set; } = true;
 }
 
 /// <summary>
@@ -304,6 +325,11 @@ public interface IItemTableWidgetSettings
     /// When enabled, characters with retainers can be expanded to show per-retainer counts.
     /// </summary>
     bool ShowRetainerBreakdown { get; set; }
+    
+    /// <summary>
+    /// Whether to hide rows where all column values are zero.
+    /// </summary>
+    bool HideZeroRows { get; set; }
 }
 
 /// <summary>
@@ -547,26 +573,49 @@ public class ItemTableWidget : ISettingsProvider
         // Iterate through all columns in order
         for (int i = 0; i < columns.Count; i++)
         {
+            var column = columns[i];
+            
+            // Skip columns not visible in table view
+            if (!column.ShowInTable)
+                continue;
+            
             if (mergedIndices.Contains(i))
             {
                 // This column is part of a merged group - find which one
                 var group = settings.MergedColumnGroups.FirstOrDefault(g => g.ColumnIndices.Contains(i));
                 if (group != null)
                 {
-                    // Only add the merged group once (at the position of its first column)
-                    var firstIdx = group.ColumnIndices.Min();
-                    if (i == firstIdx && !addedMergedGroups.Contains(firstIdx))
+                    // Skip if the merged group itself is hidden
+                    if (!group.ShowInTable)
+                        continue;
+                    
+                    // Only add the merged group once (at the position of its first column that's visible)
+                    // Get the first visible column index in this group
+                    var firstVisibleIdx = group.ColumnIndices
+                        .Where(idx => idx >= 0 && idx < columns.Count && columns[idx].ShowInTable)
+                        .DefaultIfEmpty(-1)
+                        .Min();
+                    
+                    if (firstVisibleIdx >= 0 && i == firstVisibleIdx && !addedMergedGroups.Contains(group.ColumnIndices.Min()))
                     {
-                        addedMergedGroups.Add(firstIdx);
-                        displayColumns.Add(new DisplayColumn
+                        addedMergedGroups.Add(group.ColumnIndices.Min());
+                        // Only include visible columns in the merged group
+                        var visibleIndices = group.ColumnIndices
+                            .Where(idx => idx >= 0 && idx < columns.Count && columns[idx].ShowInTable)
+                            .ToList();
+                        
+                        if (visibleIndices.Count > 0)
                         {
-                            IsMerged = true,
-                            Header = group.Name,
-                            Width = settings.AutoSizeEqualColumns ? autoWidth : group.Width,
-                            Color = group.Color,
-                            SourceColumnIndices = group.ColumnIndices.ToList(),
-                            MergedGroup = group
-                        });
+                            displayColumns.Add(new DisplayColumn
+                            {
+                                IsMerged = true,
+                                Header = group.Name,
+                                Width = settings.AutoSizeEqualColumns ? autoWidth : group.Width,
+                                Color = group.Color,
+                                SourceColumnIndices = visibleIndices,
+                                MergedGroup = group
+                            });
+                        }
                     }
                     // Skip other columns in the same merged group
                 }
@@ -574,7 +623,6 @@ public class ItemTableWidget : ISettingsProvider
             else
             {
                 // Regular column (not merged)
-                var column = columns[i];
                 displayColumns.Add(new DisplayColumn
                 {
                     IsMerged = false,
@@ -874,13 +922,13 @@ public class ItemTableWidget : ISettingsProvider
                     // Check ItemColors (TrackedDataType -> uint)
                     var dataType = (Models.TrackedDataType)sourceCol.Id;
                     if (_configuration.ItemColors.TryGetValue(dataType, out var colorUint))
-                        return UintToVector4(colorUint);
+                        return ColorUtils.UintToVector4(colorUint);
                 }
                 else
                 {
                     // Check GameItemColors (item ID -> uint)
                     if (_configuration.GameItemColors.TryGetValue(sourceCol.Id, out var colorUint))
-                        return UintToVector4(colorUint);
+                        return ColorUtils.UintToVector4(colorUint);
                 }
             }
         }
@@ -903,22 +951,10 @@ public class ItemTableWidget : ISettingsProvider
         {
             var charColor = _cacheService.GetCharacterTimeSeriesColor(characterId);
             if (charColor.HasValue)
-                return UintToVector4(charColor.Value);
+                return ColorUtils.UintToVector4(charColor.Value);
         }
         
         return fallbackColor;
-    }
-    
-    /// <summary>
-    /// Converts a uint color (ABGR format from ImGui) to Vector4.
-    /// </summary>
-    private static Vector4 UintToVector4(uint color)
-    {
-        var r = (color & 0xFF) / 255f;
-        var g = ((color >> 8) & 0xFF) / 255f;
-        var b = ((color >> 16) & 0xFF) / 255f;
-        var a = ((color >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
     }
     
     #endregion
@@ -1299,6 +1335,15 @@ public class ItemTableWidget : ISettingsProvider
             
             // Build display rows (handles merged rows)
             var finalDisplayRows = BuildDisplayRows(groupedRows, settings, columns);
+            
+            // Filter out rows where all column values are zero if HideZeroRows is enabled
+            if (settings.HideZeroRows)
+            {
+                finalDisplayRows = finalDisplayRows
+                    .Where(r => r.ItemCounts.Values.Any(v => v != 0))
+                    .ToList();
+            }
+            
             _cachedDisplayRows = finalDisplayRows; // Cache for merge operations
             
             // Track row order for range selection

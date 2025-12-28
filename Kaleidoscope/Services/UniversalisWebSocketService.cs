@@ -754,6 +754,17 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         _log.Verbose("[UniversalisWebSocket] Cleared all subscribed channels");
     }
 
+    /// <summary>
+    /// Checks if any sales/add channel is currently subscribed (global or per-world).
+    /// </summary>
+    public bool IsSalesChannelSubscribed()
+    {
+        lock (_channelLock)
+        {
+            return _subscribedChannels.Any(c => c.StartsWith("sales/add"));
+        }
+    }
+
     private async Task ResubscribeChannelsAsync()
     {
         List<string> channels;

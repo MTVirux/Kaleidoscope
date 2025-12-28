@@ -160,6 +160,11 @@ public class Configuration : IPluginConfiguration
     public Vector4 MainWindowBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
     public Vector4 FullscreenBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
 
+    /// <summary>
+    /// Default UI color settings for customization.
+    /// </summary>
+    public UIColors UIColors { get; set; } = new();
+
     public float ContentGridCellWidthPercent { get; set; } = 25f;
     public float ContentGridCellHeightPercent { get; set; } = 25f;
     public int GridSubdivisions { get; set; } = 8;
@@ -591,7 +596,12 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// Whether to show expandable retainer breakdown for characters with retainer data.
     /// When enabled, characters with retainers can be expanded to show per-retainer counts.
     /// </summary>
-    public bool ShowRetainerBreakdown { get; set; } = false;
+    public bool ShowRetainerBreakdown { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to hide rows where all column values are zero.
+    /// </summary>
+    public bool HideZeroRows { get; set; } = false;
     
     /// <summary>
     /// Settings for special grouping filters (unlocked when specific item combinations are selected).
@@ -904,13 +914,24 @@ public class DataToolSettings :
     /// Mode for determining cell text colors.
     /// </summary>
     public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
+        Kaleidoscope.Gui.Widgets.TableTextColorMode.PreferredItemColors;
     
     /// <summary>
-    /// Whether to show expandable retainer breakdown for characters with retainer data.
+    /// Whether to show expandable retainer breakdown for characters with retainer data in table view.
     /// When enabled, characters with retainers can be expanded to show per-retainer counts.
     /// </summary>
-    public bool ShowRetainerBreakdown { get; set; } = false;
+    public bool ShowRetainerBreakdown { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to show separate lines for each retainer in graph view.
+    /// When enabled, each retainer's inventory is shown as a separate series.
+    /// </summary>
+    public bool ShowRetainerBreakdownInGraph { get; set; } = false;
+    
+    /// <summary>
+    /// Whether to hide rows where all column values are zero.
+    /// </summary>
+    public bool HideZeroRows { get; set; } = false;
     
     // === Graph-Specific Settings (IGraphWidgetSettings implementation) ===
     
@@ -925,7 +946,7 @@ public class DataToolSettings :
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
     public Kaleidoscope.Gui.Widgets.LegendPosition LegendPosition { get; set; } = 
-        Kaleidoscope.Gui.Widgets.LegendPosition.Outside;
+        Kaleidoscope.Gui.Widgets.LegendPosition.InsideTopLeft;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;
@@ -1070,4 +1091,105 @@ public class UserToolPreset
     /// The serialized tool settings. Uses the same format as ToolLayoutState.ToolSettings.
     /// </summary>
     public Dictionary<string, object?> Settings { get; set; } = new();
+}
+
+/// <summary>
+/// Default UI color settings for customization.
+/// These colors serve as defaults that can be overridden at the tool/widget level.
+/// </summary>
+public class UIColors
+{
+    // Window backgrounds
+    /// <summary>Default background color for the main window.</summary>
+    public Vector4 MainWindowBackground { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
+    
+    /// <summary>Default background color for fullscreen mode.</summary>
+    public Vector4 FullscreenBackground { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
+    
+    // Tool defaults
+    /// <summary>Default background color for new tools.</summary>
+    public Vector4 ToolBackground { get; set; } = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+    
+    /// <summary>Default header text color for tools.</summary>
+    public Vector4 ToolHeaderText { get; set; } = new(1f, 1f, 1f, 1f);
+    
+    /// <summary>Default border/outline color for tools in edit mode.</summary>
+    public Vector4 ToolBorder { get; set; } = new(0.43f, 0.43f, 0.5f, 0.5f);
+    
+    // Table colors
+    /// <summary>Default color for table header rows.</summary>
+    public Vector4 TableHeader { get; set; } = new(0.26f, 0.26f, 0.28f, 1f);
+    
+    /// <summary>Default color for even table rows.</summary>
+    public Vector4 TableRowEven { get; set; } = new(0f, 0f, 0f, 0f);
+    
+    /// <summary>Default color for odd table rows.</summary>
+    public Vector4 TableRowOdd { get; set; } = new(0.1f, 0.1f, 0.1f, 0.3f);
+    
+    /// <summary>Default color for table total rows.</summary>
+    public Vector4 TableTotalRow { get; set; } = new(0.3f, 0.3f, 0.3f, 0.5f);
+    
+    // Text colors
+    /// <summary>Default primary text color.</summary>
+    public Vector4 TextPrimary { get; set; } = new(1f, 1f, 1f, 1f);
+    
+    /// <summary>Default secondary/muted text color.</summary>
+    public Vector4 TextSecondary { get; set; } = new(0.7f, 0.7f, 0.7f, 1f);
+    
+    /// <summary>Default disabled text color.</summary>
+    public Vector4 TextDisabled { get; set; } = new(0.5f, 0.5f, 0.5f, 1f);
+    
+    // Accent colors
+    /// <summary>Primary accent color for highlights and selections.</summary>
+    public Vector4 AccentPrimary { get; set; } = new(0.26f, 0.59f, 0.98f, 1f);
+    
+    /// <summary>Success/positive color (e.g., for price increases).</summary>
+    public Vector4 AccentSuccess { get; set; } = new(0.2f, 0.8f, 0.2f, 1f);
+    
+    /// <summary>Warning color (e.g., for alerts).</summary>
+    public Vector4 AccentWarning { get; set; } = new(1f, 0.7f, 0.3f, 1f);
+    
+    /// <summary>Error/negative color (e.g., for price decreases).</summary>
+    public Vector4 AccentError { get; set; } = new(0.9f, 0.2f, 0.2f, 1f);
+    
+    // Quick access bar colors
+    /// <summary>Background color for the quick access bar.</summary>
+    public Vector4 QuickAccessBarBackground { get; set; } = new(0.1f, 0.1f, 0.1f, 0.87f);
+    
+    /// <summary>Separator color in the quick access bar.</summary>
+    public Vector4 QuickAccessBarSeparator { get; set; } = new(0.31f, 0.31f, 0.31f, 1f);
+    
+    // Graph colors
+    /// <summary>Default graph line/fill color when no specific color is assigned.</summary>
+    public Vector4 GraphDefault { get; set; } = new(0.4f, 0.6f, 0.9f, 1f);
+    
+    /// <summary>Graph axis and grid line color.</summary>
+    public Vector4 GraphAxis { get; set; } = new(0.5f, 0.5f, 0.5f, 0.5f);
+    
+    /// <summary>
+    /// Resets all colors to their default values.
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        MainWindowBackground = new(0.06f, 0.06f, 0.06f, 0.94f);
+        FullscreenBackground = new(0.06f, 0.06f, 0.06f, 0.94f);
+        ToolBackground = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+        ToolHeaderText = new(1f, 1f, 1f, 1f);
+        ToolBorder = new(0.43f, 0.43f, 0.5f, 0.5f);
+        TableHeader = new(0.26f, 0.26f, 0.28f, 1f);
+        TableRowEven = new(0f, 0f, 0f, 0f);
+        TableRowOdd = new(0.1f, 0.1f, 0.1f, 0.3f);
+        TableTotalRow = new(0.3f, 0.3f, 0.3f, 0.5f);
+        TextPrimary = new(1f, 1f, 1f, 1f);
+        TextSecondary = new(0.7f, 0.7f, 0.7f, 1f);
+        TextDisabled = new(0.5f, 0.5f, 0.5f, 1f);
+        AccentPrimary = new(0.26f, 0.59f, 0.98f, 1f);
+        AccentSuccess = new(0.2f, 0.8f, 0.2f, 1f);
+        AccentWarning = new(1f, 0.7f, 0.3f, 1f);
+        AccentError = new(0.9f, 0.2f, 0.2f, 1f);
+        QuickAccessBarBackground = new(0.1f, 0.1f, 0.1f, 0.87f);
+        QuickAccessBarSeparator = new(0.31f, 0.31f, 0.31f, 1f);
+        GraphDefault = new(0.4f, 0.6f, 0.9f, 1f);
+        GraphAxis = new(0.5f, 0.5f, 0.5f, 0.5f);
+    }
 }

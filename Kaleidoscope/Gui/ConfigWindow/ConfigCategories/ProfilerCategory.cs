@@ -13,7 +13,7 @@ public class ProfilerCategory
 {
     private readonly ProfilerService _profilerService;
     private readonly ConfigurationService _configService;
-    private readonly SamplerService? _samplerService;
+    private readonly CurrencyTrackerService? _currencyTrackerService;
     
     private static readonly string[] StatsViewOptions = { "Basic", "Percentiles", "Rolling", "All" };
     
@@ -22,11 +22,11 @@ public class ProfilerCategory
     /// </summary>
     private string? _selectedHistogramTool;
 
-    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, SamplerService? samplerService = null)
+    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, CurrencyTrackerService? CurrencyTrackerService = null)
     {
         _profilerService = profilerService;
         _configService = configService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
     }
 
     public void Draw()
@@ -183,9 +183,9 @@ public class ProfilerCategory
         ImGui.TextUnformatted($"Gen0: {gen0}  Gen1: {gen1}  Gen2: {gen2}");
         
         // Cache statistics
-        if (_samplerService?.CacheService != null)
+        if (_currencyTrackerService?.CacheService != null)
         {
-            var cacheStats = _samplerService.CacheService.GetStatistics();
+            var cacheStats = _currencyTrackerService.CacheService.GetStatistics();
             
             ImGui.TextColored(new System.Numerics.Vector4(0.6f, 1f, 0.6f, 1f), "Cache:");
             ImGui.SameLine();

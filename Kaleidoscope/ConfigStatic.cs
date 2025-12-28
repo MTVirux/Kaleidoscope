@@ -17,9 +17,9 @@ public static class ConfigStatic
     public static readonly Vector2 GilTrackerToolSize = new(360, 220);
     public static readonly Vector2 GilTrackerPointsPopupSize = new(700, 300);
 
-    // Sampler defaults
-    public const int DefaultSamplerIntervalMs = 1000;
-    public const int MinSamplerIntervalMs = 1000;
+    // Currency tracking defaults
+    public const int DefaultTrackingIntervalMs = 1000;
+    public const int MinTrackingIntervalMs = 1000;
 
     // Retainer data stabilization
     /// <summary>

@@ -30,8 +30,8 @@ public sealed class TrackedDataRegistry : IRequiredService
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.Gil,
-            DisplayName = "Gil",
-            ShortName = "Gil",
+            DisplayName = "Character Gil",
+            ShortName = "Char Gil",
             Category = TrackedDataCategory.Gil,
             ItemId = 1,
             MaxValue = 999_999_999,
@@ -330,7 +330,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             DisplayName = "Free Company Credits",
             ShortName = "FC Credits",
             Category = TrackedDataCategory.GrandCompany,
-            IconId = 65049, // FC Credit currency icon
+            ItemId = 10155, // FC Credit item icon
             MaxValue = 999_999_999,
             EnabledByDefault = false,
             Description = "Free Company credits earned from FC activities, used to purchase FC actions."
@@ -352,10 +352,10 @@ public sealed class TrackedDataRegistry : IRequiredService
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.InventoryValueItems,
-            DisplayName = "Inventory Value (Items)",
-            ShortName = "Inv Items",
+            DisplayName = "Inventory Value (in Gil)",
+            ShortName = "Inv Value",
             Category = TrackedDataCategory.Universalis,
-            ItemId = 0, // No specific item
+            ItemId = 1, // Gil icon
             MaxValue = 999_999_999_999, // Items can be worth a lot
             EnabledByDefault = true,
             Description = "Market value of inventory items via Universalis. Updates when prices change.",

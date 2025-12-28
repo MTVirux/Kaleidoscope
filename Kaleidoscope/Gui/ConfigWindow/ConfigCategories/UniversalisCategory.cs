@@ -260,42 +260,12 @@ public class UniversalisCategory
 
         ImGui.Spacing();
 
-        // Data Retention sub-section
+        // Data Retention - reference to Storage category
         ImGui.TextUnformatted("Data Retention");
         ImGui.Spacing();
-
-        var retentionType = (int)settings.RetentionType;
-        ImGui.SetNextItemWidth(200);
-        if (ImGui.Combo("Retention Policy##PriceRetention", ref retentionType, RetentionTypeNames, RetentionTypeNames.Length))
-        {
-            settings.RetentionType = (PriceRetentionType)retentionType;
-            _configService.Save();
-        }
-        ImGui.SameLine();
-        HelpMarker("How to limit stored price data:\n" +
-            "By Time: Keep data for N days\n" +
-            "By Size: Keep data up to N MB");
-
-        if (settings.RetentionType == PriceRetentionType.ByTime)
-        {
-            var retentionDays = settings.RetentionDays;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Days to retain##RetentionDays", ref retentionDays, 1, 7))
-            {
-                settings.RetentionDays = Math.Max(1, retentionDays);
-                _configService.Save();
-            }
-        }
-        else
-        {
-            var retentionMb = settings.RetentionSizeMb;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Max size (MB)##RetentionSize", ref retentionMb, 10, 50))
-            {
-                settings.RetentionSizeMb = Math.Max(10, retentionMb);
-                _configService.Save();
-            }
-        }
+        ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
+            "Price data retention settings have been moved to the Storage category.");
+        ImGui.TextDisabled($"Current: {(settings.RetentionType == PriceRetentionType.ByTime ? $"{settings.RetentionDays} days" : $"{settings.RetentionSizeMb} MB")} retention");
 
         ImGui.Spacing();
 

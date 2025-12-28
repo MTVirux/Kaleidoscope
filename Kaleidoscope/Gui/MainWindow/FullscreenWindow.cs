@@ -19,7 +19,7 @@ public sealed class FullscreenWindow : Window
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly FilenameService _filenameService;
-    private readonly SamplerService _samplerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly StateService _stateService;
     private readonly TrackedDataRegistry _trackedDataRegistry;
     private readonly InventoryChangeService _inventoryChangeService;
@@ -54,7 +54,7 @@ public sealed class FullscreenWindow : Window
     public FullscreenWindow(
         IPluginLog log,
         ConfigurationService configService,
-        SamplerService samplerService,
+        CurrencyTrackerService CurrencyTrackerService,
         FilenameService filenameService,
         StateService stateService,
         TrackedDataRegistry trackedDataRegistry,
@@ -74,7 +74,7 @@ public sealed class FullscreenWindow : Window
         _log = log;
         _configService = configService;
         _filenameService = filenameService;
-        _samplerService = samplerService;
+        _currencyTrackerService = CurrencyTrackerService;
         _stateService = stateService;
         _trackedDataRegistry = trackedDataRegistry;
         _inventoryChangeService = inventoryChangeService;
@@ -107,7 +107,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _currencyTrackerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -126,7 +126,7 @@ public sealed class FullscreenWindow : Window
         try
         {
             var ctx = new ToolCreationContext(
-                _filenameService, _samplerService, _configService, _characterDataService,
+                _filenameService, _currencyTrackerService, _configService, _characterDataService,
                 _inventoryChangeService, _trackedDataRegistry, _webSocketService,
                 _priceTrackingService, _itemDataService, _dataManager,
                 _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
@@ -322,7 +322,7 @@ public sealed class FullscreenWindow : Window
             _stateService,
             _layoutEditingService,
             _configService,
-            _samplerService,
+            _currencyTrackerService,
             _webSocketService,
             _autoRetainerIpc,
             onFullscreenToggle: () =>
