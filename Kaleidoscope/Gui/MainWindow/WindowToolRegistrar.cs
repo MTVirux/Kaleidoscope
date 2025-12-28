@@ -46,6 +46,7 @@ public static class WindowToolRegistrar
             ctx.FilenameService,
             ctx.SamplerService,
             ctx.ConfigService,
+            ctx.CharacterDataService,
             ctx.InventoryChangeService,
             ctx.Registry,
             ctx.WebSocketService,
@@ -63,6 +64,7 @@ public static class WindowToolRegistrar
         FilenameService filenameService, 
         SamplerService samplerService, 
         ConfigurationService configService,
+        CharacterDataService? characterDataService = null,
         InventoryChangeService? inventoryChangeService = null,
         TrackedDataRegistry? registry = null,
         UniversalisWebSocketService? webSocketService = null,
@@ -78,7 +80,7 @@ public static class WindowToolRegistrar
 
         // Bundle context for cleaner factory method calls
         var ctx = new ToolCreationContext(
-            filenameService, samplerService, configService,
+            filenameService, samplerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService);
@@ -275,9 +277,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            if (ctx.PriceTrackingService == null)
+            if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null)
                 return null;
-            return new InventoryValueTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService) { Position = pos };
+            return new InventoryValueTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, ctx.CharacterDataService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -290,13 +292,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            if (ctx.PriceTrackingService == null || ctx.ItemDataService == null || 
+            if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null || ctx.ItemDataService == null || 
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
                 LogService.Debug("CreateTopItemsTool: Required service is null");
                 return null;
             }
-            return new TopItemsTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, 
+            return new TopItemsTool(ctx.PriceTrackingService, ctx.SamplerService, ctx.ConfigService, ctx.CharacterDataService,
                 ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
                 ctx.InventoryChangeService) { Position = pos };
         }

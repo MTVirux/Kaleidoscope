@@ -33,6 +33,7 @@ public sealed class FullscreenWindow : Window
     private readonly LayoutEditingService _layoutEditingService;
     private readonly ITextureProvider _textureProvider;
     private readonly FavoritesService _favoritesService;
+    private readonly CharacterDataService _characterDataService;
     private readonly WindowContentContainer _contentContainer;
     
     // Quick access bar widget (appears when CTRL+ALT is held)
@@ -67,7 +68,8 @@ public sealed class FullscreenWindow : Window
         AutoRetainerIpcService autoRetainerIpc,
         LayoutEditingService layoutEditingService,
         ITextureProvider textureProvider,
-        FavoritesService favoritesService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
+        FavoritesService favoritesService,
+        CharacterDataService characterDataService) : base("Kaleidoscope Fullscreen", ImGuiWindowFlags.NoDecoration)
     {
         _log = log;
         _configService = configService;
@@ -86,6 +88,7 @@ public sealed class FullscreenWindow : Window
         _layoutEditingService = layoutEditingService;
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
+        _characterDataService = characterDataService;
 
         // Create a content container similar to the main window so HUD tools
         // can be reused in fullscreen mode. Keep registrations minimal — the
@@ -104,7 +107,7 @@ public sealed class FullscreenWindow : Window
         {
             // Register the same toolset as the main window. Registrar will
             // construct concrete tool instances; each instance is independent.
-            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
+            WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _samplerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);
 
             AddDefaultTools();
             ApplyInitialLayout();
@@ -123,7 +126,7 @@ public sealed class FullscreenWindow : Window
         try
         {
             var ctx = new ToolCreationContext(
-                _filenameService, _samplerService, _configService,
+                _filenameService, _samplerService, _configService, _characterDataService,
                 _inventoryChangeService, _trackedDataRegistry, _webSocketService,
                 _priceTrackingService, _itemDataService, _dataManager,
                 _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService);

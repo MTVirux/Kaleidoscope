@@ -37,6 +37,7 @@ public static class StaticServiceManager
             .AddSingleton<LayoutEditingService>()
             .AddSingleton<AutoRetainerIpcService>()
             .AddSingleton<FavoritesService>()
+            .AddSingleton<CharacterDataService>()
             .AddSingleton<UniversalisService>()
             .AddSingleton<UniversalisWebSocketService>()
             .AddSingleton<ListingsService>()

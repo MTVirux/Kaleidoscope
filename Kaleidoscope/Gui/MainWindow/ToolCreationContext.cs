@@ -12,6 +12,7 @@ public sealed record ToolCreationContext(
     FilenameService FilenameService,
     SamplerService SamplerService,
     ConfigurationService ConfigService,
+    CharacterDataService? CharacterDataService = null,
     InventoryChangeService? InventoryChangeService = null,
     TrackedDataRegistry? Registry = null,
     UniversalisWebSocketService? WebSocketService = null,
