@@ -205,6 +205,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             _currencyTrackerService.DbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
             
+            // Ensure character is in character_names table for discoverability in data tables
+            // This is needed because character rows are populated from character_names, not inventory_cache
+            if (!string.IsNullOrEmpty(playerName))
+            {
+                _currencyTrackerService.DbService.SaveCharacterName(characterId, playerName);
+            }
+            
             // Sample tracked items to time-series for historical graphing
             SampleTrackedItems(characterId, entry.Items);
             

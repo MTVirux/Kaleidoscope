@@ -1041,28 +1041,69 @@ public class DataTool : ToolComponent
                             }
                         }
                         
-                        // Merge retainer data with player data by adding values at matching timestamps
-                        // Group by (characterId, rounded timestamp) and sum values
-                        var mergedDict = new Dictionary<(ulong charId, DateTime ts), long>();
+                        // Merge player and retainer data using forward-fill logic.
+                        // This ensures that at any timestamp, we combine the latest known player value
+                        // with the latest known retainer value, even if they weren't sampled at the same time.
+                        // This handles the case where player inventory value stays constant (no new samples)
+                        // while retainer values change (new samples created).
                         
-                        foreach (var p in points)
+                        // Group points by character ID first
+                        var playerByChar = points
+                            .GroupBy(p => p.characterId)
+                            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
+                        
+                        var retainerByChar = retainerPts
+                            .GroupBy(p => p.characterId)
+                            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
+                        
+                        // Get all unique character IDs
+                        var allCharIds = playerByChar.Keys.Union(retainerByChar.Keys).ToList();
+                        
+                        var mergedPoints = new List<(ulong characterId, DateTime timestamp, long value)>();
+                        
+                        foreach (var charId in allCharIds)
                         {
-                            var key = (p.characterId, new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc));
-                            mergedDict[key] = mergedDict.GetValueOrDefault(key) + p.value;
+                            var playerPts = playerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
+                            var retPts = retainerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
+                            
+                            // Collect all unique timestamps (rounded to minute)
+                            var allTimestamps = playerPts
+                                .Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                                .Union(retPts.Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc)))
+                                .OrderBy(t => t)
+                                .Distinct()
+                                .ToList();
+                            
+                            // Build lookup for player and retainer values by rounded timestamp
+                            var playerLookup = playerPts
+                                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
+                            
+                            var retainerLookup = retPts
+                                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
+                            
+                            // Forward-fill: carry forward the last known value for each series
+                            long lastPlayerValue = 0;
+                            long lastRetainerValue = 0;
+                            
+                            foreach (var ts in allTimestamps)
+                            {
+                                // Update with new value if available, otherwise keep last known
+                                if (playerLookup.TryGetValue(ts, out var pVal))
+                                    lastPlayerValue = pVal;
+                                if (retainerLookup.TryGetValue(ts, out var rVal))
+                                    lastRetainerValue = rVal;
+                                
+                                mergedPoints.Add((charId, ts, lastPlayerValue + lastRetainerValue));
+                            }
                         }
                         
-                        foreach (var p in retainerPts)
-                        {
-                            var key = (p.characterId, new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc));
-                            mergedDict[key] = mergedDict.GetValueOrDefault(key) + p.value;
-                        }
-                        
-                        points = mergedDict
-                            .Select(kvp => (characterId: kvp.Key.charId, timestamp: kvp.Key.ts, value: kvp.Value))
-                            .OrderBy(p => p.timestamp)
-                            .ToList();
+                        points = mergedPoints.OrderBy(p => p.timestamp).ToList();
                     }
                 }
                 
@@ -1121,9 +1162,8 @@ public class DataTool : ToolComponent
             var defaultName = GetSeriesDisplayName(seriesConfig);
             var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
             
-            // Use GroupingMode for graph series grouping when there's only one item/currency.
-            // When there are multiple items, always aggregate to show per-item in legend.
-            var groupingMode = isSingleItem ? settings.GroupingMode : TableGroupingMode.All;
+            // Use GroupingMode for graph series grouping
+            var groupingMode = settings.GroupingMode;
             
             if (groupingMode == TableGroupingMode.Character)
             {
@@ -1282,9 +1322,8 @@ public class DataTool : ToolComponent
             
             var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
             
-            // Use GroupingMode for series grouping when there's only one item/merged group.
-            // When there are multiple items, always aggregate to show per-item in legend.
-            var groupingMode = isSingleItem ? settings.GroupingMode : TableGroupingMode.All;
+            // Use GroupingMode for series grouping
+            var groupingMode = settings.GroupingMode;
             
             if (groupingMode == TableGroupingMode.Character)
             {
