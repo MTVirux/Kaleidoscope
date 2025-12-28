@@ -1,6 +1,5 @@
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
-using Kaleidoscope.Libs;
 using Kaleidoscope.Services;
 using OtterGui.Log;
 using OtterGui.Services;
@@ -26,11 +25,10 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
             var dalamudLog = _services.GetService<IPluginLog>();
             LogService.Initialize(dalamudLog);
 
-            // Initialize static services that need Dalamud service references
+            // Initialize static game state service for FFXIVClientStructs access
             var playerState = _services.GetService<IPlayerState>();
             var objectTable = _services.GetService<IObjectTable>();
             GameStateService.Initialize(playerState, objectTable);
-            CharacterLib.Initialize(playerState, objectTable);
 
             // Initialize all services marked with IRequiredService
             // This follows the Glamourer pattern for service initialization

@@ -240,7 +240,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
             string? characterName = null;
             try
             {
-                var rawName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(cid);
+                var rawName = GameStateService.GetCharacterName(cid);
                 characterName = NameSanitizer.SanitizeWithPlayerFallback(rawName);
             }
             catch { /* Ignore name capture failures */ }
@@ -295,7 +295,7 @@ public sealed class SamplerService : IDisposable, IRequiredService
                         var inserted = _dbService.SaveSampleIfChanged(workItem.Variable, workItem.CharacterId, workItem.Value);
 
                         if (inserted && !string.IsNullOrEmpty(workItem.CharacterName) 
-                            && Kaleidoscope.Libs.CharacterLib.ValidateName(workItem.CharacterName))
+                            && GameStateService.ValidateCharacterName(workItem.CharacterName))
                         {
                             _dbService.SaveCharacterName(workItem.CharacterId, workItem.CharacterName);
                         }

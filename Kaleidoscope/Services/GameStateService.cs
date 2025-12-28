@@ -1,14 +1,23 @@
+using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
-/// Wrapper for unsafe access to game client structs.
-/// Isolates FFXIVClientStructs references for testability.
+/// Unified wrapper for accessing game client state and character data.
+/// Consolidates FFXIVClientStructs access and Dalamud service wrappers for testability.
 /// </summary>
+/// <remarks>
+/// This static service provides centralized access to:
+/// - Player state (content ID, name)
+/// - Inventory and retainer managers
+/// - Character name lookups from loaded objects
+/// - Currency and special currency queries
+/// </remarks>
 public static unsafe class GameStateService
 {
     private static IPlayerState? _playerState;
@@ -23,6 +32,73 @@ public static unsafe class GameStateService
         _objectTable = objectTable;
     }
 
+    #region Character Utilities
+
+    /// <summary>
+    /// Validates that a character name follows FFXIV naming conventions.
+    /// </summary>
+    /// <param name="name">The name to validate.</param>
+    /// <returns>True if the name is valid (exactly one space, no digits).</returns>
+    public static bool ValidateCharacterName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        var trimmed = name.Trim();
+        int spaceCount = 0;
+        foreach (var ch in trimmed)
+        {
+            if (ch == ' ') spaceCount++;
+            if (char.IsDigit(ch)) return false;
+        }
+        return spaceCount == 1;
+    }
+
+    /// <summary>
+    /// Gets a character name by content ID from currently loaded game objects.
+    /// </summary>
+    /// <param name="contentId">The character's content ID.</param>
+    /// <returns>The character name if found, null otherwise.</returns>
+    public static string? GetCharacterName(ulong contentId)
+    {
+        try
+        {
+            if (contentId == 0) return null;
+            
+            // Check if it's the local player first
+            var localCid = _playerState?.ContentId ?? 0;
+            if (contentId == localCid)
+            {
+                var name = _objectTable?.LocalPlayer?.Name.ToString();
+                if (!string.IsNullOrEmpty(name)) return name;
+                return null;
+            }
+
+            // Search loaded player characters
+            if (_objectTable != null)
+            {
+                var pc = _objectTable.OfType<IPlayerCharacter>().FirstOrDefault(p =>
+                {
+                    var charStruct = (Character*)p.Address;
+                    return charStruct != null && charStruct->ContentId == contentId;
+                });
+                if (pc != null)
+                {
+                    var oname = pc.Name.ToString();
+                    if (!string.IsNullOrEmpty(oname)) return oname;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    #endregion
+
+    #region Game Manager Access
+
     public static InventoryManager* InventoryManagerInstance()
     {
         try { return InventoryManager.Instance(); }
@@ -34,6 +110,10 @@ public static unsafe class GameStateService
         try { return RetainerManager.Instance(); }
         catch (Exception ex) { LogService.Debug($"RetainerManager.Instance() failed: {ex.Message}"); return null; }
     }
+
+    #endregion
+
+    #region Player State
 
     public static ulong PlayerContentId => _playerState?.ContentId ?? 0;
 
@@ -48,6 +128,10 @@ public static unsafe class GameStateService
             catch (Exception ex) { LogService.Debug($"LocalPlayer name access failed: {ex.Message}"); return null; }
         }
     }
+
+    #endregion
+
+    #region Retainer Operations
 
     /// <summary>
     /// Gets the total gil held by all retainers (from RetainerManager cached data).
@@ -90,8 +174,8 @@ public static unsafe class GameStateService
         {
             int total = 0;
 
-            // Check retainer inventory pages (RetainerPage1-7)
-            for (var page = InventoryType.RetainerPage1; page <= InventoryType.RetainerPage7; page++)
+            // Check retainer storage pages (RetainerPage1-7)
+            foreach (var page in InventoryConstants.RetainerStoragePages)
             {
                 total += im->GetItemCountInContainer(itemId, page, isHq);
             }
@@ -177,6 +261,10 @@ public static unsafe class GameStateService
         }
     }
 
+    #endregion
+
+    #region Currency Queries
+
     /// <summary>
     /// Gets the Free Company Credits from the FreeCompanyCreditShop agent.
     /// Based on AutoRetainer implementation: offset 256 in the agent.
@@ -207,4 +295,6 @@ public static unsafe class GameStateService
             return null;
         }
     }
+
+    #endregion
 }
