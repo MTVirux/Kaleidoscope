@@ -22,9 +22,6 @@ public class ItemsCategory
     private readonly FavoritesService? _favoritesService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
     
-    // Icon size for item icons
-    private static float IconSize => ImGui.GetTextLineHeight();
-    
     // Color editing state
     private uint? _editingColorItemId = null;
     private Vector4 _colorEditBuffer = Vector4.One;
@@ -203,7 +200,7 @@ public class ItemsCategory
         
         if (ImGui.BeginTable("TrackedItemsTable", 6, tableFlags, new Vector2(0, availableHeight)))
         {
-            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, IconSize + 4);
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, ImGuiHelpers.IconSize + 4);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("In use by", ImGuiTableColumnFlags.WidthFixed, 80);
             ImGui.TableSetupColumn("Store History", ImGuiTableColumnFlags.WidthFixed, 90);
@@ -502,7 +499,7 @@ public class ItemsCategory
         {
             // Setup columns
             ImGui.TableSetupColumn("ID", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.DefaultSort, 60);
-            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize | ImGuiTableColumnFlags.NoSort, IconSize + 4);
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize | ImGuiTableColumnFlags.NoSort, ImGuiHelpers.IconSize + 4);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 80);
             ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 55 + scrollbarWidth);
@@ -703,7 +700,7 @@ public class ItemsCategory
     {
         if (_textureProvider == null || _itemDataService == null)
         {
-            ImGui.Dummy(new Vector2(IconSize));
+            ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
             return;
         }
 
@@ -715,7 +712,7 @@ public class ItemsCategory
                 var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
                 if (icon.TryGetWrap(out var wrap, out _))
                 {
-                    ImGui.Image(wrap.Handle, new Vector2(IconSize));
+                    ImGui.Image(wrap.Handle, new Vector2(ImGuiHelpers.IconSize));
                     return;
                 }
             }
@@ -726,6 +723,6 @@ public class ItemsCategory
         }
 
         // Placeholder if icon not loaded
-        ImGui.Dummy(new Vector2(IconSize));
+        ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
     }
 }

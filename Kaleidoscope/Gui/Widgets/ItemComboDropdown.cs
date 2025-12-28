@@ -57,9 +57,6 @@ public sealed class ItemComboDropdown : IDisposable
             }
         }
     }
-    
-    // Icon size - use text line height for consistent row height
-    private static float IconSize => ImGui.GetTextLineHeight();
 
     /// <summary>
     /// The label for this combo (used for ImGui ID).
@@ -453,7 +450,7 @@ public sealed class ItemComboDropdown : IDisposable
     private void DrawItemIcon(ushort iconId)
     {
         var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-        var size = new Vector2(IconSize);
+        var size = new Vector2(ImGuiHelpers.IconSize);
         if (icon.TryGetWrap(out var wrap, out _))
         {
             ImGui.Image(wrap.Handle, size);

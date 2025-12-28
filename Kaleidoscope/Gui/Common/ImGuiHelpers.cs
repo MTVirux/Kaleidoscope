@@ -9,6 +9,13 @@ namespace Kaleidoscope.Gui.Common;
 public static class ImGuiHelpers
 {
     /// <summary>
+    /// Standard icon size for inline item/currency icons, based on current font height.
+    /// This is a computed property that returns the text line height, commonly used for 
+    /// small inline icons that should match text size.
+    /// </summary>
+    public static float IconSize => ImGui.GetTextLineHeight();
+    
+    /// <summary>
     /// Default horizontal padding added to each side of button text.
     /// </summary>
     public const float DefaultButtonPadding = 12f;

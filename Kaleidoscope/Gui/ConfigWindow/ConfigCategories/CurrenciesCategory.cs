@@ -21,9 +21,6 @@ public class CurrenciesCategory
     private readonly ITextureProvider? _textureProvider;
     private readonly ItemDataService? _itemDataService;
     
-    // Icon size for currency icons
-    private static float IconSize => ImGui.GetTextLineHeight();
-    
     // Color editing state
     private TrackedDataType? _editingColorType = null;
     private Vector4 _colorEditBuffer = Vector4.One;
@@ -140,7 +137,7 @@ public class CurrenciesCategory
         {
             // Setup columns
             ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 100);
-            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, IconSize + 4);
+            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, ImGuiHelpers.IconSize + 4);
             ImGui.TableSetupColumn("Currency", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Tracked", ImGuiTableColumnFlags.WidthFixed, 60);
             ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
@@ -336,7 +333,7 @@ public class CurrenciesCategory
     {
         if (_textureProvider == null || _itemDataService == null || !definition.ItemId.HasValue)
         {
-            ImGui.Dummy(new Vector2(IconSize));
+            ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
             return;
         }
 
@@ -348,7 +345,7 @@ public class CurrenciesCategory
                 var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
                 if (icon.TryGetWrap(out var wrap, out _))
                 {
-                    ImGui.Image(wrap.Handle, new Vector2(IconSize));
+                    ImGui.Image(wrap.Handle, new Vector2(ImGuiHelpers.IconSize));
                     return;
                 }
             }
@@ -359,6 +356,6 @@ public class CurrenciesCategory
         }
 
         // Placeholder if icon not loaded
-        ImGui.Dummy(new Vector2(IconSize));
+        ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
     }
 }
