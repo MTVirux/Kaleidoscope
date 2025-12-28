@@ -27,7 +27,7 @@ public sealed record CharacterInfo(
 /// Centralized service for character data access, caching, and formatting.
 /// Consolidates character loading logic from CharacterCombo, DataTool, InventoryValueTool, and TopInventoryValueTool.
 /// </summary>
-public sealed class CharacterDataService : IService, IDisposable
+public sealed class CharacterDataService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly CurrencyTrackerService _currencyTrackerService;

@@ -8,7 +8,7 @@ namespace Kaleidoscope.Services;
 /// Manages favorites for items, currencies, and characters.
 /// Favorites are persisted via the configuration service.
 /// </summary>
-public sealed class FavoritesService : IService, IDisposable
+public sealed class FavoritesService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
