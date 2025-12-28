@@ -922,7 +922,7 @@ public class DataTool : ToolComponent
             return formattedName;
 
         // Try runtime lookup for currently-loaded characters (formats it)
-        var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
+        var runtimeName = GameStateService.GetCharacterName(characterId);
         if (!string.IsNullOrEmpty(runtimeName))
             return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
 

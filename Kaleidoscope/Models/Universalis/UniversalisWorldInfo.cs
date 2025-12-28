@@ -96,4 +96,144 @@ public sealed class UniversalisWorldData
     {
         return GetDataCenterForWorld(worldName)?.Region;
     }
+
+    /// <summary>Gets data center for a world by world ID.</summary>
+    public UniversalisDataCenter? GetDataCenterForWorldId(int worldId)
+    {
+        return DataCenters.FirstOrDefault(dc => dc.Worlds?.Contains(worldId) == true);
+    }
+
+    /// <summary>Gets region for a world by world ID.</summary>
+    public string? GetRegionForWorldId(int worldId)
+    {
+        return GetDataCenterForWorldId(worldId)?.Region;
+    }
+
+    /// <summary>Gets all world IDs for a given region.</summary>
+    public HashSet<int> GetWorldIdsForRegion(string regionName)
+    {
+        var worldIds = new HashSet<int>();
+        foreach (var dc in GetDataCentersForRegion(regionName))
+        {
+            if (dc.Worlds != null)
+            {
+                foreach (var wid in dc.Worlds)
+                    worldIds.Add(wid);
+            }
+        }
+        return worldIds;
+    }
+
+    /// <summary>Gets all world IDs for a given data center.</summary>
+    public HashSet<int> GetWorldIdsForDataCenter(string dcName)
+    {
+        var worldIds = new HashSet<int>();
+        var dc = DataCenters.FirstOrDefault(d => d.Name == dcName);
+        if (dc?.Worlds != null)
+        {
+            foreach (var wid in dc.Worlds)
+                worldIds.Add(wid);
+        }
+        return worldIds;
+    }
+
+    /// <summary>
+    /// Resolves a price match mode to a set of world IDs for a given character's world.
+    /// Returns null if the mode is Global (no filtering needed).
+    /// </summary>
+    /// <param name="characterWorldId">The world ID of the character whose inventory is being valued.</param>
+    /// <param name="mode">The price match mode to apply.</param>
+    /// <returns>Set of world IDs to include in price lookup, or null for global (all worlds).</returns>
+    public HashSet<int>? GetWorldIdsForPriceMatchMode(int characterWorldId, PriceMatchMode mode)
+    {
+        switch (mode)
+        {
+            case PriceMatchMode.World:
+                return new HashSet<int> { characterWorldId };
+
+            case PriceMatchMode.DataCenter:
+                var dc = GetDataCenterForWorldId(characterWorldId);
+                if (dc?.Worlds != null)
+                    return dc.Worlds.ToHashSet();
+                return new HashSet<int> { characterWorldId };
+
+            case PriceMatchMode.Region:
+                var region = GetRegionForWorldId(characterWorldId);
+                if (region != null)
+                    return GetWorldIdsForRegion(region);
+                return new HashSet<int> { characterWorldId };
+
+            case PriceMatchMode.RegionPlusOceania:
+                var charRegion = GetRegionForWorldId(characterWorldId);
+                var worldIds = new HashSet<int>();
+                if (charRegion != null)
+                {
+                    foreach (var wid in GetWorldIdsForRegion(charRegion))
+                        worldIds.Add(wid);
+                }
+                // Always add Oceania
+                foreach (var wid in GetWorldIdsForRegion("Oceania"))
+                    worldIds.Add(wid);
+                if (worldIds.Count == 0)
+                    worldIds.Add(characterWorldId);
+                return worldIds;
+
+            case PriceMatchMode.Global:
+            default:
+                return null; // No filtering - use all worlds
+        }
+    }
+
+    /// <summary>
+    /// Resolves a scope configuration to a set of included world IDs.
+    /// Returns null if the scope is "All" (meaning no filtering needed).
+    /// </summary>
+    [Obsolete("Use GetWorldIdsForPriceMatchMode instead")]
+    public HashSet<int>? GetIncludedWorldIds(
+        PriceTrackingScopeMode scopeMode,
+        IEnumerable<string> selectedRegions,
+        IEnumerable<string> selectedDataCenters,
+        IEnumerable<int> selectedWorldIds)
+    {
+        switch (scopeMode)
+        {
+            case PriceTrackingScopeMode.All:
+                return null; // No filtering
+
+            case PriceTrackingScopeMode.ByWorld:
+                var worldSet = selectedWorldIds.ToHashSet();
+                return worldSet.Count > 0 ? worldSet : null;
+
+            case PriceTrackingScopeMode.ByDataCenter:
+                var dcWorldIds = new HashSet<int>();
+                foreach (var dcName in selectedDataCenters)
+                {
+                    var dc = DataCenters.FirstOrDefault(d => d.Name == dcName);
+                    if (dc?.Worlds != null)
+                    {
+                        foreach (var wid in dc.Worlds)
+                            dcWorldIds.Add(wid);
+                    }
+                }
+                return dcWorldIds.Count > 0 ? dcWorldIds : null;
+
+            case PriceTrackingScopeMode.ByRegion:
+                var regionWorldIds = new HashSet<int>();
+                foreach (var regionName in selectedRegions)
+                {
+                    foreach (var dc in GetDataCentersForRegion(regionName))
+                    {
+                        if (dc.Worlds != null)
+                        {
+                            foreach (var wid in dc.Worlds)
+                                regionWorldIds.Add(wid);
+                        }
+                    }
+                }
+                return regionWorldIds.Count > 0 ? regionWorldIds : null;
+
+            default:
+                return null;
+        }
+    }
 }

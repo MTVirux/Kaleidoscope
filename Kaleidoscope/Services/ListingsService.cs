@@ -111,7 +111,7 @@ public sealed class ListingsService : IDisposable, IService
 
     /// <summary>
     /// Updates the cached listing from a WebSocket event.
-    /// For "Listing Added" events, updates the min price if lower.
+    /// For "Listing Added" events, adds the price to the sorted list.
     /// For "Listing Removed" events, we can't reliably update (would need full refresh).
     /// </summary>
     private void UpdateListingFromWebSocket(int itemId, int worldId, int price, bool isHq)
@@ -124,33 +124,21 @@ public sealed class ListingsService : IDisposable, IService
         _listingsCache.AddOrUpdate(
             key,
             // Add new entry
-            _ => new ListingsCacheEntry
+            _ =>
             {
-                ItemId = itemId,
-                WorldId = worldId,
-                MinPriceNq = isHq ? 0 : price,
-                MinPriceHq = isHq ? price : 0,
-                LastUpdated = now
+                var entry = new ListingsCacheEntry
+                {
+                    ItemId = itemId,
+                    WorldId = worldId,
+                    LastUpdated = now
+                };
+                entry.AddPrice(price, isHq);
+                return entry;
             },
-            // Update existing entry - only update if the new price is lower
+            // Update existing entry - add to the sorted price list
             (_, existing) =>
             {
-                if (isHq)
-                {
-                    if (existing.MinPriceHq == 0 || price < existing.MinPriceHq)
-                    {
-                        existing.MinPriceHq = price;
-                        existing.LastUpdated = now;
-                    }
-                }
-                else
-                {
-                    if (existing.MinPriceNq == 0 || price < existing.MinPriceNq)
-                    {
-                        existing.MinPriceNq = price;
-                        existing.LastUpdated = now;
-                    }
-                }
+                existing.AddPrice(price, isHq);
                 return existing;
             });
 
@@ -158,21 +146,33 @@ public sealed class ListingsService : IDisposable, IService
     }
 
     /// <summary>
-    /// Updates listings from API data with authoritative min prices.
+    /// Updates listings from API data with full listing prices.
     /// </summary>
-    private void UpdateListingsFromApi(int itemId, int worldId, int minPriceNq, int minPriceHq)
+    private void UpdateListingsFromApi(int itemId, int worldId, IEnumerable<int> nqPrices, IEnumerable<int> hqPrices)
     {
         var key = (itemId, worldId);
         var now = DateTime.UtcNow;
 
-        _listingsCache[key] = new ListingsCacheEntry
+        var entry = new ListingsCacheEntry
         {
             ItemId = itemId,
             WorldId = worldId,
-            MinPriceNq = minPriceNq,
-            MinPriceHq = minPriceHq,
             LastUpdated = now
         };
+        entry.SetPrices(nqPrices, isHq: false);
+        entry.SetPrices(hqPrices, isHq: true);
+
+        _listingsCache[key] = entry;
+    }
+
+    /// <summary>
+    /// Updates listings from API data with single min prices (legacy compatibility).
+    /// </summary>
+    private void UpdateListingsFromApiSingle(int itemId, int worldId, int minPriceNq, int minPriceHq)
+    {
+        var nqPrices = minPriceNq > 0 ? new[] { minPriceNq } : Array.Empty<int>();
+        var hqPrices = minPriceHq > 0 ? new[] { minPriceHq } : Array.Empty<int>();
+        UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
     }
 
     /// <summary>
@@ -361,7 +361,7 @@ public sealed class ListingsService : IDisposable, IService
                     var data = await _universalisService.GetMarketBoardDataAsync(
                         scope,
                         batch.Select(i => (uint)i),
-                        listings: 1, // We only need the cheapest listing
+                        listings: ListingsCacheEntry.MaxPricesPerType, // Get 5 listings for averaging
                         entries: 0,  // No history needed
                         cancellationToken: ct);
 
@@ -372,10 +372,25 @@ public sealed class ListingsService : IDisposable, IService
                             if (int.TryParse(kvp.Key, out var itemId))
                             {
                                 var marketData = kvp.Value;
+                                // Extract prices from listings if available, otherwise use min prices
+                                var nqPrices = marketData.Listings?
+                                    .Where(l => !l.IsHq)
+                                    .OrderBy(l => l.PricePerUnit)
+                                    .Take(ListingsCacheEntry.MaxPricesPerType)
+                                    .Select(l => l.PricePerUnit)
+                                    .ToList() ?? (marketData.MinPriceNQ > 0 ? new List<int> { marketData.MinPriceNQ } : new List<int>());
+                                
+                                var hqPrices = marketData.Listings?
+                                    .Where(l => l.IsHq)
+                                    .OrderBy(l => l.PricePerUnit)
+                                    .Take(ListingsCacheEntry.MaxPricesPerType)
+                                    .Select(l => l.PricePerUnit)
+                                    .ToList() ?? (marketData.MinPriceHQ > 0 ? new List<int> { marketData.MinPriceHQ } : new List<int>());
+
                                 // Update listings for each world in the scope
                                 foreach (var worldId in worldIds)
                                 {
-                                    UpdateListingsFromApi(itemId, worldId, marketData.MinPriceNQ, marketData.MinPriceHQ);
+                                    UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
                                 }
                                 fetched++;
                             }
@@ -544,7 +559,7 @@ public sealed class ListingsService : IDisposable, IService
                 var data = await _universalisService.GetMarketBoardDataAsync(
                     scope,
                     batch.Select(i => (uint)i),
-                    listings: 1,
+                    listings: ListingsCacheEntry.MaxPricesPerType, // Get 5 listings for averaging
                     entries: 0,
                     cancellationToken: ct);
 
@@ -555,7 +570,22 @@ public sealed class ListingsService : IDisposable, IService
                         if (int.TryParse(kvp.Key, out var itemId))
                         {
                             var marketData = kvp.Value;
-                            UpdateListingsFromApi(itemId, worldId, marketData.MinPriceNQ, marketData.MinPriceHQ);
+                            // Extract prices from listings if available
+                            var nqPrices = marketData.Listings?
+                                .Where(l => !l.IsHq)
+                                .OrderBy(l => l.PricePerUnit)
+                                .Take(ListingsCacheEntry.MaxPricesPerType)
+                                .Select(l => l.PricePerUnit)
+                                .ToList() ?? (marketData.MinPriceNQ > 0 ? new List<int> { marketData.MinPriceNQ } : new List<int>());
+                            
+                            var hqPrices = marketData.Listings?
+                                .Where(l => l.IsHq)
+                                .OrderBy(l => l.PricePerUnit)
+                                .Take(ListingsCacheEntry.MaxPricesPerType)
+                                .Select(l => l.PricePerUnit)
+                                .ToList() ?? (marketData.MinPriceHQ > 0 ? new List<int> { marketData.MinPriceHQ } : new List<int>());
+
+                            UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
                         }
                     }
                 }

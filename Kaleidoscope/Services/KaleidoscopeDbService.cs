@@ -3124,11 +3124,16 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
-    /// Gets the latest sale price for items, optionally filtering by excluded worlds.
+    /// Gets the latest sale price for items, optionally filtering by included or excluded worlds.
     /// Returns item ID -> (LastSaleNq, LastSaleHq) based on the most recent sales.
     /// </summary>
+    /// <param name="itemIds">Item IDs to get prices for.</param>
+    /// <param name="includedWorldIds">If specified, only include sales from these worlds.</param>
+    /// <param name="excludedWorldIds">If specified, exclude sales from these worlds (ignored if includedWorldIds is set).</param>
+    /// <param name="maxAge">Optional maximum age for sale records.</param>
     public Dictionary<int, (int LastSaleNq, int LastSaleHq)> GetLatestSalePrices(
         IEnumerable<int> itemIds, 
+        IEnumerable<int>? includedWorldIds = null,
         IEnumerable<int>? excludedWorldIds = null,
         TimeSpan? maxAge = null)
     {
@@ -3144,6 +3149,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 var itemIdList = itemIds.ToList();
                 if (itemIdList.Count == 0) return result;
 
+                var includedList = includedWorldIds?.ToList() ?? new List<int>();
                 var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
 
                 using var cmd = _connection.CreateCommand();
@@ -3158,7 +3164,14 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 sql.Append(string.Join(",", itemIdList));
                 sql.Append(")");
 
-                if (excludedList.Count > 0)
+                // Inclusion filter takes precedence over exclusion
+                if (includedList.Count > 0)
+                {
+                    sql.Append(" AND world_id IN (");
+                    sql.Append(string.Join(",", includedList));
+                    sql.Append(")");
+                }
+                else if (excludedList.Count > 0)
                 {
                     sql.Append(" AND world_id NOT IN (");
                     sql.Append(string.Join(",", excludedList));
@@ -3195,6 +3208,81 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             catch (Exception ex)
             {
                 LogService.Error($"[KaleidoscopeDb] GetLatestSalePrices failed: {ex.Message}", ex);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets the most recent N sale prices per item/world combination for populating the in-memory cache.
+    /// Returns a dictionary keyed by (itemId, worldId) with lists of recent NQ and HQ prices.
+    /// </summary>
+    /// <param name="maxSalesPerType">Maximum number of sales to return per NQ/HQ type.</param>
+    /// <param name="maxAge">Optional maximum age for sale records.</param>
+    /// <returns>Dictionary of (itemId, worldId) -> (List of NQ prices, List of HQ prices) in most-recent-first order.</returns>
+    public Dictionary<(int ItemId, int WorldId), (List<int> NqPrices, List<int> HqPrices)> GetRecentSalesForCache(
+        int maxSalesPerType = 5,
+        TimeSpan? maxAge = null)
+    {
+        var result = new Dictionary<(int, int), (List<int>, List<int>)>();
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                
+                // Use window function to get the N most recent sales per item/world/hq combination
+                var sql = $@"
+                    WITH ranked_sales AS (
+                        SELECT item_id, world_id, is_hq, price_per_unit,
+                               ROW_NUMBER() OVER (PARTITION BY item_id, world_id, is_hq ORDER BY timestamp DESC) as rn
+                        FROM sale_records
+                        WHERE 1=1";
+                
+                if (maxAge.HasValue)
+                {
+                    var cutoffTicks = (DateTime.UtcNow - maxAge.Value).Ticks;
+                    sql += $" AND timestamp >= {cutoffTicks}";
+                }
+                
+                sql += $@"
+                    )
+                    SELECT item_id, world_id, is_hq, price_per_unit
+                    FROM ranked_sales
+                    WHERE rn <= {maxSalesPerType}
+                    ORDER BY item_id, world_id, is_hq, rn";
+                
+                cmd.CommandText = sql;
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var itemId = reader.GetInt32(0);
+                    var worldId = reader.GetInt32(1);
+                    var isHq = reader.GetInt32(2) == 1;
+                    var price = reader.GetInt32(3);
+
+                    var key = (itemId, worldId);
+                    if (!result.TryGetValue(key, out var prices))
+                    {
+                        prices = (new List<int>(), new List<int>());
+                        result[key] = prices;
+                    }
+
+                    if (isHq)
+                        prices.Item2.Add(price);
+                    else
+                        prices.Item1.Add(price);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] GetRecentSalesForCache failed: {ex.Message}", ex);
             }
         }
 

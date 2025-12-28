@@ -26,6 +26,11 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     public SamplerConfig SamplerConfig { get; private set; }
     public WindowConfig WindowConfig { get; private set; }
 
+    /// <summary>
+    /// Event raised when configuration is saved. Subscribe to this to react to config changes.
+    /// </summary>
+    public event Action? OnConfigChanged;
+
     public ConfigurationService(IDalamudPluginInterface pluginInterface, IPluginLog log)
     {
         _pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
@@ -234,6 +239,16 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
 
         SaveSubConfigs();
+
+        // Notify subscribers that config has changed
+        try
+        {
+            OnConfigChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error invoking OnConfigChanged: {ex}");
+        }
     }
 
     private void SaveSubConfigs()

@@ -160,7 +160,9 @@ public class ItemSalesHistoryTool : ToolComponent
         if (ImGui.IsItemHovered())
         {
             var threshold = _configService.Config.PriceTracking.SaleDiscrepancyThreshold;
-            ImGui.SetTooltip($"Ignore sales with {threshold}%+ discrepancy from current listing price on that world.\nConfigure threshold in Settings > Universalis.");
+            var refType = _configService.Config.PriceTracking.UseMedianForReference ? "median" : "average";
+            var filterType = _configService.Config.PriceTracking.UseStdDevFilter ? "std dev" : $"{threshold}%";
+            ImGui.SetTooltip($"Ignore sales outside {filterType} threshold.\nReference = {refType}(lowest 5 listings, last 5 sales) per world.\nConfigure in Settings > Universalis.");
         }
     }
 

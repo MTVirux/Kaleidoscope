@@ -31,6 +31,24 @@ public enum PriceTrackingScopeMode
 }
 
 /// <summary>
+/// Price match mode for inventory value calculations.
+/// Determines which world's sales data to use when calculating item values.
+/// </summary>
+public enum PriceMatchMode
+{
+    /// <summary>Use only sales data from the character's specific world.</summary>
+    World = 0,
+    /// <summary>Use sales data from all worlds in the character's data center.</summary>
+    DataCenter = 1,
+    /// <summary>Use sales data from all worlds in the character's region.</summary>
+    Region = 2,
+    /// <summary>Use sales data from the character's region plus Oceania (for low-pop regions).</summary>
+    RegionPlusOceania = 3,
+    /// <summary>Use sales data from all worlds globally.</summary>
+    Global = 4
+}
+
+/// <summary>
 /// Configuration for price tracking feature.
 /// </summary>
 public class PriceTrackingSettings
@@ -59,7 +77,11 @@ public class PriceTrackingSettings
     /// <summary>Selected world IDs when using ByWorld scope mode.</summary>
     public HashSet<int> SelectedWorldIds { get; set; } = new();
 
-    /// <summary>World IDs to exclude from price/value calculations.</summary>
+    /// <summary>
+    /// Deprecated: Use InventoryValueSettings.ValueScopeMode and related settings instead.
+    /// Kept for config backwards compatibility.
+    /// </summary>
+    [Obsolete("Use InventoryValueSettings.ValueScopeMode instead")]
     public HashSet<int> ExcludedWorldIds { get; set; } = new();
 
     /// <summary>Item IDs to exclude from tracking.</summary>
@@ -92,6 +114,21 @@ public class PriceTrackingSettings
 
     /// <summary>Minimum unit price for sale filtering to apply. Sales below this price skip the discrepancy filter.</summary>
     public int SaleFilterMinimumPrice { get; set; } = 10000;
+
+    /// <summary>Whether to use median instead of average for reference price calculation. More robust against outliers.</summary>
+    public bool UseMedianForReference { get; set; } = true;
+
+    /// <summary>Whether to use standard deviation-based filtering instead of fixed percentage threshold.</summary>
+    public bool UseStdDevFilter { get; set; } = false;
+
+    /// <summary>Number of standard deviations from mean to consider a price an outlier. Only used when UseStdDevFilter is true.</summary>
+    public double StdDevThreshold { get; set; } = 2.0;
+
+    /// <summary>Whether to adjust threshold for bulk/stack sales. Larger quantities get more lenient thresholds.</summary>
+    public bool AdjustForBulkSales { get; set; } = true;
+
+    /// <summary>Maximum leniency multiplier for bulk sales (e.g., 1.5 = 50% more lenient for large stacks).</summary>
+    public double BulkSaleMaxLeniency { get; set; } = 1.5;
 }
 
 /// <summary>
@@ -149,6 +186,46 @@ public class InventoryValueSettings : IGraphWidgetSettings
 
     /// <summary>Whether to include gil in the value calculation.</summary>
     public bool IncludeGil { get; set; } = true;
+
+    // === Hierarchical Price Match Settings ===
+    
+    /// <summary>
+    /// Default price match mode used when no specific override is set.
+    /// </summary>
+    public PriceMatchMode DefaultPriceMatchMode { get; set; } = PriceMatchMode.Global;
+
+    /// <summary>
+    /// Per-region price match mode overrides. Key is region name.
+    /// </summary>
+    public Dictionary<string, PriceMatchMode> RegionPriceMatchModes { get; set; } = new();
+
+    /// <summary>
+    /// Per-data center price match mode overrides. Key is DC name.
+    /// </summary>
+    public Dictionary<string, PriceMatchMode> DataCenterPriceMatchModes { get; set; } = new();
+
+    /// <summary>
+    /// Per-world price match mode overrides. Key is world ID.
+    /// </summary>
+    public Dictionary<int, PriceMatchMode> WorldPriceMatchModes { get; set; } = new();
+
+    // === Legacy settings (deprecated, kept for config compatibility) ===
+    
+    /// <summary>Deprecated: Use DefaultPriceMatchMode instead.</summary>
+    [Obsolete("Use DefaultPriceMatchMode and hierarchical overrides instead")]
+    public PriceTrackingScopeMode ValueScopeMode { get; set; } = PriceTrackingScopeMode.All;
+
+    /// <summary>Deprecated: Use RegionPriceMatchModes instead.</summary>
+    [Obsolete("Use RegionPriceMatchModes instead")]
+    public HashSet<string> ValueSelectedRegions { get; set; } = new();
+
+    /// <summary>Deprecated: Use DataCenterPriceMatchModes instead.</summary>
+    [Obsolete("Use DataCenterPriceMatchModes instead")]
+    public HashSet<string> ValueSelectedDataCenters { get; set; } = new();
+
+    /// <summary>Deprecated: Use WorldPriceMatchModes instead.</summary>
+    [Obsolete("Use WorldPriceMatchModes instead")]
+    public HashSet<int> ValueSelectedWorldIds { get; set; } = new();
     
     // === IGraphWidgetSettings implementation ===
     

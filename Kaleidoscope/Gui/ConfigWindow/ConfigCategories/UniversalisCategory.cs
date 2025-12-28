@@ -24,9 +24,8 @@ public class UniversalisCategory
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
-    // World selection widget for excluded worlds in value calculations
-    private WorldSelectionWidget? _excludedWorldsWidget;
-    private bool _excludedWorldsWidgetInitialized = false;
+    // Price match tree widget for inventory value calculation
+    private PriceMatchTreeWidget? _priceMatchTreeWidget;
 
     // Common region names for the dropdown (for override settings)
     private static readonly string[] RegionNames = 
@@ -370,7 +369,7 @@ public class UniversalisCategory
         }
         ImGui.SameLine();
         HelpMarker("Ignore sales that deviate significantly from the reference price.\n" +
-            "The reference price is the average of the lowest listing and most recent sale for that world.\n" +
+            "Reference = avg(average of lowest 5 listings, average of last 5 sales) for that world.\n" +
             "This prevents price manipulation and outliers from affecting inventory value calculations.");
 
         if (settings.FilterSalesByListingPrice)
@@ -385,7 +384,7 @@ public class UniversalisCategory
             }
             ImGui.SameLine();
             HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
-                $"Reference = average of lowest listing and most recent sale for that world.\n" +
+                $"Reference = avg(median of lowest 5 listings, median of last 5 sales) for that world.\n" +
                 $"At {threshold}%: a sale must be between {100 - threshold}% and {100 + threshold}% of the reference price.");
 
             var minPrice = settings.SaleFilterMinimumPrice;
@@ -399,6 +398,72 @@ public class UniversalisCategory
             ImGui.SameLine();
             HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
                 "Low-value items often have high price variance, so filtering them can cause missed data.");
+
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Advanced Outlier Detection");
+            ImGui.Spacing();
+
+            var useMedian = settings.UseMedianForReference;
+            if (ImGui.Checkbox("Use median for reference##UseMedian", ref useMedian))
+            {
+                settings.UseMedianForReference = useMedian;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker("Use median instead of average for reference price calculation.\n" +
+                "Median is more robust against outliers within the reference data itself.\n" +
+                "Recommended: ON");
+
+            var adjustBulk = settings.AdjustForBulkSales;
+            if (ImGui.Checkbox("Adjust threshold for bulk sales##AdjustBulk", ref adjustBulk))
+            {
+                settings.AdjustForBulkSales = adjustBulk;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker("Allow more price variance for large stack sales.\n" +
+                "Bulk purchases often have lower per-unit prices (bulk discounts).\n" +
+                "Recommended: ON");
+
+            if (settings.AdjustForBulkSales)
+            {
+                var bulkLeniency = (float)settings.BulkSaleMaxLeniency;
+                ImGui.SetNextItemWidth(100);
+                if (ImGui.SliderFloat("Max bulk leniency##BulkLeniency", ref bulkLeniency, 1.0f, 2.0f, "%.1fx"))
+                {
+                    settings.BulkSaleMaxLeniency = bulkLeniency;
+                    _configService.Save();
+                }
+                ImGui.SameLine();
+                HelpMarker($"Maximum leniency multiplier for bulk sales.\n" +
+                    $"At {bulkLeniency:F1}x: a 100-stack sale can deviate {(int)(threshold * bulkLeniency)}% instead of {threshold}%.");
+            }
+
+            var useStdDev = settings.UseStdDevFilter;
+            if (ImGui.Checkbox("Use standard deviation filter##UseStdDev", ref useStdDev))
+            {
+                settings.UseStdDevFilter = useStdDev;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker("Use statistical standard deviation instead of fixed percentage.\n" +
+                "More accurate but requires at least 2 recent sales for reference.\n" +
+                "Falls back to percentage threshold if insufficient data.");
+
+            if (settings.UseStdDevFilter)
+            {
+                var stdDevThreshold = (float)settings.StdDevThreshold;
+                ImGui.SetNextItemWidth(100);
+                if (ImGui.SliderFloat("Std dev threshold##StdDevThreshold", ref stdDevThreshold, 1.0f, 4.0f, "%.1f σ"))
+                {
+                    settings.StdDevThreshold = stdDevThreshold;
+                    _configService.Save();
+                }
+                ImGui.SameLine();
+                HelpMarker($"Number of standard deviations from mean to consider a price an outlier.\n" +
+                    "2.0σ = ~95% of normal prices accepted\n" +
+                    "3.0σ = ~99.7% of normal prices accepted");
+            }
         }
 
         ImGui.Spacing();
@@ -424,13 +489,14 @@ public class UniversalisCategory
         ImGui.Separator();
         ImGui.Spacing();
 
-        // Excluded Worlds sub-section
-        ImGui.TextUnformatted("Excluded Worlds (Value Calculation)");
+        // Value Calculation Price Match sub-section
+        ImGui.TextUnformatted("Inventory Value Price Matching");
         ImGui.Spacing();
-        ImGui.TextWrapped("Select worlds to exclude from inventory value calculations. Sales data from these worlds will be ignored.");
+        ImGui.TextWrapped("Configure which worlds' sales data to use when calculating inventory values for each character. " +
+            "Each world/DC/region can have its own setting, with children inheriting from their parent unless overridden.");
         ImGui.Spacing();
 
-        DrawExcludedWorldsWidget(settings);
+        DrawValueScopeWidget();
     }
 
     private void DrawWorldSelectionWidget(PriceTrackingSettings settings)
@@ -518,7 +584,7 @@ public class UniversalisCategory
             "Use the mode selector inside the dropdown to switch between selection types.");
     }
 
-    private void DrawExcludedWorldsWidget(PriceTrackingSettings settings)
+    private void DrawValueScopeWidget()
     {
         var worldData = _priceTrackingService?.WorldData;
 
@@ -528,47 +594,21 @@ public class UniversalisCategory
             return;
         }
 
+        var valueSettings = _configService.Config.InventoryValue;
+
         // Create widget if needed
-        if (_excludedWorldsWidget == null)
+        if (_priceMatchTreeWidget == null)
         {
-            _excludedWorldsWidget = new WorldSelectionWidget(worldData, "ExcludedWorlds");
-            _excludedWorldsWidget.Width = 300f;
-            _excludedWorldsWidget.Mode = WorldSelectionMode.Worlds; // Exclude by world only
+            _priceMatchTreeWidget = new PriceMatchTreeWidget(worldData, "ValuePriceMatch");
+            _priceMatchTreeWidget.Settings = valueSettings;
+            _priceMatchTreeWidget.OnSettingsChanged += () => _configService.Save();
         }
 
-        // Initialize widget from settings on first draw
-        if (!_excludedWorldsWidgetInitialized)
-        {
-            // Initialize with the excluded world IDs
-            _excludedWorldsWidget.InitializeFrom(
-                new HashSet<string>(),
-                new HashSet<string>(),
-                settings.ExcludedWorldIds);
+        // Ensure settings reference is up to date
+        _priceMatchTreeWidget.Settings = valueSettings;
 
-            _excludedWorldsWidgetInitialized = true;
-        }
-
-        // Draw the widget
-        if (_excludedWorldsWidget.Draw("Exclude Worlds##ExcludedWorldsSelection"))
-        {
-            // Sync widget selections back to settings
-            settings.ExcludedWorldIds.Clear();
-            foreach (var w in _excludedWorldsWidget.SelectedWorldIds)
-                settings.ExcludedWorldIds.Add(w);
-
-            _configService.Save();
-        }
-
-        var excludeCount = _excludedWorldsWidget.SelectedWorldIds.Count;
-        if (excludeCount > 0)
-        {
-            ImGui.TextColored(new System.Numerics.Vector4(0.9f, 0.7f, 0.3f, 1f), 
-                $"{excludeCount} world(s) excluded from value calculations");
-        }
-
-        ImGui.SameLine();
-        HelpMarker("Sales data from these worlds will be ignored when calculating inventory values.\n" +
-            "This allows you to exclude worlds with outlier prices from your calculations.");
+        // Draw the tree widget
+        _priceMatchTreeWidget.Draw();
     }
 
     private void DrawDataManagement()

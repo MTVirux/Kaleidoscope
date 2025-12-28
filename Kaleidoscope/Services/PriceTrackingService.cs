@@ -44,10 +44,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private readonly ConcurrentDictionary<(int itemId, int worldId), (int minNq, int minHq, DateTime updated)> _priceCache = new();
     
     // In-memory cache for recent sale prices (used for spike detection without DB reads)
-    // Key: (itemId, isHq), Value: last sale price
+    // Key: (itemId, isHq), Value: last sale price (global, for spike detection)
     private readonly ConcurrentDictionary<(int itemId, bool isHq), int> _lastSalePriceCache = new();
-    // Key: (itemId, worldId, isHq), Value: last sale price for specific world
-    private readonly ConcurrentDictionary<(int itemId, int worldId, bool isHq), int> _lastSalePriceByWorldCache = new();
+    // Key: (itemId, worldId), Value: recent sales cache entry with up to 5 NQ and 5 HQ prices per world
+    private readonly ConcurrentDictionary<(int itemId, int worldId), RecentSalesCacheEntry> _recentSalesCache = new();
     
     private readonly CancellationTokenSource _cts = new();
     private volatile bool _disposed;
@@ -61,6 +61,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private const int ValueSnapshotIntervalMinutes = 15;
 
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
+    private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
     private KaleidoscopeDbService DbService => _samplerService.DbService;
 
     /// <summary>Gets the cached world data.</summary>
@@ -157,6 +158,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             // This prevents blocking on main thread when InventoryValueTool first draws
             PopulateInventoryValueCache();
             
+            // Pre-populate the recent sales cache from the database
+            // This ensures outlier detection has reference data immediately
+            PopulateRecentSalesCache();
+            
             // Fetch world/DC data and marketable items in parallel for faster startup
             var worldDataTask = RefreshWorldDataAsync();
             var marketableItemsTask = RefreshMarketableItemsAsync();
@@ -189,6 +194,40 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             _log.Error($"[PriceTracking] Initialization failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Populates the recent sales cache from the database at startup.
+    /// This ensures outlier detection has reference data immediately.
+    /// </summary>
+    private void PopulateRecentSalesCache()
+    {
+        try
+        {
+            _log.Debug("[PriceTracking] Populating recent sales cache from database...");
+            
+            // Get recent sales from DB (last 5 per item/world/hq type)
+            var recentSales = DbService.GetRecentSalesForCache(
+                maxSalesPerType: RecentSalesCacheEntry.MaxSalesPerType);
+            
+            foreach (var (key, prices) in recentSales)
+            {
+                var entry = new RecentSalesCacheEntry
+                {
+                    ItemId = key.ItemId,
+                    WorldId = key.WorldId
+                };
+                entry.SetPrices(prices.NqPrices, isHq: false);
+                entry.SetPrices(prices.HqPrices, isHq: true);
+                _recentSalesCache[key] = entry;
+            }
+            
+            _log.Debug($"[PriceTracking] Loaded {_recentSalesCache.Count} item/world combinations into recent sales cache");
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"[PriceTracking] Failed to populate recent sales cache: {ex.Message}");
         }
     }
 
@@ -280,38 +319,92 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }
 
                 // Check for listing price discrepancy if enabled
-                // Uses average of lowest listing and most recent sale for that world as reference
+                // Uses median/average of lowest 5 listings and last 5 sales for that world as reference
                 // Skip the filter if the unit price is below the minimum threshold
                 if (Settings.FilterSalesByListingPrice && entry.PricePerUnit >= Settings.SaleFilterMinimumPrice)
                 {
                     var listing = _listingsService.GetListing(entry.ItemId, entry.WorldId);
-                    var listingPrice = listing != null ? (entry.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
-                    // Use in-memory cache instead of DB read
-                    _lastSalePriceByWorldCache.TryGetValue((entry.ItemId, entry.WorldId, entry.IsHq), out var recentSalePrice);
                     
-                    // Calculate reference price as average of listing and recent sale (if both available)
+                    // Get listing reference (median or average based on setting)
+                    double listingRef = 0;
+                    if (listing != null)
+                    {
+                        listingRef = Settings.UseMedianForReference
+                            ? (entry.IsHq ? listing.MedianPriceHq : listing.MedianPriceNq)
+                            : (entry.IsHq ? listing.AveragePriceHq : listing.AveragePriceNq);
+                    }
+                    
+                    // Get sale reference and std dev from the cache
+                    double saleRef = 0;
+                    double saleStdDev = 0;
+                    double saleMean = 0;
+                    if (_recentSalesCache.TryGetValue((entry.ItemId, entry.WorldId), out var salesCache))
+                    {
+                        saleRef = Settings.UseMedianForReference
+                            ? (entry.IsHq ? salesCache.MedianPriceHq : salesCache.MedianPriceNq)
+                            : (entry.IsHq ? salesCache.AveragePriceHq : salesCache.AveragePriceNq);
+                        saleStdDev = entry.IsHq ? salesCache.StdDevHq : salesCache.StdDevNq;
+                        saleMean = entry.IsHq ? salesCache.AveragePriceHq : salesCache.AveragePriceNq;
+                    }
+                    
+                    // Calculate reference price as average of listing and sale references
                     double referencePrice;
-                    if (listingPrice > 0 && recentSalePrice > 0)
-                        referencePrice = (listingPrice + recentSalePrice) / 2.0;
-                    else if (listingPrice > 0)
-                        referencePrice = listingPrice;
-                    else if (recentSalePrice > 0)
-                        referencePrice = recentSalePrice;
+                    if (listingRef > 0 && saleRef > 0)
+                        referencePrice = (listingRef + saleRef) / 2.0;
+                    else if (listingRef > 0)
+                        referencePrice = listingRef;
+                    else if (saleRef > 0)
+                        referencePrice = saleRef;
                     else
                         referencePrice = 0; // No reference data available
                     
                     if (referencePrice > 0)
                     {
-                        var ratio = entry.PricePerUnit / referencePrice;
-                        var threshold = Settings.SaleDiscrepancyThreshold / 100.0;
-                        var minRatio = 1.0 - threshold;
-                        var maxRatio = 1.0 + threshold;
-                        if (ratio < minRatio || ratio > maxRatio)
+                        bool isOutlier = false;
+                        string filterReason = "";
+                        
+                        if (Settings.UseStdDevFilter && saleStdDev > 0 && saleMean > 0)
+                        {
+                            // Standard deviation-based filtering
+                            var zScore = Math.Abs(entry.PricePerUnit - saleMean) / saleStdDev;
+                            if (zScore > Settings.StdDevThreshold)
+                            {
+                                isOutlier = true;
+                                filterReason = $"z-score {zScore:F2} > {Settings.StdDevThreshold:F1}";
+                            }
+                        }
+                        else
+                        {
+                            // Fixed percentage threshold filtering
+                            var ratio = entry.PricePerUnit / referencePrice;
+                            var threshold = Settings.SaleDiscrepancyThreshold / 100.0;
+                            
+                            // Adjust threshold for bulk sales if enabled
+                            if (Settings.AdjustForBulkSales && entry.Quantity > 1)
+                            {
+                                // Linear scaling: more quantity = more lenient, up to max
+                                // At 100 items, reach max leniency
+                                var quantityFactor = 1.0 + (Math.Min(entry.Quantity, 100) / 100.0) * (Settings.BulkSaleMaxLeniency - 1.0);
+                                threshold *= quantityFactor;
+                            }
+                            
+                            var minRatio = 1.0 - threshold;
+                            var maxRatio = 1.0 + threshold;
+                            if (ratio < minRatio || ratio > maxRatio)
+                            {
+                                isOutlier = true;
+                                var effectiveThreshold = (int)(threshold * 100);
+                                filterReason = $"{(ratio * 100 - 100):+0;-0}% from reference (threshold: {effectiveThreshold}%)";
+                            }
+                        }
+                        
+                        if (isOutlier)
                         {
                             var itemName = _itemDataService.GetItemName(entry.ItemId);
                             var worldName = _worldData?.GetWorldName(entry.WorldId) ?? entry.WorldId.ToString();
+                            var refType = Settings.UseMedianForReference ? "median" : "avg";
                             _log.Debug($"[PriceTracking] Ignoring sale for {itemName} on {worldName}: " +
-                                $"price {entry.PricePerUnit:N0} is {(ratio * 100 - 100):+0;-0}% from reference {referencePrice:N0} (listing: {listingPrice:N0}, recent sale: {recentSalePrice:N0}, threshold: {Settings.SaleDiscrepancyThreshold}%)");
+                                $"price {entry.PricePerUnit:N0} ({filterReason}), ref {referencePrice:N0} ({refType}), qty {entry.Quantity}");
                             return;
                         }
                     }
@@ -476,7 +569,27 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                         foreach (var w in sales)
                         {
                             _lastSalePriceCache[(w.ItemId, w.IsHq)] = w.PricePerUnit;
-                            _lastSalePriceByWorldCache[(w.ItemId, w.WorldId, w.IsHq)] = w.PricePerUnit;
+                            
+                            // Update the new recent sales cache (stores up to 5 prices per world per NQ/HQ)
+                            var salesCacheKey = (w.ItemId, w.WorldId);
+                            _recentSalesCache.AddOrUpdate(
+                                salesCacheKey,
+                                _ =>
+                                {
+                                    var entry = new RecentSalesCacheEntry
+                                    {
+                                        ItemId = w.ItemId,
+                                        WorldId = w.WorldId
+                                    };
+                                    entry.AddSale(w.PricePerUnit, w.IsHq);
+                                    return entry;
+                                },
+                                (_, existing) =>
+                                {
+                                    existing.AddSale(w.PricePerUnit, w.IsHq);
+                                    return existing;
+                                });
+                            
                             itemsToNotify.Add(w.ItemId);
                         }
                     }
@@ -561,6 +674,61 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             default:
                 return true;
         }
+    }
+
+    /// <summary>
+    /// Gets the effective price match mode for a given world, considering the hierarchy:
+    /// World override > DC override > Region override > Default.
+    /// </summary>
+    /// <param name="worldId">The world ID to get the price match mode for.</param>
+    /// <returns>The effective price match mode.</returns>
+    public PriceMatchMode GetEffectivePriceMatchMode(int worldId)
+    {
+        var settings = ValueSettings;
+
+        // Check world-level override first
+        if (settings.WorldPriceMatchModes.TryGetValue(worldId, out var worldMode))
+            return worldMode;
+
+        // Check DC-level override
+        if (_worldData != null)
+        {
+            var dc = _worldData.GetDataCenterForWorldId(worldId);
+            if (dc?.Name != null && settings.DataCenterPriceMatchModes.TryGetValue(dc.Name, out var dcMode))
+                return dcMode;
+
+            // Check region-level override
+            if (dc?.Region != null && settings.RegionPriceMatchModes.TryGetValue(dc.Region, out var regionMode))
+                return regionMode;
+        }
+
+        // Fall back to default
+        return settings.DefaultPriceMatchMode;
+    }
+
+    /// <summary>
+    /// Gets the set of world IDs to include in inventory value calculations for a specific character's world.
+    /// Returns null if all worlds should be included (Global mode).
+    /// </summary>
+    /// <param name="characterWorldId">The world ID of the character whose inventory is being valued.</param>
+    /// <returns>Set of world IDs to include, or null for global (all worlds).</returns>
+    private HashSet<int>? GetValueCalculationWorldIds(int characterWorldId)
+    {
+        if (_worldData == null) return null;
+
+        var mode = GetEffectivePriceMatchMode(characterWorldId);
+        return _worldData.GetWorldIdsForPriceMatchMode(characterWorldId, mode);
+    }
+
+    /// <summary>
+    /// Gets the set of world IDs to include in inventory value calculations based on InventoryValueSettings.
+    /// Returns null if all worlds should be included (no filtering).
+    /// </summary>
+    [Obsolete("Use GetValueCalculationWorldIds(int characterWorldId) instead")]
+    private HashSet<int>? GetValueCalculationWorldIds()
+    {
+        // Legacy fallback - use Global mode
+        return null;
     }
 
     #endregion
@@ -742,6 +910,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>
     /// Calculates the liquid value of a character's inventory.
     /// Uses in-memory cache for efficiency - offline characters' data is static.
+    /// The price match mode is determined by the character's world.
     /// </summary>
     /// <returns>Tuple of (TotalValue, GilValue, ItemValue, ItemContributions).</returns>
     public async Task<(long TotalValue, long GilValue, long ItemValue, List<(int ItemId, long Quantity, int UnitPrice)> ItemContributions)> CalculateInventoryValueAsync(ulong characterId, bool includeRetainers = true)
@@ -751,6 +920,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         {
             return (0, 0, 0, new List<(int, long, int)>());
         }
+
+        // Get the character's world from the player cache entry
+        var characterWorldId = GetCharacterWorldId(caches);
 
         long gilValue = 0;
         long itemValue = 0;
@@ -779,15 +951,15 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             }
         }
 
-        // Get prices for all items using new filtered sale records
+        // Get prices for all items using filtered sale records based on character's world
         if (itemQuantities.Count > 0)
         {
-            // Get excluded worlds from settings
-            var excludedWorldIds = Settings.ExcludedWorldIds.Count > 0 
-                ? Settings.ExcludedWorldIds 
+            // Get included worlds based on the character's world and price match mode
+            var includedWorldIds = characterWorldId.HasValue 
+                ? GetValueCalculationWorldIds(characterWorldId.Value) 
                 : null;
 
-            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, excludedWorldIds);
+            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
 
             foreach (var (itemId, quantity) in itemQuantities)
             {
@@ -804,6 +976,20 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
 
         return (gilValue + itemValue, gilValue, itemValue, itemContributions);
+    }
+
+    /// <summary>
+    /// Gets the world ID for a character from their inventory cache entries.
+    /// </summary>
+    private int? GetCharacterWorldId(List<Models.Inventory.InventoryCacheEntry> caches)
+    {
+        if (_worldData == null) return null;
+
+        // Find the player cache entry (not retainer) to get the world
+        var playerCache = caches.FirstOrDefault(c => c.SourceType == Models.Inventory.InventorySourceType.Player);
+        if (playerCache?.World == null) return null;
+
+        return _worldData.GetWorldId(playerCache.World);
     }
 
     /// <summary>
@@ -1128,6 +1314,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>
     /// Gets the top items by value for a character or all characters.
+    /// When a specific character is specified, uses their world's price match mode.
+    /// When all characters are requested, uses global prices.
     /// </summary>
     public async Task<List<(int ItemId, long Quantity, long Value)>> GetTopItemsByValueAsync(
         ulong? characterId = null,
@@ -1138,15 +1326,17 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         try
         {
-            IEnumerable<Models.Inventory.InventoryCacheEntry> caches;
+            List<Models.Inventory.InventoryCacheEntry> caches;
+            int? characterWorldId = null;
 
             if (characterId.HasValue)
             {
                 caches = _inventoryCacheService.GetInventoriesForCharacter(characterId.Value);
+                characterWorldId = GetCharacterWorldId(caches);
             }
             else
             {
-                caches = _inventoryCacheService.GetAllInventories();
+                caches = _inventoryCacheService.GetAllInventories().ToList();
             }
 
             // Aggregate item quantities
@@ -1169,11 +1359,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }
             }
 
-            // Get prices using filtered sale records
-            var excludedWorldIds = Settings.ExcludedWorldIds.Count > 0 
-                ? Settings.ExcludedWorldIds 
-                : null;
-            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, excludedWorldIds);
+            // Get prices using filtered sale records based on character's world (or global for all)
+            var includedWorldIds = characterWorldId.HasValue 
+                ? GetValueCalculationWorldIds(characterWorldId.Value) 
+                : null; // Use global prices for multi-character view
+            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
 
             // Calculate values using last sale prices
             foreach (var (itemId, quantity) in itemQuantities)
