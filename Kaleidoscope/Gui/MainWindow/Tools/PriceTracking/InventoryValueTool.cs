@@ -19,6 +19,7 @@ public class InventoryValueTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
+    private readonly CharacterDataService _characterDataService;
     private readonly TimeSeriesCacheService? _cacheService;
     private readonly ImplotGraphWidget _graphWidget;
     private readonly InventoryValueSettings _instanceSettings;
@@ -51,11 +52,13 @@ public class InventoryValueTool : ToolComponent
     public InventoryValueTool(
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        CharacterDataService characterDataService)
     {
         _priceTrackingService = priceTrackingService;
         _samplerService = samplerService;
         _configService = configService;
+        _characterDataService = characterDataService;
         _cacheService = samplerService.CacheService;
         _instanceSettings = new InventoryValueSettings();
 
@@ -176,46 +179,20 @@ public class InventoryValueTool : ToolComponent
 
     /// <summary>
     /// Gets a display name for the provided character ID.
-    /// Uses formatted name from cache service, respecting the name format setting.
+    /// Uses CharacterDataService for consistent formatting.
     /// </summary>
     private string GetCharacterDisplayName(ulong characterId)
     {
-        // Use cache service which handles display name, game name formatting, and fallbacks
-        var formattedName = _cacheService?.GetFormattedCharacterName(characterId);
-        if (!string.IsNullOrEmpty(formattedName))
-            return formattedName;
-
-        // Try runtime lookup for currently-loaded characters (formats it)
-        var runtimeName = Kaleidoscope.Libs.CharacterLib.GetCharacterName(characterId);
-        if (!string.IsNullOrEmpty(runtimeName))
-            return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
-
-        // Fallback to ID
-        return $"Character {characterId}";
+        return _characterDataService.GetFormattedName(characterId);
     }
 
     private void RefreshCharacterList()
     {
         try
         {
-            var chars = DbService.GetAllCharacterNames()
-                .Select(c => (c.characterId, c.name))
-                .DistinctBy(c => c.characterId)
-                .OrderBy(c => c.name)
-                .ToList();
-
-            // Include "All Characters" option
-            _characterNames = new string[chars.Count + 1];
-            _characterIds = new ulong[chars.Count + 1];
-
-            _characterNames[0] = "All Characters";
-            _characterIds[0] = 0;
-
-            for (int i = 0; i < chars.Count; i++)
-            {
-                _characterNames[i + 1] = chars[i].name ?? $"Character {chars[i].characterId}";
-                _characterIds[i + 1] = chars[i].characterId;
-            }
+            var (names, ids) = _characterDataService.GetCharacterArrays(includeAllCharactersOption: true);
+            _characterNames = names;
+            _characterIds = ids;
 
             // Update selected index
             var idx = Array.IndexOf(_characterIds, _selectedCharacterId);

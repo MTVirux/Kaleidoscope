@@ -35,6 +35,7 @@ public class TopItemsTool : ToolComponent
     private readonly PriceTrackingService _priceTrackingService;
     private readonly SamplerService _samplerService;
     private readonly ConfigurationService _configService;
+    private readonly CharacterDataService _characterDataService;
     private readonly ItemDataService _itemDataService;
     private readonly ItemComboDropdown _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
@@ -73,6 +74,7 @@ public class TopItemsTool : ToolComponent
         PriceTrackingService priceTrackingService,
         SamplerService samplerService,
         ConfigurationService configService,
+        CharacterDataService characterDataService,
         ItemDataService itemDataService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
@@ -82,6 +84,7 @@ public class TopItemsTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _samplerService = samplerService;
         _configService = configService;
+        _characterDataService = characterDataService;
         _itemDataService = itemDataService;
         _inventoryChangeService = inventoryChangeService;
 
@@ -138,26 +141,9 @@ public class TopItemsTool : ToolComponent
     {
         try
         {
-            var chars = DbService.GetAllCharacterNames()
-                .Select(c => (c.characterId, c.name))
-                .DistinctBy(c => c.characterId)
-                .OrderBy(c => c.name)
-                .ToList();
-
-            // Include "All Characters" option
-            _characterNames = new string[chars.Count + 1];
-            _characterIds = new ulong[chars.Count + 1];
-
-            _characterNames[0] = "All Characters";
-            _characterIds[0] = 0;
-
-            for (int i = 0; i < chars.Count; i++)
-            {
-                // Use formatted character name from cache service
-                _characterNames[i + 1] = CacheService.GetFormattedCharacterName(chars[i].characterId)
-                    ?? chars[i].name ?? $"Character {chars[i].characterId}";
-                _characterIds[i + 1] = chars[i].characterId;
-            }
+            var (names, ids) = _characterDataService.GetCharacterArrays(includeAllCharactersOption: true);
+            _characterNames = names;
+            _characterIds = ids;
 
             // Update selected index
             var idx = Array.IndexOf(_characterIds, _selectedCharacterId);
