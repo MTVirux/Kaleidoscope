@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Data management category in the config window.
 /// Provides data export, cleanup, and maintenance options.
 /// </summary>
-public class DataCategory
+public sealed class DataCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerIpcService _autoRetainerIpc;

@@ -8,7 +8,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Customization configuration category in the config window.
 /// Allows users to customize default colors for all UI elements.
 /// </summary>
-public class CustomizationCategory
+public sealed class CustomizationCategory
 {
     private readonly Kaleidoscope.Configuration config;
     private readonly Action saveConfig;
@@ -621,7 +621,7 @@ public class CustomizationCategory
             config.MainWindowBackgroundColor = DefaultBackgroundColor;
             config.FullscreenBackgroundColor = DefaultBackgroundColor;
             config.UIColors.ResetToDefaults();
-            config.GraphStyle = new GraphStyleConfig();
+            config.GraphStyle = new MTGraphStyleConfig();
             saveConfig();
         }
         if (ImGui.IsItemHovered())

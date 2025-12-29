@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Layouts management category in the config window.
 /// Allows viewing, editing, and importing layouts.
 /// </summary>
-public class LayoutsCategory
+public sealed class LayoutsCategory
 {
     private readonly ConfigurationService _configService;
 

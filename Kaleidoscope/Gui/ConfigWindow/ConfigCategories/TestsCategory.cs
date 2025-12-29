@@ -12,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Provides interactive testing of services, integrations, and database sanity checks.
 /// Only visible in the Developer menu (CTRL+ALT or developer mode enabled).
 /// </summary>
-public class TestsCategory
+public sealed class TestsCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerIpcService _arIpcService;
@@ -97,7 +97,7 @@ public class TestsCategory
 
     private void DrawDatabaseTests()
     {
-        if (TreeHelpers.DrawCollapsingSection("Database Tests", true))
+        if (MTTreeHelpers.DrawCollapsingSection("Database Tests", true))
         {
             ImGui.Indent();
 
@@ -130,10 +130,10 @@ public class TestsCategory
             ImGui.EndDisabled();
 
             // DB Stats
-            if (TreeHelpers.DrawSection("Database Statistics"))
+            if (MTTreeHelpers.DrawSection("Database Statistics"))
             {
                 DrawDbStats();
-                TreeHelpers.EndSection();
+                MTTreeHelpers.EndSection();
             }
 
             ImGui.Unindent();
@@ -142,7 +142,7 @@ public class TestsCategory
 
     private void DrawIntegrationTests()
     {
-        if (TreeHelpers.DrawCollapsingSection("Integration Tests", true))
+        if (MTTreeHelpers.DrawCollapsingSection("Integration Tests", true))
         {
             ImGui.Indent();
 
@@ -194,7 +194,7 @@ public class TestsCategory
 
     private void DrawServiceTests()
     {
-        if (TreeHelpers.DrawCollapsingSection("Service Tests", false))
+        if (MTTreeHelpers.DrawCollapsingSection("Service Tests", false))
         {
             ImGui.Indent();
 

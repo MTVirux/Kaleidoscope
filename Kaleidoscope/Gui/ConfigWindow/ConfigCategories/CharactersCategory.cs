@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Character management category in the config window.
 /// Provides options to view and edit character display names and time series colors.
 /// </summary>
-public class CharactersCategory
+public sealed class CharactersCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly TimeSeriesCacheService _cacheService;

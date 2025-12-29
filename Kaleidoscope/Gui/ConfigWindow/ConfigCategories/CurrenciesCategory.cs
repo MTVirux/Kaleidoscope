@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Provides options to set custom colors for tracked data types used across all tools,
 /// and displays which currencies are being tracked (always enabled).
 /// </summary>
-public class CurrenciesCategory
+public sealed class CurrenciesCategory
 {
     private readonly ConfigurationService _configService;
     private readonly TrackedDataRegistry _registry;

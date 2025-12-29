@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Tool Presets management category in the config window.
 /// Allows viewing, editing, and deleting user-created tool presets.
 /// </summary>
-public class ToolPresetsCategory
+public sealed class ToolPresetsCategory
 {
     private readonly ConfigurationService _configService;
 
@@ -105,7 +105,7 @@ public class ToolPresetsCategory
         {
             var toolDisplayName = GetToolDisplayName(group.Key);
             
-            if (TreeHelpers.DrawCollapsingSection($"{toolDisplayName} ({group.Count()})", true, group.Key))
+            if (MTTreeHelpers.DrawCollapsingSection($"{toolDisplayName} ({group.Count()})", true, group.Key))
             {
                 foreach (var preset in group)
                 {

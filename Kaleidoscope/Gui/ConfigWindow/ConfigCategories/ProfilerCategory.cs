@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Shows draw time statistics for debugging and performance analysis.
 /// Only visible when CTRL+ALT are held while the config window is focused.
 /// </summary>
-public class ProfilerCategory
+public sealed class ProfilerCategory
 {
     private readonly ProfilerService _profilerService;
     private readonly ConfigurationService _configService;

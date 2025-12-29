@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Storage &amp; Cache configuration category in the config window.
 /// Centralizes all database and memory cache size settings with detailed tooltips.
 /// </summary>
-public class StorageCategory
+public sealed class StorageCategory
 {
     private readonly ConfigurationService _configService;
     private readonly CurrencyTrackerService _currencyTrackerService;

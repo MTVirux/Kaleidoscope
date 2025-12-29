@@ -7,7 +7,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// <summary>
 /// General settings category in the config window.
 /// </summary>
-public class GeneralCategory
+public sealed class GeneralCategory
 {
     private readonly ConfigurationService _configService;
 

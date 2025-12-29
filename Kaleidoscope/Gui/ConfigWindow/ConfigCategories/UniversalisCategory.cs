@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// <summary>
 /// Universalis Integration settings category in the config window.
 /// </summary>
-public class UniversalisCategory
+public sealed class UniversalisCategory
 {
     private readonly ConfigurationService _configService;
     private readonly PriceTrackingService? _priceTrackingService;
@@ -64,16 +64,16 @@ public class UniversalisCategory
         ImGui.Spacing();
 
         // Query Settings in collapsible header
-        TreeHelpers.DrawCollapsingSectionWithContent("Query Settings", true, DrawQuerySettings);
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Query Settings", true, DrawQuerySettings);
 
         // Override Settings in collapsible header
-        TreeHelpers.DrawCollapsingSectionWithContent("Override Settings", false, DrawOverrideSettings);
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Override Settings", false, DrawOverrideSettings);
 
         // Price Tracking Section in collapsible header
-        TreeHelpers.DrawCollapsingSectionWithContent("Price Tracking (WebSocket)", true, DrawPriceTrackingSection);
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Price Tracking (WebSocket)", true, DrawPriceTrackingSection);
 
         // Data Management in collapsible header
-        TreeHelpers.DrawCollapsingSectionWithContent("Data Management", false, DrawDataManagement);
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Data Management", false, DrawDataManagement);
     }
 
     private void DrawWebSocketStatus()

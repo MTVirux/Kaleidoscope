@@ -13,7 +13,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Item management category in the config window.
 /// Allows users to manage tracked items and set custom colors for game items.
 /// </summary>
-public class ItemsCategory
+public sealed class ItemsCategory
 {
     private readonly ConfigurationService _configService;
     private readonly ItemDataService? _itemDataService;
