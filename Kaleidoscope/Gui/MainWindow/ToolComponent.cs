@@ -106,7 +106,7 @@ public abstract class ToolComponent : IDisposable
             // Draw tool-specific settings first (in collapsible header)
             if (HasToolSettings)
             {
-                if (TreeHelpers.DrawCollapsingSection("Tool Settings", true))
+                if (MTTreeHelpers.DrawCollapsingSection("Tool Settings", true))
                 {
                     // Check if tool provides a schema for declarative rendering
                     var schema = GetToolSettingsSchema();
