@@ -747,7 +747,9 @@ public static class ColumnManagementWidget
                 ? new float[] { c.Color.Value.X, c.Color.Value.Y, c.Color.Value.Z, c.Color.Value.W } 
                 : null,
             ["Width"] = c.Width,
-            ["StoreHistory"] = c.StoreHistory
+            ["StoreHistory"] = c.StoreHistory,
+            ["ShowInTable"] = c.ShowInTable,
+            ["ShowInGraph"] = c.ShowInGraph
         }).ToList();
     }
     
@@ -811,7 +813,9 @@ public static class ColumnManagementWidget
             CustomName = jObj["CustomName"]?.ToObject<string>(),
             IsCurrency = jObj["IsCurrency"]?.ToObject<bool>() ?? false,
             Width = jObj["Width"]?.ToObject<float>() ?? 80f,
-            StoreHistory = jObj["StoreHistory"]?.ToObject<bool>() ?? false
+            StoreHistory = jObj["StoreHistory"]?.ToObject<bool>() ?? false,
+            ShowInTable = jObj["ShowInTable"]?.ToObject<bool>() ?? true,
+            ShowInGraph = jObj["ShowInGraph"]?.ToObject<bool>() ?? true
         };
         
         var colorToken = jObj["Color"];
@@ -837,7 +841,9 @@ public static class ColumnManagementWidget
                          ? nameProp.GetString() : null,
             IsCurrency = element.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
             Width = element.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f,
-            StoreHistory = element.TryGetProperty("StoreHistory", out var histProp) && histProp.GetBoolean()
+            StoreHistory = element.TryGetProperty("StoreHistory", out var histProp) && histProp.GetBoolean(),
+            ShowInTable = !element.TryGetProperty("ShowInTable", out var tableProp) || tableProp.GetBoolean(),
+            ShowInGraph = !element.TryGetProperty("ShowInGraph", out var graphProp) || graphProp.GetBoolean()
         };
         
         if (element.TryGetProperty("Color", out var colorProp) && 
@@ -859,7 +865,9 @@ public static class ColumnManagementWidget
             CustomName = dict.TryGetValue("CustomName", out var nameVal) ? nameVal?.ToString() : null,
             IsCurrency = dict.TryGetValue("IsCurrency", out var currVal) && currVal is bool b && b,
             Width = dict.TryGetValue("Width", out var widthVal) && widthVal != null ? Convert.ToSingle(widthVal) : 80f,
-            StoreHistory = dict.TryGetValue("StoreHistory", out var histVal) && histVal is bool h && h
+            StoreHistory = dict.TryGetValue("StoreHistory", out var histVal) && histVal is bool h && h,
+            ShowInTable = !dict.TryGetValue("ShowInTable", out var tableVal) || (tableVal is bool t && t),
+            ShowInGraph = !dict.TryGetValue("ShowInGraph", out var graphVal) || (graphVal is bool g && g)
         };
         
         if (dict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
