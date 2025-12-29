@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
+    <ProjectReference Include="..\MTGui\MTGui.csproj" />
   </ItemGroup>
 
   <ItemGroup>
