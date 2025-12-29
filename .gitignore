@@ -6,3 +6,4 @@ scripts/
 .github/*
 !.github/workflows
 build.lock
+.vscode/settings.json
