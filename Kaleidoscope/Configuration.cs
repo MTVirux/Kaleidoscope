@@ -4,6 +4,7 @@ using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Graph;
+using MTGui.Table;
 
 namespace Kaleidoscope;
 
@@ -403,12 +404,12 @@ public class CrystalTrackerSettings
 /// Settings for the Item Table tool.
 /// Implements IItemTableWidgetSettings for automatic widget binding.
 /// </summary>
-public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettings
+public class ItemTableSettings : IItemTableWidgetSettings
 {
     /// <summary>
     /// List of column configurations for items/currencies to display.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.ItemColumnConfig> Columns { get; set; } = new();
+    public List<ItemColumnConfig> Columns { get; set; } = new();
     
     /// <summary>
     /// Whether to show a total row at the bottom summing all characters.
@@ -485,38 +486,38 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Right;
+    public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Right;
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment VerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment VerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Left;
+    public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Left;
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Center;
+    public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Center;
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.
@@ -538,8 +539,8 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// <summary>
     /// Grouping mode for table rows (Character, World, DataCenter, Region, All).
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableGroupingMode GroupingMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableGroupingMode.Character;
+    public TableGroupingMode GroupingMode { get; set; } = 
+        TableGroupingMode.Character;
     
     /// <summary>
     /// Whether to hide the character/group column when GroupingMode is All.
@@ -549,18 +550,18 @@ public class ItemTableSettings : Kaleidoscope.Gui.Widgets.IItemTableWidgetSettin
     /// <summary>
     /// List of merged column groups. Each group combines multiple columns into one.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.MergedColumnGroup> MergedColumnGroups { get; set; } = new();
+    public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
     
     /// <summary>
     /// List of merged row groups. Each group combines multiple character rows into one.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.MergedRowGroup> MergedRowGroups { get; set; } = new();
+    public List<MergedRowGroup> MergedRowGroups { get; set; } = new();
     
     /// <summary>
     /// Mode for determining cell text colors.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableTextColorMode.DontUse;
+    public TableTextColorMode TextColorMode { get; set; } = 
+        TableTextColorMode.DontUse;
     
     /// <summary>
     /// Whether to show expandable retainer breakdown for characters with retainer data.
@@ -588,7 +589,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// <summary>
     /// List of series configurations for items/currencies to display as graph lines.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.ItemColumnConfig> Series { get; set; } = new();
+    public List<ItemColumnConfig> Series { get; set; } = new();
     
     /// <summary>
     /// Whether to include retainer inventory in item counts.
@@ -687,8 +688,8 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// Grouping mode for graph series (Character, World, DataCenter, Region, All).
     /// Maps to the same modes as ItemTableSettings for consistency.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableGroupingMode GroupingMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableGroupingMode.Character;
+    public TableGroupingMode GroupingMode { get; set; } = 
+        TableGroupingMode.Character;
     
     /// <summary>
     /// Special grouping settings (AllCrystals element/tier filtering, AllGil merging).
@@ -713,7 +714,7 @@ public enum DataToolViewMode
 /// Implements both IItemTableWidgetSettings and IGraphWidgetSettings for widget binding.
 /// </summary>
 public class DataToolSettings : 
-    Kaleidoscope.Gui.Widgets.IItemTableWidgetSettings,
+    IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {
     // === View Mode ===
@@ -729,7 +730,7 @@ public class DataToolSettings :
     /// List of column/series configurations for items/currencies to display.
     /// Used as columns in table view and series in graph view.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.ItemColumnConfig> Columns { get; set; } = new();
+    public List<ItemColumnConfig> Columns { get; set; } = new();
     
     /// <summary>
     /// Whether to include retainer inventory in item counts.
@@ -759,8 +760,8 @@ public class DataToolSettings :
     /// <summary>
     /// Grouping mode (Character, World, DataCenter, Region, All).
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableGroupingMode GroupingMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableGroupingMode.Character;
+    public TableGroupingMode GroupingMode { get; set; } = 
+        TableGroupingMode.Character;
     
     /// <summary>
     /// Special grouping settings (AllCrystals element/tier filtering, AllGil merging).
@@ -827,38 +828,38 @@ public class DataToolSettings :
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Right;
+    public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Right;
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment VerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment VerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Left;
+    public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Left;
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableHorizontalAlignment.Center;
+    public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
+        TableHorizontalAlignment.Center;
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableVerticalAlignment.Top;
+    public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
+        TableVerticalAlignment.Top;
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.
@@ -873,18 +874,18 @@ public class DataToolSettings :
     /// <summary>
     /// List of merged column groups.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.MergedColumnGroup> MergedColumnGroups { get; set; } = new();
+    public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
     
     /// <summary>
     /// List of merged row groups.
     /// </summary>
-    public List<Kaleidoscope.Gui.Widgets.MergedRowGroup> MergedRowGroups { get; set; } = new();
+    public List<MergedRowGroup> MergedRowGroups { get; set; } = new();
     
     /// <summary>
     /// Mode for determining cell text colors.
     /// </summary>
-    public Kaleidoscope.Gui.Widgets.TableTextColorMode TextColorMode { get; set; } = 
-        Kaleidoscope.Gui.Widgets.TableTextColorMode.PreferredItemColors;
+    public TableTextColorMode TextColorMode { get; set; } = 
+        TableTextColorMode.PreferredItemColors;
     
     /// <summary>
     /// Whether to show expandable retainer breakdown for characters with retainer data in table view.

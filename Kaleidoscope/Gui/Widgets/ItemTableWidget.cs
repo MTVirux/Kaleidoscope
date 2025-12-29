@@ -3,35 +3,11 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
+using MTGui.Table;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
-
-/// <summary>
-/// Horizontal alignment options for table cell content.
-/// </summary>
-public enum TableHorizontalAlignment
-{
-    /// <summary>Align content to the left of the cell.</summary>
-    Left,
-    /// <summary>Center content horizontally in the cell.</summary>
-    Center,
-    /// <summary>Align content to the right of the cell.</summary>
-    Right
-}
-
-/// <summary>
-/// Vertical alignment options for table cell content.
-/// </summary>
-public enum TableVerticalAlignment
-{
-    /// <summary>Align content to the top of the cell.</summary>
-    Top,
-    /// <summary>Center content vertically in the cell.</summary>
-    Center,
-    /// <summary>Align content to the bottom of the cell.</summary>
-    Bottom
-}
 
 /// <summary>
 /// Grouping mode for table rows.
@@ -112,29 +88,10 @@ public class ItemColumnConfig
 
 /// <summary>
 /// Represents a group of merged columns that display summed values.
+/// Extends MTGui's MergedColumnGroupBase with Kaleidoscope-specific visibility settings.
 /// </summary>
-public class MergedColumnGroup
+public class MergedColumnGroup : MTGui.Table.MergedColumnGroupBase
 {
-    /// <summary>
-    /// Custom display name for the merged column header.
-    /// </summary>
-    public string Name { get; set; } = "Merged";
-    
-    /// <summary>
-    /// List of column indices (0-based, referencing the Columns list) that are merged.
-    /// </summary>
-    public List<int> ColumnIndices { get; set; } = new();
-    
-    /// <summary>
-    /// Optional custom color for the merged column. If null, uses default.
-    /// </summary>
-    public Vector4? Color { get; set; }
-    
-    /// <summary>
-    /// Width of the merged column in pixels.
-    /// </summary>
-    public float Width { get; set; } = 80f;
-    
     /// <summary>
     /// Whether to show this merged group in table view.
     /// </summary>
@@ -150,6 +107,7 @@ public class MergedColumnGroup
 /// <summary>
 /// Represents a group of merged rows that display summed values.
 /// Supports both Character-mode (CharacterIds) and grouped-mode (GroupKeys).
+/// This is FFXIV-specific due to character/world/DC/region grouping concepts.
 /// </summary>
 public class MergedRowGroup
 {
@@ -2053,7 +2011,7 @@ public class ItemTableWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Column Sizing", ImGuiTreeNodeFlags.DefaultOpen))
+        if (TreeHelpers.DrawSection("Column Sizing", true))
         {
             var useFullNameWidth = settings.UseFullNameWidth;
         if (ImGui.Checkbox("Fit character column to name width", ref useFullNameWidth))
@@ -2076,11 +2034,11 @@ public class ItemTableWidget : ISettingsProvider
             {
                 ImGui.SetTooltip("Automatically size all data columns to equal widths.\nCharacter column width takes priority.");
             }
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Alignment"))
+        if (TreeHelpers.DrawSection("Alignment"))
         {
             // Data column alignment
             ImGui.TextDisabled("Data Columns");
@@ -2144,11 +2102,11 @@ public class ItemTableWidget : ISettingsProvider
                 settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
                 changed = true;
             }
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Character Column"))
+        if (TreeHelpers.DrawSection("Character Column"))
         {
             var charWidth = settings.CharacterColumnWidth;
             if (ImGui.SliderFloat("Min Width", ref charWidth, 60f, 200f, "%.0f"))
@@ -2163,11 +2121,11 @@ public class ItemTableWidget : ISettingsProvider
         
             // Character column color
             changed |= TableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Row Colors"))
+        if (TreeHelpers.DrawSection("Row Colors"))
         {
             // Header color
             changed |= TableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
@@ -2177,7 +2135,7 @@ public class ItemTableWidget : ISettingsProvider
         
             // Odd row color
             changed |= TableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         // Merged rows section
@@ -2185,7 +2143,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (ImGui.TreeNodeEx($"Merged Rows ({settings.MergedRowGroups.Count})###MergedRows"))
+            if (TreeHelpers.DrawSection($"Merged Rows ({settings.MergedRowGroups.Count})", false, "MergedRows"))
             {
                 ImGui.TextDisabled("Hold SHIFT and click/drag on character names to select, then right-click to merge.");
                 ImGui.Spacing();
@@ -2247,7 +2205,7 @@ public class ItemTableWidget : ISettingsProvider
                     settings.MergedRowGroups.Clear();
                     changed = true;
                 }
-                ImGui.TreePop();
+                TreeHelpers.EndSection();
             }
         }
         else
@@ -2261,7 +2219,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (ImGui.TreeNodeEx($"Hidden Characters ({settings.HiddenCharacters.Count})###HiddenChars"))
+            if (TreeHelpers.DrawSection($"Hidden Characters ({settings.HiddenCharacters.Count})", false, "HiddenChars"))
             {
                 // Show each hidden character with unhide button
                 ulong? characterToUnhide = null;
@@ -2297,7 +2255,7 @@ public class ItemTableWidget : ISettingsProvider
                 {
                     ImGui.SetTooltip("Unhide all hidden characters");
                 }
-                ImGui.TreePop();
+                TreeHelpers.EndSection();
             }
         }
         else

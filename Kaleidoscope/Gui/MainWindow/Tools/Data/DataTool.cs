@@ -9,6 +9,7 @@ using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Graph;
+using MTGui.Table;
 using CrystalElement = Kaleidoscope.CrystalElement;
 using CrystalTier = Kaleidoscope.CrystalTier;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
