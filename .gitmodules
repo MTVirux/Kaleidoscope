@@ -4,3 +4,6 @@
 [submodule "FFXIVClientStructs"]
 	path = FFXIVClientStructs
 	url = https://github.com/aers/FFXIVClientStructs.git
+[submodule "MTGui"]
+	path = MTGui
+	url = https://github.com/MTVirux/MTGui.git
