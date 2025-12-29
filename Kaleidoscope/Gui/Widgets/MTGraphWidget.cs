@@ -88,6 +88,17 @@ public class MTGraphWidget : ISettingsProvider
     public MTGraphConfig Config => _graph.Config;
     
     /// <summary>
+    /// Gets or sets the groups for the legend. Groups can be toggled to show/hide all their member series.
+    /// When set, groups are displayed in the legend before individual series, allowing users to toggle
+    /// visibility of all series within a group at once.
+    /// </summary>
+    public IReadOnlyList<MTGraphSeriesGroup>? Groups
+    {
+        get => _graph.Groups;
+        set => _graph.Groups = value;
+    }
+    
+    /// <summary>
     /// Gets whether the mouse is over an overlay element (legend, controls drawer).
     /// </summary>
     public bool IsMouseOverOverlay => _graph.IsMouseOverOverlay;

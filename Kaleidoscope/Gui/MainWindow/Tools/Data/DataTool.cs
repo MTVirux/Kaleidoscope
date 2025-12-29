@@ -52,6 +52,7 @@ public class DataTool : ToolComponent
     
     // Graph view cached data (tuple format matching MTGraphWidget.RenderMultipleSeries)
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
+    private List<MTGraphSeriesGroup>? _cachedSeriesGroups;
     private DateTime _lastGraphRefresh = DateTime.MinValue;
     private volatile bool _graphCacheIsDirty = true;
     private int _cachedSeriesCount;
@@ -812,6 +813,9 @@ public class DataTool : ToolComponent
                 {
                     RefreshGraphData();
                 }
+                
+                // Update groups on the graph widget
+                _graphWidget.Groups = _cachedSeriesGroups;
             }
             
             if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
@@ -900,6 +904,12 @@ public class DataTool : ToolComponent
         
         var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
+        // Track which series belong to which item/group for legend grouping
+        // Key: item/group display name, Value: list of series names
+        var seriesByItem = new Dictionary<string, List<string>>();
+        // Track the base color for each item/group
+        var itemColors = new Dictionary<string, Vector4>();
+        
         // Calculate total item/currency count (excluding merged groups)
         // When there are multiple items, we show item names in legend; when single item, show character/grouping breakdown
         var totalItemCount = series.Count + settings.MergedColumnGroups.Count(g => g.ShowInGraph);
@@ -908,27 +918,96 @@ public class DataTool : ToolComponent
         using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
         {
             // Load individual (non-merged) series
+            var itemIndex = 0;
             foreach (var seriesConfig in series)
             {
+                var itemName = GetSeriesDisplayName(seriesConfig);
                 var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters, isSingleItem);
                 if (seriesData != null)
                 {
+                    // Track series names for grouping (only when multiple items)
+                    if (!isSingleItem)
+                    {
+                        if (!seriesByItem.ContainsKey(itemName))
+                        {
+                            seriesByItem[itemName] = new List<string>();
+                            // Store the base color for this item
+                            var color = GetEffectiveSeriesColor(seriesConfig, settings, itemIndex);
+                            itemColors[itemName] = color;
+                        }
+                        foreach (var s in seriesData)
+                        {
+                            seriesByItem[itemName].Add(s.name);
+                        }
+                    }
                     seriesList.AddRange(seriesData);
                 }
+                itemIndex++;
             }
             
             // Load merged group series
             foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
             {
+                var groupName = group.Name;
                 var mergedSeriesData = LoadMergedSeriesData(group, settings, startTime, allowedCharacters, isSingleItem);
                 if (mergedSeriesData != null)
                 {
+                    // Track series names for grouping (only when multiple items)
+                    if (!isSingleItem)
+                    {
+                        if (!seriesByItem.ContainsKey(groupName))
+                        {
+                            seriesByItem[groupName] = new List<string>();
+                            // Store the base color for this group
+                            if (group.Color.HasValue)
+                            {
+                                itemColors[groupName] = group.Color.Value;
+                            }
+                            else
+                            {
+                                itemColors[groupName] = GetDefaultSeriesColor(itemIndex);
+                            }
+                        }
+                        foreach (var s in mergedSeriesData)
+                        {
+                            seriesByItem[groupName].Add(s.name);
+                        }
+                    }
                     seriesList.AddRange(mergedSeriesData);
                 }
+                itemIndex++;
             }
         }
         
         _cachedSeriesData = seriesList.Count > 0 ? seriesList : null;
+        
+        // Build groups for the legend (only when there are multiple items with multiple series each)
+        if (!isSingleItem && seriesByItem.Count > 1)
+        {
+            var groups = new List<MTGraphSeriesGroup>();
+            foreach (var (itemName, seriesNames) in seriesByItem)
+            {
+                // Only create a group if the item has multiple series
+                if (seriesNames.Count > 1)
+                {
+                    var color = itemColors.TryGetValue(itemName, out var c) 
+                        ? new Vector3(c.X, c.Y, c.Z) 
+                        : new Vector3(0.6f, 0.6f, 0.6f);
+                    
+                    groups.Add(new MTGraphSeriesGroup
+                    {
+                        Name = itemName,
+                        Color = color,
+                        SeriesNames = seriesNames
+                    });
+                }
+            }
+            _cachedSeriesGroups = groups.Count > 0 ? groups : null;
+        }
+        else
+        {
+            _cachedSeriesGroups = null;
+        }
     }
     
     private TimeSpan? GetTimeRange()
