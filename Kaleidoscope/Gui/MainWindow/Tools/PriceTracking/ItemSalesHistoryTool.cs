@@ -5,6 +5,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
@@ -348,7 +349,7 @@ public class ItemSalesHistoryTool : ToolComponent
 
     public override void DrawSettings()
     {
-        if (!ImGui.CollapsingHeader("Item Sales History Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        if (!TreeHelpers.DrawCollapsingSection("Item Sales History Settings", true))
             return;
 
         // Default max entries

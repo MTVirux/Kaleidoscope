@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -48,7 +49,7 @@ public static class MergeManagementWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        if (!ImGui.CollapsingHeader("Source Merging", ImGuiTreeNodeFlags.DefaultOpen))
+        if (!TreeHelpers.DrawCollapsingSection("Source Merging", true))
         {
             return false;
         }

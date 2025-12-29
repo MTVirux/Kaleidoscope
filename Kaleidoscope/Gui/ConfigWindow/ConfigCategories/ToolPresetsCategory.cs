@@ -1,5 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using MTGui.Tree;
 using System.Numerics;
 using Kaleidoscope.Gui.MainWindow;
 using Kaleidoscope.Services;
@@ -104,7 +105,7 @@ public class ToolPresetsCategory
         {
             var toolDisplayName = GetToolDisplayName(group.Key);
             
-            if (ImGui.CollapsingHeader($"{toolDisplayName} ({group.Count()})###{group.Key}", ImGuiTreeNodeFlags.DefaultOpen))
+            if (TreeHelpers.DrawCollapsingSection($"{toolDisplayName} ({group.Count()})", true, group.Key))
             {
                 foreach (var preset in group)
                 {

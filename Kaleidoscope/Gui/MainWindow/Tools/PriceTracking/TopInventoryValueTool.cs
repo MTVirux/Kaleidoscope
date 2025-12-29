@@ -6,6 +6,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
@@ -599,7 +600,7 @@ public class TopInventoryValueTool : ToolComponent
     {
         try
         {
-            if (!ImGui.CollapsingHeader("Top Items Settings", ImGuiTreeNodeFlags.DefaultOpen))
+            if (!TreeHelpers.DrawCollapsingSection("Top Items Settings", true))
                 return;
                 
             var settings = Settings;

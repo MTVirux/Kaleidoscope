@@ -4,6 +4,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
@@ -260,7 +261,7 @@ public class LivePriceFeedTool : ToolComponent
     {
         try
         {
-            if (!ImGui.CollapsingHeader("Live Feed Settings", ImGuiTreeNodeFlags.DefaultOpen))
+            if (!TreeHelpers.DrawCollapsingSection("Live Feed Settings", true))
                 return;
                 
             var settings = Settings;

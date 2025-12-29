@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
 using MTGui.Graph;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -418,7 +419,7 @@ public class ImplotGraphWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Graph Style"))
+        if (TreeHelpers.DrawSection("Graph Style"))
         {
             // Graph type
             var graphType = settings.GraphType;
@@ -470,11 +471,11 @@ public class ImplotGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a horizontal line at the current (latest) value.");
             
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (ImGui.TreeNodeEx("Auto-Scroll"))
+        if (TreeHelpers.DrawSection("Auto-Scroll"))
         {
             var autoScrollEnabled = settings.AutoScrollEnabled;
             if (ImGui.Checkbox("Enable auto-scroll", ref autoScrollEnabled))
@@ -526,7 +527,7 @@ public class ImplotGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a collapsible controls panel in the bottom-left corner of the graph.");
             
-            ImGui.TreePop();
+            TreeHelpers.EndSection();
         }
         
         if (changed)

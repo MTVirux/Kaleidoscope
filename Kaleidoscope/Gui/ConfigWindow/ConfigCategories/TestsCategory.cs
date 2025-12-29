@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using System.Diagnostics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -96,7 +97,7 @@ public class TestsCategory
 
     private void DrawDatabaseTests()
     {
-        if (ImGui.CollapsingHeader("Database Tests", ImGuiTreeNodeFlags.DefaultOpen))
+        if (TreeHelpers.DrawCollapsingSection("Database Tests", true))
         {
             ImGui.Indent();
 
@@ -129,10 +130,10 @@ public class TestsCategory
             ImGui.EndDisabled();
 
             // DB Stats
-            if (ImGui.TreeNode("Database Statistics"))
+            if (TreeHelpers.DrawSection("Database Statistics"))
             {
                 DrawDbStats();
-                ImGui.TreePop();
+                TreeHelpers.EndSection();
             }
 
             ImGui.Unindent();
@@ -141,7 +142,7 @@ public class TestsCategory
 
     private void DrawIntegrationTests()
     {
-        if (ImGui.CollapsingHeader("Integration Tests", ImGuiTreeNodeFlags.DefaultOpen))
+        if (TreeHelpers.DrawCollapsingSection("Integration Tests", true))
         {
             ImGui.Indent();
 
@@ -193,7 +194,7 @@ public class TestsCategory
 
     private void DrawServiceTests()
     {
-        if (ImGui.CollapsingHeader("Service Tests"))
+        if (TreeHelpers.DrawCollapsingSection("Service Tests", false))
         {
             ImGui.Indent();
 

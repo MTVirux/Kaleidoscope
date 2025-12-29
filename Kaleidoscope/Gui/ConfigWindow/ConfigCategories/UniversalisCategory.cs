@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -63,36 +64,16 @@ public class UniversalisCategory
         ImGui.Spacing();
 
         // Query Settings in collapsible header
-        if (ImGui.CollapsingHeader("Query Settings", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            ImGui.Indent();
-            DrawQuerySettings();
-            ImGui.Unindent();
-        }
+        TreeHelpers.DrawCollapsingSectionWithContent("Query Settings", true, DrawQuerySettings);
 
         // Override Settings in collapsible header
-        if (ImGui.CollapsingHeader("Override Settings"))
-        {
-            ImGui.Indent();
-            DrawOverrideSettings();
-            ImGui.Unindent();
-        }
+        TreeHelpers.DrawCollapsingSectionWithContent("Override Settings", false, DrawOverrideSettings);
 
         // Price Tracking Section in collapsible header
-        if (ImGui.CollapsingHeader("Price Tracking (WebSocket)", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            ImGui.Indent();
-            DrawPriceTrackingSection();
-            ImGui.Unindent();
-        }
+        TreeHelpers.DrawCollapsingSectionWithContent("Price Tracking (WebSocket)", true, DrawPriceTrackingSection);
 
         // Data Management in collapsible header
-        if (ImGui.CollapsingHeader("Data Management"))
-        {
-            ImGui.Indent();
-            DrawDataManagement();
-            ImGui.Unindent();
-        }
+        TreeHelpers.DrawCollapsingSectionWithContent("Data Management", false, DrawDataManagement);
     }
 
     private void DrawWebSocketStatus()

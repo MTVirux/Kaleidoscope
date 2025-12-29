@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
@@ -592,7 +593,7 @@ public class AutoRetainerControlTool : ToolComponent
         ImGui.Spacing();
         
         // Hidden characters management
-        if (ImGui.CollapsingHeader("Hidden Characters"))
+        if (TreeHelpers.DrawCollapsingSection("Hidden Characters", false))
         {
             ImGui.Indent();
             
@@ -645,7 +646,7 @@ public class AutoRetainerControlTool : ToolComponent
         }
         
         // Color settings
-        if (ImGui.CollapsingHeader("Colors"))
+        if (TreeHelpers.DrawCollapsingSection("Colors", false))
         {
             ImGui.Indent();
             

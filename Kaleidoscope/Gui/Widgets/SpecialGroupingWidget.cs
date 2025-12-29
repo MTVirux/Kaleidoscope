@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -79,7 +80,7 @@ public static class SpecialGroupingWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        if (!ImGui.CollapsingHeader("Special Grouping", ImGuiTreeNodeFlags.DefaultOpen))
+        if (!TreeHelpers.DrawCollapsingSection("Special Grouping", true))
         {
             if (changed)
             {
@@ -150,7 +151,7 @@ public static class SpecialGroupingWidget
             // Draw as collapsible header with green checkmark (indented since it's nested)
             ImGui.Indent();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 1.0f, 0.4f, 1.0f));
-            var headerOpen = ImGui.CollapsingHeader($"✓ {name}##special_{type}", ImGuiTreeNodeFlags.DefaultOpen);
+            var headerOpen = TreeHelpers.DrawCollapsingSection($"✓ {name}", true, $"special_{type}");
             ImGui.PopStyleColor();
             
             if (ImGui.IsItemHovered())

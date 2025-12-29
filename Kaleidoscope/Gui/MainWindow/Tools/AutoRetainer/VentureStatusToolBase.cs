@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
@@ -206,7 +207,7 @@ public abstract class VentureStatusToolBase : ToolComponent
             ImGui.PushID((int)character.CID);
 
             var headerLabel = $"{GetFormattedCharacterName(character)} @ {character.World}";
-            if (ImGui.CollapsingHeader(headerLabel, ImGuiTreeNodeFlags.DefaultOpen))
+            if (TreeHelpers.DrawCollapsingSection(headerLabel, true))
             {
                 DrawCharacterContextMenu(character.CID);
 

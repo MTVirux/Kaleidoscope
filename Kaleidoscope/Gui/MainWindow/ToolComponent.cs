@@ -4,6 +4,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
@@ -105,7 +106,7 @@ public abstract class ToolComponent : IDisposable
             // Draw tool-specific settings first (in collapsible header)
             if (HasToolSettings)
             {
-                if (ImGui.CollapsingHeader("Tool Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                if (TreeHelpers.DrawCollapsingSection("Tool Settings", true))
                 {
                     // Check if tool provides a schema for declarative rendering
                     var schema = GetToolSettingsSchema();
