@@ -282,7 +282,8 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                 var fcidToken = jObject["FCID"];
                 if (fcidToken != null)
                 {
-                    try { fcid = fcidToken.Value<ulong>(); } catch { fcid = 0; }
+                    try { fcid = fcidToken.Value<ulong>(); }
+                    catch (Exception) { fcid = 0; } // FCID can be in various formats, default to 0 on parse failure
                 }
                 
                 // Parse retainer data
@@ -358,7 +359,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                     var fcidProp = type.GetProperty("FCID")?.GetValue(data);
                     fcid = fcidProp != null ? Convert.ToUInt64(fcidProp) : 0UL;
                 }
-                catch { fcid = 0; }
+                catch (Exception) { fcid = 0; } // FCID type may vary, default to 0 on conversion failure
                 
                 // Try to get retainer data via reflection
                 var retainerDataProp = type.GetProperty("RetainerData")?.GetValue(data);

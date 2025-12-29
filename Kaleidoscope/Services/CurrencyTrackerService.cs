@@ -233,7 +233,10 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 var rawName = GameStateService.GetCharacterName(cid);
                 characterName = NameSanitizer.SanitizeWithPlayerFallback(rawName);
             }
-            catch { /* Ignore name capture failures */ }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+            }
 
             // Queue all changed values for background database write
             // Also update cache immediately for instant UI access

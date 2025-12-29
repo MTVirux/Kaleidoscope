@@ -658,7 +658,11 @@ public class WindowContentContainer
                             {
                                 found = Type.GetType(entry.Type);
                             }
-                            catch { found = null; }
+                            catch (Exception ex)
+                            {
+                                LogService.Debug($"[WindowContentContainer] Type.GetType failed for '{entry.Type}': {ex.Message}");
+                                found = null;
+                            }
                             if (found == null)
                             {
                                 foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -668,7 +672,10 @@ public class WindowContentContainer
                                         var t = asm.GetType(entry.Type);
                                         if (t != null) { found = t; break; }
                                     }
-                                    catch { }
+                                    catch (Exception ex)
+                                    {
+                                        LogService.Debug($"[WindowContentContainer] Assembly type resolution failed for '{entry.Type}' in {asm.GetName().Name}: {ex.Message}");
+                                    }
                                 }
                             }
 
@@ -1264,7 +1271,7 @@ public class WindowContentContainer
                     // Check if main window is being interacted with - if so, block new tool interactions
                     var mainWindowInteracting = false;
                     try { mainWindowInteracting = IsMainWindowInteracting?.Invoke() ?? false; }
-                    catch { /* ignore callback errors */ }
+                    catch (Exception ex) { LogService.Debug($"[WindowContentContainer] IsMainWindowInteracting callback error: {ex.Message}"); }
 
                     // Check if any OTHER tool is already being dragged or resized - if so, block new interactions
                     var anotherToolInteracting = false;
