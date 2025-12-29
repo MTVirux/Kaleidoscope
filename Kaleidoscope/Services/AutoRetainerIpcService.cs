@@ -305,37 +305,9 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                     }
                 }
                 
-                // Parse submersible data
-                var submarineData = jObject["OfflineSubmarineData"] as JArray;
-                if (submarineData != null)
-                {
-                    foreach (var vessel in submarineData)
-                    {
-                        var vesselName = vessel["Name"]?.Value<string>() ?? "";
-                        var returnTime = vessel["ReturnTime"]?.Value<long>() ?? 0L;
-                        
-                        if (!string.IsNullOrEmpty(vesselName))
-                        {
-                            vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, true));
-                        }
-                    }
-                }
-                
-                // Parse airship data
-                var airshipData = jObject["OfflineAirshipData"] as JArray;
-                if (airshipData != null)
-                {
-                    foreach (var vessel in airshipData)
-                    {
-                        var vesselName = vessel["Name"]?.Value<string>() ?? "";
-                        var returnTime = vessel["ReturnTime"]?.Value<long>() ?? 0L;
-                        
-                        if (!string.IsNullOrEmpty(vesselName))
-                        {
-                            vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, false));
-                        }
-                    }
-                }
+                // Parse vessel data (submersibles and airships)
+                ParseVesselsFromJArray(jObject["OfflineSubmarineData"] as JArray, vessels, isSubmersible: true);
+                ParseVesselsFromJArray(jObject["OfflineAirshipData"] as JArray, vessels, isSubmersible: false);
             }
             else
             {
@@ -385,41 +357,15 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                     }
                 }
                 
-                // Try to get submarine data via reflection
-                var submarineDataProp = type.GetProperty("OfflineSubmarineData")?.GetValue(data);
-                if (submarineDataProp is System.Collections.IEnumerable submarineList)
-                {
-                    foreach (var vessel in submarineList)
-                    {
-                        var vType = vessel.GetType();
-                        var vesselName = vType.GetProperty("Name")?.GetValue(vessel) as string ?? "";
-                        var returnTimeProp = vType.GetProperty("ReturnTime")?.GetValue(vessel);
-                        var returnTime = returnTimeProp != null ? Convert.ToInt64(returnTimeProp) : 0L;
-                        
-                        if (!string.IsNullOrEmpty(vesselName))
-                        {
-                            vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, true));
-                        }
-                    }
-                }
-                
-                // Try to get airship data via reflection
-                var airshipDataProp = type.GetProperty("OfflineAirshipData")?.GetValue(data);
-                if (airshipDataProp is System.Collections.IEnumerable airshipList)
-                {
-                    foreach (var vessel in airshipList)
-                    {
-                        var vType = vessel.GetType();
-                        var vesselName = vType.GetProperty("Name")?.GetValue(vessel) as string ?? "";
-                        var returnTimeProp = vType.GetProperty("ReturnTime")?.GetValue(vessel);
-                        var returnTime = returnTimeProp != null ? Convert.ToInt64(returnTimeProp) : 0L;
-                        
-                        if (!string.IsNullOrEmpty(vesselName))
-                        {
-                            vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, false));
-                        }
-                    }
-                }
+                // Parse vessel data via reflection (submersibles and airships)
+                ParseVesselsFromReflection(
+                    type.GetProperty("OfflineSubmarineData")?.GetValue(data) as System.Collections.IEnumerable, 
+                    vessels, 
+                    isSubmersible: true);
+                ParseVesselsFromReflection(
+                    type.GetProperty("OfflineAirshipData")?.GetValue(data) as System.Collections.IEnumerable, 
+                    vessels, 
+                    isSubmersible: false);
             }
             
 #if AUTORETAINER_VERBOSE_LOGGING
@@ -492,167 +438,173 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         Initialize();
     }
 
+    #region IPC Helper Methods
+
+    /// <summary>
+    /// Safely invokes an IPC function, returning null on failure.
+    /// </summary>
+    private T? SafeInvoke<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : class
+    {
+        if (!IsAvailable || subscriber == null) return null;
+        
+        try
+        {
+            return subscriber.InvokeFunc();
+        }
+        catch (Exception)
+        {
+#if AUTORETAINER_VERBOSE_LOGGING
+            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+#endif
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Safely invokes an IPC function that returns a value type, returning null on failure.
+    /// </summary>
+    private T? SafeInvokeValue<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : struct
+    {
+        if (!IsAvailable || subscriber == null) return null;
+        
+        try
+        {
+            return subscriber.InvokeFunc();
+        }
+        catch (Exception)
+        {
+#if AUTORETAINER_VERBOSE_LOGGING
+            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+#endif
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Safely invokes an IPC function with one argument, returning null on failure.
+    /// </summary>
+    private TResult? SafeInvokeValue<TArg, TResult>(ICallGateSubscriber<TArg, TResult>? subscriber, TArg arg, string methodName) where TResult : struct
+    {
+        if (!IsAvailable || subscriber == null) return null;
+        
+        try
+        {
+            return subscriber.InvokeFunc(arg);
+        }
+        catch (Exception)
+        {
+#if AUTORETAINER_VERBOSE_LOGGING
+            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+#endif
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Safely invokes an IPC function with one argument that already returns a nullable type.
+    /// </summary>
+    private TResult? SafeInvokeNullable<TArg, TResult>(ICallGateSubscriber<TArg, TResult?>? subscriber, TArg arg, string methodName) where TResult : struct
+    {
+        if (!IsAvailable || subscriber == null) return null;
+        
+        try
+        {
+            return subscriber.InvokeFunc(arg);
+        }
+        catch (Exception)
+        {
+#if AUTORETAINER_VERBOSE_LOGGING
+            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+#endif
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses vessel (submersible/airship) data from a JArray.
+    /// </summary>
+    private static void ParseVesselsFromJArray(JArray? vesselArray, List<AutoRetainerVesselData> vessels, bool isSubmersible)
+    {
+        if (vesselArray == null) return;
+        
+        foreach (var vessel in vesselArray)
+        {
+            var vesselName = vessel["Name"]?.Value<string>() ?? "";
+            var returnTime = vessel["ReturnTime"]?.Value<long>() ?? 0L;
+            
+            if (!string.IsNullOrEmpty(vesselName))
+            {
+                vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, isSubmersible));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses vessel (submersible/airship) data via reflection.
+    /// </summary>
+    private static void ParseVesselsFromReflection(System.Collections.IEnumerable? vesselList, List<AutoRetainerVesselData> vessels, bool isSubmersible)
+    {
+        if (vesselList == null) return;
+        
+        foreach (var vessel in vesselList)
+        {
+            var vType = vessel.GetType();
+            var vesselName = vType.GetProperty("Name")?.GetValue(vessel) as string ?? "";
+            var returnTimeProp = vType.GetProperty("ReturnTime")?.GetValue(vessel);
+            var returnTime = returnTimeProp != null ? Convert.ToInt64(returnTimeProp) : 0L;
+            
+            if (!string.IsNullOrEmpty(vesselName))
+            {
+                vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, isSubmersible));
+            }
+        }
+    }
+
+    #endregion
+
     #region Plugin State Queries
 
     /// <summary>
     /// Checks if AutoRetainer is currently busy processing tasks.
     /// </summary>
-    public bool? IsBusy()
-    {
-        if (!IsAvailable || _isBusy == null) return null;
-        
-        try
-        {
-            return _isBusy.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get IsBusy from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public bool? IsBusy() => SafeInvokeValue(_isBusy, nameof(IsBusy));
 
     /// <summary>
     /// Checks if AutoRetainer is currently suppressed.
     /// </summary>
-    public bool? GetSuppressed()
-    {
-        if (!IsAvailable || _getSuppressed == null) return null;
-        
-        try
-        {
-            return _getSuppressed.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get Suppressed from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public bool? GetSuppressed() => SafeInvokeValue(_getSuppressed, nameof(GetSuppressed));
 
     /// <summary>
     /// Checks if Multi-Mode is currently enabled.
     /// </summary>
-    public bool? GetMultiModeEnabled()
-    {
-        if (!IsAvailable || _getMultiModeEnabled == null) return null;
-        
-        try
-        {
-            return _getMultiModeEnabled.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get MultiModeEnabled from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public bool? GetMultiModeEnabled() => SafeInvokeValue(_getMultiModeEnabled, nameof(GetMultiModeEnabled));
 
     /// <summary>
     /// Checks if any retainers are available for the current character.
     /// </summary>
-    public bool? AreAnyRetainersAvailable()
-    {
-        if (!IsAvailable || _areAnyRetainersAvailable == null) return null;
-        
-        try
-        {
-            return _areAnyRetainersAvailable.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to check retainer availability from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public bool? AreAnyRetainersAvailable() => SafeInvokeValue(_areAnyRetainersAvailable, nameof(AreAnyRetainersAvailable));
 
     /// <summary>
     /// Gets the number of free inventory slots.
     /// </summary>
-    public int? GetInventoryFreeSlotCount()
-    {
-        if (!IsAvailable || _getInventoryFreeSlotCount == null) return null;
-        
-        try
-        {
-            return _getInventoryFreeSlotCount.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get inventory free slots from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public int? GetInventoryFreeSlotCount() => SafeInvokeValue(_getInventoryFreeSlotCount, nameof(GetInventoryFreeSlotCount));
 
     /// <summary>
     /// Checks if auto-login is possible.
     /// </summary>
-    public bool? CanAutoLogin()
-    {
-        if (!IsAvailable || _canAutoLogin == null) return null;
-        
-        try
-        {
-            return _canAutoLogin.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to check auto-login availability from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public bool? CanAutoLogin() => SafeInvokeValue(_canAutoLogin, nameof(CanAutoLogin));
 
     /// <summary>
     /// Gets the seconds remaining until the closest retainer venture completes.
     /// </summary>
-    public long? GetClosestRetainerVentureSecondsRemaining(ulong cid)
-    {
-        if (!IsAvailable || _getClosestRetainerVentureSecondsRemaining == null) return null;
-        
-        try
-        {
-            return _getClosestRetainerVentureSecondsRemaining.InvokeFunc(cid);
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get closest venture time from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public long? GetClosestRetainerVentureSecondsRemaining(ulong cid) 
+        => SafeInvokeNullable(_getClosestRetainerVentureSecondsRemaining, cid, nameof(GetClosestRetainerVentureSecondsRemaining));
 
     /// <summary>
     /// Gets enabled retainers for all characters.
     /// </summary>
-    public Dictionary<ulong, HashSet<string>>? GetEnabledRetainers()
-    {
-        if (!IsAvailable || _getEnabledRetainers == null) return null;
-        
-        try
-        {
-            return _getEnabledRetainers.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get enabled retainers from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
-    }
+    public Dictionary<ulong, HashSet<string>>? GetEnabledRetainers() 
+        => SafeInvoke(_getEnabledRetainers, nameof(GetEnabledRetainers));
 
     /// <summary>
     /// Gets the set of enabled retainer names for a specific character.
