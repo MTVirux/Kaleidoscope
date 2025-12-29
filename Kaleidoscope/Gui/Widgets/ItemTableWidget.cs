@@ -88,9 +88,9 @@ public class ItemColumnConfig
 
 /// <summary>
 /// Represents a group of merged columns that display summed values.
-/// Extends MTGui's MergedColumnGroupBase with Kaleidoscope-specific visibility settings.
+/// Extends MTGui's MTMergedColumnGroupBase with Kaleidoscope-specific visibility settings.
 /// </summary>
-public class MergedColumnGroup : MTGui.Table.MergedColumnGroupBase
+public class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
 {
     /// <summary>
     /// Whether to show this merged group in table view.
@@ -221,32 +221,32 @@ public interface IItemTableWidgetSettings
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    TableHorizontalAlignment HorizontalAlignment { get; set; }
+    MTTableHorizontalAlignment HorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    TableVerticalAlignment VerticalAlignment { get; set; }
+    MTTableVerticalAlignment VerticalAlignment { get; set; }
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; }
+    MTTableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; }
+    MTTableVerticalAlignment CharacterColumnVerticalAlignment { get; set; }
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    TableHorizontalAlignment HeaderHorizontalAlignment { get; set; }
+    MTTableHorizontalAlignment HeaderHorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    TableVerticalAlignment HeaderVerticalAlignment { get; set; }
+    MTTableVerticalAlignment HeaderVerticalAlignment { get; set; }
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.
@@ -1941,7 +1941,7 @@ public class ItemTableWidget : ISettingsProvider
         return result;
     }
     
-    private static string FormatNumber(long value, bool compact) => TableHelpers.FormatNumber(value, compact);
+    private static string FormatNumber(long value, bool compact) => MTTableHelpers.FormatNumber(value, compact);
     
     /// <summary>
     /// Draws text in a table cell with the specified alignment.
@@ -1949,18 +1949,18 @@ public class ItemTableWidget : ISettingsProvider
     private static void DrawAlignedCellText(
         string text, 
         Vector4? color, 
-        TableHorizontalAlignment hAlign, 
-        TableVerticalAlignment vAlign) => TableHelpers.DrawAlignedCellText(text, hAlign, vAlign, color);
+        MTTableHorizontalAlignment hAlign, 
+        MTTableVerticalAlignment vAlign) => MTTableHelpers.DrawAlignedCellText(text, hAlign, vAlign, color);
     
     /// <summary>
     /// Draws a header cell with alignment and sorting support.
     /// </summary>
     private static void DrawAlignedHeaderCell(
         string label,
-        TableHorizontalAlignment hAlign,
-        TableVerticalAlignment vAlign,
+        MTTableHorizontalAlignment hAlign,
+        MTTableVerticalAlignment vAlign,
         int columnIndex,
-        bool sortable) => TableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable);
+        bool sortable) => MTTableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable);
     
     #endregion
     
@@ -2011,7 +2011,7 @@ public class ItemTableWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Column Sizing", true))
+        if (MTTreeHelpers.DrawSection("Column Sizing", true))
         {
             var useFullNameWidth = settings.UseFullNameWidth;
         if (ImGui.Checkbox("Fit character column to name width", ref useFullNameWidth))
@@ -2034,11 +2034,11 @@ public class ItemTableWidget : ISettingsProvider
             {
                 ImGui.SetTooltip("Automatically size all data columns to equal widths.\nCharacter column width takes priority.");
             }
-            TreeHelpers.EndSection();
+            MTTreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Alignment"))
+        if (MTTreeHelpers.DrawSection("Alignment"))
         {
             // Data column alignment
             ImGui.TextDisabled("Data Columns");
@@ -2048,7 +2048,7 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##data", ref hAlign, "Left\0Center\0Right\0"))
             {
-                settings.HorizontalAlignment = (TableHorizontalAlignment)hAlign;
+                settings.HorizontalAlignment = (MTTableHorizontalAlignment)hAlign;
                 changed = true;
             }
         
@@ -2057,7 +2057,7 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##data", ref vAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.VerticalAlignment = (TableVerticalAlignment)vAlign;
+                settings.VerticalAlignment = (MTTableVerticalAlignment)vAlign;
                 changed = true;
             }
             
@@ -2069,7 +2069,7 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##char", ref charHAlign, "Left\0Center\0Right\0"))
             {
-                settings.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)charHAlign;
+                settings.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)charHAlign;
                 changed = true;
             }
         
@@ -2078,7 +2078,7 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##char", ref charVAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.CharacterColumnVerticalAlignment = (TableVerticalAlignment)charVAlign;
+                settings.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)charVAlign;
                 changed = true;
             }
             
@@ -2090,7 +2090,7 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##header", ref headerHAlign, "Left\0Center\0Right\0"))
             {
-                settings.HeaderHorizontalAlignment = (TableHorizontalAlignment)headerHAlign;
+                settings.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)headerHAlign;
                 changed = true;
             }
         
@@ -2099,14 +2099,14 @@ public class ItemTableWidget : ISettingsProvider
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##header", ref headerVAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
+                settings.HeaderVerticalAlignment = (MTTableVerticalAlignment)headerVAlign;
                 changed = true;
             }
-            TreeHelpers.EndSection();
+            MTTreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Character Column"))
+        if (MTTreeHelpers.DrawSection("Character Column"))
         {
             var charWidth = settings.CharacterColumnWidth;
             if (ImGui.SliderFloat("Min Width", ref charWidth, 60f, 200f, "%.0f"))
@@ -2120,22 +2120,22 @@ public class ItemTableWidget : ISettingsProvider
             }
         
             // Character column color
-            changed |= TableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
-            TreeHelpers.EndSection();
+            changed |= MTTableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
+            MTTreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Row Colors"))
+        if (MTTreeHelpers.DrawSection("Row Colors"))
         {
             // Header color
-            changed |= TableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
+            changed |= MTTableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
         
             // Even row color
-            changed |= TableHelpers.DrawColorOption("Even Rows", settings.EvenRowColor, c => settings.EvenRowColor = c);
+            changed |= MTTableHelpers.DrawColorOption("Even Rows", settings.EvenRowColor, c => settings.EvenRowColor = c);
         
             // Odd row color
-            changed |= TableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
-            TreeHelpers.EndSection();
+            changed |= MTTableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
+            MTTreeHelpers.EndSection();
         }
         
         // Merged rows section
@@ -2143,7 +2143,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (TreeHelpers.DrawSection($"Merged Rows ({settings.MergedRowGroups.Count})", false, "MergedRows"))
+            if (MTTreeHelpers.DrawSection($"Merged Rows ({settings.MergedRowGroups.Count})", false, "MergedRows"))
             {
                 ImGui.TextDisabled("Hold SHIFT and click/drag on character names to select, then right-click to merge.");
                 ImGui.Spacing();
@@ -2205,7 +2205,7 @@ public class ItemTableWidget : ISettingsProvider
                     settings.MergedRowGroups.Clear();
                     changed = true;
                 }
-                TreeHelpers.EndSection();
+                MTTreeHelpers.EndSection();
             }
         }
         else
@@ -2219,7 +2219,7 @@ public class ItemTableWidget : ISettingsProvider
         {
             ImGui.Spacing();
             
-            if (TreeHelpers.DrawSection($"Hidden Characters ({settings.HiddenCharacters.Count})", false, "HiddenChars"))
+            if (MTTreeHelpers.DrawSection($"Hidden Characters ({settings.HiddenCharacters.Count})", false, "HiddenChars"))
             {
                 // Show each hidden character with unhide button
                 ulong? characterToUnhide = null;
@@ -2255,7 +2255,7 @@ public class ItemTableWidget : ISettingsProvider
                 {
                     ImGui.SetTooltip("Unhide all hidden characters");
                 }
-                TreeHelpers.EndSection();
+                MTTreeHelpers.EndSection();
             }
         }
         else
