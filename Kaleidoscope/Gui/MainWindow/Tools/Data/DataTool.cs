@@ -37,7 +37,7 @@ public class DataTool : ToolComponent
     
     // Widgets
     private readonly ItemTableWidget _tableWidget;
-    private readonly ImplotGraphWidget _graphWidget;
+    private readonly MTGraphWidget _graphWidget;
     private readonly ItemComboDropdown? _itemCombo;
     private readonly CurrencyComboDropdown? _currencyCombo;
     private readonly CharacterCombo? _characterCombo;
@@ -50,13 +50,13 @@ public class DataTool : ToolComponent
     private DateTime _lastTableRefresh = DateTime.MinValue;
     private volatile bool _pendingTableRefresh = true;
     
-    // Graph view cached data (tuple format matching ImplotGraphWidget.RenderMultipleSeries)
+    // Graph view cached data (tuple format matching MTGraphWidget.RenderMultipleSeries)
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
     private DateTime _lastGraphRefresh = DateTime.MinValue;
     private volatile bool _graphCacheIsDirty = true;
     private int _cachedSeriesCount;
     private int _cachedTimeRangeValue;
-    private TimeUnit _cachedTimeRangeUnit;
+    private MTTimeUnit _cachedTimeRangeUnit;
     private bool _cachedIncludeRetainers;
     private TableGroupingMode _cachedGroupingMode;
     
@@ -126,7 +126,7 @@ public class DataTool : ToolComponent
             "Table Settings");
         
         // Create the graph widget
-        _graphWidget = new ImplotGraphWidget(new ImPlotGraphConfig
+        _graphWidget = new MTGraphWidget(new MTGraphConfig
         {
             PlotId = "DataToolGraph",
             MinValue = 0f,
@@ -2194,12 +2194,12 @@ public class DataTool : ToolComponent
         target.SortAscending = SettingsImportHelper.GetSetting(settings, "SortAscending", target.SortAscending);
         target.UseFullNameWidth = SettingsImportHelper.GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
         target.AutoSizeEqualColumns = SettingsImportHelper.GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
-        target.HorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
-        target.VerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
-        target.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
-        target.CharacterColumnVerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
-        target.HeaderHorizontalAlignment = (TableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
-        target.HeaderVerticalAlignment = (TableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
+        target.HorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
+        target.VerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
+        target.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
+        target.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
+        target.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
+        target.HeaderVerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
         target.HideCharacterColumnInAllMode = SettingsImportHelper.GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
         target.TextColorMode = (TableTextColorMode)SettingsImportHelper.GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
         target.ShowRetainerBreakdown = SettingsImportHelper.GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
@@ -2233,8 +2233,8 @@ public class DataTool : ToolComponent
         target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
         target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
         target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
-        target.LegendPosition = (LegendPosition)SettingsImportHelper.GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
-        target.GraphType = (GraphType)SettingsImportHelper.GetSetting(settings, "GraphType", (int)target.GraphType);
+        target.LegendPosition = (MTLegendPosition)SettingsImportHelper.GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
+        target.GraphType = (MTGraphType)SettingsImportHelper.GetSetting(settings, "GraphType", (int)target.GraphType);
         target.ShowXAxisTimestamps = SettingsImportHelper.GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
         target.ShowCrosshair = SettingsImportHelper.GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
         target.ShowGridLines = SettingsImportHelper.GetSetting(settings, "ShowGridLines", target.ShowGridLines);
@@ -2244,11 +2244,11 @@ public class DataTool : ToolComponent
         target.ValueLabelOffsetY = SettingsImportHelper.GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
         target.AutoScrollEnabled = SettingsImportHelper.GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
         target.AutoScrollTimeValue = SettingsImportHelper.GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
-        target.AutoScrollTimeUnit = (TimeUnit)SettingsImportHelper.GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollTimeUnit = (MTTimeUnit)SettingsImportHelper.GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
         target.AutoScrollNowPosition = SettingsImportHelper.GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
         target.ShowControlsDrawer = SettingsImportHelper.GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
         target.TimeRangeValue = SettingsImportHelper.GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
-        target.TimeRangeUnit = (TimeUnit)SettingsImportHelper.GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        target.TimeRangeUnit = (MTTimeUnit)SettingsImportHelper.GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
         
         // Update character combo
         if (_characterCombo != null)
@@ -2271,7 +2271,7 @@ public class DataTool : ToolComponent
     
     #endregion
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
     {
         _instanceSettings.AutoScrollEnabled = enabled;
         _instanceSettings.AutoScrollTimeValue = timeValue;
@@ -2282,11 +2282,11 @@ public class DataTool : ToolComponent
     }
     
     /// <summary>
-    /// Imports merged column groups from various serialized formats.
+    /// Generic helper to import a list of items from various serialized formats.
     /// </summary>
-    private static List<MergedColumnGroup> ImportMergedColumnGroups(object? obj)
+    private static List<T> ImportMergedGroups<T>(object? obj, Func<Dictionary<string, object?>, T?> itemFactory, string typeName) where T : class
     {
-        var result = new List<MergedColumnGroup>();
+        var result = new List<T>();
         if (obj == null) return result;
         
         try
@@ -2305,28 +2305,41 @@ public class DataTool : ToolComponent
                 var dict = SettingsImportHelper.ConvertToDictionary(item);
                 if (dict == null) continue;
                 
-                var group = new MergedColumnGroup
-                {
-                    Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
-                    Width = SettingsImportHelper.GetSetting(dict, "Width", 80f),
-                    Color = SettingsImportHelper.ImportColor(dict, "Color"),
-                    ShowInTable = SettingsImportHelper.GetSetting(dict, "ShowInTable", true),
-                    ShowInGraph = SettingsImportHelper.GetSetting(dict, "ShowInGraph", true)
-                };
-                
-                var indices = SettingsImportHelper.ImportIntList(dict, "ColumnIndices");
-                if (indices != null)
-                    group.ColumnIndices = indices;
-                
-                result.Add(group);
+                var parsed = itemFactory(dict);
+                if (parsed != null)
+                    result.Add(parsed);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug($"Failed to import {typeName}: {ex.Message}");
         }
         
         return result;
+    }
+    
+    /// <summary>
+    /// Imports merged column groups from various serialized formats.
+    /// </summary>
+    private static List<MergedColumnGroup> ImportMergedColumnGroups(object? obj)
+    {
+        return ImportMergedGroups(obj, dict =>
+        {
+            var group = new MergedColumnGroup
+            {
+                Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
+                Width = SettingsImportHelper.GetSetting(dict, "Width", 80f),
+                Color = SettingsImportHelper.ImportColor(dict, "Color"),
+                ShowInTable = SettingsImportHelper.GetSetting(dict, "ShowInTable", true),
+                ShowInGraph = SettingsImportHelper.GetSetting(dict, "ShowInGraph", true)
+            };
+            
+            var indices = SettingsImportHelper.ImportIntList(dict, "ColumnIndices");
+            if (indices != null)
+                group.ColumnIndices = indices;
+            
+            return group;
+        }, nameof(MergedColumnGroup));
     }
     
     /// <summary>
@@ -2334,44 +2347,20 @@ public class DataTool : ToolComponent
     /// </summary>
     private static List<MergedRowGroup> ImportMergedRowGroups(object? obj)
     {
-        var result = new List<MergedRowGroup>();
-        if (obj == null) return result;
-        
-        try
+        return ImportMergedGroups(obj, dict =>
         {
-            System.Collections.IEnumerable? enumerable = null;
-            
-            if (obj is Newtonsoft.Json.Linq.JArray jArray)
-                enumerable = jArray;
-            else if (obj is System.Collections.IEnumerable e)
-                enumerable = e;
-            
-            if (enumerable == null) return result;
-            
-            foreach (var item in enumerable)
+            var group = new MergedRowGroup
             {
-                var dict = SettingsImportHelper.ConvertToDictionary(item);
-                if (dict == null) continue;
-                
-                var group = new MergedRowGroup
-                {
-                    Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
-                    Color = SettingsImportHelper.ImportColor(dict, "Color")
-                };
-                
-                var charIds = SettingsImportHelper.ImportUlongList(dict, "CharacterIds");
-                if (charIds != null)
-                    group.CharacterIds = charIds;
-                
-                result.Add(group);
-            }
-        }
-        catch
-        {
-            // Graceful fallback
-        }
-        
-        return result;
+                Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
+                Color = SettingsImportHelper.ImportColor(dict, "Color")
+            };
+            
+            var charIds = SettingsImportHelper.ImportUlongList(dict, "CharacterIds");
+            if (charIds != null)
+                group.CharacterIds = charIds;
+            
+            return group;
+        }, nameof(MergedRowGroup));
     }
     
     public override void Dispose()
