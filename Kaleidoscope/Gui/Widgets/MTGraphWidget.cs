@@ -10,12 +10,12 @@ namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
 /// A reusable graph widget for displaying numerical sample data.
-/// This is a thin wrapper around MTGui.Graph.ImPlotGraph that maintains backward compatibility
+/// This is a thin wrapper around MTGui.Graph.MTGraph that maintains backward compatibility
 /// with the existing Kaleidoscope API and provides ISettingsProvider integration.
 /// </summary>
-public class ImplotGraphWidget : ISettingsProvider
+public class MTGraphWidget : ISettingsProvider
 {
-    private readonly ImPlotGraph _graph;
+    private readonly MTGraph _graph;
     
     // === ISettingsProvider implementation fields ===
     private IGraphWidgetSettings? _boundSettings;
@@ -38,17 +38,17 @@ public class ImplotGraphWidget : ISettingsProvider
     #region Constructors
 
     /// <summary>
-    /// Creates a new ImplotGraphWidget with default configuration.
+    /// Creates a new MTGraphWidget with default configuration.
     /// </summary>
-    public ImplotGraphWidget() : this(new ImPlotGraphConfig()) { }
+    public MTGraphWidget() : this(new MTGraphConfig()) { }
 
     /// <summary>
-    /// Creates a new ImplotGraphWidget with custom configuration.
+    /// Creates a new MTGraphWidget with custom configuration.
     /// </summary>
     /// <param name="config">The graph configuration.</param>
-    public ImplotGraphWidget(ImPlotGraphConfig config)
+    public MTGraphWidget(MTGraphConfig config)
     {
-        _graph = new ImPlotGraph(config);
+        _graph = new MTGraph(config);
         
         // Forward auto-scroll settings changes
         _graph.OnAutoScrollSettingsChanged += (enabled, value, unit, position) =>
@@ -68,24 +68,24 @@ public class ImplotGraphWidget : ISettingsProvider
     }
 
     /// <summary>
-    /// Creates a new ImplotGraphWidget with a legacy GraphConfig for backward compatibility.
+    /// Creates a new MTGraphWidget with a legacy GraphConfig for backward compatibility.
     /// </summary>
-    [Obsolete("Use ImPlotGraphConfig instead. This constructor is for backward compatibility.")]
-    public ImplotGraphWidget(GraphConfig config) : this(config?.ToImPlotGraphConfig() ?? new ImPlotGraphConfig()) { }
+    [Obsolete("Use MTGraphConfig instead. This constructor is for backward compatibility.")]
+    public MTGraphWidget(GraphConfig config) : this(config?.ToMTGraphConfig() ?? new MTGraphConfig()) { }
 
     #endregion
 
     #region Properties
 
     /// <summary>
-    /// Gets the underlying ImPlotGraph instance.
+    /// Gets the underlying MTGraph instance.
     /// </summary>
-    public ImPlotGraph Graph => _graph;
+    public MTGraph Graph => _graph;
     
     /// <summary>
     /// Gets the current graph configuration.
     /// </summary>
-    public ImPlotGraphConfig Config => _graph.Config;
+    public MTGraphConfig Config => _graph.Config;
     
     /// <summary>
     /// Gets whether the mouse is over an overlay element (legend, controls drawer).
@@ -123,7 +123,7 @@ public class ImplotGraphWidget : ISettingsProvider
     /// <summary>
     /// Gets or sets the auto-scroll time unit.
     /// </summary>
-    public TimeUnit AutoScrollTimeUnit
+    public MTTimeUnit AutoScrollTimeUnit
     {
         get => _graph.Config.AutoScrollTimeUnit;
         set => _graph.Config.AutoScrollTimeUnit = value;
@@ -150,9 +150,9 @@ public class ImplotGraphWidget : ISettingsProvider
 
     /// <summary>
     /// Event fired when auto-scroll settings are changed via the controls drawer.
-    /// Parameters: (bool autoScrollEnabled, int timeValue, TimeUnit timeUnit, float nowPosition)
+    /// Parameters: (bool autoScrollEnabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
     /// </summary>
-    public event Action<bool, int, TimeUnit, float>? OnAutoScrollSettingsChanged;
+    public event Action<bool, int, MTTimeUnit, float>? OnAutoScrollSettingsChanged;
 
     #endregion
 
@@ -175,16 +175,16 @@ public class ImplotGraphWidget : ISettingsProvider
         float valueLabelOffsetY = 0f, 
         float legendWidth = 140f, 
         bool showLegend = true, 
-        GraphType graphType = GraphType.Area, 
+        MTGraphType graphType = MTGraphType.Area, 
         bool showXAxisTimestamps = true,
         bool showCrosshair = true,
         bool showGridLines = true,
         bool showCurrentPriceLine = true,
-        LegendPosition legendPosition = LegendPosition.InsideTopLeft,
+        MTLegendPosition legendPosition = MTLegendPosition.InsideTopLeft,
         float legendHeightPercent = 25f,
         bool autoScrollEnabled = false,
         int autoScrollTimeValue = 1,
-        TimeUnit autoScrollTimeUnit = TimeUnit.Hours,
+        MTTimeUnit autoScrollTimeUnit = MTTimeUnit.Hours,
         float autoScrollNowPosition = 75f,
         bool showControlsDrawer = true)
     {
@@ -354,13 +354,13 @@ public class ImplotGraphWidget : ISettingsProvider
                 var legendPosition = (int)settings.LegendPosition;
                 if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                 {
-                    settings.LegendPosition = (LegendPosition)legendPosition;
+                    settings.LegendPosition = (MTLegendPosition)legendPosition;
                     config.LegendPosition = settings.LegendPosition;
                     changed = true;
                 }
                 ShowSettingsTooltip("Where to display the legend: outside the graph or inside at a corner.");
                 
-                if (settings.LegendPosition == LegendPosition.Outside)
+                if (settings.LegendPosition == MTLegendPosition.Outside)
                 {
                     var legendWidth = settings.LegendWidth;
                     if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
@@ -419,7 +419,7 @@ public class ImplotGraphWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Graph Style"))
+        if (MTTreeHelpers.DrawSection("Graph Style"))
         {
             // Graph type
             var graphType = settings.GraphType;
@@ -471,11 +471,11 @@ public class ImplotGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a horizontal line at the current (latest) value.");
             
-            TreeHelpers.EndSection();
+            MTTreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (TreeHelpers.DrawSection("Auto-Scroll"))
+        if (MTTreeHelpers.DrawSection("Auto-Scroll"))
         {
             var autoScrollEnabled = settings.AutoScrollEnabled;
             if (ImGui.Checkbox("Enable auto-scroll", ref autoScrollEnabled))
@@ -502,7 +502,7 @@ public class ImplotGraphWidget : ISettingsProvider
                 var timeUnit = (int)settings.AutoScrollTimeUnit;
                 if (ImGui.Combo("Time window unit", ref timeUnit, AutoScrollTimeUnitNames, AutoScrollTimeUnitNames.Length))
                 {
-                    settings.AutoScrollTimeUnit = (TimeUnit)timeUnit;
+                    settings.AutoScrollTimeUnit = (MTTimeUnit)timeUnit;
                     config.AutoScrollTimeUnit = settings.AutoScrollTimeUnit;
                     changed = true;
                 }
@@ -527,7 +527,7 @@ public class ImplotGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a collapsible controls panel in the bottom-left corner of the graph.");
             
-            TreeHelpers.EndSection();
+            MTTreeHelpers.EndSection();
         }
         
         if (changed)
@@ -570,9 +570,9 @@ public class ImplotGraphWidget : ISettingsProvider
 
 /// <summary>
 /// Legacy configuration class for backward compatibility.
-/// New code should use ImPlotGraphConfig directly.
+/// New code should use MTGraphConfig directly.
 /// </summary>
-[Obsolete("Use MTGui.Graph.ImPlotGraphConfig instead.")]
+[Obsolete("Use MTGui.Graph.MTGraphConfig instead.")]
 public class GraphConfig
 {
     public float MinValue { get; set; } = 0f;
@@ -585,27 +585,27 @@ public class GraphConfig
     public float ValueLabelOffsetY { get; set; } = 0f;
     public float LegendWidth { get; set; } = 140f;
     public bool ShowLegend { get; set; } = true;
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
+    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.InsideTopLeft;
     public float LegendHeightPercent { get; set; } = 25f;
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;
     public bool ShowGridLines { get; set; } = true;
     public bool ShowCurrentPriceLine { get; set; } = true;
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     public bool ShowControlsDrawer { get; set; } = true;
     public float AutoScrollNowPosition { get; set; } = 75f;
     
-    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit.ToSeconds(AutoScrollTimeValue);
+    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
     
     /// <summary>
-    /// Converts this legacy config to the new ImPlotGraphConfig.
+    /// Converts this legacy config to the new MTGraphConfig.
     /// </summary>
-    internal ImPlotGraphConfig ToImPlotGraphConfig()
+    internal MTGraphConfig ToMTGraphConfig()
     {
-        return new ImPlotGraphConfig
+        return new MTGraphConfig
         {
             MinValue = MinValue,
             MaxValue = MaxValue,
