@@ -151,7 +151,7 @@ public class Configuration : IPluginConfiguration
     public bool GilTrackerHideCharacterSelector { get; set; } = false;
     public bool GilTrackerShowMultipleLines { get; set; } = false;
     public int GilTrackerTimeRangeValue { get; set; } = 7;
-    public TimeUnit GilTrackerTimeRangeUnit { get; set; } = TimeUnit.All;
+    public MTTimeUnit GilTrackerTimeRangeUnit { get; set; } = MTTimeUnit.All;
     public bool GilTrackerShowEndGap { get; set; } = false;
     public float GilTrackerEndGapPercent { get; set; } = 5f;
     public bool GilTrackerShowValueLabel { get; set; } = false;
@@ -280,7 +280,7 @@ public class Configuration : IPluginConfiguration
     /// Style configuration for all graph widgets.
     /// Customizes colors, spacing, and styling for graph components.
     /// </summary>
-    public GraphStyleConfig GraphStyle { get; set; } = new();
+    public MTGraphStyleConfig GraphStyle { get; set; } = new();
 }
 
 /// <summary>
@@ -351,7 +351,7 @@ public class CrystalTrackerSettings
 
     // Display settings
     public int TimeRangeValue { get; set; } = 7;
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
@@ -359,20 +359,20 @@ public class CrystalTrackerSettings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     
     /// <summary>
     /// Calculates the auto-scroll time range in seconds from value and unit.
     /// </summary>
-    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit.ToSeconds(AutoScrollTimeValue);
+    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
 
     /// <summary>
     /// Gets whether a specific element is included in the filter.
@@ -486,38 +486,38 @@ public class ItemTableSettings : IItemTableWidgetSettings
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Right;
+    public MTTableHorizontalAlignment HorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Right;
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    public TableVerticalAlignment VerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment VerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Left;
+    public MTTableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Left;
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Center;
+    public MTTableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Center;
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.
@@ -623,10 +623,10 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public bool ShowLegend { get; set; } = true;
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
     /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -656,7 +656,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Unit for auto-scroll time range.</summary>
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
@@ -668,7 +668,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
     
     /// <summary>Unit for time range.</summary>
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     
     // === Character filtering settings (aligned with ItemTableSettings) ===
     
@@ -828,38 +828,38 @@ public class DataToolSettings :
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Right;
+    public MTTableHorizontalAlignment HorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Right;
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    public TableVerticalAlignment VerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment VerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Left;
+    public MTTableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Left;
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
-        TableHorizontalAlignment.Center;
+    public MTTableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
+        MTTableHorizontalAlignment.Center;
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
-        TableVerticalAlignment.Top;
+    public MTTableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
+        MTTableVerticalAlignment.Top;
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.
@@ -916,11 +916,11 @@ public class DataToolSettings :
     public bool ShowLegend { get; set; } = true;
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
-    public LegendPosition LegendPosition { get; set; } = 
-        LegendPosition.InsideTopLeft;
+    public MTLegendPosition LegendPosition { get; set; } = 
+        MTLegendPosition.InsideTopLeft;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
     /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -950,7 +950,7 @@ public class DataToolSettings :
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Unit for auto-scroll time range.</summary>
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
@@ -962,7 +962,7 @@ public class DataToolSettings :
     public int TimeRangeValue { get; set; } = 7;
     
     /// <summary>Unit for time range.</summary>
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
 }
 
 public class ContentLayoutState
