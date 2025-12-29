@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// Tool component that tracks character inventory liquid value over time.
 /// Shows a time-series graph of total inventory value (items + gil).
-/// Uses automatic settings binding with ImplotGraphWidget.
+/// Uses automatic settings binding with MTGraphWidget.
 /// </summary>
 public class InventoryValueTool : ToolComponent
 {
@@ -22,7 +22,7 @@ public class InventoryValueTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly CharacterDataService _characterDataService;
     private readonly TimeSeriesCacheService? _cacheService;
-    private readonly ImplotGraphWidget _graphWidget;
+    private readonly MTGraphWidget _graphWidget;
     private readonly InventoryValueSettings _instanceSettings;
 
     // Character selection (0 = all)
@@ -37,7 +37,7 @@ public class InventoryValueTool : ToolComponent
     private bool _cachedShowMultipleLines;
     private bool _cachedIncludeGil;
     private int _cachedTimeRangeValue;
-    private TimeUnit _cachedTimeRangeUnit;
+    private MTTimeUnit _cachedTimeRangeUnit;
     private CharacterNameFormat _cachedNameFormat;
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _cachedSeriesData;
     private bool _cacheIsDirty = true;
@@ -67,7 +67,7 @@ public class InventoryValueTool : ToolComponent
         Size = new Vector2(400, 300);
 
         // Initialize graph widget
-        _graphWidget = new ImplotGraphWidget(new ImPlotGraphConfig
+        _graphWidget = new MTGraphWidget(new MTGraphConfig
         {
             PlotId = "inventory_value_plot",
             NoDataText = "No value history data",
@@ -119,7 +119,7 @@ public class InventoryValueTool : ToolComponent
         _cacheService?.InvalidateInventoryValueCache();
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
     {
         var settings = Settings;
         settings.AutoScrollEnabled = enabled;
@@ -342,7 +342,7 @@ public class InventoryValueTool : ToolComponent
                 var disambiguatedNames = _cacheService?.GetDisambiguatedNames(perCharacterData.Keys) 
                     ?? perCharacterData.Keys.ToDictionary(k => k, k => GetCharacterDisplayName(k));
                 
-                // Convert to the format expected by ImplotGraphWidget - preallocate list capacity
+                // Convert to the format expected by MTGraphWidget - preallocate list capacity
                 var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>(perCharacterData.Count);
                 foreach (var kvp in perCharacterData)
                 {
@@ -553,17 +553,17 @@ public class InventoryValueTool : ToolComponent
         if (settings.TryGetValue("TimeRangeValue", out var timeRangeValue))
             _instanceSettings.TimeRangeValue = Convert.ToInt32(timeRangeValue);
         if (settings.TryGetValue("TimeRangeUnit", out var timeRangeUnit))
-            _instanceSettings.TimeRangeUnit = (TimeUnit)Convert.ToInt32(timeRangeUnit);
+            _instanceSettings.TimeRangeUnit = (MTTimeUnit)Convert.ToInt32(timeRangeUnit);
         if (settings.TryGetValue("ShowLegend", out var showLegend))
             _instanceSettings.ShowLegend = Convert.ToBoolean(showLegend);
         if (settings.TryGetValue("LegendWidth", out var legendWidth))
             _instanceSettings.LegendWidth = Convert.ToSingle(legendWidth);
         if (settings.TryGetValue("LegendPosition", out var legendPosition))
-            _instanceSettings.LegendPosition = (LegendPosition)Convert.ToInt32(legendPosition);
+            _instanceSettings.LegendPosition = (MTLegendPosition)Convert.ToInt32(legendPosition);
         if (settings.TryGetValue("LegendHeightPercent", out var legendHeightPercent))
             _instanceSettings.LegendHeightPercent = Convert.ToSingle(legendHeightPercent);
         if (settings.TryGetValue("GraphType", out var graphType))
-            _instanceSettings.GraphType = (GraphType)Convert.ToInt32(graphType);
+            _instanceSettings.GraphType = (MTGraphType)Convert.ToInt32(graphType);
         if (settings.TryGetValue("ShowXAxisTimestamps", out var showXAxisTimestamps))
             _instanceSettings.ShowXAxisTimestamps = Convert.ToBoolean(showXAxisTimestamps);
         if (settings.TryGetValue("ShowCrosshair", out var showCrosshair))
@@ -583,7 +583,7 @@ public class InventoryValueTool : ToolComponent
         if (settings.TryGetValue("AutoScrollTimeValue", out var autoScrollTimeValue))
             _instanceSettings.AutoScrollTimeValue = Convert.ToInt32(autoScrollTimeValue);
         if (settings.TryGetValue("AutoScrollTimeUnit", out var autoScrollTimeUnit))
-            _instanceSettings.AutoScrollTimeUnit = (TimeUnit)Convert.ToInt32(autoScrollTimeUnit);
+            _instanceSettings.AutoScrollTimeUnit = (MTTimeUnit)Convert.ToInt32(autoScrollTimeUnit);
         if (settings.TryGetValue("AutoScrollNowPosition", out var autoScrollNowPosition))
             _instanceSettings.AutoScrollNowPosition = Convert.ToSingle(autoScrollNowPosition);
         if (settings.TryGetValue("ShowControlsDrawer", out var showControlsDrawer))

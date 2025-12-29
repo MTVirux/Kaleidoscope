@@ -261,7 +261,7 @@ public class LivePriceFeedTool : ToolComponent
     {
         try
         {
-            if (!TreeHelpers.DrawCollapsingSection("Live Feed Settings", true))
+            if (!MTTreeHelpers.DrawCollapsingSection("Live Feed Settings", true))
                 return;
                 
             var settings = Settings;

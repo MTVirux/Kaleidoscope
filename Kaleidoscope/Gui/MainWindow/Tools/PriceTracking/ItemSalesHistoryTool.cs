@@ -349,7 +349,7 @@ public class ItemSalesHistoryTool : ToolComponent
 
     public override void DrawSettings()
     {
-        if (!TreeHelpers.DrawCollapsingSection("Item Sales History Settings", true))
+        if (!MTTreeHelpers.DrawCollapsingSection("Item Sales History Settings", true))
             return;
 
         // Default max entries

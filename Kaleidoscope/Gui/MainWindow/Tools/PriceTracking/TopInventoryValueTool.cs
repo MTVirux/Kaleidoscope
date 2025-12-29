@@ -600,7 +600,7 @@ public class TopInventoryValueTool : ToolComponent
     {
         try
         {
-            if (!TreeHelpers.DrawCollapsingSection("Top Items Settings", true))
+            if (!MTTreeHelpers.DrawCollapsingSection("Top Items Settings", true))
                 return;
                 
             var settings = Settings;
