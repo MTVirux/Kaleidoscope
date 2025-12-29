@@ -207,7 +207,7 @@ public abstract class VentureStatusToolBase : ToolComponent
             ImGui.PushID((int)character.CID);
 
             var headerLabel = $"{GetFormattedCharacterName(character)} @ {character.World}";
-            if (TreeHelpers.DrawCollapsingSection(headerLabel, true))
+            if (MTTreeHelpers.DrawCollapsingSection(headerLabel, true))
             {
                 DrawCharacterContextMenu(character.CID);
 

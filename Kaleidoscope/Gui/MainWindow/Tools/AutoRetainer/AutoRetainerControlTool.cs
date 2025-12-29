@@ -593,7 +593,7 @@ public class AutoRetainerControlTool : ToolComponent
         ImGui.Spacing();
         
         // Hidden characters management
-        if (TreeHelpers.DrawCollapsingSection("Hidden Characters", false))
+        if (MTTreeHelpers.DrawCollapsingSection("Hidden Characters", false))
         {
             ImGui.Indent();
             
@@ -646,7 +646,7 @@ public class AutoRetainerControlTool : ToolComponent
         }
         
         // Color settings
-        if (TreeHelpers.DrawCollapsingSection("Colors", false))
+        if (MTTreeHelpers.DrawCollapsingSection("Colors", false))
         {
             ImGui.Indent();
             
