@@ -234,7 +234,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
 
     /// <summary>Time range unit for the graph.</summary>
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
 
     /// <summary>Whether to show the legend.</summary>
     public bool ShowLegend { get; set; } = true;
@@ -243,13 +243,13 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public float LegendWidth { get; set; } = 140f;
 
     /// <summary>Legend position (outside or inside corners).</summary>
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
 
     /// <summary>Maximum height of inside legend as percentage of graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
 
     /// <summary>Graph type for visualization.</summary>
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
     /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -279,7 +279,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Auto-scroll time range unit.</summary>
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     
     /// <summary>Position of "now" on X-axis (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;

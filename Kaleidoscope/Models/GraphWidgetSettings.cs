@@ -5,18 +5,18 @@ namespace Kaleidoscope.Models;
 
 /// <summary>
 /// Interface for settings classes that contain graph widget configuration.
-/// Implement this interface to enable automatic settings binding with ImplotGraphWidget.
+/// Implement this interface to enable automatic settings binding with MTGraphWidget.
 /// </summary>
-public interface IGraphWidgetSettings : IGraphSettings
+public interface IGraphWidgetSettings : IMTGraphSettings
 {
-    // IGraphWidgetSettings extends IGraphSettings from MTGui.Graph
+    // IGraphWidgetSettings extends IMTGraphSettings from MTGui.Graph
     // No additional members needed - the interface is just for Kaleidoscope-specific typing
 }
 
 /// <summary>
 /// Shared settings for graph widget display configuration.
-/// Used by tools that embed an ImplotGraphWidget to avoid duplicating settings definitions.
-/// Implements IGraphWidgetSettings for automatic binding with ImplotGraphWidget.
+/// Used by tools that embed an MTGraphWidget to avoid duplicating settings definitions.
+/// Implements IGraphWidgetSettings for automatic binding with MTGraphWidget.
 /// </summary>
 public class GraphWidgetSettings : IGraphWidgetSettings
 {
@@ -24,10 +24,10 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
     
     // Graph type
-    public GraphType GraphType { get; set; } = GraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
     // Display settings
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -41,18 +41,18 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
+    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     
     // Time range settings
     public int TimeRangeValue { get; set; } = 7;
-    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     
     /// <summary>
     /// Calculates the auto-scroll time range in seconds from value and unit.
     /// </summary>
-    public double GetAutoScrollTimeRangeSeconds() => AutoScrollTimeUnit.ToSeconds(AutoScrollTimeValue);
+    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
     
     /// <summary>
     /// Gets the time span for the current time range settings.
