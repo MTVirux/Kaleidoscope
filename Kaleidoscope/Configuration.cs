@@ -274,6 +274,12 @@ public class Configuration : IPluginConfiguration
     /// Settings for the time-series in-memory cache.
     /// </summary>
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
+
+    /// <summary>
+    /// Style configuration for all graph widgets.
+    /// Customizes colors, spacing, and styling for graph components.
+    /// </summary>
+    public GraphStyleConfig GraphStyle { get; set; } = new();
 }
 
 /// <summary>

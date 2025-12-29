@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using MTGui.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -212,22 +213,398 @@ public class CustomizationCategory
             ImGui.Spacing();
         }
 
-        // === GRAPH COLORS ===
-        if (ImGui.CollapsingHeader("Graph Colors"))
+        // === GRAPH CUSTOMIZATION ===
+        if (ImGui.CollapsingHeader("Graph Customization"))
         {
             ImGui.Indent();
             ImGui.Spacing();
-
-            var graphDefault = config.UIColors.GraphDefault;
-            if (DrawColorRow("Default Line/Fill", ref graphDefault, new(0.4f, 0.6f, 0.9f, 1f)))
+            
+            ImGui.TextDisabled("Customize colors, spacing, and styling for all graph widgets.");
+            ImGui.Spacing();
+            
+            // === GRAPH COLORS ===
+            if (ImGui.TreeNode("Colors"))
             {
-                config.UIColors.GraphDefault = graphDefault;
+                ImGui.Spacing();
+                
+                var graphColors = config.GraphStyle.Colors;
+                
+                // Backgrounds
+                ImGui.TextUnformatted("Backgrounds");
+                ImGui.Separator();
+                
+                var plotBg = graphColors.PlotBackground;
+                if (DrawColorRow("Plot Background", ref plotBg, new(0.08f, 0.08f, 0.10f, 1f)))
+                {
+                    graphColors.PlotBackground = plotBg;
+                }
+                
+                var frameBg = graphColors.FrameBackground;
+                if (DrawColorRow("Frame Background", ref frameBg, new(0.06f, 0.06f, 0.08f, 1f)))
+                {
+                    graphColors.FrameBackground = frameBg;
+                }
+                
+                ImGui.Spacing();
+                ImGui.TextUnformatted("Grid & Axes");
+                ImGui.Separator();
+                
+                var gridLine = graphColors.GridLine;
+                if (DrawColorRow("Grid Lines", ref gridLine, new(0.25f, 0.25f, 0.28f, 0.4f)))
+            {
+                graphColors.GridLine = gridLine;
             }
             
-            var graphAxis = config.UIColors.GraphAxis;
-            if (DrawColorRow("Axis & Grid Lines", ref graphAxis, new(0.5f, 0.5f, 0.5f, 0.5f)))
+            var axisLine = graphColors.AxisLine;
+            if (DrawColorRow("Axis Lines", ref axisLine, new(0.40f, 0.40f, 0.45f, 1f)))
             {
-                config.UIColors.GraphAxis = graphAxis;
+                graphColors.AxisLine = axisLine;
+            }
+            
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Trend Colors");
+            ImGui.Separator();
+            
+            var bullish = graphColors.Bullish;
+            if (DrawColorRow("Bullish (Positive)", ref bullish, new(0.10f, 0.85f, 0.45f, 1f)))
+            {
+                graphColors.Bullish = bullish;
+            }
+            
+            var bearish = graphColors.Bearish;
+            if (DrawColorRow("Bearish (Negative)", ref bearish, new(0.95f, 0.25f, 0.30f, 1f)))
+            {
+                graphColors.Bearish = bearish;
+            }
+            
+            var neutral = graphColors.Neutral;
+            if (DrawColorRow("Neutral", ref neutral, new(1f, 0.85f, 0.25f, 1f)))
+            {
+                graphColors.Neutral = neutral;
+            }
+            
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Text");
+            ImGui.Separator();
+            
+            var textPrimary = graphColors.TextPrimary;
+            if (DrawColorRow("Primary Text", ref textPrimary, new(0.95f, 0.95f, 0.98f, 1f)))
+            {
+                graphColors.TextPrimary = textPrimary;
+            }
+            
+            var textSecondary = graphColors.TextSecondary;
+            if (DrawColorRow("Secondary Text", ref textSecondary, new(0.65f, 0.65f, 0.70f, 1f)))
+            {
+                graphColors.TextSecondary = textSecondary;
+            }
+            
+            ImGui.Spacing();
+            ImGui.TextUnformatted("Tooltips & Overlays");
+            ImGui.Separator();
+            
+            var crosshair = graphColors.Crosshair;
+            if (DrawColorRow("Crosshair", ref crosshair, new(0.7f, 0.7f, 0.75f, 0.6f)))
+            {
+                graphColors.Crosshair = crosshair;
+                }
+                
+                var tooltipBg = graphColors.TooltipBackground;
+                if (DrawColorRow("Tooltip Background", ref tooltipBg, new(0.10f, 0.10f, 0.12f, 0.95f)))
+                {
+                    graphColors.TooltipBackground = tooltipBg;
+                }
+                
+                var tooltipBorder = graphColors.TooltipBorder;
+                if (DrawColorRow("Tooltip Border", ref tooltipBorder, new(0.35f, 0.35f, 0.40f, 0.8f)))
+                {
+                    graphColors.TooltipBorder = tooltipBorder;
+                }
+                
+                var priceLine = graphColors.CurrentPriceLine;
+                if (DrawColorRow("Current Price Line", ref priceLine, new(1f, 0.85f, 0.25f, 0.9f)))
+                {
+                    graphColors.CurrentPriceLine = priceLine;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH LINE STYLES ===
+            if (ImGui.TreeNode("Line Styles"))
+            {
+                ImGui.Spacing();
+                
+                var lineWeight = config.GraphStyle.LineWeight;
+                if (DrawFloatRow("Line Weight", ref lineWeight, 2f, 0.5f, 5f))
+                {
+                    config.GraphStyle.LineWeight = lineWeight;
+                }
+                
+                var fillAlpha = config.GraphStyle.FillAlpha;
+                if (DrawFloatRow("Fill Alpha", ref fillAlpha, 0.35f, 0f, 1f))
+                {
+                    config.GraphStyle.FillAlpha = fillAlpha;
+                }
+                
+                var multiSeriesFillAlpha = config.GraphStyle.MultiSeriesFillAlpha;
+                if (DrawFloatRow("Multi-Series Fill Alpha", ref multiSeriesFillAlpha, 0.55f, 0f, 1f))
+                {
+                    config.GraphStyle.MultiSeriesFillAlpha = multiSeriesFillAlpha;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH CROSSHAIR & PRICE LINE ===
+            if (ImGui.TreeNode("Crosshair & Price Line"))
+            {
+                ImGui.Spacing();
+                
+                ImGui.TextUnformatted("Crosshair");
+                ImGui.Separator();
+                
+                var crosshairDash = config.GraphStyle.CrosshairDashLength;
+                if (DrawFloatRow("Dash Length", ref crosshairDash, 4f, 1f, 20f))
+                {
+                    config.GraphStyle.CrosshairDashLength = crosshairDash;
+                }
+                
+                var crosshairGap = config.GraphStyle.CrosshairGapLength;
+                if (DrawFloatRow("Gap Length", ref crosshairGap, 3f, 1f, 20f))
+                {
+                    config.GraphStyle.CrosshairGapLength = crosshairGap;
+                }
+                
+                var crosshairThickness = config.GraphStyle.CrosshairThickness;
+                if (DrawFloatRow("Thickness", ref crosshairThickness, 1f, 0.5f, 3f))
+                {
+                    config.GraphStyle.CrosshairThickness = crosshairThickness;
+                }
+                
+                ImGui.Spacing();
+                ImGui.TextUnformatted("Current Price Line");
+                ImGui.Separator();
+                
+                var priceLineDash = config.GraphStyle.PriceLineDashLength;
+                if (DrawFloatRow("Dash Length", ref priceLineDash, 6f, 1f, 20f))
+                {
+                    config.GraphStyle.PriceLineDashLength = priceLineDash;
+                }
+                
+                var priceLineGap = config.GraphStyle.PriceLineGapLength;
+                if (DrawFloatRow("Gap Length", ref priceLineGap, 4f, 1f, 20f))
+                {
+                    config.GraphStyle.PriceLineGapLength = priceLineGap;
+                }
+                
+                var priceLineThickness = config.GraphStyle.PriceLineThickness;
+                if (DrawFloatRow("Thickness", ref priceLineThickness, 1.5f, 0.5f, 5f))
+                {
+                    config.GraphStyle.PriceLineThickness = priceLineThickness;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH TOOLTIP STYLES ===
+            if (ImGui.TreeNode("Tooltip Styles"))
+            {
+                ImGui.Spacing();
+                
+                var tooltipPadding = config.GraphStyle.TooltipPadding;
+                if (DrawFloatRow("Padding", ref tooltipPadding, 8f, 2f, 20f))
+                {
+                    config.GraphStyle.TooltipPadding = tooltipPadding;
+                }
+                
+                var tooltipRounding = config.GraphStyle.TooltipRounding;
+                if (DrawFloatRow("Corner Rounding", ref tooltipRounding, 4f, 0f, 12f))
+                {
+                    config.GraphStyle.TooltipRounding = tooltipRounding;
+                }
+                
+                var tooltipAccent = config.GraphStyle.TooltipAccentWidth;
+                if (DrawFloatRow("Accent Bar Width", ref tooltipAccent, 3f, 0f, 10f))
+                {
+                    config.GraphStyle.TooltipAccentWidth = tooltipAccent;
+                }
+                
+                var tooltipOffset = config.GraphStyle.TooltipOffsetX;
+                if (DrawFloatRow("Offset from Cursor", ref tooltipOffset, 12f, 0f, 30f))
+                {
+                    config.GraphStyle.TooltipOffsetX = tooltipOffset;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH LEGEND STYLES ===
+            if (ImGui.TreeNode("Legend Styles"))
+            {
+                ImGui.Spacing();
+                
+                var legendIndicatorSize = config.GraphStyle.LegendIndicatorSize;
+                if (DrawFloatRow("Indicator Size", ref legendIndicatorSize, 10f, 4f, 20f))
+                {
+                    config.GraphStyle.LegendIndicatorSize = legendIndicatorSize;
+                }
+                
+                var legendRowHeight = config.GraphStyle.LegendRowHeight;
+                if (DrawFloatRow("Row Height", ref legendRowHeight, 18f, 12f, 30f))
+                {
+                    config.GraphStyle.LegendRowHeight = legendRowHeight;
+                }
+                
+                var legendPadding = config.GraphStyle.LegendPadding;
+                if (DrawFloatRow("Padding", ref legendPadding, 8f, 2f, 20f))
+                {
+                    config.GraphStyle.LegendPadding = legendPadding;
+                }
+                
+                var legendScrollbarWidth = config.GraphStyle.LegendScrollbarWidth;
+                if (DrawFloatRow("Scrollbar Width", ref legendScrollbarWidth, 6f, 2f, 12f))
+                {
+                    config.GraphStyle.LegendScrollbarWidth = legendScrollbarWidth;
+                }
+                
+                var legendRounding = config.GraphStyle.LegendRounding;
+                if (DrawFloatRow("Corner Rounding", ref legendRounding, 4f, 0f, 12f))
+                {
+                    config.GraphStyle.LegendRounding = legendRounding;
+                }
+                
+                var legendHiddenAlpha = config.GraphStyle.LegendHiddenAlpha;
+                if (DrawFloatRow("Hidden Series Alpha", ref legendHiddenAlpha, 0.35f, 0.1f, 0.8f))
+                {
+                    config.GraphStyle.LegendHiddenAlpha = legendHiddenAlpha;
+                }
+                
+                var legendMargin = config.GraphStyle.LegendMargin;
+                if (DrawFloatRow("Inside Legend Margin", ref legendMargin, 10f, 0f, 30f))
+                {
+                    config.GraphStyle.LegendMargin = legendMargin;
+                }
+                
+                var legendIndicatorTextGap = config.GraphStyle.LegendIndicatorTextGap;
+                if (DrawFloatRow("Indicator-Text Gap", ref legendIndicatorTextGap, 6f, 2f, 15f))
+                {
+                    config.GraphStyle.LegendIndicatorTextGap = legendIndicatorTextGap;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH VALUE LABEL STYLES ===
+            if (ImGui.TreeNode("Value Label Styles"))
+            {
+                ImGui.Spacing();
+                
+                var valueLabelPadding = config.GraphStyle.ValueLabelPadding;
+                if (DrawFloatRow("Padding", ref valueLabelPadding, 4f, 1f, 12f))
+                {
+                    config.GraphStyle.ValueLabelPadding = valueLabelPadding;
+                }
+                
+                var valueLabelRounding = config.GraphStyle.ValueLabelRounding;
+                if (DrawFloatRow("Corner Rounding", ref valueLabelRounding, 3f, 0f, 10f))
+                {
+                    config.GraphStyle.ValueLabelRounding = valueLabelRounding;
+                }
+                
+                var valueLabelLineThickness = config.GraphStyle.ValueLabelLineThickness;
+                if (DrawFloatRow("Line Thickness", ref valueLabelLineThickness, 1.5f, 0.5f, 4f))
+                {
+                    config.GraphStyle.ValueLabelLineThickness = valueLabelLineThickness;
+                }
+                
+                var valueLabelMinSpacing = config.GraphStyle.ValueLabelMinSpacing;
+                if (DrawFloatRow("Min Vertical Spacing", ref valueLabelMinSpacing, 2f, 0f, 10f))
+                {
+                    config.GraphStyle.ValueLabelMinSpacing = valueLabelMinSpacing;
+                }
+            
+            var valueLabelHorizontalOffset = config.GraphStyle.ValueLabelHorizontalOffset;
+            if (DrawFloatRow("Horizontal Offset", ref valueLabelHorizontalOffset, 6f, 0f, 20f))
+            {
+                    config.GraphStyle.ValueLabelHorizontalOffset = valueLabelHorizontalOffset;
+                }
+                
+                var valueLabelBgAlpha = config.GraphStyle.ValueLabelBackgroundAlpha;
+                if (DrawFloatRow("Background Alpha", ref valueLabelBgAlpha, 0.85f, 0.3f, 1f))
+                {
+                    config.GraphStyle.ValueLabelBackgroundAlpha = valueLabelBgAlpha;
+                }
+                
+                var valueLabelLineAlpha = config.GraphStyle.ValueLabelLineAlpha;
+                if (DrawFloatRow("Connecting Line Alpha", ref valueLabelLineAlpha, 0.4f, 0.1f, 1f))
+                {
+                    config.GraphStyle.ValueLabelLineAlpha = valueLabelLineAlpha;
+                }
+                
+                var valueLabelBorderAlpha = config.GraphStyle.ValueLabelBorderAlpha;
+                if (DrawFloatRow("Border Alpha", ref valueLabelBorderAlpha, 0.7f, 0.2f, 1f))
+                {
+                    config.GraphStyle.ValueLabelBorderAlpha = valueLabelBorderAlpha;
+                }
+                
+                var valueLabelMaxVisible = config.GraphStyle.ValueLabelMaxVisible;
+                if (DrawIntRow("Max Visible Labels", ref valueLabelMaxVisible, 30, 5, 100))
+                {
+                    config.GraphStyle.ValueLabelMaxVisible = valueLabelMaxVisible;
+                }
+                
+                ImGui.TreePop();
+            }
+            
+            // === GRAPH CONTROLS DRAWER ===
+            if (ImGui.TreeNode("Controls Drawer"))
+            {
+                ImGui.Spacing();
+                
+                var toggleButtonWidth = config.GraphStyle.ToggleButtonWidth;
+                if (DrawFloatRow("Toggle Button Width", ref toggleButtonWidth, 24f, 16f, 40f))
+                {
+                    config.GraphStyle.ToggleButtonWidth = toggleButtonWidth;
+                }
+                
+                var toggleButtonHeight = config.GraphStyle.ToggleButtonHeight;
+                if (DrawFloatRow("Toggle Button Height", ref toggleButtonHeight, 20f, 14f, 32f))
+                {
+                    config.GraphStyle.ToggleButtonHeight = toggleButtonHeight;
+                }
+                
+                var drawerWidth = config.GraphStyle.DrawerWidth;
+                if (DrawFloatRow("Drawer Width", ref drawerWidth, 160f, 100f, 250f))
+                {
+                    config.GraphStyle.DrawerWidth = drawerWidth;
+                }
+                
+                var drawerPadding = config.GraphStyle.DrawerPadding;
+                if (DrawFloatRow("Drawer Padding", ref drawerPadding, 8f, 2f, 16f))
+            {
+                config.GraphStyle.DrawerPadding = drawerPadding;
+            }
+            
+            var drawerRowHeight = config.GraphStyle.DrawerRowHeight;
+                if (DrawFloatRow("Row Height", ref drawerRowHeight, 22f, 16f, 32f))
+                {
+                    config.GraphStyle.DrawerRowHeight = drawerRowHeight;
+                }
+                
+                var drawerMargin = config.GraphStyle.DrawerMargin;
+                if (DrawFloatRow("Margin from Plot Edge", ref drawerMargin, 10f, 2f, 25f))
+                {
+                    config.GraphStyle.DrawerMargin = drawerMargin;
+                }
+                
+                var drawerRounding = config.GraphStyle.DrawerRounding;
+                if (DrawFloatRow("Corner Rounding", ref drawerRounding, 3f, 0f, 10f))
+                {
+                    config.GraphStyle.DrawerRounding = drawerRounding;
+                }
+                
+                ImGui.TreePop();
             }
             
             ImGui.Unindent();
@@ -244,11 +621,12 @@ public class CustomizationCategory
             config.MainWindowBackgroundColor = DefaultBackgroundColor;
             config.FullscreenBackgroundColor = DefaultBackgroundColor;
             config.UIColors.ResetToDefaults();
+            config.GraphStyle = new GraphStyleConfig();
             saveConfig();
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("Reset all customization colors to their default values.");
+            ImGui.SetTooltip("Reset all customization colors and graph styles to their default values.");
         }
     }
 
@@ -274,6 +652,64 @@ public class CustomizationCategory
         if (ImGui.Button($"Reset##{label}"))
         {
             color = defaultValue;
+            saveConfig();
+            changed = true;
+        }
+        
+        return changed;
+    }
+
+    /// <summary>
+    /// Draws a float editor row with label, slider, and reset button.
+    /// Returns true if the value was changed.
+    /// </summary>
+    private bool DrawFloatRow(string label, ref float value, float defaultValue, float min, float max)
+    {
+        var changed = false;
+        
+        ImGui.TextUnformatted(label);
+        
+        ImGui.SameLine(180f);
+        ImGui.SetNextItemWidth(150f);
+        if (ImGui.SliderFloat($"##{label}", ref value, min, max, "%.2f"))
+        {
+            saveConfig();
+            changed = true;
+        }
+        
+        ImGui.SameLine();
+        if (ImGui.Button($"Reset##{label}"))
+        {
+            value = defaultValue;
+            saveConfig();
+            changed = true;
+        }
+        
+        return changed;
+    }
+
+    /// <summary>
+    /// Draws an integer editor row with label, slider, and reset button.
+    /// Returns true if the value was changed.
+    /// </summary>
+    private bool DrawIntRow(string label, ref int value, int defaultValue, int min, int max)
+    {
+        var changed = false;
+        
+        ImGui.TextUnformatted(label);
+        
+        ImGui.SameLine(180f);
+        ImGui.SetNextItemWidth(150f);
+        if (ImGui.SliderInt($"##{label}", ref value, min, max))
+        {
+            saveConfig();
+            changed = true;
+        }
+        
+        ImGui.SameLine();
+        if (ImGui.Button($"Reset##{label}"))
+        {
+            value = defaultValue;
             saveConfig();
             changed = true;
         }
