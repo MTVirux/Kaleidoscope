@@ -80,7 +80,7 @@ public static class SpecialGroupingWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        if (!TreeHelpers.DrawCollapsingSection("Special Grouping", true))
+        if (!MTTreeHelpers.DrawCollapsingSection("Special Grouping", true))
         {
             if (changed)
             {
@@ -151,7 +151,7 @@ public static class SpecialGroupingWidget
             // Draw as collapsible header with green checkmark (indented since it's nested)
             ImGui.Indent();
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 1.0f, 0.4f, 1.0f));
-            var headerOpen = TreeHelpers.DrawCollapsingSection($"✓ {name}", true, $"special_{type}");
+            var headerOpen = MTTreeHelpers.DrawCollapsingSection($"✓ {name}", true, $"special_{type}");
             ImGui.PopStyleColor();
             
             if (ImGui.IsItemHovered())

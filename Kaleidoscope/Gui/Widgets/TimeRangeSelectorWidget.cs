@@ -28,7 +28,7 @@ public static class TimeRangeSelectorWidget
     public static bool Draw(
         string label,
         ref int timeRangeValue,
-        ref TimeUnit timeRangeUnit,
+        ref MTTimeUnit timeRangeUnit,
         float valueWidth = 100f,
         float unitWidth = 150f)
     {
@@ -42,12 +42,12 @@ public static class TimeRangeSelectorWidget
         if (unitIndex < 0) unitIndex = 0; // Clamp Seconds to Minutes
         if (ImGui.Combo($"##Unit", ref unitIndex, TimeRangeUnitNames, TimeRangeUnitNames.Length))
         {
-            timeRangeUnit = (TimeUnit)(unitIndex + TimeRangeUnitOffset);
+            timeRangeUnit = (MTTimeUnit)(unitIndex + TimeRangeUnitOffset);
             changed = true;
         }
 
         // Only show value input if not "All"
-        if (timeRangeUnit != TimeUnit.All)
+        if (timeRangeUnit != MTTimeUnit.All)
         {
             ImGui.SameLine();
             ImGui.SetNextItemWidth(valueWidth);
@@ -77,7 +77,7 @@ public static class TimeRangeSelectorWidget
     /// <returns>True if either value changed.</returns>
     public static bool DrawVertical(
         ref int timeRangeValue,
-        ref TimeUnit timeRangeUnit,
+        ref MTTimeUnit timeRangeUnit,
         float inputWidth = 150f)
     {
         bool changed = false;
@@ -88,12 +88,12 @@ public static class TimeRangeSelectorWidget
         ImGui.SetNextItemWidth(inputWidth);
         if (ImGui.Combo("Range unit", ref unitIndex, TimeRangeUnitNames, TimeRangeUnitNames.Length))
         {
-            timeRangeUnit = (TimeUnit)(unitIndex + TimeRangeUnitOffset);
+            timeRangeUnit = (MTTimeUnit)(unitIndex + TimeRangeUnitOffset);
             changed = true;
         }
 
         // Only show value input if not "All"
-        if (timeRangeUnit != TimeUnit.All)
+        if (timeRangeUnit != MTTimeUnit.All)
         {
             var value = timeRangeValue;
             ImGui.SetNextItemWidth(inputWidth);
@@ -114,17 +114,17 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>The calculated TimeSpan, or null if unit is All.</returns>
-    public static TimeSpan? GetTimeSpan(int value, TimeUnit unit)
+    public static TimeSpan? GetTimeSpan(int value, MTTimeUnit unit)
     {
         return unit switch
         {
-            TimeUnit.Seconds => TimeSpan.FromSeconds(value),
-            TimeUnit.Minutes => TimeSpan.FromMinutes(value),
-            TimeUnit.Hours => TimeSpan.FromHours(value),
-            TimeUnit.Days => TimeSpan.FromDays(value),
-            TimeUnit.Weeks => TimeSpan.FromDays(value * 7),
-            TimeUnit.Months => TimeSpan.FromDays(value * 30),
-            TimeUnit.All => null,
+            MTTimeUnit.Seconds => TimeSpan.FromSeconds(value),
+            MTTimeUnit.Minutes => TimeSpan.FromMinutes(value),
+            MTTimeUnit.Hours => TimeSpan.FromHours(value),
+            MTTimeUnit.Days => TimeSpan.FromDays(value),
+            MTTimeUnit.Weeks => TimeSpan.FromDays(value * 7),
+            MTTimeUnit.Months => TimeSpan.FromDays(value * 30),
+            MTTimeUnit.All => null,
             _ => null
         };
     }
@@ -135,7 +135,7 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>The start DateTime (UTC), or DateTime.MinValue if unit is All.</returns>
-    public static DateTime GetStartTime(int value, TimeUnit unit)
+    public static DateTime GetStartTime(int value, MTTimeUnit unit)
     {
         var timeSpan = GetTimeSpan(value, unit);
         return timeSpan.HasValue ? DateTime.UtcNow - timeSpan.Value : DateTime.MinValue;
@@ -147,19 +147,19 @@ public static class TimeRangeSelectorWidget
     /// <param name="value">The numeric value.</param>
     /// <param name="unit">The time unit.</param>
     /// <returns>Description like "Last 7 days" or "All time".</returns>
-    public static string GetDescription(int value, TimeUnit unit)
+    public static string GetDescription(int value, MTTimeUnit unit)
     {
-        if (unit == TimeUnit.All)
+        if (unit == MTTimeUnit.All)
             return "All time";
 
         var unitName = unit switch
         {
-            TimeUnit.Seconds => value == 1 ? "second" : "seconds",
-            TimeUnit.Minutes => value == 1 ? "minute" : "minutes",
-            TimeUnit.Hours => value == 1 ? "hour" : "hours",
-            TimeUnit.Days => value == 1 ? "day" : "days",
-            TimeUnit.Weeks => value == 1 ? "week" : "weeks",
-            TimeUnit.Months => value == 1 ? "month" : "months",
+            MTTimeUnit.Seconds => value == 1 ? "second" : "seconds",
+            MTTimeUnit.Minutes => value == 1 ? "minute" : "minutes",
+            MTTimeUnit.Hours => value == 1 ? "hour" : "hours",
+            MTTimeUnit.Days => value == 1 ? "day" : "days",
+            MTTimeUnit.Weeks => value == 1 ? "week" : "weeks",
+            MTTimeUnit.Months => value == 1 ? "month" : "months",
             _ => "units"
         };
 

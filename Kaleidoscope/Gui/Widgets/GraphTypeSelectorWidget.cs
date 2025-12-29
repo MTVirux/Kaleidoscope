@@ -19,7 +19,7 @@ public static class GraphTypeSelectorWidget
     /// <param name="graphType">Reference to the graph type value.</param>
     /// <param name="width">Width of the dropdown.</param>
     /// <returns>True if the selection changed.</returns>
-    public static bool Draw(string label, ref GraphType graphType, float width = 150f)
+    public static bool Draw(string label, ref MTGraphType graphType, float width = 150f)
     {
         bool changed = false;
 
@@ -27,7 +27,7 @@ public static class GraphTypeSelectorWidget
         var typeIndex = (int)graphType;
         if (ImGui.Combo(label, ref typeIndex, GraphTypeNames, GraphTypeNames.Length))
         {
-            graphType = (GraphType)typeIndex;
+            graphType = (MTGraphType)typeIndex;
             changed = true;
         }
 
@@ -41,7 +41,7 @@ public static class GraphTypeSelectorWidget
     /// <param name="graphType">Reference to the graph type value.</param>
     /// <param name="width">Width of the dropdown.</param>
     /// <returns>True if the selection changed.</returns>
-    public static bool DrawWithTooltip(string label, ref GraphType graphType, float width = 150f)
+    public static bool DrawWithTooltip(string label, ref MTGraphType graphType, float width = 150f)
     {
         var changed = Draw(label, ref graphType, width);
 
@@ -67,14 +67,14 @@ public static class GraphTypeSelectorWidget
     /// </summary>
     /// <param name="graphType">The graph type.</param>
     /// <returns>Human-readable description.</returns>
-    public static string GetDescription(GraphType graphType)
+    public static string GetDescription(MTGraphType graphType)
     {
         return graphType switch
         {
-            GraphType.Area => "Filled area chart - good for showing volume over time",
-            GraphType.Line => "Simple line chart",
-            GraphType.Stairs => "Step chart showing discrete value changes",
-            GraphType.Bars => "Vertical bar chart",
+            MTGraphType.Area => "Filled area chart - good for showing volume over time",
+            MTGraphType.Line => "Simple line chart",
+            MTGraphType.Stairs => "Step chart showing discrete value changes",
+            MTGraphType.Bars => "Vertical bar chart",
             _ => "Unknown graph type"
         };
     }
