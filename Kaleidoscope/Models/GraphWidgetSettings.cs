@@ -1,4 +1,5 @@
 using Kaleidoscope.Gui.Widgets;
+using MTGui.Graph;
 
 namespace Kaleidoscope.Models;
 
@@ -6,36 +7,10 @@ namespace Kaleidoscope.Models;
 /// Interface for settings classes that contain graph widget configuration.
 /// Implement this interface to enable automatic settings binding with ImplotGraphWidget.
 /// </summary>
-public interface IGraphWidgetSettings
+public interface IGraphWidgetSettings : IGraphSettings
 {
-    // Legend settings
-    float LegendWidth { get; set; }
-    float LegendHeightPercent { get; set; }
-    bool ShowLegend { get; set; }
-    LegendPosition LegendPosition { get; set; }
-    
-    // Graph type
-    GraphType GraphType { get; set; }
-    
-    // Display settings
-    bool ShowXAxisTimestamps { get; set; }
-    bool ShowCrosshair { get; set; }
-    bool ShowGridLines { get; set; }
-    bool ShowCurrentPriceLine { get; set; }
-    bool ShowValueLabel { get; set; }
-    float ValueLabelOffsetX { get; set; }
-    float ValueLabelOffsetY { get; set; }
-    
-    // Auto-scroll settings
-    bool AutoScrollEnabled { get; set; }
-    int AutoScrollTimeValue { get; set; }
-    TimeUnit AutoScrollTimeUnit { get; set; }
-    float AutoScrollNowPosition { get; set; }
-    bool ShowControlsDrawer { get; set; }
-    
-    // Time range settings
-    int TimeRangeValue { get; set; }
-    TimeUnit TimeRangeUnit { get; set; }
+    // IGraphWidgetSettings extends IGraphSettings from MTGui.Graph
+    // No additional members needed - the interface is just for Kaleidoscope-specific typing
 }
 
 /// <summary>

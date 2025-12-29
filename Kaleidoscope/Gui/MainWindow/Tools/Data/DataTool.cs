@@ -8,6 +8,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Graph;
 using CrystalElement = Kaleidoscope.CrystalElement;
 using CrystalTier = Kaleidoscope.CrystalTier;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -124,7 +125,7 @@ public class DataTool : ToolComponent
             "Table Settings");
         
         // Create the graph widget
-        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
+        _graphWidget = new ImplotGraphWidget(new ImPlotGraphConfig
         {
             PlotId = "DataToolGraph",
             MinValue = 0f,

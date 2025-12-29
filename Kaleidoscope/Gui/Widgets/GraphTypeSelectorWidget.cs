@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using MTGui.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;

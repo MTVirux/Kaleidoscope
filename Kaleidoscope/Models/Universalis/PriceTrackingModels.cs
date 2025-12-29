@@ -1,6 +1,7 @@
 using Kaleidoscope;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
+using MTGui.Graph;
 
 namespace Kaleidoscope.Models.Universalis;
 

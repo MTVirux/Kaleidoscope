@@ -4,6 +4,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Graph;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
@@ -66,7 +67,7 @@ public class InventoryValueTool : ToolComponent
         Size = new Vector2(400, 300);
 
         // Initialize graph widget
-        _graphWidget = new ImplotGraphWidget(new ImplotGraphWidget.GraphConfig
+        _graphWidget = new ImplotGraphWidget(new ImPlotGraphConfig
         {
             PlotId = "inventory_value_plot",
             NoDataText = "No value history data",

@@ -3,6 +3,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Graph;
 
 namespace Kaleidoscope;
 
@@ -13,43 +14,6 @@ public enum LayoutType
 {
     Windowed = 0,
     Fullscreen = 1
-}
-
-/// <summary>
-/// Unified time unit for data filtering, auto-scroll, and time range selection.
-/// Combines the granularity of seconds for auto-scroll with months/all for data ranges.
-/// </summary>
-public enum TimeUnit
-{
-    /// <summary>Seconds - for fine-grained auto-scroll control.</summary>
-    Seconds = 0,
-    /// <summary>Minutes.</summary>
-    Minutes = 1,
-    /// <summary>Hours.</summary>
-    Hours = 2,
-    /// <summary>Days.</summary>
-    Days = 3,
-    /// <summary>Weeks.</summary>
-    Weeks = 4,
-    /// <summary>Months - approximate (30 days).</summary>
-    Months = 5,
-    /// <summary>All time - no time limit applied.</summary>
-    All = 6
-}
-
-/// <summary>
-/// Graph visualization type for time-series data.
-/// </summary>
-public enum GraphType
-{
-    /// <summary>Filled area chart - good for showing volume over time.</summary>
-    Area = 0,
-    /// <summary>Simple line chart.</summary>
-    Line = 1,
-    /// <summary>Step/stairs chart - shows discrete value changes.</summary>
-    Stairs = 2,
-    /// <summary>Vertical bar chart.</summary>
-    Bars = 3
 }
 
 /// <summary>
@@ -652,7 +616,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public bool ShowLegend { get; set; } = true;
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
-    public Kaleidoscope.Gui.Widgets.LegendPosition LegendPosition { get; set; } = Kaleidoscope.Gui.Widgets.LegendPosition.Outside;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;
@@ -945,8 +909,8 @@ public class DataToolSettings :
     public bool ShowLegend { get; set; } = true;
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
-    public Kaleidoscope.Gui.Widgets.LegendPosition LegendPosition { get; set; } = 
-        Kaleidoscope.Gui.Widgets.LegendPosition.InsideTopLeft;
+    public LegendPosition LegendPosition { get; set; } = 
+        LegendPosition.InsideTopLeft;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;

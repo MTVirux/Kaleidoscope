@@ -1,3 +1,5 @@
+using MTGui.Graph;
+
 namespace Kaleidoscope;
 
 /// <summary>
