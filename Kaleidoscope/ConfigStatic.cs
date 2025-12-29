@@ -1,5 +1,3 @@
-using MTGui.Graph;
-
 namespace Kaleidoscope;
 
 /// <summary>
@@ -65,28 +63,4 @@ public static class ConfigStatic
     public const int InventoryValueCacheSeconds = 30;
     /// <summary>Default cache duration for price listings in seconds.</summary>
     public const int ListingsCacheSeconds = 300;
-}
-
-/// <summary>
-/// Extension methods for configuration enums.
-/// </summary>
-public static class ConfigExtensions
-{
-    /// <summary>
-    /// Converts an auto-scroll time value and unit to total seconds.
-    /// </summary>
-    /// <param name="unit">The time unit.</param>
-    /// <param name="value">The numeric value.</param>
-    /// <returns>The total time in seconds.</returns>
-    public static double ToSeconds(this TimeUnit unit, int value) => unit switch
-    {
-        TimeUnit.Seconds => value,
-        TimeUnit.Minutes => value * 60,
-        TimeUnit.Hours => value * 3600,
-        TimeUnit.Days => value * 86400,
-        TimeUnit.Weeks => value * 604800,
-        TimeUnit.Months => value * 2592000, // 30 days
-        TimeUnit.All => double.MaxValue,
-        _ => 3600
-    };
 }

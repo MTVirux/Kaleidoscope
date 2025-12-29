@@ -557,15 +557,11 @@ public class ImplotGraphWidget : ISettingsProvider
     #region Private Helpers
 
     /// <summary>
-    /// Gets the set of hidden series names.
-    /// Uses reflection to access the internal HashSet since ImPlotGraph doesn't expose it directly.
+    /// Gets the set of hidden series names from the underlying graph.
     /// </summary>
     private HashSet<string> GetHiddenSeriesSet()
     {
-        // Since ImPlotGraph has IsSeriesHidden but not a way to enumerate, 
-        // we'll return an empty set. This is a limitation of the current API.
-        // TODO: Add GetHiddenSeries() method to ImPlotGraph
-        return new HashSet<string>();
+        return new HashSet<string>(_graph.HiddenSeries);
     }
 
     #endregion
