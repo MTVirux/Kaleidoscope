@@ -254,7 +254,8 @@ public sealed class ToolPresetsCategory
     {
         return toolType switch
         {
-            WindowToolRegistrar.ToolIds.Data => "Data",
+            WindowToolRegistrar.ToolIds.DataGraph => "Data Graph",
+            WindowToolRegistrar.ToolIds.DataTable => "Data Table",
             _ => toolType
         };
     }

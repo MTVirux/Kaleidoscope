@@ -5,6 +5,7 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
@@ -38,9 +39,9 @@ public class DataTool : ToolComponent
     // Widgets
     private readonly ItemTableWidget _tableWidget;
     private readonly MTGraphWidget _graphWidget;
-    private readonly ItemComboDropdown? _itemCombo;
-    private readonly CurrencyComboDropdown? _currencyCombo;
-    private readonly CharacterCombo? _characterCombo;
+    private readonly MTItemComboDropdown? _itemCombo;
+    private readonly MTCurrencyComboDropdown? _currencyCombo;
+    private readonly MTCharacterCombo? _characterCombo;
     
     // Instance-specific settings
     private readonly DataToolSettings _instanceSettings;
@@ -147,7 +148,7 @@ public class DataTool : ToolComponent
         // Create item combo
         if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
         {
-            _itemCombo = new ItemComboDropdown(
+            _itemCombo = new MTItemComboDropdown(
                 textureProvider,
                 _dataManager,
                 favoritesService,
@@ -156,31 +157,33 @@ public class DataTool : ToolComponent
                 marketableOnly: false,
                 configService: configService,
                 trackedDataRegistry: trackedDataRegistry,
-                excludeCurrencies: true);
+                excludeCurrencies: true,
+                multiSelect: true);
         }
         
         // Create currency combo
         if (textureProvider != null && trackedDataRegistry != null && favoritesService != null)
         {
-            _currencyCombo = new CurrencyComboDropdown(
+            _currencyCombo = new MTCurrencyComboDropdown(
                 textureProvider,
                 trackedDataRegistry,
                 favoritesService,
                 "DataToolCurrencyAdd",
-                itemDataService);
+                itemDataService,
+                multiSelect: true);
         }
         
         // Create character combo
         if (favoritesService != null)
         {
-            _characterCombo = new CharacterCombo(
+            _characterCombo = new MTCharacterCombo(
                 CurrencyTrackerService,
                 favoritesService,
                 configService,
                 "DataToolCharFilter",
+                multiSelect: true,
                 autoRetainerService,
                 priceTrackingService);
-            _characterCombo.MultiSelectEnabled = true;
             _characterCombo.MultiSelectionChanged += OnCharacterSelectionChanged;
             
             // Restore selection from settings
@@ -425,11 +428,7 @@ public class DataTool : ToolComponent
             
             var newSelection = _currencyCombo.GetMultiSelection();
             SyncCurrencyColumns(newSelection);
-            
-            ImGui.SameLine();
         }
-        
-        ImGui.TextDisabled($"({Settings.Columns.Count} series)");
     }
     
     private void SyncItemColumns(IReadOnlySet<uint> selectedItemIds)
@@ -1907,6 +1906,55 @@ public class DataTool : ToolComponent
     
     protected override bool HasToolSettings => true;
     
+    /// <summary>
+    /// Provides custom context menu options for the DataTool.
+    /// Allows toggling between Graph and Table view modes.
+    /// </summary>
+    public override IReadOnlyList<ToolContextMenuOption>? GetContextMenuOptions()
+    {
+        var isGraphView = Settings.ViewMode == DataToolViewMode.Graph;
+        
+        return new List<ToolContextMenuOption>
+        {
+            new ToolContextMenuOption
+            {
+                Label = "Table View",
+                Icon = "📊",
+                IsChecked = !isGraphView,
+                Tooltip = "Display data in a table format",
+                OnClick = () =>
+                {
+                    if (isGraphView)
+                    {
+                        Settings.ViewMode = DataToolViewMode.Table;
+                        UpdateTitle();
+                        _pendingTableRefresh = true;
+                        _graphCacheIsDirty = true;
+                        NotifyToolSettingsChanged();
+                    }
+                }
+            },
+            new ToolContextMenuOption
+            {
+                Label = "Graph View",
+                Icon = "📈",
+                IsChecked = isGraphView,
+                Tooltip = "Display data as a time-series graph",
+                OnClick = () =>
+                {
+                    if (!isGraphView)
+                    {
+                        Settings.ViewMode = DataToolViewMode.Graph;
+                        UpdateTitle();
+                        _pendingTableRefresh = true;
+                        _graphCacheIsDirty = true;
+                        NotifyToolSettingsChanged();
+                    }
+                }
+            }
+        };
+    }
+    
     protected override void DrawToolSettings()
     {
         var settings = Settings;
@@ -2208,6 +2256,7 @@ public class DataTool : ToolComponent
             ["LegendWidth"] = settings.LegendWidth,
             ["LegendHeightPercent"] = settings.LegendHeightPercent,
             ["ShowLegend"] = settings.ShowLegend,
+            ["LegendCollapsed"] = settings.LegendCollapsed,
             ["LegendPosition"] = (int)settings.LegendPosition,
             ["GraphType"] = (int)settings.GraphType,
             ["ShowXAxisTimestamps"] = settings.ShowXAxisTimestamps,
@@ -2312,6 +2361,7 @@ public class DataTool : ToolComponent
         target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
         target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
         target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
+        target.LegendCollapsed = SettingsImportHelper.GetSetting(settings, "LegendCollapsed", target.LegendCollapsed);
         target.LegendPosition = (MTLegendPosition)SettingsImportHelper.GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
         target.GraphType = (MTGraphType)SettingsImportHelper.GetSetting(settings, "GraphType", (int)target.GraphType);
         target.ShowXAxisTimestamps = SettingsImportHelper.GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);

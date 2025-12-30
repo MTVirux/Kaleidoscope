@@ -23,7 +23,8 @@ public static class WindowToolRegistrar
         public const string InventoryValue = "InventoryValue";
         public const string TopItems = "TopItems";
         public const string ItemSalesHistory = "ItemSalesHistory";
-        public const string Data = "Data";
+        public const string DataGraph = "DataGraph";
+        public const string DataTable = "DataTable";
         public const string Label = "Label";
         public const string UniversalisWebSocketStatus = "UniversalisWebSocketStatus";
         public const string AutoRetainerStatus = "AutoRetainerStatus";
@@ -87,13 +88,20 @@ public static class WindowToolRegistrar
 
         try
         {
-            // Register the unified Data tool (combines table and graph views)
+            // Register Data tool variants for items/currency tracking
             container.DefineToolType(
-                ToolIds.Data,
-                "Data",
-                pos => CreateDataTool(pos, ctx),
-                "Unified tool for tracking items and currencies - switch between table and graph views while preserving all settings",
-                "Data");
+                ToolIds.DataGraph,
+                "Data Graph",
+                pos => CreateDataToolGraph(pos, ctx),
+                "Track items and currencies over time with graphing visualization",
+                "Items/Currency");
+
+            container.DefineToolType(
+                ToolIds.DataTable,
+                "Data Table",
+                pos => CreateDataToolTable(pos, ctx),
+                "Track items and currencies in a table view with characters as rows",
+                "Items/Currency");
 
             // Register tool presets from separate file
             ToolPresets.RegisterPresets(container, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
@@ -229,11 +237,11 @@ public static class WindowToolRegistrar
         return "Graph";
     }
 
-    private static ToolComponent? CreateDataTool(Vector2 pos, ToolCreationContext ctx)
+    private static ToolComponent? CreateDataToolGraph(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
-            return new DataTool(
+            var tool = new DataTool(
                 ctx.CurrencyTrackerService, 
                 ctx.ConfigService, 
                 ctx.InventoryCacheService, 
@@ -244,10 +252,37 @@ public static class WindowToolRegistrar
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
                 ctx.PriceTrackingService) { Position = pos };
+            tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Graph);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTool", ex);
+            LogService.Error("Failed to create DataTool (Graph)", ex);
+            return null;
+        }
+    }
+
+    private static ToolComponent? CreateDataToolTable(Vector2 pos, ToolCreationContext ctx)
+    {
+        try
+        {
+            var tool = new DataTool(
+                ctx.CurrencyTrackerService, 
+                ctx.ConfigService, 
+                ctx.InventoryCacheService, 
+                ctx.Registry, 
+                ctx.ItemDataService, 
+                ctx.DataManager,
+                ctx.TextureProvider,
+                ctx.FavoritesService,
+                ctx.AutoRetainerIpc,
+                ctx.PriceTrackingService) { Position = pos };
+            tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Table);
+            return tool;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create DataTool (Table)", ex);
             return null;
         }
     }
@@ -467,7 +502,8 @@ public static class WindowToolRegistrar
         {
             return id switch
             {
-                ToolIds.Data => CreateDataTool(pos, ctx),
+                ToolIds.DataGraph => CreateDataToolGraph(pos, ctx),
+                ToolIds.DataTable => CreateDataToolTable(pos, ctx),
                 ToolIds.GettingStarted => new GettingStartedTool { Position = pos },
                 ToolIds.ImPlotReference => new ImPlotReferenceTool { Position = pos },
                 ToolIds.Label => new LabelTool(ctx.ConfigService) { Position = pos },
