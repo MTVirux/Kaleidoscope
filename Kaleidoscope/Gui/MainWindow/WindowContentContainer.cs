@@ -1506,6 +1506,49 @@ public class WindowContentContainer
                         ImGui.TextUnformatted(t.DisplayTitle ?? "Tool");
                         ImGui.Separator();
                         
+                        // Tool-specific context menu options (shown first)
+                        var customOptions = t.GetContextMenuOptions();
+                        if (customOptions != null && customOptions.Count > 0)
+                        {
+                            foreach (var option in customOptions)
+                            {
+                                if (option.SeparatorBefore)
+                                    ImGui.Separator();
+                                
+                                // Build the label with optional icon
+                                var label = option.Icon != null ? $"{option.Icon} {option.Label}" : option.Label;
+                                
+                                // Handle checked items vs regular menu items
+                                if (option.IsChecked.HasValue)
+                                {
+                                    var isChecked = option.IsChecked.Value;
+                                    if (ImGui.MenuItem(label, option.Shortcut ?? "", isChecked, option.Enabled))
+                                    {
+                                        option.OnClick();
+                                        ImGui.CloseCurrentPopup();
+                                    }
+                                }
+                                else
+                                {
+                                    if (ImGui.MenuItem(label, option.Shortcut ?? "", false, option.Enabled))
+                                    {
+                                        option.OnClick();
+                                        ImGui.CloseCurrentPopup();
+                                    }
+                                }
+                                
+                                // Show tooltip if available
+                                if (option.Tooltip != null && ImGui.IsItemHovered())
+                                {
+                                    ImGui.SetTooltip(option.Tooltip);
+                                }
+                                
+                                if (option.SeparatorAfter)
+                                    ImGui.Separator();
+                            }
+                            ImGui.Separator();
+                        }
+                        
                         // Rename option
                         if (ImGui.MenuItem("Rename..."))
                         {

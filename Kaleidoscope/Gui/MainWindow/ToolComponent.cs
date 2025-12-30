@@ -215,6 +215,14 @@ public abstract class ToolComponent : IDisposable
     public virtual void Dispose() { }
     
     /// <summary>
+    /// Gets custom context menu options for this tool.
+    /// Override in derived classes to add tool-specific menu items to the right-click context menu.
+    /// These options appear after the standard options (Rename, Duplicate) and before Settings.
+    /// </summary>
+    /// <returns>A list of context menu options, or null/empty if no custom options.</returns>
+    public virtual IReadOnlyList<ToolContextMenuOption>? GetContextMenuOptions() => null;
+    
+    /// <summary>
     /// Exports tool-specific settings to a dictionary for layout persistence.
     /// Override in derived classes to persist instance-specific settings.
     /// </summary>
