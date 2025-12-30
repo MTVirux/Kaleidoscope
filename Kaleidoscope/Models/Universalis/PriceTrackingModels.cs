@@ -239,6 +239,9 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// <summary>Whether to show the legend.</summary>
     public bool ShowLegend { get; set; } = true;
 
+    /// <summary>Whether the legend is collapsed.</summary>
+    public bool LegendCollapsed { get; set; } = false;
+
     /// <summary>Legend width in pixels.</summary>
     public float LegendWidth { get; set; } = 140f;
 

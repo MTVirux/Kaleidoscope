@@ -622,6 +622,9 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// <summary>Whether to show the legend panel.</summary>
     public bool ShowLegend { get; set; } = true;
     
+    /// <summary>Whether the legend is collapsed.</summary>
+    public bool LegendCollapsed { get; set; } = false;
+    
     /// <summary>Position of the legend (inside or outside the graph).</summary>
     public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
     
@@ -914,6 +917,9 @@ public class DataToolSettings :
     
     /// <summary>Whether to show the legend panel.</summary>
     public bool ShowLegend { get; set; } = true;
+    
+    /// <summary>Whether the legend is collapsed.</summary>
+    public bool LegendCollapsed { get; set; } = false;
     
     /// <summary>Position of the legend (inside or outside the graph).</summary>
     public MTLegendPosition LegendPosition { get; set; } = 

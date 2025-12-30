@@ -24,6 +24,7 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
+    public bool LegendCollapsed { get; set; } = false;
     public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
     
     // Graph type

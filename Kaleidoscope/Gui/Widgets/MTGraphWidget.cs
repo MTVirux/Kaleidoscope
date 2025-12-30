@@ -259,6 +259,7 @@ public class MTGraphWidget : ISettingsProvider
     {
         SyncFromBoundSettings();
         _graph.Render(samples);
+        SyncToBoundSettings();
     }
 
     /// <summary>
@@ -269,6 +270,7 @@ public class MTGraphWidget : ISettingsProvider
     {
         SyncFromBoundSettings();
         _graph.RenderMultipleSeries(series);
+        SyncToBoundSettings();
     }
     
     /// <summary>
@@ -279,6 +281,7 @@ public class MTGraphWidget : ISettingsProvider
     {
         SyncFromBoundSettings();
         _graph.RenderMultipleSeries(series);
+        SyncToBoundSettings();
     }
 
     #endregion
@@ -319,6 +322,7 @@ public class MTGraphWidget : ISettingsProvider
         config.LegendWidth = _boundSettings.LegendWidth;
         config.LegendHeightPercent = _boundSettings.LegendHeightPercent;
         config.ShowLegend = _boundSettings.ShowLegend;
+        config.LegendCollapsed = _boundSettings.LegendCollapsed;
         config.LegendPosition = _boundSettings.LegendPosition;
         config.GraphType = _boundSettings.GraphType;
         config.ShowXAxisTimestamps = _boundSettings.ShowXAxisTimestamps;
@@ -333,6 +337,24 @@ public class MTGraphWidget : ISettingsProvider
         config.AutoScrollTimeUnit = _boundSettings.AutoScrollTimeUnit;
         config.AutoScrollNowPosition = _boundSettings.AutoScrollNowPosition;
         config.ShowControlsDrawer = _boundSettings.ShowControlsDrawer;
+    }
+    
+    /// <summary>
+    /// Synchronizes interactive changes from the config back to bound settings.
+    /// Called after rendering to persist user interactions like legend collapse toggle.
+    /// </summary>
+    private void SyncToBoundSettings()
+    {
+        if (_boundSettings == null) return;
+        
+        var config = _graph.Config;
+        
+        // Only sync settings that can change during rendering (via user interaction)
+        if (_boundSettings.LegendCollapsed != config.LegendCollapsed)
+        {
+            _boundSettings.LegendCollapsed = config.LegendCollapsed;
+            _onSettingsChanged?.Invoke();
+        }
     }
     
     /// <inheritdoc />
