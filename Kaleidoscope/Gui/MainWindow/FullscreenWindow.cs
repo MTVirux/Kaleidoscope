@@ -361,9 +361,10 @@ public sealed class FullscreenWindow : Window
         Flags |= ImGuiWindowFlags.NoBringToFrontOnFocus;
         try
         {
-            var io = ImGui.GetIO();
-            ImGui.SetNextWindowPos(new System.Numerics.Vector2(0f, 0f));
-            ImGui.SetNextWindowSize(io.DisplaySize);
+            // Use main viewport for proper fullscreen sizing (accounts for taskbars, multi-monitor, etc.)
+            var viewport = ImGui.GetMainViewport();
+            ImGui.SetNextWindowPos(viewport.Pos);
+            ImGui.SetNextWindowSize(viewport.Size);
             
             // Apply custom background color
             ImGui.PushStyleColor(ImGuiCol.WindowBg, Config.FullscreenBackgroundColor);
