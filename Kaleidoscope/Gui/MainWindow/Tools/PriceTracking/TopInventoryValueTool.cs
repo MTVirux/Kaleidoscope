@@ -4,6 +4,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Tree;
@@ -42,7 +43,7 @@ public class TopInventoryValueTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly CharacterDataService _characterDataService;
     private readonly ItemDataService _itemDataService;
-    private readonly ItemComboDropdown _itemCombo;
+    private readonly MTItemComboDropdown _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly ItemDetailsPopup _itemDetailsPopup;
@@ -100,7 +101,7 @@ public class TopInventoryValueTool : ToolComponent
         _instanceSettings = new TopItemsSettings();
         
         // Create item combo for exclusion list (marketable only since we're dealing with prices)
-        _itemCombo = new ItemComboDropdown(
+        _itemCombo = new MTItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,

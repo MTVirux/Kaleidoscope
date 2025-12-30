@@ -4,6 +4,7 @@ using Dalamud.Interface.Textures;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -31,10 +32,10 @@ public sealed class ItemsCategory
     private string _trackedItemsSearchFilter = string.Empty;
     
     // Item picker for adding new items (for colors section)
-    private readonly ItemComboDropdown? _itemCombo;
+    private readonly MTItemComboDropdown? _itemCombo;
     
     // Item picker for tracking items (for tracked items section)
-    private readonly ItemComboDropdown? _trackItemCombo;
+    private readonly MTItemComboDropdown? _trackItemCombo;
     
     // Cached item names for display
     private readonly Dictionary<uint, string> _itemNameCache = new();
@@ -57,7 +58,7 @@ public sealed class ItemsCategory
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
         {
-            _itemCombo = new ItemComboDropdown(
+            _itemCombo = new MTItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -68,7 +69,7 @@ public sealed class ItemsCategory
                 trackedDataRegistry: _currencyTrackerService?.Registry,
                 excludeCurrencies: true);
             
-            _trackItemCombo = new ItemComboDropdown(
+            _trackItemCombo = new MTItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,

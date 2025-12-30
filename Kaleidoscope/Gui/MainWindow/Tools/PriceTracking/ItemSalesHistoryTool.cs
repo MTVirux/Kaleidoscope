@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Gui.Widgets;
+using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Tree;
@@ -21,7 +22,7 @@ public class ItemSalesHistoryTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly ItemComboDropdown _itemCombo;
+    private readonly MTItemComboDropdown _itemCombo;
 
     // Convenience accessor for database service
     private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
@@ -54,7 +55,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _itemDataService = itemDataService;
         _currencyTrackerService = CurrencyTrackerService;
 
-        _itemCombo = new ItemComboDropdown(
+        _itemCombo = new MTItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,
