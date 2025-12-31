@@ -22,10 +22,8 @@ public class ItemSalesHistoryTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly ItemDataService _itemDataService;
     private readonly CurrencyTrackerService _currencyTrackerService;
+    private readonly SalePriceCacheService _salePriceCacheService;
     private readonly MTItemComboDropdown _itemCombo;
-
-    // Convenience accessor for database service
-    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
 
     // State
     private MarketHistory? _currentHistory;
@@ -45,6 +43,7 @@ public class ItemSalesHistoryTool : ToolComponent
         ConfigurationService configService,
         ItemDataService itemDataService,
         CurrencyTrackerService CurrencyTrackerService,
+        SalePriceCacheService salePriceCacheService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
         FavoritesService favoritesService)
@@ -54,6 +53,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _configService = configService;
         _itemDataService = itemDataService;
         _currencyTrackerService = CurrencyTrackerService;
+        _salePriceCacheService = salePriceCacheService;
 
         _itemCombo = new MTItemComboDropdown(
             textureProvider,
@@ -157,7 +157,7 @@ public class ItemSalesHistoryTool : ToolComponent
         if (ImGui.Checkbox("Filter Outliers", ref filterByListing))
         {
             _configService.Config.PriceTracking.FilterSalesByListingPrice = filterByListing;
-            _configService.Save();
+            _configService.MarkDirty();
         }
         if (ImGui.IsItemHovered())
         {
@@ -218,7 +218,7 @@ public class ItemSalesHistoryTool : ToolComponent
                 
                 var listing = listingsService.GetListing(itemId, e.WorldId.Value);
                 var listingPrice = listing != null ? (e.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
-                var recentSalePrice = DbService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
+                var recentSalePrice = _salePriceCacheService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
                 
                 // Calculate reference price as average of listing and recent sale (if both available)
                 double referencePrice;

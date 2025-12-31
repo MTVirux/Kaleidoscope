@@ -1,7 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using System.Text.Json;
+using Newtonsoft.Json;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -120,7 +120,7 @@ public class LayoutItemWidget
                     {
                         try
                         {
-                            var json = JsonSerializer.Serialize(_layout, new JsonSerializerOptions { WriteIndented = true });
+                            var json = JsonConvert.SerializeObject(_layout, Formatting.Indented);
                             ImGui.SetClipboardText(json);
                         }
                         catch (Exception ex)
@@ -218,6 +218,6 @@ public class LayoutItemWidget
         }
 
         _layout.Name = _renameBuffer;
-        _configService.Save();
+        _configService.MarkDirty();
     }
 }

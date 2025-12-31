@@ -435,7 +435,7 @@ public sealed class CharactersCategory
         if (ImGui.Combo("Name Format", ref currentFormat, formatNames, formatNames.Length))
         {
             _configService.Config.CharacterNameFormat = (CharacterNameFormat)currentFormat;
-            _configService.Save();
+            _configService.MarkDirty();
         }
 
         // Show example
@@ -457,7 +457,7 @@ public sealed class CharactersCategory
         if (ImGui.Combo("Sort Order", ref currentSortOrder, sortOrderNames, sortOrderNames.Length))
         {
             _configService.Config.CharacterSortOrder = (CharacterSortOrder)currentSortOrder;
-            _configService.Save();
+            _configService.MarkDirty();
             _needsRefresh = true; // Refresh to apply new sort order
         }
         

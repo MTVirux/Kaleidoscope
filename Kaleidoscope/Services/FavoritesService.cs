@@ -44,7 +44,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteItems.Add(itemId))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }
@@ -58,7 +58,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteItems.Remove(itemId))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }
@@ -104,7 +104,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteCurrencies.Add(type))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }
@@ -118,7 +118,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteCurrencies.Remove(type))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }
@@ -164,7 +164,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteCharacters.Add(characterId))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }
@@ -178,7 +178,7 @@ public sealed class FavoritesService : IDisposable, IService
     {
         if (_configService.Config.FavoriteCharacters.Remove(characterId))
         {
-            _configService.Save();
+            _configService.MarkDirty();
             OnFavoritesChanged?.Invoke();
             return true;
         }

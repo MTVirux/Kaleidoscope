@@ -1,6 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using System.Text.Json;
+using Newtonsoft.Json;
 using Kaleidoscope.Services;
 using Kaleidoscope.Gui.Widgets;
 
@@ -37,7 +37,7 @@ public sealed class LayoutsCategory
         if (ImGui.Checkbox("Auto-save layout changes", ref autoSave))
         {
             Config.AutoSaveLayoutChanges = autoSave;
-            _configService.Save();
+            _configService.MarkDirty();
         }
         if (ImGui.IsItemHovered())
         {
@@ -159,8 +159,7 @@ public sealed class LayoutsCategory
                 isActive: () => string.Equals(Config.ActiveWindowedLayoutName, l.Name, StringComparison.OrdinalIgnoreCase),
                 onSetActive: () =>
                 {
-                    Config.ActiveWindowedLayoutName = l.Name;
-                    _configService.Save();
+                    _configService.SetActiveLayout(l.Name, LayoutType.Windowed);
                 },
                 onDelete: () =>
                 {
@@ -169,7 +168,7 @@ public sealed class LayoutsCategory
                     {
                         Config.ActiveWindowedLayoutName = string.Empty;
                     }
-                    _configService.Save();
+                    _configService.MarkDirty();
                 }
             ));
         }
@@ -187,8 +186,7 @@ public sealed class LayoutsCategory
                 isActive: () => string.Equals(Config.ActiveFullscreenLayoutName, l.Name, StringComparison.OrdinalIgnoreCase),
                 onSetActive: () =>
                 {
-                    Config.ActiveFullscreenLayoutName = l.Name;
-                    _configService.Save();
+                    _configService.SetActiveLayout(l.Name, LayoutType.Fullscreen);
                 },
                 onDelete: () =>
                 {
@@ -197,7 +195,7 @@ public sealed class LayoutsCategory
                     {
                         Config.ActiveFullscreenLayoutName = string.Empty;
                     }
-                    _configService.Save();
+                    _configService.MarkDirty();
                 }
             ));
         }
@@ -210,9 +208,28 @@ public sealed class LayoutsCategory
             var s = ImGui.GetClipboardText() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(s))
             {
-                var imported = JsonSerializer.Deserialize<ContentLayoutState>(s);
+                var imported = JsonConvert.DeserializeObject<ContentLayoutState>(s);
                 if (imported != null)
                 {
+                    // When importing to a different layout type (windowed <-> fullscreen),
+                    // the pixel positions are invalid because they were calculated for a
+                    // different window size. Clear them so the grid coordinates are used
+                    // to recalculate positions when the layout is loaded.
+                    if (imported.Tools != null)
+                    {
+                        foreach (var tool in imported.Tools)
+                        {
+                            if (tool.HasGridCoords)
+                            {
+                                // Clear pixel positions - they'll be recalculated from grid coords on load
+                                // The grid coordinates are proportional to the layout's grid settings,
+                                // which are copied along with the layout, so positions will be correct.
+                                tool.Position = Vector2.Zero;
+                                tool.Size = Vector2.Zero;
+                            }
+                        }
+                    }
+                    
                     imported.Type = targetType;
                     Config.Layouts ??= new List<ContentLayoutState>();
                     
@@ -238,7 +255,8 @@ public sealed class LayoutsCategory
                     else
                         _lastFullscreenCount = -1;
 
-                    _configService.Save();
+                    _configService.MarkDirty();
+                    _configService.SaveLayouts();
                 }
             }
         }
@@ -276,7 +294,7 @@ public sealed class LayoutsCategory
             else
                 _lastFullscreenCount = -1;
             
-            _configService.Save();
+            _configService.MarkDirty();
         }
         catch (Exception ex)
         {

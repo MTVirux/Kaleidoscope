@@ -25,6 +25,8 @@ public sealed class ConfigWindow : Window
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly UniversalisService _universalisService;
     private readonly ProfilerService _profilerService;
+    private readonly LayoutEditingService _layoutEditingService;
+    private readonly MarketDataCacheService _marketDataCacheService;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -42,6 +44,7 @@ public sealed class ConfigWindow : Window
     private ToolPresetsCategory? _toolPresetsCategory;
     private StorageCategory? _storageCategory;
     private TestsCategory? _testsCategory;
+    private CachesCategory? _cachesCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -60,6 +63,7 @@ public sealed class ConfigWindow : Window
         public const int Storage = 9;
         public const int Profiler = 10; // Hidden tab, only shown with CTRL+ALT
         public const int Tests = 11; // Hidden tab, only shown with CTRL+ALT
+        public const int Caches = 12; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -81,10 +85,16 @@ public sealed class ConfigWindow : Window
         UniversalisWebSocketService webSocketService,
         UniversalisService universalisService,
         ProfilerService profilerService,
+        LayoutEditingService layoutEditingService,
         ItemDataService itemDataService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
-        FavoritesService favoritesService)
+        FavoritesService favoritesService,
+        InventoryCacheService inventoryCacheService,
+        ListingsService listingsService,
+        CharacterDataService characterDataService,
+        MarketDataCacheService marketDataCacheService,
+        FrameLimiterService frameLimiterService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -96,6 +106,8 @@ public sealed class ConfigWindow : Window
         _webSocketService = webSocketService;
         _universalisService = universalisService;
         _profilerService = profilerService;
+        _layoutEditingService = layoutEditingService;
+        _marketDataCacheService = marketDataCacheService;
 
         var lockTb = new TitleBarButton
         {
@@ -121,7 +133,7 @@ public sealed class ConfigWindow : Window
                     }
                     catch (Exception ex) { LogService.Debug($"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
                 }
-                _configService.Save();
+                _configService.MarkDirty();
                 lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
             }
         };
@@ -130,10 +142,10 @@ public sealed class ConfigWindow : Window
         TitleBarButtons.Add(_lockButton);
 
         // Create category renderers
-        _generalCategory = new GeneralCategory(_configService);
+        _generalCategory = new GeneralCategory(_configService, frameLimiterService);
         _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService);
         _layoutsCategory = new LayoutsCategory(_configService);
-        _customizationCategory = new CustomizationCategory(Config, _configService.Save);
+        _customizationCategory = new CustomizationCategory(Config, _configService.Save, _layoutEditingService);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
         _profilerCategory = new ProfilerCategory(_profilerService, _configService, _currencyTrackerService);
         _charactersCategory = new CharactersCategory(_currencyTrackerService, _currencyTrackerService.CacheService, _configService, _arIpc);
@@ -141,9 +153,19 @@ public sealed class ConfigWindow : Window
         _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService);
         _toolPresetsCategory = new ToolPresetsCategory(_configService);
         _storageCategory = new StorageCategory(_configService, _currencyTrackerService);
-        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService);
+        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
+        _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
+    }
+
+    // Flag to bring window to front on the first frame after opening
+    private bool _bringToFrontOnNextDraw;
+
+    public override void OnOpen()
+    {
+        base.OnOpen();
+        _bringToFrontOnNextDraw = true;
     }
 
     public override void PreDraw()
@@ -169,6 +191,14 @@ public sealed class ConfigWindow : Window
 
     public override void Draw()
     {
+        // Bring window to front when first opened (so it appears above the fullscreen main window)
+        if (_bringToFrontOnNextDraw)
+        {
+            _bringToFrontOnNextDraw = false;
+            var window = ImGuiP.GetCurrentWindow();
+            ImGuiP.BringWindowToDisplayFront(window);
+        }
+
         // Check if CTRL+ALT are held while this window is focused for profiler access
         // Or if developer mode is permanently enabled
         var io = ImGui.GetIO();
@@ -198,6 +228,7 @@ public sealed class ConfigWindow : Window
             ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
             if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
             if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
+            if (ImGui.Selectable("Caches", _selectedTab == TabIndex.Caches)) _selectedTab = TabIndex.Caches;
             if (ImGui.Selectable("Tests", _selectedTab == TabIndex.Tests)) _selectedTab = TabIndex.Tests;
         }
         ImGui.EndChild();
@@ -249,6 +280,13 @@ public sealed class ConfigWindow : Window
                 // Only draw tests if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
                 if (showProfiler)
                     _testsCategory?.Draw();
+                else
+                    _selectedTab = TabIndex.General;
+                break;
+            case TabIndex.Caches:
+                // Only draw caches if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
+                if (showProfiler)
+                    _cachesCategory?.Draw();
                 else
                     _selectedTab = TabIndex.General;
                 break;

@@ -44,7 +44,7 @@ public class WindowLockButtonComponent
                     Config.ConfigWindowPos = ImGui.GetWindowPos();
                     Config.ConfigWindowSize = ImGui.GetWindowSize();
                 }
-                _configService.Save();
+                _configService.MarkDirty();
             }
             else
             {
@@ -69,7 +69,7 @@ public class WindowLockButtonComponent
                         Config.MainWindowPos = ImGui.GetWindowPos();
                         Config.MainWindowSize = ImGui.GetWindowSize();
                     }
-                    _configService.Save();
+                    _configService.MarkDirty();
                 }
             }
         }

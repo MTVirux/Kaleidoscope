@@ -33,7 +33,7 @@ public class WindowLockButton
         if (isConfigWindow)
         {
             Config.PinConfigWindow = !Config.PinConfigWindow;
-            _configService.Save();
+            _configService.MarkDirty();
         }
         else
         {
@@ -50,7 +50,7 @@ public class WindowLockButton
             else
             {
                 Config.PinMainWindow = !Config.PinMainWindow;
-                _configService.Save();
+                _configService.MarkDirty();
             }
         }
 

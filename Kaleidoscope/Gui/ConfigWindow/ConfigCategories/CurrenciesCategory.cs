@@ -320,7 +320,7 @@ public sealed class CurrenciesCategory
                 config.ItemColors.Remove(dataType);
             }
             
-            _configService.Save();
+            _configService.MarkDirty();
             LogService.Debug($"[CurrenciesCategory] Saved color for {dataType}: {color?.ToString("X8") ?? "(cleared)"}");
         }
         catch (Exception ex)

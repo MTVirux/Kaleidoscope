@@ -49,7 +49,7 @@ public sealed class ItemComboDropdown : IDisposable
             if (_configService != null)
             {
                 _configService.Config.ItemPickerSortOrder = value;
-                _configService.Save();
+                _configService.MarkDirty();
             }
             else
             {

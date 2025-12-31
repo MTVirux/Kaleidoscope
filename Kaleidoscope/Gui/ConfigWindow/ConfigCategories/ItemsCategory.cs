@@ -248,7 +248,7 @@ public sealed class ItemsCategory
                     {
                         config.ItemsWithHistoricalTracking.Remove(info.ItemId);
                     }
-                    _configService.Save();
+                    _configService.MarkDirty();
                 }
                 if (ImGui.IsItemHovered())
                 {
@@ -358,7 +358,7 @@ public sealed class ItemsCategory
                 IsCurrency = false,
                 StoreHistory = true
             });
-            _configService.Save();
+            _configService.MarkDirty();
             LogService.Debug($"[ItemsCategory] Added item {itemId} to tracking with StoreHistory=true");
         }
         else
@@ -388,7 +388,7 @@ public sealed class ItemsCategory
         
         if (changed)
         {
-            _configService.Save();
+            _configService.MarkDirty();
             _itemNameCache.Remove(itemId);
             LogService.Debug($"[ItemsCategory] Removed item {itemId} from tracking");
         }
@@ -588,7 +588,7 @@ public sealed class ItemsCategory
                     {
                         // Add with white color (0xFFFFFFFF in ABGR)
                         gameItemColors[itemId] = 0xFFFFFFFF;
-                        _configService.Save();
+                        _configService.MarkDirty();
                         LogService.Debug($"[ItemsCategory] Added item {itemId} with default color");
                     }
                     _itemCombo.ClearSelection();
@@ -688,7 +688,7 @@ public sealed class ItemsCategory
                 _itemNameCache.Remove(itemId);
             }
             
-            _configService.Save();
+            _configService.MarkDirty();
             LogService.Debug($"[ItemsCategory] Saved color for item {itemId}: {color?.ToString("X8") ?? "(removed)"}");
         }
         catch (Exception ex)

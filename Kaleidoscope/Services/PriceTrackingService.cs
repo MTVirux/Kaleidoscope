@@ -24,6 +24,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private readonly ListingsService _listingsService;
     private readonly ItemDataService _itemDataService;
     private readonly TimeSeriesCacheService _cacheService;
+    private readonly SalePriceCacheService _salePriceCacheService;
 
     // Cached world/DC data from Universalis
     private UniversalisWorldData? _worldData;
@@ -63,6 +64,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
     private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
+    private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
 
     /// <summary>Gets the cached world data.</summary>
     public UniversalisWorldData? WorldData => _worldData;
@@ -105,7 +107,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         InventoryCacheService inventoryCacheService,
         ListingsService listingsService,
         ItemDataService itemDataService,
-        TimeSeriesCacheService cacheService)
+        TimeSeriesCacheService cacheService,
+        SalePriceCacheService salePriceCacheService)
     {
         _log = log;
         _framework = framework;
@@ -117,6 +120,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _listingsService = listingsService;
         _itemDataService = itemDataService;
         _cacheService = cacheService;
+        _salePriceCacheService = salePriceCacheService;
 
         // Initialize background work queue for WebSocket price updates (unbounded, single consumer)
         _priceUpdateQueue = Channel.CreateUnbounded<PriceUpdateWorkItem>(new UnboundedChannelOptions
@@ -416,6 +420,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 // Sale event - queue write to background thread
                 var lastSaleNq = entry.IsHq ? 0 : entry.PricePerUnit;
                 var lastSaleHq = entry.IsHq ? entry.PricePerUnit : 0;
+
+                // Update SalePriceCacheService immediately for real-time inventory value calculations
+                _salePriceCacheService.UpdateGlobalSalePrice(entry.ItemId, entry.IsHq, entry.PricePerUnit);
+                _salePriceCacheService.UpdateWorldSalePrice(entry.ItemId, entry.WorldId, entry.IsHq, entry.PricePerUnit);
+                _salePriceCacheService.UpdateBatchSalePrice(entry.ItemId, lastSaleNq > 0 ? lastSaleNq : (int?)null, lastSaleHq > 0 ? lastSaleHq : (int?)null);
 
                 // Get existing cached prices to preserve min prices
                 var existingNq = 0;
@@ -966,7 +975,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 ? GetValueCalculationWorldIds(characterWorldId.Value) 
                 : null;
 
-            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
+            var prices = _salePriceCacheService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
 
             foreach (var (itemId, quantity) in itemQuantities)
             {
@@ -1010,7 +1019,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try
         {
-            var characterData = DbService.GetAllCharacterNames();
+            // Get character data from cache (no DB access)
+            var characterData = CharacterDataCache.GetAllCharacterNames();
             var characterIds = characterData
                 .Select(c => c.characterId)
                 .Distinct()
@@ -1066,7 +1076,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try
         {
-            var characterData = DbService.GetAllCharacterNames();
+            // Get character data from cache (no DB access)
+            var characterData = CharacterDataCache.GetAllCharacterNames();
             var characterIds = characterData
                 .Select(c => c.characterId)
                 .Distinct()
@@ -1370,7 +1381,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             var includedWorldIds = characterWorldId.HasValue 
                 ? GetValueCalculationWorldIds(characterWorldId.Value) 
                 : null; // Use global prices for multi-character view
-            var prices = DbService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
+            var prices = _salePriceCacheService.GetLatestSalePrices(itemQuantities.Keys, includedWorldIds);
 
             // Calculate values using last sale prices
             foreach (var (itemId, quantity) in itemQuantities)
@@ -1407,7 +1418,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     public async Task SetEnabledAsync(bool enabled)
     {
         Settings.Enabled = enabled;
-        _configService.Save();
+        _configService.MarkDirty();
 
         if (enabled)
         {

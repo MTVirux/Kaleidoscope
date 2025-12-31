@@ -81,7 +81,7 @@ public sealed class StateService : IStateService, IService
             if (_isEditMode == value) return;
             _isEditMode = value;
             Config.EditMode = value;
-            _configService.Save();
+            _configService.MarkDirty();
             _log.Debug($"IsEditMode changed to {value}");
             OnEditModeChanged?.Invoke(value);
         }
@@ -96,7 +96,7 @@ public sealed class StateService : IStateService, IService
             if (_isLocked == value) return;
             _isLocked = value;
             Config.PinMainWindow = value;
-            _configService.Save();
+            _configService.MarkDirty();
             _log.Debug($"IsLocked changed to {value}");
             OnLockedChanged?.Invoke(value);
         }

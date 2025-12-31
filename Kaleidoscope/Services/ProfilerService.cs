@@ -31,7 +31,7 @@ public sealed class ProfilerService : IDisposable, IService
         {
             if (Math.Abs(Config.ProfilerSlowOperationThresholdMs - value) < 0.001) return;
             Config.ProfilerSlowOperationThresholdMs = value;
-            _configService.Save();
+            _configService.MarkDirty();
         }
     }
     
@@ -45,7 +45,7 @@ public sealed class ProfilerService : IDisposable, IService
         {
             if (Config.ProfilerLogSlowOperations == value) return;
             Config.ProfilerLogSlowOperations = value;
-            _configService.Save();
+            _configService.MarkDirty();
         }
     }
     
@@ -317,7 +317,7 @@ public sealed class ProfilerService : IDisposable, IService
         {
             if (Config.ProfilerEnabled == value) return;
             Config.ProfilerEnabled = value;
-            _configService.Save();
+            _configService.MarkDirty();
         }
     }
 

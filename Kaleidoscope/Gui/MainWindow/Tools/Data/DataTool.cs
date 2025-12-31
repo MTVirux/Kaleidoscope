@@ -9,6 +9,7 @@ using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Common;
 using MTGui.Graph;
 using MTGui.Table;
 using CrystalElement = Kaleidoscope.CrystalElement;
@@ -79,6 +80,7 @@ public class DataTool : ToolComponent
     private DataToolSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _CurrencyTrackerService.DbService;
     private TimeSeriesCacheService CacheService => _CurrencyTrackerService.CacheService;
+    private CharacterDataCacheService CharacterDataCache => _CurrencyTrackerService.CharacterDataCache;
     
     public DataTool(
         CurrencyTrackerService CurrencyTrackerService,
@@ -510,8 +512,8 @@ public class DataTool : ToolComponent
     {
         using (ProfilerService.BeginStaticChildScope("TableView"))
         {
-            // Auto-refresh every 0.5s
-            var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 0.5;
+            // Auto-refresh every 2s
+            var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 2.0;
             
             if (_pendingTableRefresh || shouldAutoRefresh)
             {
@@ -554,13 +556,13 @@ public class DataTool : ToolComponent
                 return;
             }
             
-            // Get all character names with disambiguation
+            // Get all character names with disambiguation (from cache, no DB access)
             IReadOnlyDictionary<ulong, string?> characterNames;
             IReadOnlyDictionary<ulong, string> disambiguatedNames;
             using (ProfilerService.BeginStaticChildScope("GetCharacterNames"))
             {
-                characterNames = DbService.GetAllCharacterNamesDict();
-                disambiguatedNames = CacheService.GetDisambiguatedNames(characterNames.Keys);
+                characterNames = CharacterDataCache.GetAllCharacterNamesDict();
+                disambiguatedNames = CharacterDataCache.GetDisambiguatedNames(characterNames.Keys);
             }
             var rows = new Dictionary<ulong, ItemTableCharacterRow>();
             
@@ -614,6 +616,17 @@ public class DataTool : ToolComponent
                 };
             }
             
+            // Fetch inventories once for all item columns (cache-first, avoids per-column DB calls)
+            List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories = null;
+            var hasItemColumns = columns.Any(c => !c.IsCurrency);
+            if (hasItemColumns && _inventoryCacheService != null)
+            {
+                using (ProfilerService.BeginStaticChildScope("GetAllInventories"))
+                {
+                    allInventories = _inventoryCacheService.GetAllInventories();
+                }
+            }
+            
             // Populate data for each column
             using (ProfilerService.BeginStaticChildScope("PopulateColumns"))
             {
@@ -625,7 +638,7 @@ public class DataTool : ToolComponent
                     }
                     else
                     {
-                        PopulateItemData(column, rows, settings.IncludeRetainers, settings.ShowRetainerBreakdown);
+                        PopulateItemData(column, rows, settings.IncludeRetainers, settings.ShowRetainerBreakdown, allInventories);
                     }
                 }
             }
@@ -672,22 +685,16 @@ public class DataTool : ToolComponent
                 var dataType = (TrackedDataType)column.Id;
                 var variableName = dataType.ToString();
                 
-                using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
+                using (ProfilerService.BeginStaticChildScope("CacheGetLatestValues"))
                 {
-                    var allPoints = DbService.GetAllPointsBatch(variableName, null);
+                    // Cache-first: get latest values from TimeSeriesCacheService
+                    var latestValues = CacheService.GetLatestValuesForVariable(variableName);
                 
-                    if (allPoints.TryGetValue(variableName, out var points))
+                    foreach (var (charId, value) in latestValues)
                     {
-                        var latestByChar = points
-                            .GroupBy(p => p.characterId)
-                            .Select(g => (charId: g.Key, value: g.OrderByDescending(p => p.timestamp).First().value));
-                        
-                        foreach (var (charId, value) in latestByChar)
+                        if (rows.TryGetValue(charId, out var row))
                         {
-                            if (rows.TryGetValue(charId, out var row))
-                            {
-                                row.ItemCounts[column.Id] = value;
-                            }
+                            row.ItemCounts[column.Id] = value;
                         }
                     }
                 }
@@ -699,20 +706,18 @@ public class DataTool : ToolComponent
         }
     }
     
-    private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers)
-    {
-        PopulateItemData(column, rows, includeRetainers, false);
-    }
-    
-    private void PopulateItemData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows, bool includeRetainers, bool showRetainerBreakdown)
+    private void PopulateItemData(
+        ItemColumnConfig column, 
+        Dictionary<ulong, ItemTableCharacterRow> rows, 
+        bool includeRetainers, 
+        bool showRetainerBreakdown,
+        List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories)
     {
         using (ProfilerService.BeginStaticChildScope("PopulateItem"))
         {
             try
             {
-                if (_inventoryCacheService == null) return;
-                
-                var allInventories = _inventoryCacheService.GetAllInventories();
+                if (allInventories == null) return;
                 
                 foreach (var cache in allInventories)
                 {
@@ -1066,9 +1071,10 @@ public class DataTool : ToolComponent
             
             IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points;
             Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? perRetainerPointsDict = null;
-            using (ProfilerService.BeginStaticChildScope("DbGetPoints"))
+            using (ProfilerService.BeginStaticChildScope("CacheGetPoints"))
             {
-                var allPoints = DbService.GetAllPointsBatch(variableName, startTime);
+                // Cache-first: get points from TimeSeriesCacheService
+                var allPoints = CacheService.GetAllPointsBatch(variableName, startTime);
             
                 if (!allPoints.TryGetValue(variableName, out var pts) || pts.Count == 0)
                 {
@@ -1105,7 +1111,8 @@ public class DataTool : ToolComponent
                 if (settings.IncludeRetainers && !settings.ShowRetainerBreakdownInGraph && !seriesConfig.IsCurrency)
                 {
                     var retainerVariableName = $"ItemRetainer_{seriesConfig.Id}";
-                    var retainerPoints = DbService.GetAllPointsBatch(retainerVariableName, startTime);
+                    // Cache-first: get retainer points from TimeSeriesCacheService
+                    var retainerPoints = CacheService.GetAllPointsBatch(retainerVariableName, startTime);
                     
                     if (retainerPoints.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
                     {
@@ -1190,9 +1197,9 @@ public class DataTool : ToolComponent
                 // Also fetch per-retainer data if breakdown is enabled
                 if (perRetainerVariablePrefix != null)
                 {
-                    // Use optimized query with both prefix and suffix matching
+                    // Cache-first: use TimeSeriesCacheService with prefix and suffix matching
                     var itemIdSuffix = $"_{seriesConfig.Id}";
-                    perRetainerPointsDict = DbService.GetPointsBatchWithSuffix(perRetainerVariablePrefix, itemIdSuffix, startTime);
+                    perRetainerPointsDict = CacheService.GetPointsBatchWithSuffix(perRetainerVariablePrefix, itemIdSuffix, startTime);
                     
                     // Merge in pending (cached but not yet flushed) retainer samples for real-time display
                     if (_inventoryCacheService != null)
@@ -1213,7 +1220,8 @@ public class DataTool : ToolComponent
                     if (perRetainerPointsDict.Count == 0)
                     {
                         var fallbackVariableName = $"ItemRetainer_{seriesConfig.Id}";
-                        var fallbackPoints = DbService.GetAllPointsBatch(fallbackVariableName, startTime);
+                        // Cache-first: get fallback points from TimeSeriesCacheService
+                        var fallbackPoints = CacheService.GetAllPointsBatch(fallbackVariableName, startTime);
                         if (fallbackPoints.TryGetValue(fallbackVariableName, out var fallbackPts) && fallbackPts.Count > 0)
                         {
                             // Use the old total data with a generic "Retainers" label
@@ -1260,7 +1268,7 @@ public class DataTool : ToolComponent
                     // Determine color: prefer character color in PreferredCharacterColors mode,
                     // otherwise use item color or fallback
                     Vector4 seriesColor;
-                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
                     {
                         seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
                     }
@@ -1356,7 +1364,8 @@ public class DataTool : ToolComponent
                     variableName = $"Item_{column.Id}";
                 }
                 
-                var pointsDict = DbService.GetAllPointsBatch(variableName, startTime);
+                // Cache-first: use TimeSeriesCacheService instead of direct DB access
+                var pointsDict = CacheService.GetAllPointsBatch(variableName, startTime);
                 if (pointsDict.TryGetValue(variableName, out var pts) && pts.Count > 0)
                 {
                     // Filter by allowed characters if specified
@@ -1375,7 +1384,8 @@ public class DataTool : ToolComponent
                 if (settings.IncludeRetainers && !column.IsCurrency)
                 {
                     var retainerVariableName = $"ItemRetainer_{column.Id}";
-                    var retainerPointsDict = DbService.GetAllPointsBatch(retainerVariableName, startTime);
+                    // Cache-first: use TimeSeriesCacheService instead of direct DB access
+                    var retainerPointsDict = CacheService.GetAllPointsBatch(retainerVariableName, startTime);
                     if (retainerPointsDict.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
                     {
                         var filteredRetainerPoints = allowedCharacters != null
@@ -1419,7 +1429,7 @@ public class DataTool : ToolComponent
                     
                     // Determine color
                     Vector4 seriesColor;
-                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
                     {
                         seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
                     }
@@ -1569,7 +1579,7 @@ public class DataTool : ToolComponent
             if (aggregated.Count > 0)
             {
                 // Use different colors per group if not using item colors
-                var seriesColor = settings.TextColorMode == TableTextColorMode.PreferredItemColors 
+                var seriesColor = settings.ColorMode == Models.GraphColorMode.PreferredItemColors 
                     ? color 
                     : GetDefaultSeriesColor(groupIndex);
                 result.Add((seriesName, aggregated, seriesColor));
@@ -1640,7 +1650,7 @@ public class DataTool : ToolComponent
                     var seriesName = $"{defaultName} ({charName} - {retainerName})";
                     
                     Vector4 seriesColor;
-                    if (settings.TextColorMode == TableTextColorMode.PreferredCharacterColors)
+                    if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
                     {
                         var charColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(retainerIndex);
                         seriesColor = GetRetainerSeriesColor(charColor, retainerIndex);
@@ -1714,7 +1724,7 @@ public class DataTool : ToolComponent
                     
                     if (aggregated.Count > 0)
                     {
-                        var seriesColor = settings.TextColorMode == TableTextColorMode.PreferredItemColors
+                        var seriesColor = settings.ColorMode == Models.GraphColorMode.PreferredItemColors
                             ? retainerColor
                             : GetRetainerSeriesColor(GetDefaultSeriesColor(0), retainerIndex);
                         result.Add((seriesName, aggregated, seriesColor));
@@ -1744,15 +1754,18 @@ public class DataTool : ToolComponent
         var retainerNames = new Dictionary<ulong, string>();
         try
         {
-            // Get all inventory caches to find retainer names
-            var allCaches = DbService.GetAllInventoryCachesAllCharacters();
-            foreach (var cache in allCaches)
+            // Get all inventory caches from memory cache (not DB)
+            var allCaches = _inventoryCacheService?.GetAllInventories();
+            if (allCaches != null)
             {
-                if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer && 
-                    cache.RetainerId != 0 && 
-                    !string.IsNullOrEmpty(cache.Name))
+                foreach (var cache in allCaches)
                 {
-                    retainerNames[cache.RetainerId] = cache.Name;
+                    if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer && 
+                        cache.RetainerId != 0 && 
+                        !string.IsNullOrEmpty(cache.Name))
+                    {
+                        retainerNames[cache.RetainerId] = cache.Name;
+                    }
                 }
             }
             
@@ -1831,7 +1844,7 @@ public class DataTool : ToolComponent
     }
     
     /// <summary>
-    /// Gets the effective color for a series based on TextColorMode setting.
+    /// Gets the effective color for a series based on ColorMode setting.
     /// </summary>
     private Vector4 GetEffectiveSeriesColor(ItemColumnConfig config, DataToolSettings settings, int seriesIndex)
     {
@@ -1839,8 +1852,8 @@ public class DataTool : ToolComponent
         if (config.Color.HasValue)
             return config.Color.Value;
         
-        // Check TextColorMode for preferred colors
-        if (settings.TextColorMode == TableTextColorMode.PreferredItemColors)
+        // Check ColorMode for preferred colors
+        if (settings.ColorMode == Models.GraphColorMode.PreferredItemColors)
         {
             var preferredColor = GetPreferredItemColor(config);
             if (preferredColor.HasValue)
@@ -2055,11 +2068,15 @@ public class DataTool : ToolComponent
             NotifyToolSettingsChanged();
         }
         
-        // Compact numbers
-        var useCompactNumbers = settings.UseCompactNumbers;
-        if (ImGui.Checkbox("Compact Numbers", ref useCompactNumbers))
+        // Number format (view-specific)
+        var currentNumberFormat = settings.ViewMode == DataToolViewMode.Table 
+            ? settings.TableNumberFormat 
+            : settings.GraphNumberFormat;
+        var formatLabel = settings.ViewMode == DataToolViewMode.Table 
+            ? "Table Number Format" 
+            : "Graph Number Format";
+        if (NumberFormatSettingsUI.Draw($"datatool_{settings.ViewMode}_{GetHashCode()}", currentNumberFormat, formatLabel))
         {
-            settings.UseCompactNumbers = useCompactNumbers;
             NotifyToolSettingsChanged();
         }
         
@@ -2074,17 +2091,6 @@ public class DataTool : ToolComponent
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("Hide rows where all column values are zero.");
-        }
-        
-        // Color Mode (applies to both table and graph)
-        var textColorMode = (int)settings.TextColorMode;
-        ImGui.SetNextItemWidth(200);
-        if (ImGui.Combo("Color Mode", ref textColorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
-        {
-            settings.TextColorMode = (TableTextColorMode)textColorMode;
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
-            NotifyToolSettingsChanged();
         }
         
         ImGui.Spacing();
@@ -2113,7 +2119,7 @@ public class DataTool : ToolComponent
                 {
                     _configService.Config.ItemsWithHistoricalTracking.Remove(itemId);
                 }
-                _configService.Save();
+                _configService.MarkDirty();
                 _pendingTableRefresh = true;
                 _graphCacheIsDirty = true;
             },
@@ -2129,7 +2135,7 @@ public class DataTool : ToolComponent
                 {
                     _configService.Config.EnabledTrackedDataTypes.Remove(dataType);
                 }
-                _configService.Save();
+                _configService.MarkDirty();
                 _pendingTableRefresh = true;
                 _graphCacheIsDirty = true;
             });
@@ -2220,7 +2226,10 @@ public class DataTool : ToolComponent
             ["Columns"] = columns,
             ["IncludeRetainers"] = settings.IncludeRetainers,
             ["ShowActionButtons"] = settings.ShowActionButtons,
-            ["UseCompactNumbers"] = settings.UseCompactNumbers,
+            ["TableNumberFormatStyle"] = (int)settings.TableNumberFormat.Style,
+            ["TableNumberFormatDecimalPlaces"] = settings.TableNumberFormat.DecimalPlaces,
+            ["GraphNumberFormatStyle"] = (int)settings.GraphNumberFormat.Style,
+            ["GraphNumberFormatDecimalPlaces"] = settings.GraphNumberFormat.DecimalPlaces,
             ["UseCharacterFilter"] = settings.UseCharacterFilter,
             ["SelectedCharacterIds"] = settings.SelectedCharacterIds.ToList(),
             ["GroupingMode"] = (int)settings.GroupingMode,
@@ -2253,6 +2262,7 @@ public class DataTool : ToolComponent
             ["ShowRetainerBreakdownInGraph"] = settings.ShowRetainerBreakdownInGraph,
             
             // Graph-specific
+            ["ColorMode"] = (int)settings.ColorMode,
             ["LegendWidth"] = settings.LegendWidth,
             ["LegendHeightPercent"] = settings.LegendHeightPercent,
             ["ShowLegend"] = settings.ShowLegend,
@@ -2295,7 +2305,45 @@ public class DataTool : ToolComponent
         // Shared settings
         target.IncludeRetainers = SettingsImportHelper.GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
         target.ShowActionButtons = SettingsImportHelper.GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
-        target.UseCompactNumbers = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", target.UseCompactNumbers);
+        
+        // Table number format
+        if (settings.ContainsKey("TableNumberFormatStyle"))
+        {
+            target.TableNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "TableNumberFormatStyle", (int)target.TableNumberFormat.Style);
+            target.TableNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "TableNumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
+        }
+        else if (settings.ContainsKey("NumberFormatStyle"))
+        {
+            // Backward compatibility: migrate old shared NumberFormat to table format
+            target.TableNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "NumberFormatStyle", (int)target.TableNumberFormat.Style);
+            target.TableNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "NumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
+        }
+        else if (settings.ContainsKey("UseCompactNumbers"))
+        {
+            // Backward compatibility: migrate old UseCompactNumbers setting
+            var useCompact = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", false);
+            target.TableNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
+        }
+        
+        // Graph number format
+        if (settings.ContainsKey("GraphNumberFormatStyle"))
+        {
+            target.GraphNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "GraphNumberFormatStyle", (int)target.GraphNumberFormat.Style);
+            target.GraphNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "GraphNumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
+        }
+        else if (settings.ContainsKey("NumberFormatStyle"))
+        {
+            // Backward compatibility: migrate old shared NumberFormat to graph format too
+            target.GraphNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "NumberFormatStyle", (int)target.GraphNumberFormat.Style);
+            target.GraphNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "NumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
+        }
+        else if (settings.ContainsKey("UseCompactNumbers"))
+        {
+            // Backward compatibility: migrate old UseCompactNumbers setting
+            var useCompact = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", false);
+            target.GraphNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
+        }
+        
         target.UseCharacterFilter = SettingsImportHelper.GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);
         
         var selectedIds = SettingsImportHelper.ImportUlongList(settings, "SelectedCharacterIds");
@@ -2358,6 +2406,7 @@ public class DataTool : ToolComponent
         target.HiddenCharacters = SettingsImportHelper.ImportUlongHashSet(settings, "HiddenCharacters") ?? new HashSet<ulong>();
         
         // Graph-specific
+        target.ColorMode = (Models.GraphColorMode)SettingsImportHelper.GetSetting(settings, "ColorMode", (int)target.ColorMode);
         target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
         target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
         target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
