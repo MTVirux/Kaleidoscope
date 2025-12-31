@@ -3,6 +3,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using MTGui.Common;
 using MTGui.Graph;
 using MTGui.Table;
 
@@ -96,6 +97,22 @@ public class Configuration : IPluginConfiguration
     /// Whether to expand child scopes in profiler tool stats.
     /// </summary>
     public bool ProfilerShowChildScopes { get; set; } = true;
+
+    /// <summary>
+    /// Whether the frame limiter is enabled.
+    /// </summary>
+    public bool FrameLimiterEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Target framerate for the frame limiter in frames per second.
+    /// </summary>
+    public int FrameLimiterTargetFps { get; set; } = 60;
+
+    /// <summary>
+    /// Whether the user has explicitly selected Custom mode for frame limiting.
+    /// When true, the dropdown shows Custom even if the FPS matches a preset.
+    /// </summary>
+    public bool FrameLimiterUseCustom { get; set; } = false;
 
     /// <summary>
     /// Whether developer mode stays visible without holding CTRL+ALT.
@@ -242,9 +259,9 @@ public class Configuration : IPluginConfiguration
     public PriceTrackingSettings PriceTracking { get; set; } = new();
 
     /// <summary>
-    /// Settings for the Live Price Feed tool.
+    /// Settings for the Websocket Feed tool.
     /// </summary>
-    public LivePriceFeedSettings LivePriceFeed { get; set; } = new();
+    public WebsocketFeedSettings WebsocketFeed { get; set; } = new();
 
     /// <summary>
     /// Settings for the Inventory Value tool.
@@ -252,9 +269,9 @@ public class Configuration : IPluginConfiguration
     public InventoryValueSettings InventoryValue { get; set; } = new();
 
     /// <summary>
-    /// Settings for the Top Items tool.
+    /// Settings for the Top Inventory Value Items tool.
     /// </summary>
-    public TopItemsSettings TopItems { get; set; } = new();
+    public TopInventoryValueItemsSettings TopInventoryValueItems { get; set; } = new();
     
     /// <summary>
     /// Settings for the Item Table tool.
@@ -452,9 +469,19 @@ public class ItemTableSettings : IItemTableWidgetSettings
     public bool ShowActionButtons { get; set; } = true;
     
     /// <summary>
+    /// Number format configuration for displaying values.
+    /// </summary>
+    public NumberFormatConfig NumberFormat { get; set; } = new();
+    
+    /// <summary>
     /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
     /// </summary>
-    public bool UseCompactNumbers { get; set; } = false;
+    [Obsolete("Use NumberFormat instead. Kept for migration.")]
+    public bool UseCompactNumbers
+    {
+        get => NumberFormat.Style == NumberFormatStyle.Compact;
+        set => NumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
+    }
     
     /// <summary>
     /// Optional custom color for the table header row.
@@ -607,11 +634,24 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public bool ShowActionButtons { get; set; } = true;
     
     /// <summary>
+    /// Number format configuration for displaying values.
+    /// </summary>
+    public NumberFormatConfig NumberFormat { get; set; } = new();
+    
+    /// <summary>
     /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
     /// </summary>
-    public bool UseCompactNumbers { get; set; } = false;
+    [Obsolete("Use NumberFormat instead. Kept for migration.")]
+    public bool UseCompactNumbers
+    {
+        get => NumberFormat.Style == NumberFormatStyle.Compact;
+        set => NumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
+    }
     
     // === IGraphWidgetSettings implementation ===
+    
+    /// <summary>Mode for determining series colors in the graph.</summary>
+    public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
     /// <summary>Width of the scrollable legend panel on the right side of the graph.</summary>
     public float LegendWidth { get; set; } = 140f;
@@ -746,9 +786,37 @@ public class DataToolSettings :
     public bool ShowActionButtons { get; set; } = true;
     
     /// <summary>
+    /// Number format configuration for the table view.
+    /// </summary>
+    public NumberFormatConfig TableNumberFormat { get; set; } = new();
+    
+    /// <summary>
+    /// Number format configuration for the graph view.
+    /// </summary>
+    public NumberFormatConfig GraphNumberFormat { get; set; } = new();
+    
+    // Explicit interface implementations for NumberFormat
+    NumberFormatConfig IItemTableWidgetSettings.NumberFormat
+    {
+        get => TableNumberFormat;
+        set => TableNumberFormat = value;
+    }
+    
+    NumberFormatConfig MTGui.Graph.IMTGraphSettings.NumberFormat
+    {
+        get => GraphNumberFormat;
+        set => GraphNumberFormat = value;
+    }
+    
+    /// <summary>
     /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
     /// </summary>
-    public bool UseCompactNumbers { get; set; } = false;
+    [Obsolete("Use TableNumberFormat/GraphNumberFormat instead. Kept for migration.")]
+    public bool UseCompactNumbers
+    {
+        get => TableNumberFormat.Style == NumberFormatStyle.Compact;
+        set => TableNumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
+    }
     
     /// <summary>
     /// Whether to use multi-select character filtering (show only selected characters).
@@ -909,6 +977,9 @@ public class DataToolSettings :
     
     // === Graph-Specific Settings (IGraphWidgetSettings implementation) ===
     
+    /// <summary>Mode for determining series colors in the graph.</summary>
+    public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
+    
     /// <summary>Width of the scrollable legend panel.</summary>
     public float LegendWidth { get; set; } = 140f;
     
@@ -983,6 +1054,12 @@ public class ContentLayoutState
     public int Rows { get; set; } = 9;
     public int Subdivisions { get; set; } = 8;
     public int GridResolutionMultiplier { get; set; } = 2;
+    
+    /// <summary>
+    /// Internal padding in pixels inside each tool.
+    /// A value of 0 means no padding. Default is 4.
+    /// </summary>
+    public int ToolInternalPaddingPx { get; set; } = 4;
 }
 
 public class ContentComponentState

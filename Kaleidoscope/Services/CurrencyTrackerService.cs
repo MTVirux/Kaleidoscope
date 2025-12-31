@@ -24,6 +24,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     private readonly TrackedDataRegistry _registry;
     private readonly InventoryChangeService _inventoryChangeService;
     private readonly TimeSeriesCacheService _cacheService;
+    private readonly CharacterDataCacheService _characterDataCache;
 
     // Background thread for database writes
     private readonly Channel<SampleWorkItem> _sampleQueue;
@@ -59,6 +60,11 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     /// Gets the in-memory cache service for fast data access.
     /// </summary>
     public TimeSeriesCacheService CacheService => _cacheService;
+
+    /// <summary>
+    /// Gets the character data cache service for character name lookups.
+    /// </summary>
+    public CharacterDataCacheService CharacterDataCache => _characterDataCache;
 
     /// <summary>
     /// Event fired when inventory value history is modified (e.g., sale record deleted).
@@ -107,7 +113,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
         InventoryChangeService inventoryChangeService,
-        TimeSeriesCacheService cacheService)
+        TimeSeriesCacheService cacheService,
+        CharacterDataCacheService characterDataCache)
     {
         _log = log;
         _filenames = filenames;
@@ -116,10 +123,14 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _registry = registry;
         _inventoryChangeService = inventoryChangeService;
         _cacheService = cacheService;
+        _characterDataCache = characterDataCache;
 
         // Create the database service with configured cache size
         var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
+
+        // Initialize character data cache with DB service
+        _characterDataCache.Initialize(_dbService);
 
         // Initialize background work queue (unbounded, single consumer)
         _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
@@ -333,12 +344,10 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var loadedSeries = 0;
             var loadedPoints = 0L;
 
-            // Load character names first (with game name, display name, and color)
-            var characterData = _dbService.GetAllCharacterDataExtended();
-            _cacheService.PopulateCharacterNames(characterData);
-            _log.Debug($"[CurrencyTrackerService] Loaded {characterData.Count} character names into cache");
+            // Character names are now loaded by CharacterDataCacheService.Initialize()
+            _log.Debug($"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
 
-            // Load data for each tracked data type
+            // Load data for each tracked data type (currencies)
             foreach (var dataType in _registry.Definitions.Keys)
             {
                 var variable = dataType.ToString();
@@ -350,6 +359,27 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 _cacheService.PopulateAvailableCharacters(variable, characters);
 
                 // Load recent points for each character
+                foreach (var charId in characters)
+                {
+                    var points = _dbService.GetPointsSince(variable, charId, cutoffTime);
+                    if (points.Count > 0)
+                    {
+                        _cacheService.PopulateFromDatabase(variable, charId, points);
+                        loadedSeries++;
+                        loadedPoints += points.Count;
+                    }
+                }
+            }
+            
+            // Also load item tracking data (Item_*, ItemRetainer_*, ItemRetainerX_*)
+            var itemVariables = _dbService.GetAllVariablesWithPrefix("Item");
+            foreach (var variable in itemVariables)
+            {
+                var characters = _dbService.GetAvailableCharacters(variable);
+                if (characters.Count == 0) continue;
+                
+                _cacheService.PopulateAvailableCharacters(variable, characters);
+                
                 foreach (var charId in characters)
                 {
                     var points = _dbService.GetPointsSince(variable, charId, cutoffTime);

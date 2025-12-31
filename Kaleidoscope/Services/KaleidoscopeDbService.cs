@@ -576,6 +576,59 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
+    /// Gets the latest recorded value for each character for a given variable.
+    /// Much more efficient than GetAllPointsBatch when only the current values are needed.
+    /// Uses a single optimized SQL query with window functions to avoid fetching full history.
+    /// </summary>
+    /// <param name="variable">The variable name to query (e.g., "Gil")</param>
+    /// <returns>Dictionary mapping characterId to their latest value</returns>
+    public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
+    {
+        var result = new Dictionary<ulong, long>();
+
+        lock (_readLock)
+        {
+            // Fall back to write connection if read connection not available
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                // Optimized query: use GROUP BY with MAX to get only the latest point per character
+                // This avoids fetching and sorting the entire history
+                cmd.CommandText = @"
+                    SELECT s.character_id, p.value
+                    FROM points p
+                    JOIN series s ON p.series_id = s.id
+                    WHERE s.variable = $var
+                      AND p.timestamp = (
+                          SELECT MAX(p2.timestamp) 
+                          FROM points p2 
+                          WHERE p2.series_id = s.id
+                      )";
+                cmd.Parameters.AddWithValue("$var", variable);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var charId = (ulong)reader.GetInt64(0);
+                    var value = reader.GetInt64(1);
+                    
+                    if (charId == 0) continue;
+                    result[charId] = value;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetLatestValuesForVariable failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Inserts a new data point for the given series.
     /// </summary>
     public bool InsertPoint(long seriesId, long value, DateTime? timestamp = null)
@@ -1050,6 +1103,42 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             catch (Exception ex)
             {
                 LogService.Debug($"[KaleidoscopeDb] GetAvailableCharacters failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all unique variable names that start with the given prefix.
+    /// Used to find all item tracking series (Item_*, ItemRetainer_*, etc.).
+    /// </summary>
+    public List<string> GetAllVariablesWithPrefix(string prefix)
+    {
+        var result = new List<string>();
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return result;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "SELECT DISTINCT variable FROM series WHERE variable LIKE $prefix ORDER BY variable";
+                cmd.Parameters.AddWithValue("$prefix", prefix + "%");
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var variable = reader.GetString(0);
+                    if (!string.IsNullOrEmpty(variable))
+                        result.Add(variable);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetAllVariablesWithPrefix failed: {ex.Message}");
             }
         }
 

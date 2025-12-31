@@ -27,5 +27,6 @@ public static class DalamudServices
         services.AddDalamudService<IAddonLifecycle>(pi);
         services.AddDalamudService<IPlayerState>(pi);
         services.AddDalamudService<IDataManager>(pi);
+        services.AddDalamudService<ITitleScreenMenu>(pi);
     }
 }

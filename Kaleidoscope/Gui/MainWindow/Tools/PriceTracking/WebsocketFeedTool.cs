@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
@@ -13,9 +14,9 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// Shows listings added/removed and sales as they happen in real-time.
 /// Click on any entry to open the ItemDetailsPopup with full market data from the API.
 /// </summary>
-public class LivePriceFeedTool : ToolComponent
+public class WebsocketFeedTool : ToolComponent
 {
-    public override string ToolName => "Live Price Feed";
+    public override string ToolName => "Websocket Feed";
     
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly PriceTrackingService _priceTrackingService;
@@ -25,7 +26,7 @@ public class LivePriceFeedTool : ToolComponent
     private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly CharacterDataService? _characterDataService;
-    private readonly LivePriceFeedSettings _instanceSettings;
+    private readonly WebsocketFeedSettings _instanceSettings;
 
     // World selection widget for filtering
     private WorldSelectionWidget? _worldSelectionWidget;
@@ -36,10 +37,10 @@ public class LivePriceFeedTool : ToolComponent
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
 
-    private LivePriceFeedSettings Settings => _instanceSettings;
+    private WebsocketFeedSettings Settings => _instanceSettings;
     private PriceTrackingSettings PriceSettings => _configService.Config.PriceTracking;
 
-    public LivePriceFeedTool(
+    public WebsocketFeedTool(
         UniversalisWebSocketService webSocketService,
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
@@ -57,7 +58,7 @@ public class LivePriceFeedTool : ToolComponent
         _currencyTrackerService = CurrencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
-        _instanceSettings = new LivePriceFeedSettings();
+        _instanceSettings = new WebsocketFeedSettings();
 
         // Create item details popup for viewing market data when clicking entries
         _itemDetailsPopup = new ItemDetailsPopup(
@@ -68,7 +69,7 @@ public class LivePriceFeedTool : ToolComponent
             _inventoryCacheService,
             _characterDataService);
 
-        Title = "Live Price Feed";
+        Title = "Websocket Feed";
         Size = new Vector2(450, 300);
     }
 
@@ -93,29 +94,27 @@ public class LivePriceFeedTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[LivePriceFeedTool] Draw error: {ex.Message}");
+            LogService.Debug($"[WebsocketFeedTool] Draw error: {ex.Message}");
         }
     }
 
     private void DrawConnectionStatus()
     {
         var isConnected = _webSocketService.IsConnected;
-        var feedCount = _webSocketService.LiveFeedCount;
 
-        // Status indicator
-        var statusColor = isConnected 
-            ? new Vector4(0.3f, 0.9f, 0.3f, 1f) 
-            : new Vector4(0.9f, 0.3f, 0.3f, 1f);
+        // Status indicator with ball
+        var indicatorColor = isConnected ? UiColors.Connected : UiColors.Disconnected;
+        var icon = isConnected ? "●" : "○";
         var statusText = isConnected ? "Connected" : "Disconnected";
 
-        ImGui.TextColored(statusColor, statusText);
+        ImGui.TextColored(indicatorColor, icon);
         ImGui.SameLine();
-        ImGui.TextDisabled($"({feedCount} events)");
+        ImGui.TextUnformatted(statusText);
 
         if (!PriceSettings.Enabled)
         {
             ImGui.SameLine();
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.3f, 1f), "[Price Tracking Disabled]");
+            ImGui.TextColored(UiColors.Warning, "[Price Tracking Disabled]");
         }
     }
 
@@ -261,7 +260,7 @@ public class LivePriceFeedTool : ToolComponent
     {
         try
         {
-            if (!MTTreeHelpers.DrawCollapsingSection("Live Feed Settings", true))
+            if (!MTTreeHelpers.DrawCollapsingSection("Websocket Feed Settings", true))
                 return;
                 
             var settings = Settings;
@@ -335,11 +334,11 @@ public class LivePriceFeedTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[LivePriceFeedTool] Settings error: {ex.Message}");
+            LogService.Debug($"[WebsocketFeedTool] Settings error: {ex.Message}");
         }
     }
 
-    private void DrawWorldFilterWidget(LivePriceFeedSettings settings)
+    private void DrawWorldFilterWidget(WebsocketFeedSettings settings)
     {
         var worldData = _priceTrackingService.WorldData;
 

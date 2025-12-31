@@ -25,7 +25,7 @@ public sealed record CharacterInfo(
 
 /// <summary>
 /// Centralized service for character data access, caching, and formatting.
-/// Consolidates character loading logic from CharacterCombo, DataTool, InventoryValueTool, and TopInventoryValueTool.
+/// Consolidates character loading logic from CharacterCombo, DataTool, and TopInventoryValueTool.
 /// </summary>
 public sealed class CharacterDataService : IDisposable, IService
 {
@@ -224,13 +224,13 @@ public sealed class CharacterDataService : IDisposable, IService
     {
         try
         {
-            var dbService = _currencyTrackerService.DbService;
+            var characterDataCache = _currencyTrackerService.CharacterDataCache;
             var cacheService = _currencyTrackerService.CacheService;
             var worldData = _priceTrackingService?.WorldData;
             var nameFormat = _configService.Config.CharacterNameFormat;
 
-            // Get raw character data from database
-            var dbCharacters = dbService.GetAllCharacterNames()
+            // Get raw character data from CharacterDataCache (no DB access)
+            var dbCharacters = characterDataCache.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .Where(c => c.characterId != 0)
@@ -240,7 +240,7 @@ public sealed class CharacterDataService : IDisposable, IService
             var characterWorlds = GetCharacterWorlds();
 
             // Get disambiguated names from cache service
-            var disambiguatedNames = cacheService.GetDisambiguatedNames(
+            var disambiguatedNames = characterDataCache.GetDisambiguatedNames(
                 dbCharacters.Select(c => c.characterId));
 
             var characters = new List<CharacterInfo>();

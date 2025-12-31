@@ -374,6 +374,53 @@ public sealed class UniversalisService : IDisposable, IService
     }
 
     /// <summary>
+    /// Gets the sale history for multiple items on a specific world or data center.
+    /// The Universalis API supports up to 100 items per request.
+    /// </summary>
+    /// <param name="worldOrDc">World name, data center name, or region.</param>
+    /// <param name="itemIds">The item IDs to look up (max 100).</param>
+    /// <param name="entriesToReturn">Number of entries to return per item. Default is 1800, max is 99999.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Dictionary of item ID to sale history, or null if request failed.</returns>
+    public async Task<Dictionary<uint, MarketHistory>?> GetHistoryBatchAsync(
+        string worldOrDc,
+        IEnumerable<uint> itemIds,
+        int? entriesToReturn = null,
+        CancellationToken cancellationToken = default)
+    {
+        var itemIdList = itemIds.Take(100).ToList();
+        if (itemIdList.Count == 0)
+            return new Dictionary<uint, MarketHistory>();
+
+        // Single item - use the simpler endpoint
+        if (itemIdList.Count == 1)
+        {
+            var singleResult = await GetHistoryAsync(worldOrDc, itemIdList[0], entriesToReturn, cancellationToken);
+            if (singleResult == null)
+                return null;
+            return new Dictionary<uint, MarketHistory> { { itemIdList[0], singleResult } };
+        }
+
+        var itemIdsStr = string.Join(",", itemIdList);
+        var queryParams = entriesToReturn.HasValue ? $"?entriesToReturn={entriesToReturn.Value}" : "";
+        var url = $"history/{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}{queryParams}";
+        
+        var response = await GetAsync<MultiItemMarketHistory>(url, cancellationToken);
+        if (response?.Items == null)
+            return null;
+
+        var result = new Dictionary<uint, MarketHistory>();
+        foreach (var kvp in response.Items)
+        {
+            if (uint.TryParse(kvp.Key, out var itemId))
+            {
+                result[itemId] = kvp.Value;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Gets the current tax rates for a specific world.
     /// </summary>
     /// <param name="world">World name or ID.</param>

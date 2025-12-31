@@ -23,8 +23,8 @@ public sealed class WindowService : IDisposable, IRequiredService
     private readonly StateService _stateService;
     private readonly WindowSystem _windowSystem;
     private readonly MainWindow _mainWindow;
-    private readonly FullscreenWindow _fullscreenWindow;
     private readonly ConfigWindow _configWindow;
+    private readonly IUiBuilder _uiBuilder;
 
     public WindowService(
         IPluginLog log,
@@ -33,7 +33,6 @@ public sealed class WindowService : IDisposable, IRequiredService
         ConfigurationService configService,
         StateService stateService,
         MainWindow mainWindow,
-        FullscreenWindow fullscreenWindow,
         ConfigWindow configWindow)
     {
         _log = log;
@@ -41,17 +40,19 @@ public sealed class WindowService : IDisposable, IRequiredService
         _configService = configService;
         _stateService = stateService;
         _mainWindow = mainWindow;
-        _fullscreenWindow = fullscreenWindow;
         _configWindow = configWindow;
+        _uiBuilder = uiBuilder;
 
         _mainWindow.SetWindowService(this);
-        _fullscreenWindow.SetWindowService(this);
 
         _windowSystem = new WindowSystem("Kaleidoscope");
 
         RegisterWindows();
         AttachEvents(uiBuilder);
         ApplyInitialWindowState();
+        
+        // Subscribe to fullscreen state changes to update UI hide settings
+        _stateService.OnFullscreenChanged += OnFullscreenChanged;
 
         _log.Debug("WindowService initialized");
     }
@@ -59,7 +60,6 @@ public sealed class WindowService : IDisposable, IRequiredService
     private void RegisterWindows()
     {
         _windowSystem.AddWindow(_mainWindow);
-        _windowSystem.AddWindow(_fullscreenWindow);
         _windowSystem.AddWindow(_configWindow);
     }
 
@@ -83,25 +83,38 @@ public sealed class WindowService : IDisposable, IRequiredService
 
         if (config.ShowOnStart)
         {
+            _mainWindow.IsOpen = true;
+            
+            // If exclusive fullscreen is configured, MainWindow.PreDraw will handle entering fullscreen mode
             if (config.ExclusiveFullscreen)
             {
-                _fullscreenWindow.IsOpen = true;
-                _mainWindow.IsOpen = false;
                 _stateService.IsFullscreen = true;
+                UpdateUiHideSettings(true);
             }
             else
             {
-                _mainWindow.IsOpen = true;
-                _fullscreenWindow.IsOpen = false;
                 _stateService.IsFullscreen = false;
+                UpdateUiHideSettings(false);
             }
         }
         else
         {
             _mainWindow.IsOpen = false;
-            _fullscreenWindow.IsOpen = false;
             _stateService.IsFullscreen = false;
+            UpdateUiHideSettings(false);
         }
+    }
+    
+    private void OnFullscreenChanged(bool isFullscreen)
+    {
+        UpdateUiHideSettings(isFullscreen);
+    }
+    
+    private void UpdateUiHideSettings(bool isFullscreen)
+    {
+        // When in fullscreen mode, prevent the UI from hiding during cutscenes and gpose
+        _uiBuilder.DisableCutsceneUiHide = isFullscreen;
+        _uiBuilder.DisableGposeUiHide = isFullscreen;
     }
 
     private void Draw() => _windowSystem.Draw();
@@ -110,29 +123,28 @@ public sealed class WindowService : IDisposable, IRequiredService
     public void OpenConfigWindow() => _configWindow.IsOpen = true;
     public void OpenLayoutsConfig() => _configWindow.OpenToTab(ConfigWindow.TabIndex.Layouts);
 
+    /// <summary>
+    /// Requests entering fullscreen mode.
+    /// </summary>
     public void RequestShowFullscreen()
     {
-        _mainWindow.IsOpen = false;
-        _fullscreenWindow.IsOpen = true;
-        _stateService.EnterFullscreen();
+        _mainWindow.EnterFullscreenMode();
     }
 
+    /// <summary>
+    /// Requests exiting fullscreen mode.
+    /// </summary>
     public void RequestExitFullscreen()
     {
-        _fullscreenWindow.IsOpen = false;
-        _stateService.ExitFullscreen();
-
-        if (!_configService.Config.ExclusiveFullscreen)
-        {
-            _mainWindow.IsOpen = true;
-            _mainWindow.ExitFullscreen();
-        }
+        _mainWindow.ExitFullscreenMode();
     }
 
     public void ApplyLayout(string name) => _mainWindow.ApplyLayoutByName(name);
 
     public void Dispose()
     {
+        _stateService.OnFullscreenChanged -= OnFullscreenChanged;
+        UpdateUiHideSettings(false); // Reset to default behavior on dispose
         DetachEvents(_pluginInterface.UiBuilder);
         _windowSystem.RemoveAllWindows();
         _mainWindow?.Dispose();

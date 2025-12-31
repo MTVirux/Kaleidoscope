@@ -19,11 +19,16 @@ public sealed class QuickAccessBarWidget
     private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly UniversalisWebSocketService? _webSocketService;
     private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly FrameLimiterService? _frameLimiterService;
     private readonly Action? _onFullscreenToggle;
     private readonly Action? _onSave;
     private readonly Action? _onOpenSettings;
     private readonly Func<bool>? _onExitEditModeWithDirtyCheck;
     private readonly Action<string>? _onLayoutChanged;
+    
+    // FPS dropdown options
+    private static readonly string[] FpsOptions = { "Custom", "240", "144", "90", "75", "60", "30", "Off" };
+    private static readonly int[] FpsValues = { -1, 240, 144, 90, 75, 60, 30, 0 }; // -1 = custom, 0 = disabled
 
     private const float BarHeight = 32f;
     private const float ButtonWidth = 28f;
@@ -73,6 +78,7 @@ public sealed class QuickAccessBarWidget
     /// <param name="CurrencyTrackerService">Currency tracking service for database status (optional).</param>
     /// <param name="webSocketService">WebSocket service for Universalis connection status (optional).</param>
     /// <param name="autoRetainerService">AutoRetainer IPC service for plugin integration status (optional).</param>
+    /// <param name="frameLimiterService">Frame limiter service for FPS control (optional).</param>
     /// <param name="onFullscreenToggle">Callback to toggle fullscreen mode.</param>
     /// <param name="onSave">Callback to save the layout.</param>
     /// <param name="onOpenSettings">Callback to open settings window.</param>
@@ -85,6 +91,7 @@ public sealed class QuickAccessBarWidget
         CurrencyTrackerService? CurrencyTrackerService = null,
         UniversalisWebSocketService? webSocketService = null,
         AutoRetainerIpcService? autoRetainerService = null,
+        FrameLimiterService? frameLimiterService = null,
         Action? onFullscreenToggle = null,
         Action? onSave = null,
         Action? onOpenSettings = null,
@@ -97,6 +104,7 @@ public sealed class QuickAccessBarWidget
         _currencyTrackerService = CurrencyTrackerService;
         _webSocketService = webSocketService;
         _autoRetainerService = autoRetainerService;
+        _frameLimiterService = frameLimiterService;
         _onFullscreenToggle = onFullscreenToggle;
         _onSave = onSave;
         _onOpenSettings = onOpenSettings;
@@ -201,16 +209,23 @@ public sealed class QuickAccessBarWidget
             : Vector2.Zero;
         var layoutDropdownWidth = hasLayoutDropdown && filteredLayouts.Count > 0 ? layoutTextSize.X + 30f : 0f; // Extra space for dropdown arrow
         
+        // Get FPS dropdown width if frame limiter service is available
+        var hasFpsDropdown = _frameLimiterService != null;
+        var currentFpsText = GetCurrentFpsDisplayText();
+        var fpsTextSize = hasFpsDropdown ? ImGui.CalcTextSize(currentFpsText) : Vector2.Zero;
+        var fpsDropdownWidth = hasFpsDropdown ? fpsTextSize.X + 30f : 0f;
+        
         var buttonsWidth = (ButtonWidth * buttonCount) + (ButtonSpacing * (buttonCount - 1));
         var statusWidth = statusCount > 0 ? (StatusIndicatorSize * statusCount) + (StatusSpacing * (statusCount - 1)) : 0f;
         var characterWidth = characterTextSize.X;
         var separatorSpace = SeparatorMargin * 2 + SeparatorWidth;
         
-        // Calculate total bar width: buttons | layout | character | indicators (with separators between each)
+        // Calculate total bar width: buttons | layout | fps | character | indicators (with separators between each)
         var layoutSectionWidth = (hasLayoutDropdown && filteredLayouts.Count > 0) ? layoutDropdownWidth + separatorSpace : 0f;
+        var fpsSectionWidth = hasFpsDropdown ? fpsDropdownWidth + separatorSpace : 0f;
         var characterSectionWidth = characterWidth + separatorSpace;
         var statusSectionWidth = statusCount > 0 ? statusWidth + separatorSpace : 0f;
-        var barWidth = buttonsWidth + layoutSectionWidth + characterSectionWidth + statusSectionWidth + (BarPadding * 2);
+        var barWidth = buttonsWidth + layoutSectionWidth + fpsSectionWidth + characterSectionWidth + statusSectionWidth + (BarPadding * 2);
         
         // Position at top center of the current window with reduced spacing
         var windowPos = ImGui.GetWindowPos();
@@ -347,6 +362,39 @@ public sealed class QuickAccessBarWidget
             }
             ImGui.PopStyleVar();
             currentX += layoutDropdownWidth + SeparatorMargin;
+        }
+        
+        // FPS dropdown (if frame limiter service is available)
+        if (hasFpsDropdown)
+        {
+            // Draw separator before FPS dropdown
+            dl.AddLine(
+                new Vector2(currentX, separatorTop),
+                new Vector2(currentX, separatorBottom),
+                SeparatorColor,
+                SeparatorWidth);
+            currentX += SeparatorWidth + SeparatorMargin;
+            
+            var fpsComboY = barPos.Y + (BarHeight - 20f) / 2f;
+            ImGui.SetCursorScreenPos(new Vector2(currentX, fpsComboY));
+            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(4f, 2f));
+            ImGui.SetNextItemWidth(fpsDropdownWidth);
+            if (ImGui.BeginCombo("##FpsSelect", currentFpsText, ImGuiComboFlags.NoArrowButton))
+            {
+                for (var i = 0; i < FpsOptions.Length; i++)
+                {
+                    var isSelected = GetCurrentFpsIndex() == i;
+                    if (ImGui.Selectable(FpsOptions[i], isSelected))
+                    {
+                        ApplyFpsSelection(i);
+                    }
+                    if (isSelected)
+                        ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
+            }
+            ImGui.PopStyleVar();
+            currentX += fpsDropdownWidth + SeparatorMargin;
         }
         
         // Draw separator before character name
@@ -547,5 +595,87 @@ public sealed class QuickAccessBarWidget
         }
 
         x += ButtonWidth;
+    }
+    
+    /// <summary>
+    /// Gets the display text for the current FPS setting.
+    /// </summary>
+    private string GetCurrentFpsDisplayText()
+    {
+        if (_frameLimiterService == null)
+            return "FPS";
+            
+        if (!_frameLimiterService.IsEnabled)
+            return "FPS: Off";
+            
+        var fps = _frameLimiterService.TargetFramerate;
+        
+        // Check if it's a preset value
+        if (_configurationService?.Config.FrameLimiterUseCustom == true)
+            return $"FPS: {fps}";
+            
+        return fps switch
+        {
+            240 or 144 or 90 or 75 or 60 or 30 => $"FPS: {fps}",
+            _ => $"FPS: {fps}"
+        };
+    }
+    
+    /// <summary>
+    /// Gets the current selection index in the FPS dropdown.
+    /// </summary>
+    private int GetCurrentFpsIndex()
+    {
+        if (_frameLimiterService == null || !_frameLimiterService.IsEnabled)
+            return 7; // Off
+            
+        if (_configurationService?.Config.FrameLimiterUseCustom == true)
+            return 0; // Custom
+            
+        var fps = _frameLimiterService.TargetFramerate;
+        return fps switch
+        {
+            240 => 1,
+            144 => 2,
+            90 => 3,
+            75 => 4,
+            60 => 5,
+            30 => 6,
+            _ => 0 // Custom
+        };
+    }
+    
+    /// <summary>
+    /// Applies the selected FPS preset.
+    /// </summary>
+    private void ApplyFpsSelection(int index)
+    {
+        if (_frameLimiterService == null || _configurationService == null)
+            return;
+            
+        var value = FpsValues[index];
+        
+        if (value == 0)
+        {
+            // Off
+            _frameLimiterService.IsEnabled = false;
+            _configurationService.Config.FrameLimiterUseCustom = false;
+            _configurationService.Save();
+        }
+        else if (value == -1)
+        {
+            // Custom - enable with current FPS
+            _configurationService.Config.FrameLimiterUseCustom = true;
+            _frameLimiterService.IsEnabled = true;
+            _configurationService.Save();
+        }
+        else
+        {
+            // Preset value
+            _configurationService.Config.FrameLimiterUseCustom = false;
+            _frameLimiterService.TargetFramerate = value;
+            _frameLimiterService.IsEnabled = true;
+            _configurationService.Save();
+        }
     }
 }

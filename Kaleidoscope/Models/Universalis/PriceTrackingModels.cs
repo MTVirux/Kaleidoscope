@@ -1,6 +1,7 @@
 using Kaleidoscope;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
+using MTGui.Common;
 using MTGui.Graph;
 
 namespace Kaleidoscope.Models.Universalis;
@@ -133,9 +134,9 @@ public class PriceTrackingSettings
 }
 
 /// <summary>
-/// Settings for the Live Price Feed tool.
+/// Settings for the Websocket Feed tool.
 /// </summary>
-public class LivePriceFeedSettings
+public class WebsocketFeedSettings
 {
     /// <summary>Maximum number of entries to display.</summary>
     public int MaxEntries { get; set; } = 100;
@@ -230,6 +231,9 @@ public class InventoryValueSettings : IGraphWidgetSettings
     
     // === IGraphWidgetSettings implementation ===
     
+    /// <summary>Mode for determining series colors in the graph.</summary>
+    public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredCharacterColors;
+    
     /// <summary>Time range value for the graph.</summary>
     public int TimeRangeValue { get; set; } = 7;
 
@@ -289,12 +293,15 @@ public class InventoryValueSettings : IGraphWidgetSettings
     
     /// <summary>Whether to show the controls drawer.</summary>
     public bool ShowControlsDrawer { get; set; } = true;
+    
+    /// <summary>Number format configuration for displayed values.</summary>
+    public NumberFormatConfig NumberFormat { get; set; } = new();
 }
 
 /// <summary>
-/// Settings for the Top Items tool.
+/// Settings for the Top Inventory Value Items tool.
 /// </summary>
-public class TopItemsSettings
+public class TopInventoryValueItemsSettings
 {
     /// <summary>Maximum number of items to display.</summary>
     public int MaxItems { get; set; } = 100;

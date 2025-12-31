@@ -302,11 +302,11 @@ public sealed class StorageCategory
 
     private void DrawLiveFeedSection()
     {
-        if (!ImGui.CollapsingHeader("Live Price Feed Buffer##StorageFeed", ImGuiTreeNodeFlags.DefaultOpen))
+        if (!ImGui.CollapsingHeader("Websocket Feed Buffer##StorageFeed", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
         ImGui.Indent();
-        var settings = _configService.Config.LivePriceFeed;
+        var settings = _configService.Config.WebsocketFeed;
 
         var maxEntries = settings.MaxEntries;
         ImGui.SetNextItemWidth(100);
@@ -316,7 +316,7 @@ public sealed class StorageCategory
             _configService.Save();
         }
         DrawHelpMarker(
-            "Maximum entries shown in the Live Price Feed tool.\n\n" +
+            "Maximum entries shown in the Websocket Feed tool.\n\n" +
             "This is an in-memory UI buffer, not database storage.\n" +
             "Older entries are discarded as new ones arrive.\n\n" +
             "• 50 entries: Minimal RAM, recent events only\n" +

@@ -36,7 +36,7 @@ public record TooltipMarketData(
 /// </summary>
 public class TopInventoryValueTool : ToolComponent
 {
-    public override string ToolName => "Top Items";
+    public override string ToolName => "Top Inventory Value Items";
     
     private readonly PriceTrackingService _priceTrackingService;
     private readonly CurrencyTrackerService _currencyTrackerService;
@@ -52,7 +52,7 @@ public class TopInventoryValueTool : ToolComponent
     private volatile bool _pendingRefresh;
 
     // Cached data - now includes price info for tooltips
-    private List<(int ItemId, long Quantity, long Value, string Name, TopItemPriceInfo? PriceInfo)> _topItems = new();
+    private List<(int ItemId, long Quantity, long Value, string Name, TopItemPriceInfo? PriceInfo)> _topInventoryValueItems = new();
     private long _totalValue = 0;
     private long _gilValue = 0;
     private DateTime _lastRefresh = DateTime.MinValue;
@@ -71,11 +71,12 @@ public class TopInventoryValueTool : ToolComponent
     private CharacterNameFormat _cachedNameFormat;
 
     // Instance-specific settings (persisted with layout, not global config)
-    private readonly TopItemsSettings _instanceSettings;
+    private readonly TopInventoryValueItemsSettings _instanceSettings;
     
-    private TopItemsSettings Settings => _instanceSettings;
+    private TopInventoryValueItemsSettings Settings => _instanceSettings;
     private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
     private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
+    private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
 
     public TopInventoryValueTool(
         PriceTrackingService priceTrackingService,
@@ -98,7 +99,7 @@ public class TopInventoryValueTool : ToolComponent
         _inventoryCacheService = inventoryCacheService;
 
         // Initialize instance settings (persisted with layout)
-        _instanceSettings = new TopItemsSettings();
+        _instanceSettings = new TopInventoryValueItemsSettings();
         
         // Create item combo for exclusion list (marketable only since we're dealing with prices)
         _itemCombo = new MTItemComboDropdown(
@@ -106,7 +107,7 @@ public class TopInventoryValueTool : ToolComponent
             dataManager,
             favoritesService,
             priceTrackingService,
-            "TopItemsExclude",
+            "TopInventoryValueItemsExclude",
             marketableOnly: true,
             configService: _configService,
             trackedDataRegistry: _currencyTrackerService.Registry,
@@ -121,7 +122,7 @@ public class TopInventoryValueTool : ToolComponent
             inventoryCacheService,
             characterDataService);
 
-        Title = "Top Items";
+        Title = "Top Inventory Value Items";
         Size = new Vector2(400, 350);
 
         // Subscribe to inventory change events for automatic refresh
@@ -209,7 +210,7 @@ public class TopInventoryValueTool : ToolComponent
             }
 
             // Limit to MaxItems after filtering
-            _topItems = namedItems.Take(settings.MaxItems).ToList();
+            _topInventoryValueItems = namedItems.Take(settings.MaxItems).ToList();
 
             // Get gil value
             if (charId.HasValue)
@@ -221,7 +222,8 @@ public class TopInventoryValueTool : ToolComponent
             else
             {
                 // Calculate for all characters in parallel for better CPU utilization
-                var allChars = DbService.GetAllCharacterNames().Select(c => c.characterId).Distinct().ToList();
+                // Get character list from cache (no DB access)
+                var allChars = CharacterDataCache.GetAllCharacterIds();
                 
                 if (allChars.Count > 0)
                 {
@@ -342,7 +344,7 @@ public class TopInventoryValueTool : ToolComponent
         var settings = Settings;
 
         // Use 0 height to auto-fit content and avoid unnecessary scrollbar
-        if (ImGui.BeginChild("##TopItemsList", new Vector2(0, 0), false))
+        if (ImGui.BeginChild("##TopInventoryValueItemsList", new Vector2(0, 0), false))
         {
             // Gil row first if included
             if (settings.IncludeGil && _gilValue > 0)
@@ -351,7 +353,7 @@ public class TopInventoryValueTool : ToolComponent
             }
 
             // Item rows
-            if (_topItems.Count == 0)
+            if (_topInventoryValueItems.Count == 0)
             {
                 ImGui.TextDisabled("No items to display");
                 ImGui.TextDisabled("Make sure price tracking is enabled");
@@ -359,7 +361,7 @@ public class TopInventoryValueTool : ToolComponent
             else
             {
                 int rank = 1;
-                foreach (var item in _topItems)
+                foreach (var item in _topInventoryValueItems)
                 {
                     if (item.Value < settings.MinValueThreshold)
                         continue;
@@ -455,7 +457,7 @@ public class TopInventoryValueTool : ToolComponent
     {
         try
         {
-            // Check if sales channel is subscribed for the warning
+            // Check if sales channel is subscribed for the warning (quick, no await needed)
             string? warning = null;
             if (!_priceTrackingService.IsSocketConnected)
             {
@@ -466,12 +468,14 @@ public class TopInventoryValueTool : ToolComponent
                 warning = "Sales channel not subscribed - enable in Universalis settings";
             }
 
-            // Get recent sales from local database (no scope needed - uses all recorded data)
-            var dbSales = _currencyTrackerService.DbService.GetSaleRecords(itemId, limit: 5);
-            
-            var recentSales = dbSales
-                .Select(s => new LocalSaleInfo(s.WorldId, s.PricePerUnit, s.Quantity, s.IsHq, s.Timestamp))
-                .ToList();
+            // Offload database query to background thread to avoid blocking UI
+            var recentSales = await Task.Run(() =>
+            {
+                var dbSales = _currencyTrackerService.DbService.GetSaleRecords(itemId, limit: 5);
+                return dbSales
+                    .Select(s => new LocalSaleInfo(s.WorldId, s.PricePerUnit, s.Quantity, s.IsHq, s.Timestamp))
+                    .ToList();
+            }).ConfigureAwait(false);
 
             _tooltipCache[itemId] = new TooltipMarketData(recentSales, DateTime.UtcNow, Warning: warning);
         }

@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
+using MTGui.Common;
 using MTGui.Table;
 using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -177,8 +178,15 @@ public interface IItemTableWidgetSettings
     Vector4? CharacterColumnColor { get; set; }
     
     /// <summary>
-    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
+    /// Number format configuration for displaying values.
     /// </summary>
+    NumberFormatConfig NumberFormat { get; set; }
+    
+    /// <summary>
+    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
+    /// Provided for backward compatibility - use NumberFormat instead.
+    /// </summary>
+    [Obsolete("Use NumberFormat instead.")]
     bool UseCompactNumbers { get; set; }
     
     /// <summary>
@@ -1283,7 +1291,7 @@ public class ItemTableWidget : ISettingsProvider
             
             // Handle sorting
             var sortedRows = GetSortedRows(rows, columns, settings);
-            var useCompact = settings.UseCompactNumbers;
+            var numberFormat = settings.NumberFormat;
             
             // Filter out hidden characters
             var visibleRows = sortedRows.Where(r => !settings.HiddenCharacters.Contains(r.CharacterId)).ToList();
@@ -1540,7 +1548,7 @@ public class ItemTableWidget : ISettingsProvider
                     }
                     
                     DrawAlignedCellText(
-                        FormatNumber(value, useCompact), 
+                        FormatNumber(value, numberFormat), 
                         textColor, 
                         settings.HorizontalAlignment, 
                         settings.VerticalAlignment);
@@ -1594,7 +1602,7 @@ public class ItemTableWidget : ISettingsProvider
                                 Vector4? subTextColor = GetEffectiveColumnColor(subSourceCol, displayCol, settings, columns);
                                 
                                 DrawAlignedCellText(
-                                    FormatNumber(subValue, useCompact),
+                                    FormatNumber(subValue, numberFormat),
                                     subTextColor,
                                     settings.HorizontalAlignment,
                                     settings.VerticalAlignment);
@@ -1646,7 +1654,7 @@ public class ItemTableWidget : ISettingsProvider
                     }
                     
                     DrawAlignedCellText(
-                        FormatNumber(sum, useCompact), 
+                        FormatNumber(sum, numberFormat), 
                         textColor, 
                         settings.HorizontalAlignment, 
                         settings.VerticalAlignment);
@@ -1941,7 +1949,7 @@ public class ItemTableWidget : ISettingsProvider
         return result;
     }
     
-    private static string FormatNumber(long value, bool compact) => MTTableHelpers.FormatNumber(value, compact);
+    private static string FormatNumber(long value, NumberFormatConfig? config) => MTTableHelpers.FormatNumber(value, config);
     
     /// <summary>
     /// Draws text in a table cell with the specified alignment.
@@ -1979,6 +1987,21 @@ public class ItemTableWidget : ISettingsProvider
         
         var changed = false;
         var settings = _boundSettings;
+        
+        // Color mode setting
+        var textColorMode = (int)settings.TextColorMode;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo("Color Mode", ref textColorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
+        {
+            settings.TextColorMode = (TableTextColorMode)textColorMode;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("How to determine cell text colors: use item/currency preferred colors, character preferred colors, or column-specific colors only.");
+        }
+        
+        ImGui.Spacing();
         
         // Table options
         var showTotalRow = settings.ShowTotalRow;

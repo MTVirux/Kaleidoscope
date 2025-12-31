@@ -370,6 +370,18 @@ public class MTGraphWidget : ISettingsProvider
         var settings = _boundSettings;
         var config = _graph.Config;
         
+        // Color mode setting
+        var colorMode = (int)settings.ColorMode;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo("Color Mode", ref colorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
+        {
+            settings.ColorMode = (GraphColorMode)colorMode;
+            changed = true;
+        }
+        ShowSettingsTooltip("How to determine series colors: use item/currency preferred colors, character preferred colors, or default palette.");
+        
+        ImGui.Spacing();
+        
         // Legend settings (only if enabled and multi-series)
         if (_showLegendSettings)
         {

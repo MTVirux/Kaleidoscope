@@ -22,4 +22,5 @@ public sealed record ToolCreationContext(
     InventoryCacheService? InventoryCacheService = null,
     AutoRetainerIpcService? AutoRetainerIpc = null,
     ITextureProvider? TextureProvider = null,
-    FavoritesService? FavoritesService = null);
+    FavoritesService? FavoritesService = null,
+    SalePriceCacheService? SalePriceCacheService = null);

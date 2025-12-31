@@ -7,11 +7,18 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Registry of all trackable data types and their definitions.
 /// Provides methods to fetch current values from game state.
+/// Includes cached lookups for performance optimization.
 /// </summary>
 public sealed class TrackedDataRegistry : IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
+    
+    // Cached lookups (built once after registration completes)
+    private Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>? _byCategory;
+    private Dictionary<uint, TrackedDataDefinition>? _byItemId;
+    private List<TrackedDataType>? _allTypes;
+    private List<TrackedDataDefinition>? _enabledByDefaultList;
 
     /// <summary>
     /// Gets all registered data type definitions.
@@ -22,6 +29,43 @@ public sealed class TrackedDataRegistry : IRequiredService
     {
         _log = log;
         RegisterAllTypes();
+        BuildCaches();
+    }
+    
+    /// <summary>
+    /// Builds lookup caches after all types are registered.
+    /// </summary>
+    private void BuildCaches()
+    {
+        // Cache by category
+        _byCategory = new Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>();
+        foreach (var def in _definitions.Values)
+        {
+            if (!_byCategory.TryGetValue(def.Category, out var list))
+            {
+                list = new List<TrackedDataDefinition>();
+                _byCategory[def.Category] = list;
+            }
+            list.Add(def);
+        }
+        
+        // Cache by ItemId (for inventory value lookups)
+        _byItemId = new Dictionary<uint, TrackedDataDefinition>();
+        foreach (var def in _definitions.Values)
+        {
+            if (def.ItemId.HasValue && def.ItemId.Value > 0)
+            {
+                _byItemId[def.ItemId.Value] = def;
+            }
+        }
+        
+        // Cache all types list
+        _allTypes = _definitions.Keys.ToList();
+        
+        // Cache enabled by default list
+        _enabledByDefaultList = _definitions.Values.Where(d => d.EnabledByDefault).ToList();
+        
+        _log.Debug($"[TrackedDataRegistry] Built caches: {_definitions.Count} definitions, {_byCategory.Count} categories, {_byItemId.Count} by ItemId");
     }
 
     private void RegisterAllTypes()
@@ -370,6 +414,7 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     /// <summary>
     /// Gets the definition for a specific data type.
+    /// O(1) dictionary lookup.
     /// </summary>
     public TrackedDataDefinition? GetDefinition(TrackedDataType type)
     {
@@ -378,11 +423,49 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     /// <summary>
     /// Gets all definitions in a specific category.
+    /// Uses cached category lookup - O(1) instead of O(n) iteration.
     /// </summary>
-    public IEnumerable<TrackedDataDefinition> GetByCategory(TrackedDataCategory category)
+    public IReadOnlyList<TrackedDataDefinition> GetByCategory(TrackedDataCategory category)
     {
-        return _definitions.Values.Where(d => d.Category == category);
+        if (_byCategory != null && _byCategory.TryGetValue(category, out var list))
+            return list;
+        
+        // Fallback if cache not built (shouldn't happen)
+        return _definitions.Values.Where(d => d.Category == category).ToList();
     }
+    
+    /// <summary>
+    /// Gets the definition for a specific item ID.
+    /// Uses cached ItemId lookup - O(1) instead of O(n) iteration.
+    /// </summary>
+    public TrackedDataDefinition? GetByItemId(uint itemId)
+    {
+        if (_byItemId != null && _byItemId.TryGetValue(itemId, out var def))
+            return def;
+        
+        // Fallback if cache not built
+        return _definitions.Values.FirstOrDefault(d => d.ItemId == itemId);
+    }
+    
+    /// <summary>
+    /// Gets all registered data types as a cached list.
+    /// </summary>
+    public IReadOnlyList<TrackedDataType> AllTypes => _allTypes ?? _definitions.Keys.ToList();
+    
+    /// <summary>
+    /// Gets all definitions that are enabled by default.
+    /// </summary>
+    public IReadOnlyList<TrackedDataDefinition> EnabledByDefault => _enabledByDefaultList ?? _definitions.Values.Where(d => d.EnabledByDefault).ToList();
+    
+    /// <summary>
+    /// Gets the count of registered definitions.
+    /// </summary>
+    public int Count => _definitions.Count;
+    
+    /// <summary>
+    /// Gets the count of categories with registered definitions.
+    /// </summary>
+    public int CategoryCount => _byCategory?.Count ?? 0;
 
     /// <summary>
     /// Gets the current value for a data type from game state.

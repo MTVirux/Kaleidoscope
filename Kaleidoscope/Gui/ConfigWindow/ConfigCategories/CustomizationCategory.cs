@@ -1,4 +1,6 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.MainWindow;
+using Kaleidoscope.Services;
 using MTGui.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -12,14 +14,16 @@ public sealed class CustomizationCategory
 {
     private readonly Kaleidoscope.Configuration config;
     private readonly Action saveConfig;
+    private readonly LayoutEditingService _layoutEditingService;
     
     // Default ImGui theme background color
     private static readonly Vector4 DefaultBackgroundColor = new(0.06f, 0.06f, 0.06f, 0.94f);
 
-    public CustomizationCategory(Kaleidoscope.Configuration config, Action saveConfig)
+    public CustomizationCategory(Kaleidoscope.Configuration config, Action saveConfig, LayoutEditingService layoutEditingService)
     {
         this.config = config;
         this.saveConfig = saveConfig;
+        _layoutEditingService = layoutEditingService;
     }
 
     public void Draw()
@@ -80,6 +84,44 @@ public sealed class CustomizationCategory
             if (DrawColorRow("Tool Border (Edit Mode)", ref toolBorder, new(0.43f, 0.43f, 0.5f, 0.5f)))
             {
                 config.UIColors.ToolBorder = toolBorder;
+            }
+            
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
+            // Tool Internal Padding (per-layout setting)
+            ImGui.TextDisabled("Layout-specific tool padding (affects current layout).");
+            ImGui.Spacing();
+            
+            var currentLayout = GetCurrentLayout();
+            if (currentLayout != null)
+            {
+                var toolPadding = currentLayout.ToolInternalPaddingPx;
+                
+                ImGui.TextUnformatted("Tool Internal Padding");
+                ImGui.SameLine();
+                ImGui.TextDisabled("(?)");
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Padding in pixels inside each tool.\nHigher values create more space around tool content.\n0 = no padding.");
+                }
+                
+                ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 70f);
+                if (ImGui.SliderInt("##toolpadding", ref toolPadding, 0, 32))
+                {
+                    currentLayout.ToolInternalPaddingPx = toolPadding;
+                    // Also update the working grid settings so the change takes effect immediately
+                    if (_layoutEditingService.WorkingGridSettings != null)
+                    {
+                        _layoutEditingService.WorkingGridSettings.ToolInternalPaddingPx = toolPadding;
+                    }
+                    saveConfig();
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("No layout loaded.");
             }
             
             ImGui.Unindent();
@@ -715,5 +757,19 @@ public sealed class CustomizationCategory
         }
         
         return changed;
+    }
+
+    /// <summary>
+    /// Gets the currently active layout from configuration.
+    /// </summary>
+    private ContentLayoutState? GetCurrentLayout()
+    {
+        var layoutName = _layoutEditingService.CurrentLayoutName;
+        var layoutType = _layoutEditingService.CurrentLayoutType;
+        
+        if (string.IsNullOrEmpty(layoutName))
+            return null;
+            
+        return config.Layouts?.Find(x => x.Name == layoutName && x.Type == layoutType);
     }
 }

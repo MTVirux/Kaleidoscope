@@ -333,63 +333,15 @@ public partial class DataTool : ToolComponent
             ImGui.SameLine();
         }
         
-        // Item/Currency adding (different behavior for table vs graph)
-        if (Settings.ViewMode == DataToolViewMode.Table)
-        {
-            DrawTableActionButtons();
-        }
-        else
-        {
-            DrawGraphActionButtons();
-        }
+        // Item/Currency combo dropdowns (shared for both table and graph views)
+        DrawItemCurrencyCombos();
     }
     
-    private void DrawTableActionButtons()
-    {
-        // Multi-select item dropdown
-        if (_itemCombo != null)
-        {
-            var currentItemIds = Settings.Columns
-                .Where(c => !c.IsCurrency)
-                .Select(c => c.Id)
-                .ToHashSet();
-            
-            var comboSelection = _itemCombo.GetMultiSelection();
-            if (!currentItemIds.SetEquals(comboSelection))
-            {
-                _itemCombo.SetMultiSelection(currentItemIds);
-            }
-            
-            _itemCombo.DrawMultiSelect(160);
-            
-            var newSelection = _itemCombo.GetMultiSelection();
-            SyncItemColumns(newSelection);
-            
-            ImGui.SameLine();
-        }
-        
-        // Multi-select currency dropdown
-        if (_currencyCombo != null)
-        {
-            var currentCurrencyTypes = Settings.Columns
-                .Where(c => c.IsCurrency)
-                .Select(c => (TrackedDataType)c.Id)
-                .ToHashSet();
-            
-            var comboSelection = _currencyCombo.GetMultiSelection();
-            if (!currentCurrencyTypes.SetEquals(comboSelection))
-            {
-                _currencyCombo.SetMultiSelection(currentCurrencyTypes);
-            }
-            
-            _currencyCombo.DrawMultiSelect(160);
-            
-            var newSelection = _currencyCombo.GetMultiSelection();
-            SyncCurrencyColumns(newSelection);
-        }
-    }
-    
-    private void DrawGraphActionButtons()
+    /// <summary>
+    /// Draws the item and currency multi-select combo dropdowns.
+    /// Syncs selection state between the combos and the current columns/series configuration.
+    /// </summary>
+    private void DrawItemCurrencyCombos()
     {
         // Multi-select item dropdown
         if (_itemCombo != null)

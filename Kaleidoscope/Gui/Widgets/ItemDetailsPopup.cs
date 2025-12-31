@@ -34,6 +34,7 @@ public class ItemDetailsPopup
     private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly CharacterDataService? _characterDataService;
+    private readonly SalePriceCacheService? _salePriceCacheService;
 
     // Current state
     private bool _isOpen;
@@ -56,10 +57,12 @@ public class ItemDetailsPopup
     // Local sales state (from database)
     private List<(long Id, int WorldId, int PricePerUnit, int Quantity, bool IsHq, int Total, DateTime Timestamp, string? BuyerName)> _localSales = new();
     private bool _localSalesLoaded;
+    private bool _localSalesLoading;
 
     // Inventory distribution state
     private List<ItemInventoryRow> _inventoryRows = new();
     private bool _inventoryLoaded;
+    private bool _inventoryLoading;
     private long _inventoryUnitPrice;
     private int _inventoryTotalQuantity;
     private long _inventoryTotalValue;
@@ -76,7 +79,8 @@ public class ItemDetailsPopup
         PriceTrackingService priceTrackingService,
         CurrencyTrackerService? CurrencyTrackerService = null,
         InventoryCacheService? inventoryCacheService = null,
-        CharacterDataService? characterDataService = null)
+        CharacterDataService? characterDataService = null,
+        SalePriceCacheService? salePriceCacheService = null)
     {
         _universalisService = universalisService;
         _itemDataService = itemDataService;
@@ -84,6 +88,7 @@ public class ItemDetailsPopup
         _currencyTrackerService = CurrencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
+        _salePriceCacheService = salePriceCacheService;
     }
 
     /// <summary>
@@ -100,14 +105,18 @@ public class ItemDetailsPopup
         _errorMessage = null;
         _localSales.Clear();
         _localSalesLoaded = false;
+        _localSalesLoading = false;
         _inventoryRows.Clear();
         _inventoryLoaded = false;
+        _inventoryLoading = false;
         _inventoryUnitPrice = 0;
         _inventoryTotalQuantity = 0;
         _inventoryTotalValue = 0;
 
-        // Fetch market data
+        // Start async loading for all data sources
         _ = FetchMarketDataAsync();
+        _ = LoadInventoryDataAsync();
+        _ = LoadLocalSalesAsync();
     }
 
     /// <summary>
@@ -516,10 +525,17 @@ public class ItemDetailsPopup
             return;
         }
 
-        // Load local sales on first view
-        if (!_localSalesLoaded)
+        // Show loading state
+        if (_localSalesLoading)
         {
-            LoadLocalSales();
+            ImGui.TextDisabled("Loading local sales...");
+            return;
+        }
+
+        // Trigger async load if not yet started
+        if (!_localSalesLoaded && !_localSalesLoading)
+        {
+            _ = LoadLocalSalesAsync();
         }
 
         if (_localSales.Count == 0)
@@ -653,7 +669,7 @@ public class ItemDetailsPopup
 
     private void LoadLocalSales()
     {
-        _localSalesLoaded = true;
+        // Synchronous version for reload after delete
         _localSales.Clear();
 
         if (_currencyTrackerService == null || _currentItemId == 0)
@@ -670,6 +686,43 @@ public class ItemDetailsPopup
         }
     }
 
+    private async Task LoadLocalSalesAsync()
+    {
+        if (_localSalesLoading || _localSalesLoaded)
+            return;
+
+        _localSalesLoading = true;
+
+        try
+        {
+            var itemId = _currentItemId;
+            var currencyService = _currencyTrackerService;
+
+            if (currencyService == null || itemId == 0)
+            {
+                _localSalesLoaded = true;
+                _localSalesLoading = false;
+                return;
+            }
+
+            var sales = await Task.Run(() => 
+                currencyService.DbService.GetSaleRecords((int)itemId, limit: 100)
+            ).ConfigureAwait(false);
+
+            _localSales = sales;
+            _localSalesLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
+            _localSalesLoaded = true;
+        }
+        finally
+        {
+            _localSalesLoading = false;
+        }
+    }
+
     private void DrawInventoryTab()
     {
         if (_inventoryCacheService == null)
@@ -678,10 +731,17 @@ public class ItemDetailsPopup
             return;
         }
 
-        // Load inventory data on first view
-        if (!_inventoryLoaded)
+        // Show loading state
+        if (_inventoryLoading)
         {
-            LoadInventoryData();
+            ImGui.TextDisabled("Loading inventory data...");
+            return;
+        }
+
+        // Trigger async load if not yet started
+        if (!_inventoryLoaded && !_inventoryLoading)
+        {
+            _ = LoadInventoryDataAsync();
         }
 
         if (_inventoryRows.Count == 0)
@@ -783,15 +843,17 @@ public class ItemDetailsPopup
             // Get all inventories across all characters
             var allInventories = _inventoryCacheService.GetAllInventories();
             
-            // Get the current price for this item
-            var priceData = _currencyTrackerService?.DbService.GetLatestSalePrices(
-                new[] { (int)_currentItemId }, 
-                includedWorldIds: null);
-            
+            // Get the current price for this item using cache
             long unitPrice = 0;
-            if (priceData != null && priceData.TryGetValue((int)_currentItemId, out var price))
+            if (_salePriceCacheService != null)
             {
-                unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
+                var prices = _salePriceCacheService.GetLatestSalePrices(
+                    new[] { (int)_currentItemId }, 
+                    includedWorldIds: null);
+                if (prices.TryGetValue((int)_currentItemId, out var price))
+                {
+                    unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
+                }
             }
             _inventoryUnitPrice = unitPrice;
 
@@ -906,6 +968,181 @@ public class ItemDetailsPopup
         catch (Exception ex)
         {
             LogService.Debug($"[ItemDetailsPopup] Error loading inventory data: {ex.Message}");
+        }
+    }
+
+    private async Task LoadInventoryDataAsync()
+    {
+        if (_inventoryLoading || _inventoryLoaded)
+            return;
+
+        _inventoryLoading = true;
+
+        try
+        {
+            var itemId = _currentItemId;
+            var inventoryCacheService = _inventoryCacheService;
+            var currencyService = _currencyTrackerService;
+            var characterDataService = _characterDataService;
+
+            if (inventoryCacheService == null || itemId == 0)
+            {
+                _inventoryLoaded = true;
+                _inventoryLoading = false;
+                return;
+            }
+
+            // Capture the cache service reference for the background thread
+            var salePriceCacheService = _salePriceCacheService;
+
+            // Offload the data processing to a background thread
+            var result = await Task.Run(() =>
+            {
+                var rows = new List<ItemInventoryRow>();
+                long unitPrice = 0;
+                int totalQuantity = 0;
+                long totalValue = 0;
+
+                // Get all inventories across all characters
+                var allInventories = inventoryCacheService.GetAllInventories();
+
+                // Get the current price for this item using cache
+                if (salePriceCacheService != null)
+                {
+                    var prices = salePriceCacheService.GetLatestSalePrices(
+                        new[] { (int)itemId },
+                        includedWorldIds: null);
+                    if (prices.TryGetValue((int)itemId, out var price))
+                    {
+                        unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
+                    }
+                }
+
+                // Group by character, then by player/retainer
+                var characterGroups = allInventories
+                    .GroupBy(i => i.CharacterId)
+                    .OrderBy(g => g.First().Name ?? string.Empty);
+
+                foreach (var charGroup in characterGroups)
+                {
+                    var characterId = charGroup.Key;
+                    var characterName = string.Empty;
+                    var worldName = string.Empty;
+
+                    // Get character display name
+                    if (characterDataService != null)
+                    {
+                        var charInfo = characterDataService.GetCharacter(characterId);
+                        if (charInfo != null)
+                        {
+                            characterName = charInfo.Name;
+                            worldName = charInfo.WorldName ?? string.Empty;
+                        }
+                    }
+
+                    // Fallback to inventory cache name
+                    if (string.IsNullOrEmpty(characterName))
+                    {
+                        var playerCache = charGroup.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
+                        characterName = playerCache?.Name ?? $"Character {characterId}";
+                        worldName = playerCache?.World ?? string.Empty;
+                    }
+
+                    // Calculate player inventory quantity
+                    var playerInventories = charGroup.Where(c => c.SourceType == InventorySourceType.Player);
+                    var playerQuantity = playerInventories
+                        .SelectMany(c => c.Items)
+                        .Where(i => i.ItemId == itemId)
+                        .Sum(i => i.Quantity);
+
+                    // Calculate retainer quantities
+                    var retainerData = charGroup
+                        .Where(c => c.SourceType == InventorySourceType.Retainer)
+                        .Select(r => new
+                        {
+                            RetainerId = r.RetainerId,
+                            RetainerName = r.Name,
+                            Quantity = r.Items.Where(i => i.ItemId == itemId).Sum(i => i.Quantity)
+                        })
+                        .Where(r => r.Quantity > 0)
+                        .OrderBy(r => r.RetainerName)
+                        .ToList();
+
+                    // Skip this character if they have no items
+                    var totalCharQuantity = playerQuantity + retainerData.Sum(r => r.Quantity);
+                    if (totalCharQuantity == 0)
+                        continue;
+
+                    // Add character row (showing player inventory only)
+                    if (playerQuantity > 0)
+                    {
+                        var playerValue = unitPrice * playerQuantity;
+                        rows.Add(new ItemInventoryRow
+                        {
+                            CharacterId = characterId,
+                            CharacterName = characterName,
+                            WorldName = worldName,
+                            IsRetainer = false,
+                            Quantity = playerQuantity,
+                            UnitPrice = unitPrice,
+                            TotalValue = playerValue
+                        });
+                        totalQuantity += playerQuantity;
+                        totalValue += playerValue;
+                    }
+                    else
+                    {
+                        // Add a character header row with 0 quantity if they only have retainer items
+                        rows.Add(new ItemInventoryRow
+                        {
+                            CharacterId = characterId,
+                            CharacterName = characterName,
+                            WorldName = worldName,
+                            IsRetainer = false,
+                            Quantity = 0,
+                            UnitPrice = 0,
+                            TotalValue = 0
+                        });
+                    }
+
+                    // Add retainer rows
+                    foreach (var retainer in retainerData)
+                    {
+                        var retainerValue = unitPrice * retainer.Quantity;
+                        rows.Add(new ItemInventoryRow
+                        {
+                            CharacterId = characterId,
+                            CharacterName = characterName,
+                            WorldName = worldName,
+                            IsRetainer = true,
+                            RetainerId = retainer.RetainerId,
+                            RetainerName = retainer.RetainerName,
+                            Quantity = retainer.Quantity,
+                            UnitPrice = unitPrice,
+                            TotalValue = retainerValue
+                        });
+                        totalQuantity += retainer.Quantity;
+                        totalValue += retainerValue;
+                    }
+                }
+
+                return (rows, unitPrice, totalQuantity, totalValue);
+            }).ConfigureAwait(false);
+
+            _inventoryRows = result.rows;
+            _inventoryUnitPrice = result.unitPrice;
+            _inventoryTotalQuantity = result.totalQuantity;
+            _inventoryTotalValue = result.totalValue;
+            _inventoryLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[ItemDetailsPopup] Error loading inventory data async: {ex.Message}");
+            _inventoryLoaded = true;
+        }
+        finally
+        {
+            _inventoryLoading = false;
         }
     }
 

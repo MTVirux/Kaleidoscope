@@ -92,3 +92,30 @@ public sealed class HistorySale
     /// <summary>Gets the sale timestamp as a DateTime.</summary>
     public DateTime SaleDateTime => DateTimeOffset.FromUnixTimeSeconds(Timestamp).LocalDateTime;
 }
+
+/// <summary>
+/// Multi-item market history response from Universalis API.
+/// GET /api/v2/history/{worldDcRegion}/{itemIds} when itemIds contains multiple items.
+/// </summary>
+public sealed class MultiItemMarketHistory
+{
+    /// <summary>History data keyed by item ID.</summary>
+    [JsonPropertyName("items")]
+    public Dictionary<string, MarketHistory>? Items { get; set; }
+    
+    /// <summary>The item IDs that were requested but not found.</summary>
+    [JsonPropertyName("unresolvedItems")]
+    public List<int>? UnresolvedItems { get; set; }
+    
+    /// <summary>The world ID, if applicable.</summary>
+    [JsonPropertyName("worldID")]
+    public int? WorldId { get; set; }
+    
+    /// <summary>The DC name, if applicable.</summary>
+    [JsonPropertyName("dcName")]
+    public string? DcName { get; set; }
+    
+    /// <summary>The region name, if applicable.</summary>
+    [JsonPropertyName("regionName")]
+    public string? RegionName { get; set; }
+}

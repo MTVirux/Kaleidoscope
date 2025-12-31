@@ -28,6 +28,12 @@ public class LayoutGridSettings
     public int Subdivisions { get; set; } = 8;
 
     /// <summary>
+    /// Internal padding in pixels inside each tool.
+    /// A value of 0 means no padding. Default is 4.
+    /// </summary>
+    public int ToolInternalPaddingPx { get; set; } = 4;
+
+    /// <summary>
     /// Creates a copy of this settings instance.
     /// </summary>
     public LayoutGridSettings Clone()
@@ -38,7 +44,8 @@ public class LayoutGridSettings
             Columns = Columns,
             Rows = Rows,
             GridResolutionMultiplier = GridResolutionMultiplier,
-            Subdivisions = Subdivisions
+            Subdivisions = Subdivisions,
+            ToolInternalPaddingPx = ToolInternalPaddingPx
         };
     }
 
@@ -52,6 +59,7 @@ public class LayoutGridSettings
         Rows = other.Rows;
         GridResolutionMultiplier = other.GridResolutionMultiplier;
         Subdivisions = other.Subdivisions;
+        ToolInternalPaddingPx = other.ToolInternalPaddingPx;
     }
 
     /// <summary>
@@ -94,7 +102,8 @@ public class LayoutGridSettings
             Columns = layout.Columns,
             Rows = layout.Rows,
             GridResolutionMultiplier = layout.GridResolutionMultiplier,
-            Subdivisions = layout.Subdivisions
+            Subdivisions = layout.Subdivisions,
+            ToolInternalPaddingPx = layout.ToolInternalPaddingPx
         };
     }
 
@@ -110,5 +119,6 @@ public class LayoutGridSettings
         layout.Rows = Rows;
         layout.GridResolutionMultiplier = GridResolutionMultiplier;
         layout.Subdivisions = Subdivisions;
+        layout.ToolInternalPaddingPx = ToolInternalPaddingPx;
     }
 }

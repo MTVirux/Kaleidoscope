@@ -182,8 +182,8 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             // Add "All Characters" option first
             characters.Add(AllCharacters);
 
-            // Get all characters from database
-            var dbCharacters = CurrencyTrackerService.DbService.GetAllCharacterNames()
+            // Get all characters from CharacterDataCache (no DB access)
+            var dbCharacters = CurrencyTrackerService.CharacterDataCache.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();
@@ -633,8 +633,8 @@ public sealed class CharacterCombo : FilterComboCache<ComboCharacter>, IDisposab
             // Add "All Characters" option first
             characters.Add(AllCharacters);
 
-            // Get all characters from database
-            var dbCharacters = _currencyTrackerService.DbService.GetAllCharacterNames()
+            // Get all characters from CharacterDataCache (no DB access)
+            var dbCharacters = _currencyTrackerService.CharacterDataCache.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();

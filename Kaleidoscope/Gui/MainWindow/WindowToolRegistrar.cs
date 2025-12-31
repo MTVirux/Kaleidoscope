@@ -19,10 +19,10 @@ public static class WindowToolRegistrar
     {
         public const string GettingStarted = "GettingStarted";
         public const string ImPlotReference = "ImPlotReference";
-        public const string LivePriceFeed = "LivePriceFeed";
-        public const string InventoryValue = "InventoryValue";
-        public const string TopItems = "TopItems";
+        public const string WebsocketFeed = "WebsocketFeed";
+        public const string TopInventoryValueItems = "TopInventoryValueItems";
         public const string ItemSalesHistory = "ItemSalesHistory";
+        public const string ItemSalesTracking = "ItemSalesTracking";
         public const string DataGraph = "DataGraph";
         public const string DataTable = "DataTable";
         public const string Label = "Label";
@@ -57,7 +57,8 @@ public static class WindowToolRegistrar
             ctx.InventoryCacheService,
             ctx.AutoRetainerIpc,
             ctx.TextureProvider,
-            ctx.FavoritesService);
+            ctx.FavoritesService,
+            ctx.SalePriceCacheService);
     }
 
     public static void RegisterTools(
@@ -75,7 +76,8 @@ public static class WindowToolRegistrar
         InventoryCacheService? inventoryCacheService = null,
         AutoRetainerIpcService? autoRetainerIpc = null,
         ITextureProvider? textureProvider = null,
-        FavoritesService? favoritesService = null)
+        FavoritesService? favoritesService = null,
+        SalePriceCacheService? salePriceCacheService = null)
     {
         if (container == null) return;
 
@@ -84,7 +86,7 @@ public static class WindowToolRegistrar
             filenameService, CurrencyTrackerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService);
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
 
         try
         {
@@ -131,22 +133,15 @@ public static class WindowToolRegistrar
             if (webSocketService != null && priceTrackingService != null && itemDataService != null)
             {
                 container.DefineToolType(
-                    ToolIds.LivePriceFeed,
-                    "Live Price Feed",
-                    pos => CreateLivePriceFeedTool(pos, ctx),
+                    ToolIds.WebsocketFeed,
+                    "Websocket Feed",
+                    pos => CreateWebsocketFeedTool(pos, ctx),
                     "Real-time feed of Universalis market updates from the WebSocket. Click entries to view full market data via API.",
                     "Universalis");
 
                 container.DefineToolType(
-                    ToolIds.InventoryValue,
-                    "Inventory Value",
-                    pos => CreateInventoryValueTool(pos, ctx),
-                    "Tracks the liquid value of character inventories over time",
-                    "Universalis");
-
-                container.DefineToolType(
-                    ToolIds.TopItems,
-                    "Top Items",
+                    ToolIds.TopInventoryValueItems,
+                    "Top Inventory Value Items",
                     pos => CreateTopInventoryValueTool(pos, ctx),
                     "Shows the most valuable items in character inventories",
                     "Universalis");
@@ -156,6 +151,13 @@ public static class WindowToolRegistrar
                     "Item Sales History",
                     pos => CreateItemSalesHistoryTool(pos, ctx),
                     "View sale history for any marketable item from Universalis",
+                    "Universalis");
+
+                container.DefineToolType(
+                    ToolIds.ItemSalesTracking,
+                    "Item Sales Tracking",
+                    pos => CreateItemSalesTrackingTool(pos, ctx),
+                    "Track and graph sales data for multiple items with real-time WebSocket updates",
                     "Universalis");
             }
 
@@ -287,13 +289,13 @@ public static class WindowToolRegistrar
         }
     }
 
-    private static ToolComponent? CreateLivePriceFeedTool(Vector2 pos, ToolCreationContext ctx)
+    private static ToolComponent? CreateWebsocketFeedTool(Vector2 pos, ToolCreationContext ctx)
     {
         try
         {
             if (ctx.WebSocketService == null || ctx.PriceTrackingService == null || ctx.ItemDataService == null)
                 return null;
-            return new LivePriceFeedTool(
+            return new WebsocketFeedTool(
                 ctx.WebSocketService, 
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
@@ -303,22 +305,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create LivePriceFeedTool", ex);
-            return null;
-        }
-    }
-
-    private static ToolComponent? CreateInventoryValueTool(Vector2 pos, ToolCreationContext ctx)
-    {
-        try
-        {
-            if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null)
-                return null;
-            return new InventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService) { Position = pos };
-        }
-        catch (Exception ex)
-        {
-            LogService.Error("Failed to create InventoryValueTool", ex);
+            LogService.Error("Failed to create WebsocketFeedTool", ex);
             return null;
         }
     }
@@ -335,7 +322,7 @@ public static class WindowToolRegistrar
             }
             return new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
                 ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
-                ctx.InventoryChangeService) { Position = pos };
+                ctx.InventoryChangeService, ctx.InventoryCacheService) { Position = pos };
         }
         catch (Exception ex)
         {
@@ -349,7 +336,8 @@ public static class WindowToolRegistrar
         try
         {
             if (ctx.PriceTrackingService == null || ctx.ItemDataService == null ||
-                ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
+                ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
+                ctx.SalePriceCacheService == null)
             {
                 LogService.Debug("CreateItemSalesHistoryTool: Required service is null");
                 return null;
@@ -360,6 +348,7 @@ public static class WindowToolRegistrar
                 ctx.ConfigService, 
                 ctx.ItemDataService,
                 ctx.CurrencyTrackerService,
+                ctx.SalePriceCacheService,
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
@@ -367,6 +356,36 @@ public static class WindowToolRegistrar
         catch (Exception ex)
         {
             LogService.Error("Failed to create ItemSalesHistoryTool", ex);
+            return null;
+        }
+    }
+
+    private static ToolComponent? CreateItemSalesTrackingTool(Vector2 pos, ToolCreationContext ctx)
+    {
+        try
+        {
+            if (ctx.WebSocketService == null || ctx.PriceTrackingService == null || ctx.ItemDataService == null ||
+                ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
+                ctx.SalePriceCacheService == null)
+            {
+                LogService.Debug("CreateItemSalesTrackingTool: Required service is null");
+                return null;
+            }
+            return new ItemSalesTrackingTool(
+                ctx.PriceTrackingService.UniversalisService,
+                ctx.WebSocketService,
+                ctx.PriceTrackingService,
+                ctx.ConfigService,
+                ctx.ItemDataService,
+                ctx.CurrencyTrackerService,
+                ctx.SalePriceCacheService,
+                ctx.DataManager,
+                ctx.TextureProvider,
+                ctx.FavoritesService) { Position = pos };
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to create ItemSalesTrackingTool", ex);
             return null;
         }
     }
@@ -507,10 +526,11 @@ public static class WindowToolRegistrar
                 ToolIds.GettingStarted => new GettingStartedTool { Position = pos },
                 ToolIds.ImPlotReference => new ImPlotReferenceTool { Position = pos },
                 ToolIds.Label => new LabelTool(ctx.ConfigService) { Position = pos },
-                ToolIds.LivePriceFeed => CreateLivePriceFeedTool(pos, ctx),
-                ToolIds.InventoryValue => CreateInventoryValueTool(pos, ctx),
-                ToolIds.TopItems => CreateTopInventoryValueTool(pos, ctx),
+                ToolIds.WebsocketFeed => CreateWebsocketFeedTool(pos, ctx),
+                ToolIds.TopInventoryValueItems => CreateTopInventoryValueTool(pos, ctx),
+                "TopItems" => CreateTopInventoryValueTool(pos, ctx), // Legacy migration
                 ToolIds.ItemSalesHistory => CreateItemSalesHistoryTool(pos, ctx),
+                ToolIds.ItemSalesTracking => CreateItemSalesTrackingTool(pos, ctx),
                 ToolIds.UniversalisWebSocketStatus => CreateUniversalisWebSocketStatusTool(pos, ctx),
                 ToolIds.AutoRetainerStatus => CreateAutoRetainerStatusTool(pos, ctx),
                 ToolIds.AutoRetainerControl => CreateAutoRetainerControlTool(pos, ctx),

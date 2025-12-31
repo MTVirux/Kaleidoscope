@@ -42,6 +42,9 @@ public class WindowContentContainer
     // Last known content region size for detecting window resize
     private Vector2 _lastContentSize = Vector2.Zero;
 
+    // Flag to suppress dirty marking during layout application (restoring from persistence)
+    private bool _suppressDirtyMarking = false;
+
     private class ToolRegistration
     {
         public string Id = string.Empty;
@@ -87,12 +90,6 @@ public class WindowContentContainer
     private string _layoutNameBuffer = string.Empty;
     private bool _newLayoutPopupOpen = false;
         private string _newLayoutNameBuffer = string.Empty;
-        private bool _layoutDirty = false;
-        
-        // Unsaved changes dialog state
-        private bool _unsavedChangesPopupOpen = false;
-        private string _unsavedChangesDescription = string.Empty;
-        private Action? _unsavedChangesContinueAction = null;
 
         // Callback invoked when the layout changes. Host should mark the layout as dirty (not auto-save).
         public Action<List<ToolLayoutState>>? OnLayoutChanged;
@@ -108,21 +105,18 @@ public class WindowContentContainer
         
         // Callback to get the current layout name for display.
         public Func<string>? GetCurrentLayoutName;
-        
-        /// <summary>
-        /// Opens the unsaved changes dialog to prompt the user before a destructive action.
-        /// </summary>
-        /// <param name="description">A description of the action that will occur.</param>
-        /// <param name="continueAction">The action to perform after Save or Discard.</param>
-        public void ShowUnsavedChangesDialog(string description, Action? continueAction)
-        {
-            _unsavedChangesDescription = description;
-            _unsavedChangesContinueAction = continueAction;
-            _unsavedChangesPopupOpen = true;
-        }
 
         // Callback invoked to open the layouts management UI (config window layouts tab).
         public Action? OnManageLayouts;
+        
+        // Callback to show the unsaved changes dialog via LayoutEditingService.
+        // Returns true if action can proceed (not dirty), false if blocked for dialog.
+        public Func<string, Action, bool>? TryPerformDestructiveAction;
+        
+        // Callbacks for unsaved changes dialog state from LayoutEditingService
+        public Func<bool>? GetShowUnsavedChangesDialog;
+        public Func<string>? GetPendingActionDescription;
+        public Action<UnsavedChangesChoice>? HandleUnsavedChangesChoice;
 
         // Callback invoked when the user saves a tool as a preset.
         // Parameters: tool type ID, preset name, serialized settings
@@ -194,28 +188,21 @@ public class WindowContentContainer
             catch (Exception ex) { LogService.Debug($"OnResizingChanged error: {ex.Message}"); }
         }
 
-        // Mark the layout as dirty (changed) so hosts can persist it.
+        // Notify host that layout has changed. Dirty state is managed by LayoutEditingService.
+        // Suppressed during layout application to avoid marking restored layouts as dirty.
         private void MarkLayoutDirty()
         {
-            _layoutDirty = true;
+            if (_suppressDirtyMarking)
+                return;
+            
             try
             {
-                LogService.Debug($"Layout marked dirty ({_tools.Count} tools)");
                 OnLayoutChanged?.Invoke(ExportLayout());
             }
             catch (Exception ex)
             {
                 LogService.Error("Error while invoking OnLayoutChanged", ex);
             }
-        }
-
-        // Attempt to consume the dirty flag. Returns true if it was set.
-        public bool TryConsumeLayoutDirty()
-        {
-            if (!_layoutDirty) return false;
-            _layoutDirty = false;
-            LogService.Debug("TryConsumeLayoutDirty: consumed dirty flag");
-            return true;
         }
 
         #endregion
@@ -292,6 +279,13 @@ public class WindowContentContainer
             _getCellHeightPercent = getCellHeightPercent ?? (() => 25f);
             _getSubdivisions = getSubdivisions ?? (() => 4);
         }
+
+        /// <summary>
+        /// Optional callback to get the current tool internal padding from an external source.
+        /// If set and returns a non-negative value, it overrides the _currentGridSettings value.
+        /// This allows real-time updates from the config window.
+        /// </summary>
+        public Func<int>? GetExternalToolInternalPadding { get; set; }
 
         /// <summary>
         /// Gets the current grid settings for this layout.
@@ -397,6 +391,14 @@ public class WindowContentContainer
         }
 
         /// <summary>
+        /// Updates the tool internal padding from an external source (e.g., config window).
+        /// </summary>
+        public void UpdateToolInternalPadding(int paddingPx)
+        {
+            _currentGridSettings.ToolInternalPaddingPx = paddingPx;
+        }
+
+        /// <summary>
         /// Callback invoked when grid settings change. Host should persist the settings.
         /// </summary>
         public Action<LayoutGridSettings>? OnGridSettingsChanged;
@@ -437,6 +439,29 @@ public class WindowContentContainer
             tool.OnToolSettingsChanged += () => MarkLayoutDirty();
             
             MarkLayoutDirty();
+        }
+
+        /// <summary>
+        /// Adds a tool instance without marking the layout as dirty.
+        /// Use this for initial setup (e.g., adding default tools on first run).
+        /// </summary>
+        public void AddToolInstanceWithoutDirty(ToolComponent tool)
+        {
+            if (tool == null) return;
+            
+            _suppressDirtyMarking = true;
+            try
+            {
+                _tools.Add(new ToolEntry(tool));
+                LogService.Debug($"AddToolInstanceWithoutDirty: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
+                
+                // Subscribe to tool settings changes to trigger layout saves
+                tool.OnToolSettingsChanged += () => MarkLayoutDirty();
+            }
+            finally
+            {
+                _suppressDirtyMarking = false;
+            }
         }
 
         #endregion
@@ -486,11 +511,30 @@ public class WindowContentContainer
         public void ApplyLayout(List<ToolLayoutState>? layout)
         {
             if (layout == null) return;
+            
+            // Suppress dirty marking during layout application since we're restoring
+            // persisted state, not making user changes
+            _suppressDirtyMarking = true;
+            try
+            {
+                ApplyLayoutInternal(layout);
+            }
+            finally
+            {
+                _suppressDirtyMarking = false;
+            }
+        }
+
+        private void ApplyLayoutInternal(List<ToolLayoutState> layout)
+        {
             LogService.Debug($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
             if (_toolRegistry.Count > 0)
             {
                 LogService.Debug($"ApplyLayout: registered tool factories ({_toolRegistry.Count})");
             }
+            
+            // Track the original tool count before adding new tools
+            var originalToolCount = _tools.Count;
             var matchedIndices = new System.Collections.Generic.HashSet<int>();
             for (var li = 0; li < layout.Count; li++)
             {
@@ -739,6 +783,31 @@ public class WindowContentContainer
                     LogService.Error($"Failed to apply layout entry '{entry.Id}'", ex);
                 }
             }
+            
+            // Remove tools that existed before ApplyLayout but were not matched to any layout entry.
+            // Iterate in reverse to safely remove by index without shifting issues.
+            for (var i = originalToolCount - 1; i >= 0; i--)
+            {
+                if (!matchedIndices.Contains(i))
+                {
+                    try
+                    {
+                        var tool = _tools[i].Tool;
+                        LogService.Debug($"ApplyLayout: removing unmatched tool '{tool.Title}' (id={tool.Id}, type={tool.GetType().FullName})");
+                        tool.Dispose();
+                        _tools.RemoveAt(i);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error($"Failed to remove unmatched tool at index {i}", ex);
+                    }
+                }
+            }
+            
+            // Force grid-based position recalculation on the next frame.
+            // This is essential when importing layouts from different window sizes (e.g., windowed to fullscreen).
+            // Tools with HasGridCoords will have their Position/Size recalculated from grid coordinates.
+            _lastContentSize = Vector2.Zero;
         }
 
         #endregion
@@ -859,16 +928,16 @@ public class WindowContentContainer
                 {
                     LogService.Debug($"Grid drawing error: {ex.Message}");
                 }
+            }
 
-                // Right-click on the content region should open a context menu to add tools
-                if (editMode)
-                {
-                    var io = ImGui.GetIO();
-                    var mouse = io.MousePos;
-                    var isOverContent = mouse.X >= contentMin.X && mouse.X <= contentMax.X && mouse.Y >= contentMin.Y && mouse.Y <= contentMax.Y;
-                    if (isOverContent && io.MouseClicked[1])
+            // Right-click detection for context menus (works outside edit mode for tool menus)
+            {
+                var io = ImGui.GetIO();
+                var mouse = io.MousePos;
+                var isOverContent = mouse.X >= contentMin.X && mouse.X <= contentMax.X && mouse.Y >= contentMin.Y && mouse.Y <= contentMax.Y;
+                if (isOverContent && io.MouseClicked[1])
                     {
-                        // If the click is over an existing tool, open the tool-specific popup
+                        // If the click is over an existing tool, open the tool-specific popup (works without edit mode)
                         var clickedTool = -1;
                         try
                         {
@@ -892,221 +961,230 @@ public class WindowContentContainer
 
                         if (clickedTool >= 0)
                         {
+                            // Tool context menu works without edit mode
                             _contextToolIndex = clickedTool;
                             _lastContextClickRel = mouse - contentOrigin;
                             ImGui.SetNextWindowPos(mouse);
                             ImGui.OpenPopup("tool_context_menu");
                         }
-                        else
+                        else if (editMode)
                         {
+                            // Content context menu (add tools) only works in edit mode
                             _lastContextClickRel = mouse - contentOrigin;
                             ImGui.SetNextWindowPos(mouse);
                             ImGui.OpenPopup("content_context_menu");
                         }
                     }
+                }
 
-                    if (ImGui.BeginPopup("content_context_menu"))
+                // Content context menu for adding tools (edit mode only)
+                if (editMode && ImGui.BeginPopup("content_context_menu"))
+                {
+                    try
                     {
-                        try
+                        if (ImGui.BeginMenu("Add tool"))
                         {
-                            if (ImGui.BeginMenu("Add tool"))
+                            // Build a tree of categories from registrations
+                            MenuNode rootNode = new MenuNode();
+
+                            foreach (var reg in _toolRegistry)
                             {
-                                // Build a tree of categories from registrations
-                                MenuNode rootNode = new MenuNode();
-
-                                foreach (var reg in _toolRegistry)
+                                var path = (reg.CategoryPath ?? "").Split(new[] { '>' }, StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+                                var cur = rootNode;
+                                foreach (var part in path)
                                 {
-                                    var path = (reg.CategoryPath ?? "").Split(new[] { '>' }, StringSplitOptions.RemoveEmptyEntries)
-                                        .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
-                                    var cur = rootNode;
-                                    foreach (var part in path)
+                                    if (!cur.Children.TryGetValue(part, out var child))
                                     {
-                                        if (!cur.Children.TryGetValue(part, out var child))
-                                        {
-                                            child = new MenuNode();
-                                            cur.Children[part] = child;
-                                        }
-                                        cur = child;
+                                        child = new MenuNode();
+                                        cur.Children[part] = child;
                                     }
-                                    cur.Items.Add(reg);
+                                    cur = child;
                                 }
+                                cur.Items.Add(reg);
+                            }
 
-                                // recursive draw
-                                void DrawNode(MenuNode node)
+                            // recursive draw
+                            void DrawNode(MenuNode node)
+                            {
+                                // Draw items at this node first
+                                foreach (var reg in node.Items)
                                 {
-                                    // Draw items at this node first
-                                    foreach (var reg in node.Items)
+                                    if (ImGui.MenuItem(reg.Label))
                                     {
-                                        if (ImGui.MenuItem(reg.Label))
+                                        try
                                         {
-                                            try
+                                            var tool = reg.Factory(_lastContextClickRel);
+                                            if (tool != null)
                                             {
-                                                var tool = reg.Factory(_lastContextClickRel);
-                                                if (tool != null)
+                                                // Set the tool's Id to match the registration so it can be duplicated/found later
+                                                tool.Id = reg.Id;
+                                                try
                                                 {
-                                                    // Set the tool's Id to match the registration so it can be duplicated/found later
-                                                    tool.Id = reg.Id;
-                                                    try
-                                                    {
-                                                        var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
-                                                        var subW = cellW / subdivisions;
-                                                        var subH = cellH / subdivisions;
-                                                        tool.Position = new Vector2(
-                                                            MathF.Round(tool.Position.X / subW) * subW,
-                                                            MathF.Round(tool.Position.Y / subH) * subH
-                                                        );
+                                                    var subdivisions = Math.Max(1, _currentGridSettings.Subdivisions);
+                                                    var subW = cellW / subdivisions;
+                                                    var subH = cellH / subdivisions;
+                                                    tool.Position = new Vector2(
+                                                        MathF.Round(tool.Position.X / subW) * subW,
+                                                        MathF.Round(tool.Position.Y / subH) * subH
+                                                    );
 
-                                                        if (cellW > 0 && cellH > 0)
-                                                        {
-                                                            tool.GridCol = tool.Position.X / cellW;
-                                                            tool.GridRow = tool.Position.Y / cellH;
-                                                            tool.GridColSpan = tool.Size.X / cellW;
-                                                            tool.GridRowSpan = tool.Size.Y / cellH;
-                                                            tool.HasGridCoords = true;
-                                                        }
-                                                    }
-                                                    catch (Exception ex)
+                                                    if (cellW > 0 && cellH > 0)
                                                     {
-                                                        LogService.Debug($"Tool snap error: {ex.Message}");
+                                                        tool.GridCol = tool.Position.X / cellW;
+                                                        tool.GridRow = tool.Position.Y / cellH;
+                                                        tool.GridColSpan = tool.Size.X / cellW;
+                                                        tool.GridRowSpan = tool.Size.Y / cellH;
+                                                        tool.HasGridCoords = true;
                                                     }
-                                                    AddToolInstance(tool);
                                                 }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                LogService.Error($"Failed to create tool '{reg.Id}'", ex);
+                                                catch (Exception ex)
+                                                {
+                                                    LogService.Debug($"Tool snap error: {ex.Message}");
+                                                }
+                                                AddToolInstance(tool);
                                             }
                                         }
-                                    }
-
-                                    // Draw child menus
-                                    foreach (var kv in node.Children)
-                                    {
-                                        var name = kv.Key;
-                                        var child = kv.Value;
-                                        if (ImGui.BeginMenu(name))
+                                        catch (Exception ex)
                                         {
-                                            DrawNode(child);
-                                            ImGui.EndMenu();
+                                            LogService.Error($"Failed to create tool '{reg.Id}'", ex);
                                         }
                                     }
                                 }
 
-                                DrawNode(rootNode);
-
-                                ImGui.EndMenu();
-                            }
-                            ImGui.Separator();
-                            
-                            // Show current layout name and dirty indicator
-                            var layoutName = GetCurrentLayoutName?.Invoke() ?? "Default";
-                            var isDirty = GetIsDirty?.Invoke() ?? false;
-                            var displayName = isDirty ? $"{layoutName} *" : layoutName;
-                            ImGui.TextDisabled($"Layout: {displayName}");
-                            
-                            // Save Layout (explicit save action)
-                            if (isDirty)
-                            {
-                                if (ImGui.MenuItem("Save Layout"))
+                                // Draw child menus
+                                foreach (var kv in node.Children)
                                 {
-                                    try
+                                    var name = kv.Key;
+                                    var child = kv.Value;
+                                    if (ImGui.BeginMenu(name))
                                     {
-                                        OnSaveLayoutExplicit?.Invoke();
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogService.Error("Failed to save layout", ex);
+                                        DrawNode(child);
+                                        ImGui.EndMenu();
                                     }
                                 }
-                                
-                                if (ImGui.MenuItem("Discard Changes"))
-                                {
-                                    try
-                                    {
-                                        OnDiscardChanges?.Invoke();
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogService.Error("Failed to discard changes", ex);
-                                    }
-                                }
-                                
-                                ImGui.Separator();
-                            }
-                            
-                            // New / Save As / Load layouts
-                            if (ImGui.MenuItem("New layout..."))
-                            {
-                                _newLayoutNameBuffer = "";
-                                _newLayoutPopupOpen = true;
                             }
 
-                            if (ImGui.MenuItem("Save layout as.."))
-                            {
-                                _layoutNameBuffer = "";
-                                _saveLayoutPopupOpen = true;
-                            }
+                            DrawNode(rootNode);
 
-                            if (ImGui.BeginMenu("Load layout"))
-                            {
-                                try
-                                {
-                                    var names = GetAvailableLayoutNames?.Invoke() ?? new List<string>();
-                                    foreach (var n in names)
-                                    {
-                                        if (ImGui.MenuItem(n))
-                                        {
-                                            try
-                                            {
-                                                OnLoadLayout?.Invoke(n);
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                LogService.Error($"Failed to load layout '{n}'", ex);
-                                            }
-                                            ImGui.CloseCurrentPopup();
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogService.Error("Failed to get layout names", ex);
-                                }
-
-                                ImGui.EndMenu();
-                            }
-                            
-                            ImGui.Separator();
-                            
-                            // Edit grid resolution
-                            if (ImGui.MenuItem("Edit grid resolution..."))
-                            {
-                                _editingGridSettings = _currentGridSettings.Clone();
-                                _previousColumns = GetEffectiveColumns(availRegion);
-                                _previousRows = GetEffectiveRows(availRegion);
-                                _gridResolutionPopupOpen = true;
-                            }
-                            
-                            // Manage Layouts - opens config window to layouts tab
-                            if (ImGui.MenuItem("Manage Layouts..."))
-                            {
-                                try
-                                {
-                                    OnManageLayouts?.Invoke();
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogService.Error("Failed to open layouts manager", ex);
-                                }
-                            }
+                            ImGui.EndMenu();
                         }
-                        catch (Exception ex)
+                        ImGui.Separator();
+                        
+                        // Show current layout name and dirty indicator
+                        var layoutName = GetCurrentLayoutName?.Invoke() ?? "Default";
+                        var isDirty = GetIsDirty?.Invoke() ?? false;
+                        var displayName = isDirty ? $"{layoutName} *" : layoutName;
+                        ImGui.TextDisabled($"Layout: {displayName}");
+                        
+                        // Save Layout (explicit save action) - always shown, enabled only when dirty
+                        if (ImGui.MenuItem("Save Layout", isDirty))
                         {
-                            LogService.Error("Error in context menu", ex);
+                            try
+                            {
+                                OnSaveLayoutExplicit?.Invoke();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Error("Failed to save layout", ex);
+                            }
+                        }
+                        
+                        // Discard Changes - only shown when dirty
+                        if (isDirty)
+                        {
+                            if (ImGui.MenuItem("Discard Changes"))
+                            {
+                                try
+                                {
+                                    OnDiscardChanges?.Invoke();
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Error("Failed to discard changes", ex);
+                                }
+                            }
+                        }
+                        
+                        ImGui.Separator();
+                        
+                        // New / Save As / Load layouts
+                        if (ImGui.MenuItem("New layout..."))
+                        {
+                            _newLayoutNameBuffer = "";
+                            _newLayoutPopupOpen = true;
                         }
 
-                        ImGui.EndPopup();
+                        if (ImGui.MenuItem("Save layout as.."))
+                        {
+                            _layoutNameBuffer = "";
+                            _saveLayoutPopupOpen = true;
+                        }
+
+                        if (ImGui.BeginMenu("Load layout"))
+                        {
+                            try
+                            {
+                                var names = GetAvailableLayoutNames?.Invoke() ?? new List<string>();
+                                foreach (var n in names)
+                                {
+                                    if (ImGui.MenuItem(n))
+                                    {
+                                        try
+                                        {
+                                            OnLoadLayout?.Invoke(n);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            LogService.Error($"Failed to load layout '{n}'", ex);
+                                        }
+                                        ImGui.CloseCurrentPopup();
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Error("Failed to get layout names", ex);
+                            }
+
+                            ImGui.EndMenu();
+                        }
+                        
+                        ImGui.Separator();
+                        
+                        // Edit grid resolution
+                        if (ImGui.MenuItem("Edit grid resolution..."))
+                        {
+                            _editingGridSettings = _currentGridSettings.Clone();
+                            _previousColumns = GetEffectiveColumns(availRegion);
+                            _previousRows = GetEffectiveRows(availRegion);
+                            _gridResolutionPopupOpen = true;
+                        }
+                        
+                        // Manage Layouts - opens config window to layouts tab
+                        if (ImGui.MenuItem("Manage Layouts..."))
+                        {
+                            try
+                            {
+                                OnManageLayouts?.Invoke();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Error("Failed to open layouts manager", ex);
+                            }
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        LogService.Error("Error in context menu", ex);
+                    }
+
+                    ImGui.EndPopup();
+                }
+                
+                // Layout modals (edit mode only)
+                if (editMode)
+                {
                     // Save layout modal - open popup if flag is set but popup is not yet open
                     if (_saveLayoutPopupOpen && !ImGui.IsPopupOpen("save_layout_popup"))
                     {
@@ -1202,7 +1280,6 @@ public class WindowContentContainer
                     // Grid resolution modal
                     DrawGridResolutionModal(availRegion, cellW, cellH);
                 }
-            }
             
             // Unsaved changes dialog - drawn outside edit mode so it can be shown anytime
             DrawUnsavedChangesDialog();
@@ -1234,7 +1311,29 @@ public class WindowContentContainer
                 {
                     LogService.Debug($"Background draw error: {ex.Message}");
                 }
+                
+                // Calculate internal padding in pixels (replaces default window padding)
+                // Check for external source first (allows real-time config window updates)
+                var externalPadding = GetExternalToolInternalPadding?.Invoke() ?? -1;
+                if (externalPadding >= 0)
+                {
+                    // Sync external padding to local settings so it persists correctly on layout changes
+                    _currentGridSettings.ToolInternalPaddingPx = externalPadding;
+                }
+                var internalPaddingPx = _currentGridSettings.ToolInternalPaddingPx;
+                internalPaddingPx = Math.Max(0, internalPaddingPx);
+                var internalPadding = (float)internalPaddingPx;
+                
+                // Push custom window padding (replaces default, not additive)
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(internalPadding, internalPadding));
                 ImGui.BeginChild(id, t.Size, true, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+                ImGui.PopStyleVar();
+                
+                // Begin a group to contain the content
+                var contentWidth = t.Size.X - internalPadding * 2;
+                ImGui.BeginGroup();
+                ImGui.PushItemWidth(MathF.Max(50f, contentWidth));
+                
                 // Title bar inside the child (toggleable)
                 if (t.HeaderVisible)
                 {
@@ -1254,6 +1353,9 @@ public class WindowContentContainer
                 {
                     t.RenderToolContent();
                 }
+                
+                ImGui.PopItemWidth();
+                ImGui.EndGroup();
                 
                 // Capture focus state before ending child - must be called inside BeginChild/EndChild block
                 var isChildFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows);
@@ -1984,6 +2086,22 @@ public class WindowContentContainer
             ImGui.Separator();
             ImGui.Spacing();
             
+            // Tool internal padding
+            ImGui.TextUnformatted("Tool Internal Padding (pixels):");
+            var toolPadding = _editingGridSettings.ToolInternalPaddingPx;
+            if (ImGui.SliderInt("##toolpadding", ref toolPadding, 0, 32))
+            {
+                _editingGridSettings.ToolInternalPaddingPx = toolPadding;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Padding in pixels inside each tool.\nHigher values create more space around tool content.\n0 = no padding.");
+            }
+            
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            
             // OK / Cancel buttons
             if (ImGuiHelpers.ButtonAutoWidth("OK"))
             {
@@ -2022,19 +2140,27 @@ public class WindowContentContainer
     }
 
     /// <summary>
-    /// Draws the unsaved changes confirmation dialog.
+    /// Draws the unsaved changes confirmation dialog using state from LayoutEditingService.
     /// </summary>
     private void DrawUnsavedChangesDialog()
     {
+        // Check if the dialog should be shown via LayoutEditingService callback
+        var shouldShow = GetShowUnsavedChangesDialog?.Invoke() ?? false;
+        if (!shouldShow)
+        {
+            return;
+        }
+        
         const string popupName = "unsaved_changes_popup";
         
-        // Open the popup if flagged
-        if (_unsavedChangesPopupOpen && !ImGui.IsPopupOpen(popupName))
+        // Open the popup if not already open
+        if (!ImGui.IsPopupOpen(popupName))
         {
             ImGui.OpenPopup(popupName);
         }
         
-        if (!ImGui.BeginPopupModal(popupName, ref _unsavedChangesPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        var open = true;
+        if (!ImGui.BeginPopupModal(popupName, ref open, ImGuiWindowFlags.AlwaysAutoResize))
         {
             return;
         }
@@ -2045,11 +2171,13 @@ public class WindowContentContainer
             ImGui.Separator();
             ImGui.Spacing();
             
-            ImGui.TextWrapped($"You have unsaved changes to the current layout.");
-            if (!string.IsNullOrWhiteSpace(_unsavedChangesDescription))
+            ImGui.TextWrapped("You have unsaved changes to the current layout.");
+            
+            var description = GetPendingActionDescription?.Invoke();
+            if (!string.IsNullOrWhiteSpace(description))
             {
                 ImGui.Spacing();
-                ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f), $"Action: {_unsavedChangesDescription}");
+                ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f), $"Action: {description}");
             }
             ImGui.Spacing();
             ImGui.TextUnformatted("What would you like to do?");
@@ -2061,19 +2189,8 @@ public class WindowContentContainer
             // Save button
             if (ImGuiHelpers.ButtonAutoWidth("Save"))
             {
-                try
-                {
-                    OnSaveLayoutExplicit?.Invoke();
-                    _unsavedChangesContinueAction?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    LogService.Error("Error in unsaved changes Save action", ex);
-                }
-                
+                HandleUnsavedChangesChoice?.Invoke(UnsavedChangesChoice.Save);
                 ImGui.CloseCurrentPopup();
-                _unsavedChangesPopupOpen = false;
-                _unsavedChangesContinueAction = null;
             }
             if (ImGui.IsItemHovered())
             {
@@ -2085,46 +2202,34 @@ public class WindowContentContainer
             // Discard button
             if (ImGuiHelpers.ButtonAutoWidth("Discard"))
             {
-                try
-                {
-                    OnDiscardChanges?.Invoke();
-                    _unsavedChangesContinueAction?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    LogService.Error("Error in unsaved changes Discard action", ex);
-                }
-                
+                HandleUnsavedChangesChoice?.Invoke(UnsavedChangesChoice.Discard);
                 ImGui.CloseCurrentPopup();
-                _unsavedChangesPopupOpen = false;
-                _unsavedChangesContinueAction = null;
             }
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Discard your changes and revert to the last saved layout");
+            }
+            
+            ImGui.SameLine();
+            
+            // Cancel button
+            if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
+            {
+                HandleUnsavedChangesChoice?.Invoke(UnsavedChangesChoice.Cancel);
+                ImGui.CloseCurrentPopup();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Cancel and return to editing");
+            }
         }
-
-        ImGui.SameLine();
-
-        // Cancel button
-        if (ImGuiHelpers.ButtonAutoWidth("Cancel"))
+        catch (Exception ex)
         {
-            ImGui.CloseCurrentPopup();
-            _unsavedChangesPopupOpen = false;
-            _unsavedChangesContinueAction = null;
+            LogService.Error("Error in unsaved changes dialog", ex);
         }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Cancel and return to editing");
-        }
-    }
-    catch (Exception ex)
-    {
-        LogService.Error("Error in unsaved changes dialog", ex);
-    }
 
-    ImGui.EndPopup();
-}
+        ImGui.EndPopup();
+    }
 
     #endregion
 }

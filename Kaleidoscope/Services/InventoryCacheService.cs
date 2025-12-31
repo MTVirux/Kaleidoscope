@@ -41,6 +41,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly TimeSpan _playerCacheInterval = TimeSpan.FromSeconds(30);
     private bool _pendingPlayerCache = false;
     private bool _pendingRetainerCache = false;
+    private volatile bool _cachePopulating = false;
 
     // Debounce cache for item time series data (player, retainer totals, and per-retainer)
     // Key: (variableName, characterId), Value: (value, timestamp)
@@ -73,12 +74,50 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         // Subscribe to login/logout events to invalidate memory cache for the new character
         _clientState.Login += OnLogin;
         _clientState.Logout += OnLogout;
+        
+        // Pre-populate cache on background thread to avoid blocking UI
+        PopulateCacheAsync();
 
         _log.Debug("[InventoryCacheService] Initialized");
     }
     
     /// <summary>
-    /// Called when a character logs in. Invalidates the memory cache for that character
+    /// Pre-populates the inventory cache from the database on a background thread.
+    /// </summary>
+    private void PopulateCacheAsync()
+    {
+        if (_cachePopulating) return;
+        _cachePopulating = true;
+        
+        Task.Run(() =>
+        {
+            try
+            {
+                var data = _currencyTrackerService.DbService.GetAllInventoryCachesAllCharacters();
+                
+                // Populate both caches
+                _allCharactersCache = data;
+                foreach (var group in data.GroupBy(e => e.CharacterId))
+                {
+                    _inventoryMemoryCache[group.Key] = group.ToList();
+                }
+                _allCharactersCacheDirty = false;
+                
+                _log.Debug($"[InventoryCacheService] Pre-populated cache with {data.Count} inventory entries");
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"[InventoryCacheService] Failed to pre-populate cache: {ex.Message}");
+            }
+            finally
+            {
+                _cachePopulating = false;
+            }
+        });
+    }
+    
+    /// <summary>
+    /// Called when a character logs in. Schedule a player cache update
     /// since their inventory may have changed while we weren't tracking (e.g., retainer ventures).
     /// </summary>
     private void OnLogin()
@@ -86,8 +125,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         var characterId = GameStateService.PlayerContentId;
         if (characterId != 0)
         {
-            InvalidateCharacterCache(characterId);
-            _log.Debug($"[InventoryCacheService] Character logged in, invalidated cache for {characterId}");
+            // Schedule a cache update - this will scan and update the memory cache
+            _pendingPlayerCache = true;
+            _log.Debug($"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
         }
     }
     
@@ -120,6 +160,45 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _inventoryMemoryCache.Clear();
         _allCharactersCache = null;
         _allCharactersCacheDirty = true;
+    }
+    
+    /// <summary>
+    /// Updates the in-memory cache directly with a new/updated entry.
+    /// This avoids invalidation which would force an expensive DB reload on next access.
+    /// </summary>
+    private void UpdateMemoryCache(ulong characterId, InventoryCacheEntry entry)
+    {
+        // Update per-character cache
+        var characterCaches = _inventoryMemoryCache.GetOrAdd(characterId, _ => new List<InventoryCacheEntry>());
+        
+        // Find and replace existing entry for same source type + retainer ID, or add new
+        var existingIndex = characterCaches.FindIndex(c => 
+            c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
+        
+        if (existingIndex >= 0)
+        {
+            characterCaches[existingIndex] = entry;
+        }
+        else
+        {
+            characterCaches.Add(entry);
+        }
+        
+        // Update all-characters cache if it exists
+        if (_allCharactersCache != null)
+        {
+            var allIndex = _allCharactersCache.FindIndex(c => 
+                c.CharacterId == characterId && c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
+            
+            if (allIndex >= 0)
+            {
+                _allCharactersCache[allIndex] = entry;
+            }
+            else
+            {
+                _allCharactersCache.Add(entry);
+            }
+        }
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -160,12 +239,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private void OnValuesChanged(IReadOnlyDictionary<Models.TrackedDataType, long> changes)
     {
         // When inventory-related values change, schedule a player cache update
-        // Also invalidate the memory cache for the current character
-        var characterId = GameStateService.PlayerContentId;
-        if (characterId != 0)
-        {
-            InvalidateCharacterCache(characterId);
-        }
+        // The cache will be updated by CachePlayerInventory via UpdateMemoryCache
         _pendingPlayerCache = true;
     }
 
@@ -215,8 +289,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Sample tracked items to time-series for historical graphing
             SampleTrackedItems(characterId, entry.Items);
             
-            // Invalidate memory cache since DB was updated
-            InvalidateCharacterCache(characterId);
+            // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
+            UpdateMemoryCache(characterId, entry);
 
             _log.Debug($"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
@@ -272,13 +346,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             _currencyTrackerService.DbService.SaveInventoryCache(entry);
             _lastCachedRetainerId = retainerId;
             
-            // Invalidate memory cache since DB was updated
-            InvalidateCharacterCache(characterId);
+            // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
+            UpdateMemoryCache(characterId, entry);
             
             // Re-sample tracked items now that retainer data has been updated
-            // Get player inventory cache to combine with new retainer data
-            var playerCache = _currencyTrackerService.DbService.GetInventoryCache(
-                characterId, InventorySourceType.Player, 0);
+            // Get player inventory cache from memory cache (not DB)
+            var characterCaches = _inventoryMemoryCache.TryGetValue(characterId, out var caches) ? caches : null;
+            var playerCache = characterCaches?.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
             if (playerCache != null)
             {
                 SampleTrackedItems(characterId, playerCache.Items);
@@ -426,6 +500,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// <summary>
     /// Gets all cached inventories across all characters.
     /// Uses in-memory cache for efficiency - offline characters' data is static.
+    /// Returns empty list if cache is not yet populated (non-blocking).
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventories()
     {
@@ -435,38 +510,47 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             return _allCharactersCache;
         }
         
-        // Cache miss or dirty - reload from database
-        _allCharactersCache = _currencyTrackerService.DbService.GetAllInventoryCachesAllCharacters();
-        _allCharactersCacheDirty = false;
-        
-        // Also populate per-character cache for individual lookups
-        foreach (var group in _allCharactersCache.GroupBy(e => e.CharacterId))
+        // If cache is populating on background thread, return empty list (non-blocking)
+        if (_cachePopulating)
         {
-            _inventoryMemoryCache[group.Key] = group.ToList();
+            return new List<InventoryCacheEntry>();
         }
         
-        return _allCharactersCache;
+        // Cache is dirty but not populating - trigger async population and return empty
+        // This prevents blocking the UI thread
+        PopulateCacheAsync();
+        return _allCharactersCache ?? new List<InventoryCacheEntry>();
     }
 
     /// <summary>
     /// Gets the total count of a specific item across all caches for the current character.
+    /// Uses in-memory cache for efficiency.
     /// </summary>
     public long GetTotalItemCount(uint itemId)
     {
         var characterId = GameStateService.PlayerContentId;
         if (characterId == 0) return 0;
 
-        var summary = _currencyTrackerService.DbService.GetItemCountSummary(characterId, itemId);
-        return summary.TryGetValue(itemId, out var count) ? count : 0;
+        // Use memory cache instead of DB call
+        var inventories = GetInventoriesForCharacter(characterId);
+        return inventories
+            .SelectMany(c => c.Items)
+            .Where(i => i.ItemId == itemId)
+            .Sum(i => (long)i.Quantity);
     }
 
     /// <summary>
     /// Gets the total count of a specific item across all caches for all characters.
+    /// Uses in-memory cache for efficiency.
     /// </summary>
     public long GetTotalItemCountAllCharacters(uint itemId)
     {
-        var summary = _currencyTrackerService.DbService.GetItemCountSummary(null, itemId);
-        return summary.TryGetValue(itemId, out var count) ? count : 0;
+        // Use memory cache instead of DB call
+        var allInventories = GetAllInventories();
+        return allInventories
+            .SelectMany(c => c.Items)
+            .Where(i => i.ItemId == itemId)
+            .Sum(i => (long)i.Quantity);
     }
 
     /// <summary>
@@ -552,8 +636,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             if (trackedItems.Count == 0)
                 return;
 
-            // Gather all retainer caches for this character (with retainer info)
-            var retainerCaches = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId)
+            // Gather all retainer caches for this character from memory cache (not DB)
+            var retainerCaches = GetInventoriesForCharacter(characterId)
                 .Where(c => c.SourceType == InventorySourceType.Retainer)
                 .ToList();
 
@@ -615,12 +699,18 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         var count = 0;
         var keys = _pendingSamples.Keys.ToList();
+        var cacheService = _currencyTrackerService.CacheService;
         
         foreach (var key in keys)
         {
             if (_pendingSamples.TryRemove(key, out var sample))
             {
+                // Save to database
                 _currencyTrackerService.DbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
+                
+                // Also update the in-memory cache so UI doesn't lose the data
+                cacheService.AddPoint(key.VariableName, key.CharacterId, sample.Value, sample.Timestamp);
+                
                 count++;
             }
         }
@@ -677,6 +767,36 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         return result;
     }
 
+    /// <summary>
+    /// Gets cache statistics for diagnostics.
+    /// </summary>
+    public InventoryCacheStatistics GetCacheStatistics()
+    {
+        var characterCount = _inventoryMemoryCache.Count;
+        var entryCount = _inventoryMemoryCache.Values.Sum(list => list.Count);
+        var itemCount = _inventoryMemoryCache.Values.Sum(list => list.Sum(e => e.Items.Count));
+        var allCharactersCacheCount = _allCharactersCache?.Count ?? 0;
+        var pendingSamplesCount = _pendingSamples.Count;
+        
+        // Estimate memory usage:
+        // - InventoryCacheEntry: ~100 bytes base (strings, timestamps, etc.)
+        // - InventoryItemSnapshot: ~60 bytes each (uint, long, flags, etc.)
+        // - Dictionary overhead per character: ~50 bytes
+        var estimatedBytes = (characterCount * 50L) +
+                             (entryCount * 100L) +
+                             (itemCount * 60L);
+        
+        return new InventoryCacheStatistics
+        {
+            CachedCharacterCount = characterCount,
+            CachedEntryCount = entryCount,
+            CachedItemCount = itemCount,
+            AllCharactersCacheCount = allCharactersCacheCount,
+            PendingSamplesCount = pendingSamplesCount,
+            EstimatedMemoryBytes = estimatedBytes
+        };
+    }
+
     public void Dispose()
     {
         _framework.Update -= OnFrameworkUpdate;
@@ -696,4 +816,17 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
         _log.Debug("[InventoryCacheService] Disposed");
     }
+}
+
+/// <summary>
+/// Statistics for InventoryCacheService diagnostics.
+/// </summary>
+public readonly struct InventoryCacheStatistics
+{
+    public int CachedCharacterCount { get; init; }
+    public int CachedEntryCount { get; init; }
+    public int CachedItemCount { get; init; }
+    public int AllCharactersCacheCount { get; init; }
+    public int PendingSamplesCount { get; init; }
+    public long EstimatedMemoryBytes { get; init; }
 }

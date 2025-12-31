@@ -3,22 +3,40 @@ using Kaleidoscope.Interfaces;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
+using System.Timers;
 
 namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Manages plugin configuration including layouts, window state, and settings.
+/// Configuration is held in memory (cache-first) with write-through persistence.
 /// </summary>
 /// <remarks>
 /// This follows a hybrid approach: the main Configuration uses Dalamud's standard
 /// IPluginConfiguration, while sub-configs use JSON files for modularity.
-/// Consider migrating to OtterGui's ISavable pattern for better consistency with
-/// Glamourer and other Ottermandias plugins.
+/// 
+/// Phase 4 Cache Architecture:
+/// - Config is loaded once on startup and kept in memory
+/// - All reads are instant (no disk I/O)
+/// - Writes are debounced to coalesce rapid changes
+/// - Dirty tracking prevents unnecessary saves
 /// </remarks>
-public sealed class ConfigurationService : IConfigurationService, IRequiredService
+public sealed class ConfigurationService : IConfigurationService, IRequiredService, IDisposable
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly IPluginLog _log;
+    
+    // Dirty tracking and debounced saves
+    private bool _isDirty;
+    private System.Timers.Timer? _saveDebounceTimer;
+    private readonly object _saveLock = new();
+    private const int SaveDebounceMs = 500; // Coalesce saves within 500ms
+    
+    // Statistics for monitoring
+    private long _saveCount;
+    private long _saveSkippedCount;
+    private long _configAccessCount;
+    private DateTime? _lastSaveTime;
 
     public Configuration Config { get; private set; }
     public ConfigManager ConfigManager { get; private set; }
@@ -30,6 +48,12 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// Event raised when configuration is saved. Subscribe to this to react to config changes.
     /// </summary>
     public event Action? OnConfigChanged;
+
+    /// <summary>
+    /// Event raised when the active layout is changed. Subscribers should apply the new layout.
+    /// Parameters: layoutName, layoutType
+    /// </summary>
+    public event Action<string, LayoutType>? OnActiveLayoutChanged;
 
     public ConfigurationService(IDalamudPluginInterface pluginInterface, IPluginLog log)
     {
@@ -61,10 +85,15 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             ConfigWindowSize = Config.ConfigWindowSize
         });
 
+        // Initialize debounce timer (500ms delay)
+        _saveDebounceTimer = new System.Timers.Timer(500);
+        _saveDebounceTimer.Elapsed += OnDebounceTimerElapsed;
+        _saveDebounceTimer.AutoReset = false;
+
         LoadLayouts();
         SyncFromSubConfigs();
 
-        _log.Debug("ConfigurationService initialized");
+        _log.Debug("ConfigurationService initialized with debounced save support");
     }
 
     private void NormalizeLayouts()
@@ -226,12 +255,65 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         Config.ConfigWindowSize = WindowConfig.ConfigWindowSize;
     }
 
+    /// <summary>
+    /// Marks the configuration as dirty, scheduling a debounced save.
+    /// Use this instead of calling Save() directly for non-critical changes.
+    /// </summary>
+    public void MarkDirty()
+    {
+        lock (_saveLock)
+        {
+            _isDirty = true;
+            Interlocked.Increment(ref _configAccessCount);
+            
+            // Reset debounce timer
+            _saveDebounceTimer?.Stop();
+            _saveDebounceTimer?.Start();
+        }
+    }
+
+    /// <summary>
+    /// Saves immediately if dirty, bypassing debounce. Use for critical saves (e.g., shutdown).
+    /// </summary>
+    public void SaveImmediate()
+    {
+        lock (_saveLock)
+        {
+            _saveDebounceTimer?.Stop();
+            
+            if (_isDirty)
+            {
+                SaveInternal();
+            }
+            else
+            {
+                Interlocked.Increment(ref _saveSkippedCount);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Standard save method. If debouncing is enabled and config is not dirty, skips the save.
+    /// </summary>
     public void Save()
+    {
+        lock (_saveLock)
+        {
+            _saveDebounceTimer?.Stop();
+            SaveInternal();
+        }
+    }
+
+    private void SaveInternal()
     {
         try
         {
             _pluginInterface.SavePluginConfig(Config);
             _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
+            
+            Interlocked.Increment(ref _saveCount);
+            _lastSaveTime = DateTime.UtcNow;
+            _isDirty = false;
         }
         catch (Exception ex)
         {
@@ -248,6 +330,44 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         catch (Exception ex)
         {
             _log.Error($"Error invoking OnConfigChanged: {ex}");
+        }
+    }
+
+    private void OnDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        lock (_saveLock)
+        {
+            if (_isDirty)
+            {
+                SaveInternal();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the active layout and notifies subscribers to apply it.
+    /// </summary>
+    /// <param name="layoutName">The name of the layout to activate.</param>
+    /// <param name="layoutType">The type of layout (Windowed or Fullscreen).</param>
+    public void SetActiveLayout(string layoutName, LayoutType layoutType)
+    {
+        if (string.IsNullOrWhiteSpace(layoutName)) return;
+
+        if (layoutType == LayoutType.Windowed)
+            Config.ActiveWindowedLayoutName = layoutName;
+        else
+            Config.ActiveFullscreenLayoutName = layoutName;
+
+        Save();
+
+        // Notify subscribers to apply the new layout
+        try
+        {
+            OnActiveLayoutChanged?.Invoke(layoutName, layoutType);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error invoking OnActiveLayoutChanged: {ex}");
         }
     }
 
@@ -302,6 +422,77 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             _log.Error($"Error saving layouts: {ex.Message}");
         }
     }
+
+    #region Statistics Properties
+    
+    /// <summary>
+    /// Total number of saves performed.
+    /// </summary>
+    public long SaveCount => Interlocked.Read(ref _saveCount);
+    
+    /// <summary>
+    /// Number of saves skipped because config was not dirty.
+    /// </summary>
+    public long SaveSkippedCount => Interlocked.Read(ref _saveSkippedCount);
+    
+    /// <summary>
+    /// Number of times MarkDirty was called.
+    /// </summary>
+    public long ConfigAccessCount => Interlocked.Read(ref _configAccessCount);
+    
+    /// <summary>
+    /// Whether the configuration has unsaved changes.
+    /// </summary>
+    public bool IsDirty => _isDirty;
+    
+    /// <summary>
+    /// Last time the configuration was saved.
+    /// </summary>
+    public DateTime? LastSaveTime => _lastSaveTime;
+    
+    /// <summary>
+    /// Resets all statistics counters.
+    /// </summary>
+    public void ResetStatistics()
+    {
+        Interlocked.Exchange(ref _saveCount, 0);
+        Interlocked.Exchange(ref _saveSkippedCount, 0);
+        Interlocked.Exchange(ref _configAccessCount, 0);
+        _lastSaveTime = null;
+    }
+    
+    #endregion
+
+    #region IDisposable
+    
+    public void Dispose()
+    {
+        // Flush any pending saves
+        lock (_saveLock)
+        {
+            _saveDebounceTimer?.Stop();
+            _saveDebounceTimer?.Dispose();
+            _saveDebounceTimer = null;
+            
+            // Save if dirty on dispose
+            if (_isDirty)
+            {
+                try
+                {
+                    _pluginInterface.SavePluginConfig(Config);
+                    SaveSubConfigs();
+                    _isDirty = false;
+                    _log.Information("Flushed pending config changes on dispose");
+                }
+                catch (Exception ex)
+                {
+                    _log.Error($"Error flushing config on dispose: {ex}");
+                }
+            }
+        }
+    }
+    
+    #endregion
 
     /// <summary>
     /// Helper comparer for (Name, Type) tuple that uses case-insensitive name comparison.

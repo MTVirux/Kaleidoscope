@@ -20,13 +20,10 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
+    private readonly CharacterDataCacheService _characterDataCache;
 
     // Main cache: (variable, characterId) -> cached time series
     private readonly ConcurrentDictionary<CacheKey, TimeSeriesCache> _cache = new();
-
-    // Character name cache (shared across all variables)
-    // Stores (GameName, DisplayName, TimeSeriesColor) tuple for each character
-    private readonly ConcurrentDictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)> _characterNames = new();
 
     // Available characters per variable
     private readonly ConcurrentDictionary<string, HashSet<ulong>> _availableCharacters = new();
@@ -71,10 +68,11 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public long TotalCachedPoints => _cache.Values.Sum(c => c.PointCount);
 
-    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService)
+    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, CharacterDataCacheService characterDataCache)
     {
         _log = log;
         _configService = configService;
+        _characterDataCache = characterDataCache;
         _log.Debug("[TimeSeriesCacheService] Initialized");
     }
 
@@ -136,6 +134,17 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> GetAllCachedPoints(string variable)
     {
+        return GetAllCachedPoints(variable, null);
+    }
+
+    /// <summary>
+    /// Gets all cached points across all characters for a variable, optionally filtered by time.
+    /// </summary>
+    /// <param name="variable">The variable name to query.</param>
+    /// <param name="since">Optional: only return points after this timestamp.</param>
+    /// <returns>List of (characterId, timestamp, value) tuples sorted by timestamp.</returns>
+    public IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> GetAllCachedPoints(string variable, DateTime? since)
+    {
         var result = new List<(ulong, DateTime, long)>();
         var foundAny = false;
 
@@ -145,7 +154,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             foundAny = true;
 
             var characterId = kvp.Key.CharacterId;
-            var points = kvp.Value.GetPoints();
+            var points = since.HasValue
+                ? kvp.Value.GetPointsSince(since.Value)
+                : kvp.Value.GetPoints();
             foreach (var (ts, val) in points)
             {
                 result.Add((characterId, ts, val));
@@ -260,9 +271,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public string? GetCharacterName(ulong characterId)
     {
-        return _characterNames.TryGetValue(characterId, out var names) 
-            ? (names.DisplayName ?? names.GameName) 
-            : null;
+        return _characterDataCache.GetCharacterName(characterId);
     }
 
     /// <summary>
@@ -270,7 +279,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public string? GetCharacterGameName(ulong characterId)
     {
-        return _characterNames.TryGetValue(characterId, out var names) ? names.GameName : null;
+        return _characterDataCache.GetCharacterGameName(characterId);
     }
 
     /// <summary>
@@ -278,7 +287,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public string? GetCharacterDisplayName(ulong characterId)
     {
-        return _characterNames.TryGetValue(characterId, out var names) ? names.DisplayName : null;
+        return _characterDataCache.GetCharacterDisplayName(characterId);
     }
 
     /// <summary>
@@ -286,7 +295,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
     {
-        return _characterNames.TryGetValue(characterId, out var names) ? names.TimeSeriesColor : null;
+        return _characterDataCache.GetCharacterTimeSeriesColor(characterId);
     }
 
     /// <summary>
@@ -295,15 +304,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public string? GetFormattedCharacterName(ulong characterId)
     {
-        if (!_characterNames.TryGetValue(characterId, out var names))
-            return null;
-
-        // If a custom display name is set, use it as-is (user's choice)
-        if (!string.IsNullOrEmpty(names.DisplayName))
-            return names.DisplayName;
-
-        // Format the game name according to setting
-        return FormatName(names.GameName, _configService.Config.CharacterNameFormat);
+        return _characterDataCache.GetFormattedCharacterName(characterId);
     }
 
     /// <summary>
@@ -314,34 +315,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary mapping character ID to disambiguated display name.</returns>
     public Dictionary<ulong, string> GetDisambiguatedNames(IEnumerable<ulong> characterIds)
     {
-        var idList = characterIds.ToList();
-        var result = new Dictionary<ulong, string>();
-        
-        // First pass: get all base names
-        var baseNames = new Dictionary<ulong, string>();
-        foreach (var cid in idList)
-        {
-            var name = GetFormattedCharacterName(cid) ?? $"...{cid % 1_000_000:D6}";
-            baseNames[cid] = name;
-        }
-        
-        // Detect collisions
-        var nameCounts = baseNames.Values.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
-        
-        // Second pass: disambiguate where needed
-        foreach (var (cid, baseName) in baseNames)
-        {
-            if (nameCounts.Contains(baseName))
-            {
-                result[cid] = $"{baseName} (#{cid % 10000:D4})";
-            }
-            else
-            {
-                result[cid] = baseName;
-            }
-        }
-        
-        return result;
+        return _characterDataCache.GetDisambiguatedNames(characterIds);
     }
 
     /// <summary>
@@ -365,6 +339,164 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _ => fullName
         };
     }
+
+    #region Cache-First Batch Read Operations (Phase 3)
+
+    /// <summary>
+    /// Gets the latest cached value for each character for a given variable.
+    /// Cache-first: returns only cached data, no DB fallback.
+    /// </summary>
+    /// <returns>Dictionary of characterId -> latest value.</returns>
+    public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
+    {
+        var result = new Dictionary<ulong, long>();
+        var foundAny = false;
+
+        foreach (var kvp in _cache)
+        {
+            if (kvp.Key.Variable != variable) continue;
+            foundAny = true;
+
+            var lastPoint = kvp.Value.GetLastPoint();
+            if (lastPoint.HasValue)
+            {
+                result[kvp.Key.CharacterId] = lastPoint.Value.value;
+            }
+        }
+
+        if (foundAny)
+        {
+            Interlocked.Increment(ref _cacheHits);
+            LogService.Verbose($"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
+        }
+        else
+        {
+            Interlocked.Increment(ref _cacheMisses);
+            LogService.Verbose($"[Cache MISS] GetLatestValuesForVariable({variable})");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all cached points for a variable, grouped by variable name.
+    /// Cache-first: returns only cached data, no DB fallback.
+    /// Compatible with DbService.GetAllPointsBatch signature.
+    /// </summary>
+    /// <param name="variable">The variable name to query.</param>
+    /// <param name="since">Only return points after this timestamp. If null, returns all points.</param>
+    /// <returns>Dictionary with variable name as key and list of points as value.</returns>
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variable, DateTime? since)
+    {
+        var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
+        var points = new List<(ulong characterId, DateTime timestamp, long value)>();
+        var foundAny = false;
+
+        foreach (var kvp in _cache)
+        {
+            if (kvp.Key.Variable != variable) continue;
+            foundAny = true;
+
+            var characterId = kvp.Key.CharacterId;
+            var cachedPoints = since.HasValue 
+                ? kvp.Value.GetPointsSince(since.Value)
+                : kvp.Value.GetPoints();
+            foreach (var (ts, val) in cachedPoints)
+            {
+                points.Add((characterId, ts, val));
+            }
+        }
+
+        if (points.Count > 0)
+        {
+            result[variable] = points;
+        }
+
+        if (foundAny)
+        {
+            Interlocked.Increment(ref _cacheHits);
+            LogService.Verbose($"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
+        }
+        else
+        {
+            Interlocked.Increment(ref _cacheMisses);
+            LogService.Verbose($"[Cache MISS] GetAllPointsBatch({variable})");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all cached points for variables matching a prefix+suffix pattern.
+    /// Cache-first: returns only cached data, no DB fallback.
+    /// Compatible with DbService.GetPointsBatchWithSuffix signature.
+    /// </summary>
+    /// <param name="prefix">Variable name prefix (e.g., "ItemRetainerX_").</param>
+    /// <param name="suffix">Variable name suffix (e.g., "_12345").</param>
+    /// <param name="since">Only return points after this timestamp. If null, returns all points.</param>
+    /// <returns>Dictionary with variable name as key and list of points as value.</returns>
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchWithSuffix(string prefix, string suffix, DateTime? since)
+    {
+        var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
+        var foundAny = false;
+
+        foreach (var kvp in _cache)
+        {
+            var variable = kvp.Key.Variable;
+            if (!variable.StartsWith(prefix) || !variable.EndsWith(suffix)) continue;
+            foundAny = true;
+
+            if (!result.TryGetValue(variable, out var points))
+            {
+                points = new List<(ulong characterId, DateTime timestamp, long value)>();
+                result[variable] = points;
+            }
+
+            var characterId = kvp.Key.CharacterId;
+            var cachedPoints = since.HasValue 
+                ? kvp.Value.GetPointsSince(since.Value)
+                : kvp.Value.GetPoints();
+            foreach (var (ts, val) in cachedPoints)
+            {
+                points.Add((characterId, ts, val));
+            }
+        }
+
+        if (foundAny)
+        {
+            Interlocked.Increment(ref _cacheHits);
+            LogService.Verbose($"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
+        }
+        else
+        {
+            Interlocked.Increment(ref _cacheMisses);
+            LogService.Verbose($"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all cached variables that match a prefix.
+    /// </summary>
+    public IReadOnlyList<string> GetVariablesWithPrefix(string prefix)
+    {
+        return _cache.Keys
+            .Where(k => k.Variable.StartsWith(prefix))
+            .Select(k => k.Variable)
+            .Distinct()
+            .ToList();
+    }
+
+    /// <summary>
+    /// Checks if the cache has data for a variable (any character).
+    /// </summary>
+    public bool HasDataForVariable(string variable)
+    {
+        return _cache.Keys.Any(k => k.Variable == variable);
+    }
+
+    #endregion
 
     #endregion
 
@@ -463,12 +595,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public void SetCharacterName(ulong characterId, string name)
     {
-        if (string.IsNullOrEmpty(name)) return;
-        _characterNames.AddOrUpdate(
-            characterId,
-            (name, null, null), // Add new entry with game name only
-            (_, existing) => (name, existing.DisplayName, existing.TimeSeriesColor) // Update: preserve display name and color
-        );
+        _characterDataCache.SetCharacterName(characterId, name);
     }
 
     /// <summary>
@@ -476,11 +603,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public void SetCharacterDisplayName(ulong characterId, string? displayName)
     {
-        _characterNames.AddOrUpdate(
-            characterId,
-            (null, displayName, null), // Add new entry with display name only
-            (_, existing) => (existing.GameName, displayName, existing.TimeSeriesColor) // Update: preserve game name and color
-        );
+        _characterDataCache.SetCharacterDisplayName(characterId, displayName);
     }
 
     /// <summary>
@@ -488,11 +611,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public void SetCharacterTimeSeriesColor(ulong characterId, uint? color)
     {
-        _characterNames.AddOrUpdate(
-            characterId,
-            (null, null, color), // Add new entry with color only
-            (_, existing) => (existing.GameName, existing.DisplayName, color) // Update: preserve game name and display name
-        );
+        _characterDataCache.SetCharacterTimeSeriesColor(characterId, color);
     }
 
     /// <summary>
@@ -500,13 +619,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public void PopulateCharacterNames(IEnumerable<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> names)
     {
-        foreach (var (cid, gameName, displayName, color) in names)
-        {
-            if (!string.IsNullOrEmpty(gameName) || !string.IsNullOrEmpty(displayName) || color.HasValue)
-            {
-                _characterNames[cid] = (gameName, displayName, color);
-            }
-        }
+        _characterDataCache.PopulateCharacterData(names);
     }
 
     /// <summary>
@@ -514,17 +627,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public void PopulateCharacterNamesSimple(IEnumerable<(ulong characterId, string? name)> names)
     {
-        foreach (var (cid, name) in names)
-        {
-            if (!string.IsNullOrEmpty(name))
-            {
-                _characterNames.AddOrUpdate(
-                    cid,
-                    (name, null, null),
-                    (_, existing) => (name, existing.DisplayName, existing.TimeSeriesColor)
-                );
-            }
-        }
+        _characterDataCache.PopulateCharacterNamesSimple(names);
     }
 
     /// <summary>
@@ -559,7 +662,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public void ClearAll()
     {
         _cache.Clear();
-        _characterNames.Clear();
         lock (_availableCharactersLock)
         {
             _availableCharacters.Clear();
@@ -579,7 +681,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _cache.TryRemove(key, out _);
         }
 
-        _characterNames.TryRemove(characterId, out _);
+        _characterDataCache.RemoveCharacter(characterId);
 
         lock (_availableCharactersLock)
         {
@@ -624,7 +726,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         {
             SeriesCount = _cache.Count,
             TotalPoints = TotalCachedPoints,
-            CharacterCount = _characterNames.Count,
+            CharacterCount = _characterDataCache.CachedCharacterCount,
             CacheHits = _cacheHits,
             CacheMisses = _cacheMisses,
             HitRate = _cacheHits + _cacheMisses > 0

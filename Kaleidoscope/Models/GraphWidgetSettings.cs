@@ -1,7 +1,21 @@
 using Kaleidoscope.Gui.Widgets;
+using MTGui.Common;
 using MTGui.Graph;
 
 namespace Kaleidoscope.Models;
+
+/// <summary>
+/// Mode for determining series colors in the graph.
+/// </summary>
+public enum GraphColorMode
+{
+    /// <summary>Don't use preferred colors - use custom series colors or default palette.</summary>
+    DontUse = 0,
+    /// <summary>Use preferred item colors from configuration.</summary>
+    PreferredItemColors = 1,
+    /// <summary>Use preferred character colors from configuration.</summary>
+    PreferredCharacterColors = 2
+}
 
 /// <summary>
 /// Interface for settings classes that contain graph widget configuration.
@@ -9,8 +23,10 @@ namespace Kaleidoscope.Models;
 /// </summary>
 public interface IGraphWidgetSettings : IMTGraphSettings
 {
-    // IGraphWidgetSettings extends IMTGraphSettings from MTGui.Graph
-    // No additional members needed - the interface is just for Kaleidoscope-specific typing
+    /// <summary>
+    /// Mode for determining series colors in the graph.
+    /// </summary>
+    GraphColorMode ColorMode { get; set; }
 }
 
 /// <summary>
@@ -20,6 +36,9 @@ public interface IGraphWidgetSettings : IMTGraphSettings
 /// </summary>
 public class GraphWidgetSettings : IGraphWidgetSettings
 {
+    // Color mode for series
+    public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
+    
     // Legend settings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
@@ -50,6 +69,9 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
     public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     
+    // Number format settings
+    public NumberFormatConfig NumberFormat { get; set; } = new();
+    
     /// <summary>
     /// Calculates the auto-scroll time range in seconds from value and unit.
     /// </summary>
@@ -65,6 +87,7 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     /// </summary>
     public void CopyFrom(IGraphWidgetSettings other)
     {
+        ColorMode = other.ColorMode;
         LegendWidth = other.LegendWidth;
         LegendHeightPercent = other.LegendHeightPercent;
         ShowLegend = other.ShowLegend;
@@ -84,5 +107,6 @@ public class GraphWidgetSettings : IGraphWidgetSettings
         ShowControlsDrawer = other.ShowControlsDrawer;
         TimeRangeValue = other.TimeRangeValue;
         TimeRangeUnit = other.TimeRangeUnit;
+        NumberFormat.CopyFrom(other.NumberFormat);
     }
 }

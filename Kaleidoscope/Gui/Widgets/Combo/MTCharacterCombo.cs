@@ -258,7 +258,8 @@ public sealed class MTCharacterCombo : IDisposable
         
         try
         {
-            var dbCharacters = _currencyTrackerService.DbService.GetAllCharacterNames()
+            // Get all characters from CharacterDataCache (no DB access)
+            var dbCharacters = _currencyTrackerService.CharacterDataCache.GetAllCharacterNames()
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();
