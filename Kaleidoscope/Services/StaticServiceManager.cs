@@ -9,6 +9,14 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Builds the Kaleidoscope service container.
 /// </summary>
+/// <remarks>
+/// Services are organized into categories for clarity:
+/// - Meta: Core infrastructure (config, filenames)
+/// - State: Application state management
+/// - Data: Data tracking and persistence
+/// - Market: Universalis integration and price tracking
+/// - Ui: Windows and UI services
+/// </remarks>
 public static class StaticServiceManager
 {
     public static ServiceManager CreateProvider(IDalamudPluginInterface pi, Logger log, KaleidoscopePlugin plugin)
@@ -17,7 +25,9 @@ public static class StaticServiceManager
             .AddExistingService(log)
             .AddExistingService(plugin)
             .AddMeta()
-            .AddServices()
+            .AddState()
+            .AddData()
+            .AddMarket()
             .AddUi();
 
         DalamudServices.AddServices(services, pi);
@@ -26,34 +36,56 @@ public static class StaticServiceManager
         return services;
     }
 
+    /// <summary>
+    /// Core infrastructure services required for plugin operation.
+    /// </summary>
     private static ServiceManager AddMeta(this ServiceManager services)
         => services
             .AddSingleton<FilenameService>()
-            .AddSingleton<ConfigurationService>();
+            .AddSingleton<ConfigurationService>()
+            .AddSingleton<CommandService>();
 
-    private static ServiceManager AddServices(this ServiceManager services)
+    /// <summary>
+    /// Application state management services.
+    /// </summary>
+    private static ServiceManager AddState(this ServiceManager services)
         => services
             .AddSingleton<StateService>()
             .AddSingleton<LayoutEditingService>()
-            .AddSingleton<AutoRetainerIpcService>()
-            .AddSingleton<FavoritesService>()
-            .AddSingleton<CharacterDataService>()
-            .AddSingleton<UniversalisService>()
-            .AddSingleton<UniversalisWebSocketService>()
-            .AddSingleton<ListingsService>()
-            .AddSingleton<PriceTrackingService>()
+            .AddSingleton<ProfilerService>()
+            .AddSingleton<FrameLimiterService>();
+
+    /// <summary>
+    /// Data tracking, persistence, and caching services.
+    /// </summary>
+    private static ServiceManager AddData(this ServiceManager services)
+        => services
             .AddSingleton<TrackedDataRegistry>()
-            .AddSingleton<InventoryChangeService>()
             .AddSingleton<TimeSeriesCacheService>()
             .AddSingleton<CurrencyTrackerService>()
             .AddSingleton<InventoryCacheService>()
-            .AddSingleton<ProfilerService>()
-            .AddSingleton<CommandService>();
+            .AddSingleton<InventoryChangeService>()
+            .AddSingleton<CharacterDataService>()
+            .AddSingleton<FavoritesService>()
+            .AddSingleton<AutoRetainerIpcService>();
 
+    /// <summary>
+    /// Universalis integration and market data services.
+    /// </summary>
+    private static ServiceManager AddMarket(this ServiceManager services)
+        => services
+            .AddSingleton<UniversalisService>()
+            .AddSingleton<UniversalisWebSocketService>()
+            .AddSingleton<ListingsService>()
+            .AddSingleton<MarketDataCacheService>()
+            .AddSingleton<PriceTrackingService>();
+
+    /// <summary>
+    /// Window and UI services.
+    /// </summary>
     private static ServiceManager AddUi(this ServiceManager services)
         => services
             .AddSingleton<WindowService>()
             .AddSingleton<MainWindow>()
-            .AddSingleton<FullscreenWindow>()
             .AddSingleton<ConfigWindow>();
 }
