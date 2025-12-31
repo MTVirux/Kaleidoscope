@@ -701,10 +701,12 @@ public sealed class TestsCategory
 
     private async void RunAllTestsAsync()
     {
-        _isRunningTests = true;
-        _testResults.Clear();
+        try
+        {
+            _isRunningTests = true;
+            _testResults.Clear();
 
-        var tests = new List<(string Name, Func<TestResult> Test)>
+            var tests = new List<(string Name, Func<TestResult> Test)>
         {
             ("DB Connection", TestDbConnection),
             ("DB Read/Write", TestDbReadWrite),
@@ -787,8 +789,17 @@ public sealed class TestsCategory
         _layoutToolCacheTested = true;
         _layoutSnapshotDebounceTested = true;
         _layoutStatsTested = true;
-        _isRunningTests = false;
-        _currentTestName = "";
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"RunAllTestsAsync failed: {ex.Message}");
+            _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message));
+        }
+        finally
+        {
+            _isRunningTests = false;
+            _currentTestName = "";
+        }
     }
 
     #region Test Implementations
