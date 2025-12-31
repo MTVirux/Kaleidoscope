@@ -29,6 +29,56 @@ public sealed class FavoritesService : IDisposable, IService
         // No unmanaged resources
     }
 
+    #region Generic Helpers
+
+    /// <summary>
+    /// Adds an item to a favorites set and notifies if changed.
+    /// </summary>
+    private bool AddToSet<T>(HashSet<T> set, T item) where T : notnull
+    {
+        if (set.Add(item))
+        {
+            _configService.MarkDirty();
+            OnFavoritesChanged?.Invoke();
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Removes an item from a favorites set and notifies if changed.
+    /// </summary>
+    private bool RemoveFromSet<T>(HashSet<T> set, T item) where T : notnull
+    {
+        if (set.Remove(item))
+        {
+            _configService.MarkDirty();
+            OnFavoritesChanged?.Invoke();
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Toggles an item's presence in a favorites set.
+    /// </summary>
+    /// <returns>True if item is now in favorites, false if removed.</returns>
+    private bool ToggleInSet<T>(HashSet<T> set, T item) where T : notnull
+    {
+        if (set.Contains(item))
+        {
+            RemoveFromSet(set, item);
+            return false;
+        }
+        else
+        {
+            AddToSet(set, item);
+            return true;
+        }
+    }
+
+    #endregion
+
     #region Items
     
     /// <summary>
@@ -41,46 +91,19 @@ public sealed class FavoritesService : IDisposable, IService
     /// Adds an item to favorites.
     /// </summary>
     public bool AddItem(uint itemId)
-    {
-        if (_configService.Config.FavoriteItems.Add(itemId))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => AddToSet(_configService.Config.FavoriteItems, itemId);
 
     /// <summary>
     /// Removes an item from favorites.
     /// </summary>
     public bool RemoveItem(uint itemId)
-    {
-        if (_configService.Config.FavoriteItems.Remove(itemId))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => RemoveFromSet(_configService.Config.FavoriteItems, itemId);
 
     /// <summary>
     /// Toggles an item's favorite status.
     /// </summary>
     public bool ToggleItem(uint itemId)
-    {
-        if (ContainsItem(itemId))
-        {
-            RemoveItem(itemId);
-            return false;
-        }
-        else
-        {
-            AddItem(itemId);
-            return true;
-        }
-    }
+        => ToggleInSet(_configService.Config.FavoriteItems, itemId);
 
     /// <summary>
     /// Gets all favorite item IDs.
@@ -101,46 +124,19 @@ public sealed class FavoritesService : IDisposable, IService
     /// Adds a currency to favorites.
     /// </summary>
     public bool AddCurrency(TrackedDataType type)
-    {
-        if (_configService.Config.FavoriteCurrencies.Add(type))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => AddToSet(_configService.Config.FavoriteCurrencies, type);
 
     /// <summary>
     /// Removes a currency from favorites.
     /// </summary>
     public bool RemoveCurrency(TrackedDataType type)
-    {
-        if (_configService.Config.FavoriteCurrencies.Remove(type))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => RemoveFromSet(_configService.Config.FavoriteCurrencies, type);
 
     /// <summary>
     /// Toggles a currency's favorite status.
     /// </summary>
     public bool ToggleCurrency(TrackedDataType type)
-    {
-        if (ContainsCurrency(type))
-        {
-            RemoveCurrency(type);
-            return false;
-        }
-        else
-        {
-            AddCurrency(type);
-            return true;
-        }
-    }
+        => ToggleInSet(_configService.Config.FavoriteCurrencies, type);
 
     /// <summary>
     /// Gets all favorite currency types.
@@ -161,46 +157,19 @@ public sealed class FavoritesService : IDisposable, IService
     /// Adds a character to favorites.
     /// </summary>
     public bool AddCharacter(ulong characterId)
-    {
-        if (_configService.Config.FavoriteCharacters.Add(characterId))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => AddToSet(_configService.Config.FavoriteCharacters, characterId);
 
     /// <summary>
     /// Removes a character from favorites.
     /// </summary>
     public bool RemoveCharacter(ulong characterId)
-    {
-        if (_configService.Config.FavoriteCharacters.Remove(characterId))
-        {
-            _configService.MarkDirty();
-            OnFavoritesChanged?.Invoke();
-            return true;
-        }
-        return false;
-    }
+        => RemoveFromSet(_configService.Config.FavoriteCharacters, characterId);
 
     /// <summary>
     /// Toggles a character's favorite status.
     /// </summary>
     public bool ToggleCharacter(ulong characterId)
-    {
-        if (ContainsCharacter(characterId))
-        {
-            RemoveCharacter(characterId);
-            return false;
-        }
-        else
-        {
-            AddCharacter(characterId);
-            return true;
-        }
-    }
+        => ToggleInSet(_configService.Config.FavoriteCharacters, characterId);
 
     /// <summary>
     /// Gets all favorite character IDs.
