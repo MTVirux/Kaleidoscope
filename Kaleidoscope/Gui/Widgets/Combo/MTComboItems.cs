@@ -1,3 +1,4 @@
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using MTGui.Combo;
 
