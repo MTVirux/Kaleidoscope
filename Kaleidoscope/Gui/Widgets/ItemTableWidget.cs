@@ -2003,6 +2003,18 @@ public class ItemTableWidget : ISettingsProvider
         
         ImGui.Spacing();
         
+        // Number format setting
+        if (NumberFormatSettingsUI.Draw($"table_{GetHashCode()}", settings.NumberFormat, "Number Format"))
+        {
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("How numbers are formatted in table cells.");
+        }
+        
+        ImGui.Spacing();
+        
         // Table options
         var showTotalRow = settings.ShowTotalRow;
         if (ImGui.Checkbox("Show total row", ref showTotalRow))

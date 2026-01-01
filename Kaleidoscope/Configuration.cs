@@ -254,4 +254,16 @@ public class Configuration : IPluginConfiguration
     /// Customizes colors, spacing, and styling for graph components.
     /// </summary>
     public MTGraphStyleConfig GraphStyle { get; set; } = new();
+    
+    /// <summary>
+    /// Default number format for table widgets.
+    /// New tables will inherit this setting.
+    /// </summary>
+    public NumberFormatConfig DefaultTableNumberFormat { get; set; } = new();
+    
+    /// <summary>
+    /// Default number format for graph widgets.
+    /// New graphs will inherit this setting.
+    /// </summary>
+    public NumberFormatConfig DefaultGraphNumberFormat { get; set; } = new();
 }

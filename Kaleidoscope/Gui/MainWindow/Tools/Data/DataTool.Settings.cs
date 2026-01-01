@@ -168,18 +168,6 @@ public partial class DataTool
             NotifyToolSettingsChanged();
         }
         
-        // Number format (view-specific)
-        var currentNumberFormat = settings.ViewMode == DataToolViewMode.Table 
-            ? settings.TableNumberFormat 
-            : settings.GraphNumberFormat;
-        var formatLabel = settings.ViewMode == DataToolViewMode.Table 
-            ? "Table Number Format" 
-            : "Graph Number Format";
-        if (NumberFormatSettingsUI.Draw($"datatool_{settings.ViewMode}_{GetHashCode()}", currentNumberFormat, formatLabel))
-        {
-            NotifyToolSettingsChanged();
-        }
-        
         // Hide zero rows
         var hideZeroRows = settings.HideZeroRows;
         if (ImGui.Checkbox("Hide Zero Rows", ref hideZeroRows))

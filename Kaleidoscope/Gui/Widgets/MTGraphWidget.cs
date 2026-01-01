@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
+using MTGui.Common;
 using MTGui.Graph;
 using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -337,6 +338,7 @@ public class MTGraphWidget : ISettingsProvider
         config.AutoScrollTimeUnit = _boundSettings.AutoScrollTimeUnit;
         config.AutoScrollNowPosition = _boundSettings.AutoScrollNowPosition;
         config.ShowControlsDrawer = _boundSettings.ShowControlsDrawer;
+        config.NumberFormat = _boundSettings.NumberFormat;
     }
     
     /// <summary>
@@ -379,6 +381,16 @@ public class MTGraphWidget : ISettingsProvider
             changed = true;
         }
         ShowSettingsTooltip("How to determine series colors: use item/currency preferred colors, character preferred colors, or default palette.");
+        
+        ImGui.Spacing();
+        
+        // Number format setting
+        if (NumberFormatSettingsUI.Draw($"graph_{GetHashCode()}", settings.NumberFormat, "Number Format"))
+        {
+            config.NumberFormat = settings.NumberFormat;
+            changed = true;
+        }
+        ShowSettingsTooltip("How numbers are formatted in the graph (axis labels, tooltips, etc.).");
         
         ImGui.Spacing();
         

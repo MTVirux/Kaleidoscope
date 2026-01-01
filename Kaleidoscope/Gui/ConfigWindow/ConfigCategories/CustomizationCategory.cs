@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.MainWindow;
 using Kaleidoscope.Services;
+using MTGui.Common;
 using MTGui.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -159,6 +160,46 @@ public sealed class CustomizationCategory
             if (DrawColorRow("Total Row", ref tableTotal, new(0.3f, 0.3f, 0.3f, 0.5f)))
             {
                 config.UIColors.TableTotalRow = tableTotal;
+            }
+            
+            ImGui.Unindent();
+            ImGui.Spacing();
+        }
+
+        // === NUMBER FORMATS ===
+        if (ImGui.CollapsingHeader("Number Formats"))
+        {
+            ImGui.Indent();
+            ImGui.Spacing();
+            
+            ImGui.TextDisabled("Default number formats for new widgets.");
+            ImGui.TextDisabled("Existing tools keep their own settings.");
+            ImGui.Spacing();
+            
+            // Table number format
+            ImGui.TextUnformatted("Table Widgets");
+            ImGui.Separator();
+            if (NumberFormatSettingsUI.Draw("default_table", config.DefaultTableNumberFormat, "Default Format"))
+            {
+                saveConfig();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Default number format for new table widgets.\nStandard: 1,234,567\nCompact: 1.5M\nRaw: 1234567");
+            }
+            
+            ImGui.Spacing();
+            
+            // Graph number format
+            ImGui.TextUnformatted("Graph Widgets");
+            ImGui.Separator();
+            if (NumberFormatSettingsUI.Draw("default_graph", config.DefaultGraphNumberFormat, "Default Format"))
+            {
+                saveConfig();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Default number format for new graph widgets.\nStandard: 1,234,567\nCompact: 1.5M\nRaw: 1234567");
             }
             
             ImGui.Unindent();
