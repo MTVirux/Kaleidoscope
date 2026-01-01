@@ -94,12 +94,6 @@ public class DatabaseSizeTool : ToolComponent
                     
                     // Show raw bytes
                     ImGui.TextColored(UiColors.Info, $"  {_cachedFileSize:N0} bytes");
-                    
-                    // Show size tier info
-                    if (_cachedFileSize > 100 * 1024 * 1024) // > 100 MB
-                    {
-                        ImGui.TextColored(UiColors.Warning, "  Consider pruning old data");
-                    }
                 }
             }
 
@@ -142,6 +136,43 @@ public class DatabaseSizeTool : ToolComponent
         {
             return -1;
         }
+    }
+
+    private static void OpenDatabaseDirectory(string dbPath)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(dbPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = directory,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[DatabaseSizeTool] Failed to open directory: {ex.Message}");
+        }
+    }
+
+    public override IReadOnlyList<ToolContextMenuOption>? GetContextMenuOptions()
+    {
+        var dbPath = _currencyTrackerService.DbService?.DbPath;
+        if (string.IsNullOrEmpty(dbPath))
+            return null;
+        
+        return new[]
+        {
+            new ToolContextMenuOption
+            {
+                Label = "Open DB Directory",
+                OnClick = () => OpenDatabaseDirectory(dbPath),
+                Tooltip = "Open the folder containing the database file"
+            }
+        };
     }
 
     public override bool HasSettings => true;
