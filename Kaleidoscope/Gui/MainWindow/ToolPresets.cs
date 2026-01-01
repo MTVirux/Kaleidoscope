@@ -24,7 +24,7 @@ public static class ToolPresets
     /// </summary>
     public static void RegisterPresets(
         WindowContentContainer container,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         InventoryCacheService? inventoryCacheService,
         TrackedDataRegistry? registry,
@@ -39,7 +39,7 @@ public static class ToolPresets
         container.DefineToolType(
             ToolIds.CrystalTable,
             "Crystal Table",
-            pos => CreateCrystalTable(pos, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService),
+            pos => CreateCrystalTable(pos, currencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService),
             "Pre-configured table showing all shards, crystals, and clusters",
             "Table > Presets");
     }
@@ -49,7 +49,7 @@ public static class ToolPresets
     /// </summary>
     public static ToolComponent? CreateCrystalTable(
         Vector2 pos,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         InventoryCacheService? inventoryCacheService,
         TrackedDataRegistry? registry,
@@ -63,7 +63,7 @@ public static class ToolPresets
         try
         {
             var tool = new DataTool(
-                CurrencyTrackerService,
+                currencyTrackerService,
                 configService,
                 inventoryCacheService,
                 registry,

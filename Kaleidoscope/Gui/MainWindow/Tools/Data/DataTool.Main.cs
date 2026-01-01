@@ -27,7 +27,7 @@ public partial class DataTool : ToolComponent
 {
     public override string ToolName => "Data";
     
-    private readonly CurrencyTrackerService _CurrencyTrackerService;
+    private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly TrackedDataRegistry? _trackedDataRegistry;
@@ -79,12 +79,12 @@ public partial class DataTool : ToolComponent
     public string? PresetName { get; set; }
     
     private DataToolSettings Settings => _instanceSettings;
-    private KaleidoscopeDbService DbService => _CurrencyTrackerService.DbService;
-    private TimeSeriesCacheService CacheService => _CurrencyTrackerService.CacheService;
-    private CharacterDataCacheService CharacterDataCache => _CurrencyTrackerService.CharacterDataCache;
+    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
+    private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
+    private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
     
     public DataTool(
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         InventoryCacheService? inventoryCacheService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
@@ -95,7 +95,7 @@ public partial class DataTool : ToolComponent
         AutoRetainerIpcService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
-        _CurrencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _configService = configService;
         _inventoryCacheService = inventoryCacheService;
         _trackedDataRegistry = trackedDataRegistry;
@@ -122,7 +122,7 @@ public partial class DataTool : ToolComponent
             itemDataService,
             trackedDataRegistry,
             configService.Config,
-            CurrencyTrackerService.CacheService);
+            currencyTrackerService.CacheService);
         
         // Bind table widget to settings
         _tableWidget.BindSettings(
@@ -180,7 +180,7 @@ public partial class DataTool : ToolComponent
         if (favoritesService != null)
         {
             _characterCombo = new MTCharacterCombo(
-                CurrencyTrackerService,
+                currencyTrackerService,
                 favoritesService,
                 configService,
                 "DataToolCharFilter",

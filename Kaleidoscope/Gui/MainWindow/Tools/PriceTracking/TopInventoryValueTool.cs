@@ -80,7 +80,7 @@ public class TopInventoryValueTool : ToolComponent
 
     public TopInventoryValueTool(
         PriceTrackingService priceTrackingService,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         CharacterDataService characterDataService,
         ItemDataService itemDataService,
@@ -91,7 +91,7 @@ public class TopInventoryValueTool : ToolComponent
         InventoryCacheService? inventoryCacheService = null)
     {
         _priceTrackingService = priceTrackingService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _configService = configService;
         _characterDataService = characterDataService;
         _itemDataService = itemDataService;
@@ -118,7 +118,7 @@ public class TopInventoryValueTool : ToolComponent
             priceTrackingService.UniversalisService,
             itemDataService,
             priceTrackingService,
-            CurrencyTrackerService,
+            currencyTrackerService,
             inventoryCacheService,
             characterDataService);
 

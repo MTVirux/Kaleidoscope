@@ -110,7 +110,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     public MainWindow(
         IPluginLog log,
         ConfigurationService configService,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
@@ -132,7 +132,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     {
         _log = log;
         _configService = configService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _filenameService = filenameService;
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;

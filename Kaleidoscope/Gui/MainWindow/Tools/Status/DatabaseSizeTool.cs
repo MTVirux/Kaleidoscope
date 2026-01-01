@@ -44,9 +44,9 @@ public class DatabaseSizeTool : ToolComponent
         set => _settings.ShowDetails = value;
     }
 
-    public DatabaseSizeTool(CurrencyTrackerService CurrencyTrackerService)
+    public DatabaseSizeTool(CurrencyTrackerService currencyTrackerService)
     {
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
 
         Title = "Database Size";
         Size = new Vector2(220, 90);

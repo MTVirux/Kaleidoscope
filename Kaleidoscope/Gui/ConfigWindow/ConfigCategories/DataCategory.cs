@@ -21,9 +21,9 @@ public sealed class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(CurrencyTrackerService CurrencyTrackerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
+    public DataCategory(CurrencyTrackerService currencyTrackerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
     {
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;
         _configService = configService;
     }

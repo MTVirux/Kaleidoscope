@@ -64,7 +64,7 @@ public static class WindowToolRegistrar
     public static void RegisterTools(
         WindowContentContainer container, 
         FilenameService filenameService, 
-        CurrencyTrackerService CurrencyTrackerService, 
+        CurrencyTrackerService currencyTrackerService, 
         ConfigurationService configService,
         CharacterDataService? characterDataService = null,
         InventoryChangeService? inventoryChangeService = null,
@@ -83,7 +83,7 @@ public static class WindowToolRegistrar
 
         // Bundle context for cleaner factory method calls
         var ctx = new ToolCreationContext(
-            filenameService, CurrencyTrackerService, configService, characterDataService,
+            filenameService, currencyTrackerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
@@ -104,7 +104,7 @@ public static class WindowToolRegistrar
                 "Track items and currencies in a table view with characters as rows",
                 "Items/Currency");
 
-            ToolPresets.RegisterPresets(container, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
+            ToolPresets.RegisterPresets(container, currencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
 
             container.DefineToolType(
                 ToolIds.GettingStarted,

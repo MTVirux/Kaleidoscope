@@ -82,7 +82,7 @@ public sealed class ConfigWindow : Window
     public ConfigWindow(
         IPluginLog log,
         ConfigurationService configService,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         AutoRetainerIpcService arIpc,
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
@@ -104,7 +104,7 @@ public sealed class ConfigWindow : Window
     {
         _log = log;
         _configService = configService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _arIpc = arIpc;
         _registry = registry;
         _priceTrackingService = priceTrackingService;

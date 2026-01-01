@@ -26,9 +26,9 @@ public sealed class CharactersCategory
     private ulong _editingColorCid = 0;
     private Vector4 _colorEditBuffer = Vector4.One;
 
-    public CharactersCategory(CurrencyTrackerService CurrencyTrackerService, TimeSeriesCacheService cacheService, ConfigurationService configService, AutoRetainerIpcService autoRetainerService)
+    public CharactersCategory(CurrencyTrackerService currencyTrackerService, TimeSeriesCacheService cacheService, ConfigurationService configService, AutoRetainerIpcService autoRetainerService)
     {
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _cacheService = cacheService;
         _configService = configService;
         _autoRetainerService = autoRetainerService;

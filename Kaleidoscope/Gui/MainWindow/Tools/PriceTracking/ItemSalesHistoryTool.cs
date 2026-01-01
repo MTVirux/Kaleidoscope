@@ -42,7 +42,7 @@ public class ItemSalesHistoryTool : ToolComponent
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
         ItemDataService itemDataService,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         SalePriceCacheService salePriceCacheService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
@@ -52,7 +52,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _salePriceCacheService = salePriceCacheService;
 
         _itemCombo = new MTItemComboDropdown(
