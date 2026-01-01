@@ -189,7 +189,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Dictionary<uint, uint> GameItemColors { get; set; } = new();
 
-    // === Favorites ===
     /// <summary>
     /// Favorite item IDs for quick access in item selectors.
     /// </summary>
