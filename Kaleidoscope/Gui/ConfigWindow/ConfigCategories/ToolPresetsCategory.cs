@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using MTGui.Tree;
 using System.Numerics;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.MainWindow;
 using Kaleidoscope.Services;
 
@@ -181,13 +182,10 @@ public sealed class ToolPresetsCategory
             ImGui.SameLine();
             
             // Delete button with confirmation
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.6f, 0.2f, 0.2f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.3f, 0.3f, 1f));
-            if (ImGui.SmallButton("Delete"))
+            if (ImGuiHelpers.DangerSmallButton("Delete"))
             {
                 ImGui.OpenPopup("ConfirmDelete");
             }
-            ImGui.PopStyleColor(2);
             
             // Confirmation popup
             if (ImGui.BeginPopup("ConfirmDelete"))

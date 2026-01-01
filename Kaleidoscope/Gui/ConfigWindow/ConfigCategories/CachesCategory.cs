@@ -1,6 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services;
+using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets;
 using System.Numerics;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -17,8 +19,6 @@ public sealed class CachesCategory
     private readonly CharacterDataService _characterDataService;
 
     private static readonly Vector4 HeaderColor = new(0.4f, 0.8f, 1f, 1f);
-    private static readonly Vector4 ValueColor = new(0.9f, 0.9f, 0.9f, 1f);
-    private static readonly Vector4 DimColor = new(0.6f, 0.6f, 0.6f, 1f);
 
     public CachesCategory(
         CurrencyTrackerService currencyTrackerService,
@@ -62,17 +62,16 @@ public sealed class CachesCategory
             
             var stats = _currencyTrackerService.CacheService.GetStatistics();
             
-            DrawStatRow("Cached Series", stats.SeriesCount.ToString("N0"));
-            DrawStatRow("Total Data Points", stats.TotalPoints.ToString("N0"));
-            DrawStatRow("Character Names", stats.CharacterCount.ToString("N0"));
-            DrawStatRow("Cache Hits", stats.CacheHits.ToString("N0"));
-            DrawStatRow("Cache Misses", stats.CacheMisses.ToString("N0"));
-            DrawStatRow("Hit Rate", $"{stats.HitRate:P1}");
+            ImGuiHelpers.DrawStatRow("Cached Series", stats.SeriesCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Total Data Points", stats.TotalPoints.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Character Names", stats.CharacterCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Cache Hits", stats.CacheHits.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Cache Misses", stats.CacheMisses.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Hit Rate", $"{stats.HitRate:P1}");
             
-            // Estimate memory usage
-            // Each point is roughly 16 bytes (DateTime + long), plus overhead
-            var estimatedMb = (stats.TotalPoints * 20 + stats.SeriesCount * 100 + stats.CharacterCount * 200) / (1024.0 * 1024.0);
-            DrawStatRow("Est. Memory", $"{estimatedMb:F2} MB", DimColor);
+            // Estimate memory usage (each point ~20 bytes, series ~100 bytes, character ~200 bytes)
+            var estimatedBytes = stats.TotalPoints * 20 + stats.SeriesCount * 100 + stats.CharacterCount * 200;
+            ImGuiHelpers.DrawStatRow("Est. Memory", FormatUtils.FormatByteSize(estimatedBytes), ImGuiHelpers.StatDimColor);
             
             ImGui.Unindent();
         }
@@ -86,14 +85,12 @@ public sealed class CachesCategory
             
             var stats = _inventoryCacheService.GetCacheStatistics();
             
-            DrawStatRow("Cached Characters", stats.CachedCharacterCount.ToString("N0"));
-            DrawStatRow("Inventory Entries", stats.CachedEntryCount.ToString("N0"));
-            DrawStatRow("Total Items", stats.CachedItemCount.ToString("N0"));
-            DrawStatRow("All-Characters Cache", stats.AllCharactersCacheCount.ToString("N0"));
-            DrawStatRow("Pending Samples", stats.PendingSamplesCount.ToString("N0"));
-            
-            var estimatedMb = stats.EstimatedMemoryBytes / (1024.0 * 1024.0);
-            DrawStatRow("Est. Memory", $"{estimatedMb:F2} MB", DimColor);
+            ImGuiHelpers.DrawStatRow("Cached Characters", stats.CachedCharacterCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Inventory Entries", stats.CachedEntryCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Total Items", stats.CachedItemCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("All-Characters Cache", stats.AllCharactersCacheCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Pending Samples", stats.PendingSamplesCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Est. Memory", FormatUtils.FormatByteSize(stats.EstimatedMemoryBytes), ImGuiHelpers.StatDimColor);
             
             ImGui.Unindent();
         }
@@ -108,13 +105,12 @@ public sealed class CachesCategory
             var cacheCount = _listingsService.CacheCount;
             var isInitialized = _listingsService.IsInitialized;
             
-            DrawStatRow("Status", isInitialized ? "Initialized" : "Initializing...", 
+            ImGuiHelpers.DrawStatRow("Status", isInitialized ? "Initialized" : "Initializing...", 
                 isInitialized ? new Vector4(0.5f, 1f, 0.5f, 1f) : new Vector4(1f, 0.8f, 0.2f, 1f));
-            DrawStatRow("Cached Listings", cacheCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Cached Listings", cacheCount.ToString("N0"));
             
             // Each listing entry is roughly 200 bytes (item ID, world ID, listings array, timestamps)
-            var estimatedMb = cacheCount * 200 / (1024.0 * 1024.0);
-            DrawStatRow("Est. Memory", $"{estimatedMb:F2} MB", DimColor);
+            ImGuiHelpers.DrawStatRow("Est. Memory", FormatUtils.FormatByteSize(cacheCount * 200), ImGuiHelpers.StatDimColor);
             
             ImGui.Unindent();
         }
@@ -129,11 +125,10 @@ public sealed class CachesCategory
             var characters = _characterDataService.GetCharacters(includeAllCharactersOption: false, sortByFavorites: false);
             var characterCount = characters.Count;
             
-            DrawStatRow("Cached Characters", characterCount.ToString("N0"));
+            ImGuiHelpers.DrawStatRow("Cached Characters", characterCount.ToString("N0"));
             
             // Each CharacterInfo is roughly 150 bytes (strings, IDs)
-            var estimatedMb = characterCount * 150 / (1024.0 * 1024.0);
-            DrawStatRow("Est. Memory", $"{estimatedMb:F2} MB", DimColor);
+            ImGuiHelpers.DrawStatRow("Est. Memory", FormatUtils.FormatByteSize(characterCount * 150), ImGuiHelpers.StatDimColor);
             
             ImGui.Unindent();
         }
@@ -168,12 +163,5 @@ public sealed class CachesCategory
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Forces character data to refresh on next access.");
-    }
-
-    private static void DrawStatRow(string label, string value, Vector4? valueColor = null)
-    {
-        ImGui.TextUnformatted(label + ":");
-        ImGui.SameLine(180);
-        ImGui.TextColored(valueColor ?? ValueColor, value);
     }
 }

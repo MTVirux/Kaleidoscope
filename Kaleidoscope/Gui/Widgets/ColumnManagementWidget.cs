@@ -311,13 +311,10 @@ public static class ColumnManagementWidget
                 
                 // Column 9: Unmerge button
                 ImGui.TableNextColumn();
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.3f, 0.5f, 1f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.6f, 1f));
-                if (ImGuiHelpers.ButtonAutoWidth("Unmerge##unmerge"))
+                if (ImGuiHelpers.PrimaryButton("Unmerge##unmerge"))
                 {
                     groupToUnmerge = g;
                 }
-                ImGui.PopStyleColor(2);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("Unmerge back to individual items");
@@ -499,13 +496,10 @@ public static class ColumnManagementWidget
                 
                 // Column 9: Delete button
                 ImGui.TableNextColumn();
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));
-                if (ImGui.Button("×##del"))
+                if (ImGuiHelpers.DangerButton("×##del"))
                 {
                     deleteIndex = i;
                 }
-                ImGui.PopStyleColor(2);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("Remove");
@@ -521,9 +515,7 @@ public static class ColumnManagementWidget
         if (selectedIndices.Count >= 2)
         {
             ImGui.Spacing();
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.5f, 0.3f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.3f, 0.6f, 0.4f, 1f));
-            if (ImGui.Button($"Merge {selectedIndices.Count} Selected"))
+            if (ImGuiHelpers.SuccessButton($"Merge {selectedIndices.Count} Selected"))
             {
                 // Create new merged group
                 var newGroup = new MergedColumnGroup
@@ -537,7 +529,6 @@ public static class ColumnManagementWidget
                 changed = true;
                 onRefreshNeeded?.Invoke();
             }
-            ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
             {
                 // Show what will be merged

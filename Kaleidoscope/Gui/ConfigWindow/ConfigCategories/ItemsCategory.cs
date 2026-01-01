@@ -283,13 +283,10 @@ public sealed class ItemsCategory
                 ImGui.SameLine();
                 
                 // Remove item button
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));
-                if (ImGui.SmallButton("×##del"))
+                if (ImGuiHelpers.DangerSmallButton("×##del"))
                 {
                     itemToDelete = info.ItemId;
                 }
-                ImGui.PopStyleColor(2);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("Remove item from tracking");

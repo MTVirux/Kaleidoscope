@@ -180,9 +180,7 @@ public static class MergeManagementWidget
         if (selectedIds.Count >= 2)
         {
             ImGui.Spacing();
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.5f, 0.3f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.3f, 0.6f, 0.4f, 1f));
-            if (ImGui.Button($"Merge {selectedIds.Count} Selected"))
+            if (ImGuiHelpers.SuccessButton($"Merge {selectedIds.Count} Selected"))
             {
                 // Create new merged group for Character mode
                 var newGroup = new MergedRowGroup
@@ -196,7 +194,6 @@ public static class MergeManagementWidget
                 changed = true;
                 onRefreshNeeded?.Invoke();
             }
-            ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
             {
                 // Show what will be merged
@@ -355,9 +352,7 @@ public static class MergeManagementWidget
         if (selectedKeys.Count >= 2)
         {
             ImGui.Spacing();
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.5f, 0.3f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.3f, 0.6f, 0.4f, 1f));
-            if (ImGui.Button($"Merge {selectedKeys.Count} Selected"))
+            if (ImGuiHelpers.SuccessButton($"Merge {selectedKeys.Count} Selected"))
             {
                 // Create new merged group for group key mode
                 var newGroup = new MergedRowGroup
@@ -371,7 +366,6 @@ public static class MergeManagementWidget
                 changed = true;
                 onRefreshNeeded?.Invoke();
             }
-            ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip($"Merge:\n{string.Join("\n", selectedKeys)}");
@@ -463,13 +457,10 @@ public static class MergeManagementWidget
         ImGui.SameLine(0, 16);
         
         // Unmerge button
-        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.3f, 0.5f, 1f));
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.6f, 1f));
-        if (ImGuiHelpers.ButtonAutoWidth("Unmerge##unmerge"))
+        if (ImGuiHelpers.PrimaryButton("Unmerge##unmerge"))
         {
             groupToUnmerge = groupIndex;
         }
-        ImGui.PopStyleColor(2);
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("Unmerge back to individual sources");
@@ -534,13 +525,10 @@ public static class MergeManagementWidget
         ImGui.SameLine(0, 16);
         
         // Unmerge button
-        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.3f, 0.5f, 1f));
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.4f, 0.4f, 0.6f, 1f));
-        if (ImGuiHelpers.ButtonAutoWidth("Unmerge##unmerge"))
+        if (ImGuiHelpers.PrimaryButton("Unmerge##unmerge"))
         {
             groupToUnmerge = groupIndex;
         }
-        ImGui.PopStyleColor(2);
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip("Unmerge back to individual sources");
