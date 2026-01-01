@@ -366,10 +366,8 @@ public sealed class MainWindow : Window, IService, IDisposable
             return _layoutEditingService.WorkingGridSettings?.ToolInternalPaddingPx ?? -1;
         };
 
-        // Register available tools
         WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _currencyTrackerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService, _salePriceCacheService);
 
-        // Apply saved layout or add defaults
         ApplyInitialLayout();
 
         // If no tools were restored from a layout, add the Getting Started guide
@@ -393,10 +391,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             _log.Debug($"Failed to add default tool after layout apply: {ex.Message}");
         }
 
-        // Wire layout persistence callbacks
         WireLayoutCallbacks();
-
-        // Wire interaction state callbacks to StateService
         WireInteractionCallbacks();
     }
 

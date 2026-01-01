@@ -60,7 +60,6 @@ public sealed class ListingsService : IDisposable, IService
         _webSocketService = webSocketService;
         _inventoryCacheService = inventoryCacheService;
 
-        // Subscribe to WebSocket events
         _webSocketService.OnPriceUpdate += OnPriceUpdate;
 
         _log.Debug("[ListingsService] Service initialized");

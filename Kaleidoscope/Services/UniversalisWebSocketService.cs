@@ -70,7 +70,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         _configService = configService;
         _universalisService = universalisService;
 
-        // Start the message aggregation timer
         _messageLogTimer = new System.Threading.Timer(LogMessageCounts, null, MessageLogIntervalMs, MessageLogIntervalMs);
 
         _log.Verbose("[UniversalisWebSocket] Service initialized");

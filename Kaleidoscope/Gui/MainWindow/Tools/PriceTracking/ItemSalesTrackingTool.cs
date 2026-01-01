@@ -74,7 +74,6 @@ public class ItemSalesTrackingTool : ToolComponent
 
         _instanceSettings = new ItemSalesTrackingSettings();
 
-        // Create multi-select item combo (marketable only)
         _itemCombo = new MTItemComboDropdown(
             textureProvider,
             dataManager,
@@ -89,7 +88,6 @@ public class ItemSalesTrackingTool : ToolComponent
 
         _itemCombo.MultiSelectionChanged += OnItemSelectionChanged;
 
-        // Create graph widget
         var graphConfig = new MTGraphConfig
         {
             PlotId = "ItemSalesTrackingGraph",
@@ -106,7 +104,6 @@ public class ItemSalesTrackingTool : ToolComponent
         };
         _graphWidget = new MTGraphWidget(graphConfig);
         
-        // Bind graph widget to settings for persistence
         _graphWidget.BindSettings(
             _instanceSettings,
             () => { _seriesDataDirty = true; NotifyToolSettingsChanged(); },
@@ -114,7 +111,6 @@ public class ItemSalesTrackingTool : ToolComponent
         
         RegisterSettingsProvider(_graphWidget);
 
-        // Subscribe to WebSocket updates for real-time sales
         _webSocketService.OnPriceUpdate += OnPriceUpdate;
 
         Title = "Item Sales Tracking";
@@ -145,20 +141,16 @@ public class ItemSalesTrackingTool : ToolComponent
         ImGui.TextUnformatted("Track Items:");
         ImGui.SameLine();
 
-        // Multi-select item picker
         if (_itemCombo.DrawMultiSelect(300))
         {
-            // Selection changed - handled via event
         }
 
-        // Show loading indicator
         if (_isLoading)
         {
             ImGui.SameLine();
             ImGui.TextDisabled("Loading...");
         }
 
-        // Show error if any
         if (!string.IsNullOrEmpty(_errorMessage))
         {
             ImGui.TextColored(new Vector4(1, 0.5f, 0.3f, 1), _errorMessage);
@@ -167,14 +159,12 @@ public class ItemSalesTrackingTool : ToolComponent
 
     private void DrawSalesGraph()
     {
-        // Build series data if dirty
         if (_seriesDataDirty || _cachedSeriesData == null)
         {
             BuildSeriesData();
             _seriesDataDirty = false;
         }
 
-        // Get available size for graph
         var availableSize = ImGui.GetContentRegionAvail();
         if (availableSize.X < 50 || availableSize.Y < 50)
             return;
@@ -196,7 +186,6 @@ public class ItemSalesTrackingTool : ToolComponent
             return;
         }
 
-        // Render the graph
         using (ProfilerService.BeginStaticChildScope("MTGraph.RenderMultipleSeries"))
         {
             _graphWidget.RenderMultipleSeries(_cachedSeriesData);

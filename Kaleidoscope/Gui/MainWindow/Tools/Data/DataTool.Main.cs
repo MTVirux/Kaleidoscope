@@ -196,7 +196,6 @@ public partial class DataTool : ToolComponent
             }
         }
         
-        // Register widgets as settings providers
         RegisterSettingsProvider(_tableWidget);
         RegisterSettingsProvider(_graphWidget);
     }

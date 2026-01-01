@@ -72,10 +72,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _registry = registry;
         _configService = configService;
 
-        // Subscribe to Dalamud's inventory events (covers items/crystals)
         _gameInventory.InventoryChanged += OnDalamudInventoryChanged;
-
-        // Subscribe to framework update for debounced processing and currency checks
         _framework.Update += OnFrameworkUpdate;
 
         _log.Debug("[InventoryChangeService] Initialized with IGameInventory events + currency polling");
@@ -199,12 +196,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             }
         }
 
-        // Check if retainer data has stabilized
         if (_isRetainerStabilizing && now - _retainerOpenedTime >= _retainerStabilizationDelay)
         {
             _isRetainerStabilizing = false;
             _log.Debug("[InventoryChangeService] Retainer data stabilized, resuming value checks");
-            // Clear cached values to force fresh reads with stabilized retainer data
             ClearValueCache();
             try { OnRetainerInventoryReady?.Invoke(); }
             catch (Exception ex) { _log.Debug($"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
@@ -216,8 +211,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             return;
         }
 
-        // Check all tracked values periodically via direct InventoryManager reads
-        // This is the reliable fallback that catches all changes
         if (now - _lastValueCheck >= _valueCheckInterval)
         {
             _lastValueCheck = now;
@@ -242,7 +235,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
             var changedValues = new Dictionary<TrackedDataType, long>();
 
-            // Check only enabled data types
             foreach (var dataType in enabledTypes)
             {
                 var currentValue = _registry.GetCurrentValue(dataType);

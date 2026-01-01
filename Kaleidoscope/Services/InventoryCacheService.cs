@@ -65,17 +65,14 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _configService = configService;
         _clientState = clientState;
 
-        // Subscribe to events
         _framework.Update += OnFrameworkUpdate;
         _inventoryChangeService.OnRetainerInventoryReady += OnRetainerInventoryReady;
         _inventoryChangeService.OnRetainerClosed += OnRetainerClosed;
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
         
-        // Subscribe to login/logout events to invalidate memory cache for the new character
         _clientState.Login += OnLogin;
         _clientState.Logout += OnLogout;
         
-        // Pre-populate cache on background thread to avoid blocking UI
         PopulateCacheAsync();
 
         _log.Debug("[InventoryCacheService] Initialized");

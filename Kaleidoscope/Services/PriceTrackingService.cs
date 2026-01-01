@@ -122,14 +122,12 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _cacheService = cacheService;
         _salePriceCacheService = salePriceCacheService;
 
-        // Initialize background work queue for WebSocket price updates (unbounded, single consumer)
         _priceUpdateQueue = Channel.CreateUnbounded<PriceUpdateWorkItem>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
 
-        // Start the background worker thread for database writes
         _backgroundWorker = Task.Factory.StartNew(
             ProcessPriceUpdateQueueAsync,
             _cts.Token,
@@ -137,15 +135,12 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             TaskScheduler.Default
         ).Unwrap();
 
-        // Subscribe to WebSocket events
         _webSocketService.OnPriceUpdate += OnPriceUpdate;
 
-        // Subscribe to framework update for periodic tasks
         _framework.Update += OnFrameworkUpdate;
 
         _log.Debug("[PriceTracking] Service initialized with background thread for price updates");
 
-        // Start async initialization
         _ = InitializeAsync();
     }
 
@@ -189,7 +184,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 await _webSocketService.StartAsync();
                 await _webSocketService.SubscribeToAllAsync();
                 
-                // Initialize the listings service with world data and marketable items
                 await _listingsService.InitializeAsync(_worldData, _marketableItems);
                 
                 // Fetch prices for stale inventory items at startup

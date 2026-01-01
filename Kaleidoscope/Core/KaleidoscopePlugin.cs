@@ -21,17 +21,13 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
         {
             _services = StaticServiceManager.CreateProvider(pluginInterface, Log, this);
 
-            // Initialize static log service for components without DI access
             var dalamudLog = _services.GetService<IPluginLog>();
             LogService.Initialize(dalamudLog);
 
-            // Initialize static game state service for FFXIVClientStructs access
             var playerState = _services.GetService<IPlayerState>();
             var objectTable = _services.GetService<IObjectTable>();
             GameStateService.Initialize(playerState, objectTable);
 
-            // Initialize all services marked with IRequiredService
-            // This follows the Glamourer pattern for service initialization
             _services.EnsureRequiredServices();
 
             Log.Information("Kaleidoscope loaded successfully.");

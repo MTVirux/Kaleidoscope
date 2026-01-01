@@ -90,7 +90,6 @@ public static class WindowToolRegistrar
 
         try
         {
-            // Register Data tool variants for items/currency tracking
             container.DefineToolType(
                 ToolIds.DataGraph,
                 "Data Graph",
@@ -105,7 +104,6 @@ public static class WindowToolRegistrar
                 "Track items and currencies in a table view with characters as rows",
                 "Items/Currency");
 
-            // Register tool presets from separate file
             ToolPresets.RegisterPresets(container, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
 
             container.DefineToolType(
@@ -129,7 +127,6 @@ public static class WindowToolRegistrar
                 "A simple text label for adding notes or annotations to your layout",
                 "Utility");
 
-            // Register price tracking tools
             if (webSocketService != null && priceTrackingService != null && itemDataService != null)
             {
                 container.DefineToolType(
@@ -161,7 +158,6 @@ public static class WindowToolRegistrar
                     "Universalis");
             }
 
-            // Register status/utility tools
             container.DefineToolType(
                 ToolIds.UniversalisWebSocketStatus,
                 "WebSocket Status",

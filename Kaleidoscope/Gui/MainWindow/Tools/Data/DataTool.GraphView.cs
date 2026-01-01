@@ -30,7 +30,6 @@ public partial class DataTool
                     RefreshGraphData();
                 }
                 
-                // Update groups on the graph widget
                 _graphWidget.Groups = _cachedSeriesGroups;
             }
             
@@ -85,7 +84,6 @@ public partial class DataTool
         _cachedGroupingMode = settings.GroupingMode;
         _graphCacheIsDirty = false;
         
-        // Build set of indices that are part of merged groups with ShowInGraph enabled
         var mergedIndicesWithGraph = new HashSet<int>();
         foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
         {
@@ -95,8 +93,6 @@ public partial class DataTool
             }
         }
         
-        // Apply special grouping filter and visibility filter
-        // Skip individual columns that are part of a merged group that has ShowInGraph enabled
         List<ItemColumnConfig> series;
         using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
         {
@@ -109,7 +105,6 @@ public partial class DataTool
         var timeRange = GetTimeRange();
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
         
-        // Get character filter
         HashSet<ulong>? allowedCharacters = null;
         if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
         {
@@ -118,20 +113,14 @@ public partial class DataTool
         
         var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
-        // Track which series belong to which item/group for legend grouping
-        // Key: item/group display name, Value: list of series names
         var seriesByItem = new Dictionary<string, List<string>>();
-        // Track the base color for each item/group
         var itemColors = new Dictionary<string, Vector4>();
         
-        // Calculate total item/currency count (excluding merged groups)
-        // When there are multiple items, we show item names in legend; when single item, show character/grouping breakdown
         var totalItemCount = series.Count + settings.MergedColumnGroups.Count(g => g.ShowInGraph);
         var isSingleItem = totalItemCount == 1;
         
         using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
         {
-            // Load individual (non-merged) series
             var itemIndex = 0;
             foreach (var seriesConfig in series)
             {
@@ -139,13 +128,11 @@ public partial class DataTool
                 var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters, isSingleItem);
                 if (seriesData != null)
                 {
-                    // Track series names for grouping (only when multiple items)
                     if (!isSingleItem)
                     {
                         if (!seriesByItem.ContainsKey(itemName))
                         {
                             seriesByItem[itemName] = new List<string>();
-                            // Store the base color for this item
                             var color = GetEffectiveSeriesColor(seriesConfig, settings, itemIndex);
                             itemColors[itemName] = color;
                         }
@@ -159,20 +146,17 @@ public partial class DataTool
                 itemIndex++;
             }
             
-            // Load merged group series
             foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
             {
                 var groupName = group.Name;
                 var mergedSeriesData = LoadMergedSeriesData(group, settings, startTime, allowedCharacters, isSingleItem);
                 if (mergedSeriesData != null)
                 {
-                    // Track series names for grouping (only when multiple items)
                     if (!isSingleItem)
                     {
                         if (!seriesByItem.ContainsKey(groupName))
                         {
                             seriesByItem[groupName] = new List<string>();
-                            // Store the base color for this group
                             if (group.Color.HasValue)
                             {
                                 itemColors[groupName] = group.Color.Value;
@@ -501,7 +485,6 @@ public partial class DataTool
             }
             else if (groupingMode == TableGroupingMode.All)
             {
-                // Aggregate all characters by timestamp (round to minute)
                 var aggregated = points
                     .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day, 
                         p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
@@ -521,7 +504,6 @@ public partial class DataTool
                 result.AddRange(groupedSeries);
             }
             
-            // Add per-retainer series if breakdown is enabled and we have retainer data
             if (perRetainerPointsDict != null && perRetainerPointsDict.Count > 0)
             {
                 var retainerSeriesResult = BuildPerRetainerSeries(perRetainerPointsDict, seriesConfig.Id, defaultName, settings, groupingMode, seriesConfig);
@@ -814,10 +796,7 @@ public partial class DataTool
     {
         var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
-        // Build a lookup of retainer ID -> retainer name from inventory cache
         var retainerNames = GetRetainerNamesMap();
-        
-        // Use a color palette for retainers
         var baseColor = GetEffectiveSeriesColor(seriesConfig, settings, 0);
         var retainerIndex = 0;
         
@@ -846,12 +825,10 @@ public partial class DataTool
                 retainerName = "Retainers";
             }
             
-            // Generate a unique color for this retainer
             var retainerColor = GetRetainerSeriesColor(baseColor, retainerIndex);
             
             if (groupingMode == TableGroupingMode.Character)
             {
-                // Separate series per character's retainer
                 var byCharacter = points.GroupBy(p => p.characterId);
                 
                 foreach (var charGroup in byCharacter)
@@ -883,7 +860,6 @@ public partial class DataTool
             }
             else if (groupingMode == TableGroupingMode.All)
             {
-                // Aggregate this retainer's data across all characters by timestamp
                 var aggregated = points
                     .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
                         p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
@@ -954,7 +930,6 @@ public partial class DataTool
     /// </summary>
     private Dictionary<ulong, string> GetRetainerNamesMap()
     {
-        // Return cached result if still valid
         if (_cachedRetainerNames != null && 
             (DateTime.UtcNow - _lastRetainerNamesCacheRefresh) < RetainerNamesCacheExpiry)
         {
@@ -979,7 +954,6 @@ public partial class DataTool
                 }
             }
             
-            // Cache the result
             _cachedRetainerNames = retainerNames;
             _lastRetainerNamesCacheRefresh = DateTime.UtcNow;
         }

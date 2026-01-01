@@ -125,21 +125,17 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _cacheService = cacheService;
         _characterDataCache = characterDataCache;
 
-        // Create the database service with configured cache size
         var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
         _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
 
-        // Initialize character data cache with DB service
         _characterDataCache.Initialize(_dbService);
 
-        // Initialize background work queue (unbounded, single consumer)
         _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
 
-        // Start the background worker thread for database writes
         _backgroundWorker = Task.Factory.StartNew(
             ProcessSampleQueueAsync,
             _cts.Token,
@@ -147,16 +143,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             TaskScheduler.Default
         ).Unwrap();
 
-        // Perform one-time migration of stored names
         _dbService.MigrateStoredNames();
 
-        // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
 
-        // Populate cache from database on startup
         PopulateCacheFromDatabase();
 
-        // Subscribe to inventory change events - uses pre-captured values to avoid re-reading game memory
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
 
         _log.Information("[CurrencyTrackerService] Initialized with background thread for database writes");
@@ -193,7 +185,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
                 _dbService.SaveCharacterName(cid, name);
                 
-                // Create a series if it doesn't exist
                 var seriesId = _dbService.GetOrCreateSeries("Gil", cid);
                 if (seriesId.HasValue)
                 {

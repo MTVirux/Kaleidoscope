@@ -123,17 +123,12 @@ public sealed class FrameLimiterService : IDisposable, IService
         _configService = configService;
         _pluginInterface = pluginInterface;
         
-        // Load saved settings
         _isEnabled = _configService.Config.FrameLimiterEnabled;
         _targetFramerate = Math.Clamp(_configService.Config.FrameLimiterTargetFps, 10, 1000);
         
-        // Initialize ChillFrames IPC
         InitializeChillFramesIpc();
-        
-        // Subscribe to framework update
         _framework.Update += OnFrameworkUpdate;
         
-        // If we're starting enabled, disable ChillFrames
         if (_isEnabled)
         {
             DisableChillFrames();

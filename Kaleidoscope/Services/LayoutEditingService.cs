@@ -84,7 +84,6 @@ public sealed class LayoutEditingService : IDisposable, IService
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _filenameService = filenameService ?? throw new ArgumentNullException(nameof(filenameService));
 
-        // Initialize debounce timer for snapshot saves
         _snapshotDebounceTimer = new System.Timers.Timer(SnapshotDebounceMs);
         _snapshotDebounceTimer.Elapsed += OnSnapshotDebounceElapsed;
         _snapshotDebounceTimer.AutoReset = false;
