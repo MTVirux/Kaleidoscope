@@ -1590,6 +1590,270 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
+    /// Gets points within a date range for a variable, optionally filtered by character.
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Gil").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRange(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var result = new List<(ulong, DateTime, long)>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v AND s.character_id = $c
+                          AND p.timestamp >= $start AND p.timestamp <= $end
+                        ORDER BY p.timestamp DESC";
+                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                }
+                else
+                {
+                    cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v
+                          AND p.timestamp >= $start AND p.timestamp <= $end
+                        ORDER BY p.timestamp DESC";
+                }
+
+                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var cid = (ulong)reader.GetInt64(0);
+                    var ticks = reader.GetInt64(1);
+                    var value = reader.GetInt64(2);
+                    result.Add((cid, new DateTime(ticks, DateTimeKind.Utc), value));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] GetPointsInRange failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Counts points within a date range and estimates storage size.
+    /// </summary>
+    /// <param name="variable">The variable name.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Tuple of (count, estimated bytes).</returns>
+    public (int count, long estimatedBytes) CountPointsInRange(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        const int BytesPerPoint = 24; // series_id (8) + timestamp (8) + value (8)
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return (0, 0);
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    cmd.CommandText = @"SELECT COUNT(*) FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v AND s.character_id = $c
+                          AND p.timestamp >= $start AND p.timestamp <= $end";
+                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                }
+                else
+                {
+                    cmd.CommandText = @"SELECT COUNT(*) FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v
+                          AND p.timestamp >= $start AND p.timestamp <= $end";
+                }
+
+                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
+
+                var count = Convert.ToInt32(cmd.ExecuteScalar());
+                return (count, count * BytesPerPoint);
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"[KaleidoscopeDb] CountPointsInRange failed: {ex.Message}");
+                return (0, 0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deletes points within a date range for a variable.
+    /// </summary>
+    /// <param name="variable">The variable name.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Number of points deleted.</returns>
+    public int DeletePointsInRange(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    cmd.CommandText = @"DELETE FROM points 
+                        WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)
+                          AND timestamp >= $start AND timestamp <= $end";
+                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                }
+                else
+                {
+                    cmd.CommandText = @"DELETE FROM points 
+                        WHERE series_id IN (SELECT id FROM series WHERE variable = $v)
+                          AND timestamp >= $start AND timestamp <= $end";
+                }
+
+                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
+
+                var deleted = cmd.ExecuteNonQuery();
+                LogService.Info($"[KaleidoscopeDb] Deleted {deleted} points for '{variable}' between {start:O} and {end:O}");
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] DeletePointsInRange failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Exports points within a date range to a CSV string.
+    /// </summary>
+    /// <param name="variable">The variable name.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>CSV content as string.</returns>
+    public string ExportPointsInRangeToCsv(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var sb = new StringBuilder();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return sb.ToString();
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    sb.AppendLine("timestamp_utc,value");
+                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v AND s.character_id = $c
+                          AND p.timestamp >= $start AND p.timestamp <= $end
+                        ORDER BY p.timestamp ASC";
+                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                }
+                else
+                {
+                    sb.AppendLine("timestamp_utc,value,character_id");
+                    cmd.CommandText = @"SELECT p.timestamp, p.value, s.character_id FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $v
+                          AND p.timestamp >= $start AND p.timestamp <= $end
+                        ORDER BY p.timestamp ASC";
+                }
+
+                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var ticks = reader.GetInt64(0);
+                    var value = reader.GetInt64(1);
+                    var ts = new DateTime(ticks, DateTimeKind.Utc);
+
+                    if (characterId.HasValue && characterId.Value != 0)
+                    {
+                        sb.AppendLine($"{ts:O},{value}");
+                    }
+                    else
+                    {
+                        var cid = reader.GetInt64(2);
+                        sb.AppendLine($"{ts:O},{value},{cid}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] ExportPointsInRangeToCsv failed: {ex.Message}", ex);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Runs VACUUM to reclaim disk space after deletions.
+    /// Warning: This can be slow on large databases.
+    /// </summary>
+    /// <returns>True if successful.</returns>
+    public bool Vacuum()
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return false;
+
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "VACUUM";
+                cmd.ExecuteNonQuery();
+                LogService.Info("[KaleidoscopeDb] VACUUM completed successfully");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error($"[KaleidoscopeDb] VACUUM failed: {ex.Message}", ex);
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Removes data for characters that don't have a name association.
     /// Returns the number of characters removed.
     /// </summary>
@@ -3789,8 +4053,131 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     #endregion
 
+    #region Database Maintenance
+
+    /// <summary>
+    /// Performs a WAL checkpoint to merge the WAL file back into the main database.
+    /// This temporarily closes the read connection to allow a full checkpoint.
+    /// </summary>
+    /// <returns>A tuple containing (success, bytesReclaimed) where bytesReclaimed is the approximate WAL size before checkpoint.</returns>
+    public (bool Success, long BytesReclaimed) Checkpoint()
+    {
+        if (_connection == null || string.IsNullOrEmpty(_dbPath))
+            return (false, 0);
+
+        long walSizeBefore = 0;
+        var walPath = _dbPath + "-wal";
+
+        try
+        {
+            // Get WAL size before checkpoint
+            if (File.Exists(walPath))
+                walSizeBefore = new FileInfo(walPath).Length;
+
+            // Close the read connection to allow full checkpoint
+            lock (_readLock)
+            {
+                _readConnection?.Close();
+                _readConnection?.Dispose();
+                _readConnection = null;
+            }
+
+            // Perform TRUNCATE checkpoint - this merges WAL and resets it to zero bytes
+            lock (_writeLock)
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
+                cmd.ExecuteNonQuery();
+            }
+
+            // Reopen the read connection
+            EnsureReadConnection();
+
+            // Get WAL size after checkpoint to calculate reclaimed space
+            long walSizeAfter = 0;
+            if (File.Exists(walPath))
+                walSizeAfter = new FileInfo(walPath).Length;
+
+            var bytesReclaimed = walSizeBefore - walSizeAfter;
+            LogService.Debug($"[KaleidoscopeDb] Checkpoint complete: reclaimed {bytesReclaimed:N0} bytes from WAL");
+            
+            return (true, bytesReclaimed);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"[KaleidoscopeDb] Checkpoint failed: {ex.Message}", ex);
+            
+            // Try to reopen read connection even on failure
+            try { EnsureReadConnection(); } catch { /* ignore */ }
+            
+            return (false, 0);
+        }
+    }
+
+    /// <summary>
+    /// Performs a full database optimization: checkpoint followed by VACUUM.
+    /// VACUUM rebuilds the database file, reclaiming space from deleted records.
+    /// This operation can take several seconds for large databases.
+    /// </summary>
+    /// <returns>A tuple containing (success, bytesReclaimed) where bytesReclaimed is the approximate space saved.</returns>
+    public (bool Success, long BytesReclaimed) VacuumWithStats()
+    {
+        if (_connection == null || string.IsNullOrEmpty(_dbPath))
+            return (false, 0);
+
+        try
+        {
+            // First checkpoint to merge WAL
+            var (checkpointSuccess, walReclaimed) = Checkpoint();
+            if (!checkpointSuccess)
+                return (false, 0);
+
+            // Get database size before VACUUM
+            long sizeBefore = 0;
+            if (File.Exists(_dbPath))
+                sizeBefore = new FileInfo(_dbPath).Length;
+
+            // Perform VACUUM - this rewrites the entire database
+            lock (_writeLock)
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "VACUUM";
+                cmd.ExecuteNonQuery();
+            }
+
+            // Get size after VACUUM
+            long sizeAfter = 0;
+            if (File.Exists(_dbPath))
+                sizeAfter = new FileInfo(_dbPath).Length;
+
+            var dbReclaimed = sizeBefore - sizeAfter;
+            var totalReclaimed = walReclaimed + dbReclaimed;
+            
+            LogService.Debug($"[KaleidoscopeDb] VacuumWithStats complete: reclaimed {dbReclaimed:N0} bytes from DB, {walReclaimed:N0} bytes from WAL");
+            
+            return (true, totalReclaimed);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"[KaleidoscopeDb] VacuumWithStats failed: {ex.Message}", ex);
+            return (false, 0);
+        }
+    }
+
+    #endregion
+
     public void Dispose()
     {
+        // Checkpoint before closing to merge WAL into main database
+        try
+        {
+            Checkpoint();
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"[KaleidoscopeDb] Checkpoint on dispose failed: {ex.Message}");
+        }
+
         lock (_writeLock)
         {
             _connection?.Close();

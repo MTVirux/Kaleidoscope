@@ -137,6 +137,18 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         // Flush pending item samples on logout
         FlushPendingSamples("logout");
+        
+        // Compact WAL file on logout to prevent it from growing too large
+        try
+        {
+            var (success, bytesReclaimed) = _currencyTrackerService.DbService.Checkpoint();
+            if (success && bytesReclaimed > 0)
+                _log.Debug($"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[InventoryCacheService] WAL checkpoint on logout failed: {ex.Message}");
+        }
     }
     
     /// <summary>
