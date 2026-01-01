@@ -548,7 +548,7 @@ public class TopInventoryValueTool : ToolComponent
 
     private void DrawRecentSalesTable(List<LocalSaleInfo>? sales)
     {
-        ImGui.TextUnformatted("Recent Sales (from WebSocket):");
+        ImGui.TextUnformatted("Recent Sales:");
         
         if (sales == null || sales.Count == 0)
         {
