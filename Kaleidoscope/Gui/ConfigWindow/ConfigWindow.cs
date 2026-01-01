@@ -4,6 +4,7 @@ using Dalamud.Plugin.Services;
 using Dalamud.Interface;
 using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 using Kaleidoscope.Services;
+using OtterGui.Classes;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow;
@@ -27,6 +28,9 @@ public sealed class ConfigWindow : Window
     private readonly ProfilerService _profilerService;
     private readonly LayoutEditingService _layoutEditingService;
     private readonly MarketDataCacheService _marketDataCacheService;
+    private readonly ITextureProvider _textureProvider;
+    private readonly FavoritesService _favoritesService;
+    private readonly MessageService _messageService;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -94,7 +98,8 @@ public sealed class ConfigWindow : Window
         ListingsService listingsService,
         CharacterDataService characterDataService,
         MarketDataCacheService marketDataCacheService,
-        FrameLimiterService frameLimiterService)
+        FrameLimiterService frameLimiterService,
+        MessageService messageService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -108,6 +113,9 @@ public sealed class ConfigWindow : Window
         _profilerService = profilerService;
         _layoutEditingService = layoutEditingService;
         _marketDataCacheService = marketDataCacheService;
+        _textureProvider = textureProvider;
+        _favoritesService = favoritesService;
+        _messageService = messageService;
 
         var lockTb = new TitleBarButton
         {
@@ -152,7 +160,15 @@ public sealed class ConfigWindow : Window
         _currenciesCategory = new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService);
         _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService);
         _toolPresetsCategory = new ToolPresetsCategory(_configService);
-        _storageCategory = new StorageCategory(_configService, _currencyTrackerService);
+        _storageCategory = new StorageCategory(
+            _configService, 
+            _currencyTrackerService, 
+            _textureProvider, 
+            dataManager,
+            _favoritesService, 
+            _messageService,
+            _arIpc,
+            _priceTrackingService);
         _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
 
