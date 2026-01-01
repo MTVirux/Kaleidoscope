@@ -481,6 +481,260 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     [Obsolete("Use ExportCsv(TrackedDataType, ulong?) instead")]
     public string? ExportCsv(ulong? characterId = null) => ExportCsv(TrackedDataType.Gil, characterId);
 
+    /// <summary>
+    /// Gets points within a date range for a data type.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRange(
+        TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.GetPointsInRange(dataType.ToString(), characterId, start, end);
+    }
+
+    /// <summary>
+    /// Counts points within a date range and estimates storage size.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Tuple of (count, estimated bytes).</returns>
+    public (int count, long estimatedBytes) CountPointsInRange(
+        TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.CountPointsInRange(dataType.ToString(), characterId, start, end);
+    }
+
+    /// <summary>
+    /// Deletes points within a date range for a data type.
+    /// Invalidates the cache after deletion.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Number of points deleted.</returns>
+    public int DeletePointsInRange(TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        var variable = dataType.ToString();
+        var deleted = _dbService.DeletePointsInRange(variable, characterId, start, end);
+        
+        if (deleted > 0)
+        {
+            _cacheService.InvalidateVariable(variable);
+            _log.Information($"Deleted {deleted} points for {dataType} and invalidated cache");
+        }
+        
+        return deleted;
+    }
+
+    /// <summary>
+    /// Exports points within a date range to a CSV file and returns the file path.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeToCsv(TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        var dbPath = _filenames.DatabasePath;
+        if (string.IsNullOrEmpty(dbPath)) return null;
+
+        try
+        {
+            var variableName = dataType.ToString();
+            var csvContent = _dbService.ExportPointsInRangeToCsv(variableName, characterId, start, end);
+            if (string.IsNullOrEmpty(csvContent)) return null;
+
+            var dir = Path.GetDirectoryName(dbPath) ?? "";
+            var suffix = characterId.HasValue && characterId.Value != 0
+                ? $"-{characterId.Value}"
+                : "-all";
+            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
+            var fileName = $"{variableName.ToLower()}{suffix}-{dateRange}-backup.csv";
+            var filePath = Path.Combine(dir, fileName);
+
+            File.WriteAllText(filePath, csvContent);
+            _log.Information($"Exported {dataType} range data to {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Failed to export {dataType} range CSV: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets points within a date range for a raw variable name (for items).
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRangeByVariable(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.GetPointsInRange(variable, characterId, start, end);
+    }
+
+    /// <summary>
+    /// Counts points within a date range for a raw variable name (for items).
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Tuple of (count, estimated bytes).</returns>
+    public (int count, long estimatedBytes) CountPointsInRangeByVariable(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.CountPointsInRange(variable, characterId, start, end);
+    }
+
+    /// <summary>
+    /// Deletes points within a date range for a raw variable name (for items).
+    /// Invalidates the cache after deletion.
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Number of points deleted.</returns>
+    public int DeletePointsInRangeByVariable(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var deleted = _dbService.DeletePointsInRange(variable, characterId, start, end);
+        
+        if (deleted > 0)
+        {
+            _cacheService.InvalidateVariable(variable);
+            _log.Information($"Deleted {deleted} points for {variable} and invalidated cache");
+        }
+        
+        return deleted;
+    }
+
+    /// <summary>
+    /// Exports points within a date range for a raw variable name to a CSV file.
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeByVariableToCsv(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var dbPath = _filenames.DatabasePath;
+        if (string.IsNullOrEmpty(dbPath)) return null;
+
+        try
+        {
+            var csvContent = _dbService.ExportPointsInRangeToCsv(variable, characterId, start, end);
+            if (string.IsNullOrEmpty(csvContent)) return null;
+
+            var dir = Path.GetDirectoryName(dbPath) ?? "";
+            var suffix = characterId.HasValue && characterId.Value != 0
+                ? $"-{characterId.Value}"
+                : "-all";
+            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
+            var fileName = $"{variable.ToLower()}{suffix}-{dateRange}-backup.csv";
+            var filePath = Path.Combine(dir, fileName);
+
+            File.WriteAllText(filePath, csvContent);
+            _log.Information($"Exported {variable} range data to {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Failed to export {variable} range CSV: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Exports points for multiple variables to a CSV file.
+    /// Useful for items that have both player and retainer data.
+    /// </summary>
+    /// <param name="variables">List of variable names to export.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeByVariablesToCsv(IReadOnlyList<string> variables, ulong? characterId, DateTime start, DateTime end)
+    {
+        if (variables.Count == 0) return null;
+        
+        var dbPath = _filenames.DatabasePath;
+        if (string.IsNullOrEmpty(dbPath)) return null;
+
+        try
+        {
+            var allCsvContent = new System.Text.StringBuilder();
+            bool headerWritten = false;
+            
+            foreach (var variable in variables)
+            {
+                var csvContent = _dbService.ExportPointsInRangeToCsv(variable, characterId, start, end);
+                if (string.IsNullOrEmpty(csvContent)) continue;
+                
+                var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    // Skip header for subsequent variables
+                    if (i == 0)
+                    {
+                        if (!headerWritten)
+                        {
+                            allCsvContent.AppendLine(lines[i]);
+                            headerWritten = true;
+                        }
+                        continue;
+                    }
+                    allCsvContent.AppendLine(lines[i]);
+                }
+            }
+            
+            if (allCsvContent.Length == 0) return null;
+
+            var dir = Path.GetDirectoryName(dbPath) ?? "";
+            var suffix = characterId.HasValue && characterId.Value != 0
+                ? $"-{characterId.Value}"
+                : "-all";
+            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
+            // Use the first variable name for the file
+            var baseVarName = variables[0].ToLower();
+            if (baseVarName.StartsWith("item_"))
+                baseVarName = baseVarName.Replace("item_", "item-");
+            var fileName = $"{baseVarName}{suffix}-{dateRange}-backup.csv";
+            var filePath = Path.Combine(dir, fileName);
+
+            File.WriteAllText(filePath, allCsvContent.ToString());
+            _log.Information($"Exported {variables.Count} variable(s) range data to {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Failed to export multi-variable range CSV: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs VACUUM to reclaim disk space after deletions.
+    /// Warning: This can be slow on large databases.
+    /// </summary>
+    /// <returns>True if successful.</returns>
+    public bool Vacuum()
+    {
+        return _dbService.Vacuum();
+    }
+
     #endregion
 
     public void Dispose()
