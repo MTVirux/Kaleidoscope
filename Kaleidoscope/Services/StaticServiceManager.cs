@@ -1,6 +1,7 @@
 using Dalamud.Plugin;
 using Kaleidoscope.Gui.ConfigWindow;
 using Kaleidoscope.Gui.MainWindow;
+using OtterGui.Classes;
 using OtterGui.Log;
 using OtterGui.Services;
 
@@ -85,6 +86,7 @@ public static class StaticServiceManager
     /// </summary>
     private static ServiceManager AddUi(this ServiceManager services)
         => services
+            .AddSingleton<MessageService>()
             .AddSingleton<WindowService>()
             .AddSingleton<MainWindow>()
             .AddSingleton<ConfigWindow>();
