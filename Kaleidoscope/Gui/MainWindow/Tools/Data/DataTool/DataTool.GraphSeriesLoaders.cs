@@ -1,219 +1,17 @@
 using System.Numerics;
-using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
-using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Graph;
-using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 
 /// <summary>
-/// DataTool partial class containing graph view rendering and data loading logic.
+/// DataTool partial class containing graph series loading, grouping, and color logic.
+/// Extracted to reduce the size of DataTool.GraphView.cs.
 /// </summary>
 public partial class DataTool
 {
-    private bool _cachedShowRetainerBreakdownInGraph;
-
-    private void DrawGraphView()
-    {
-        using (ProfilerService.BeginStaticChildScope("GraphView"))
-        {
-            _graphWidget.SyncFromBoundSettings();
-            
-            if (NeedsGraphCacheRefresh())
-            {
-                using (ProfilerService.BeginStaticChildScope("RefreshGraphData"))
-                {
-                    RefreshGraphData();
-                }
-                
-                _graphWidget.Groups = _cachedSeriesGroups;
-            }
-            
-            if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
-            {
-                using (ProfilerService.BeginStaticChildScope("RenderGraph"))
-                {
-                    _graphWidget.RenderMultipleSeries(_cachedSeriesData);
-                }
-            }
-            else
-            {
-                if (Settings.Columns.Count == 0)
-                {
-                    ImGui.TextDisabled("No items or currencies configured. Add some to start tracking.");
-                }
-                else
-                {
-                    ImGui.TextDisabled("No historical data available.");
-                }
-            }
-        }
-    }
-    
-    private bool NeedsGraphCacheRefresh()
-    {
-        if (_graphCacheIsDirty) return true;
-        
-        var settings = Settings;
-        if (_cachedSeriesCount != settings.Columns.Count) return true;
-        if (_cachedTimeRangeValue != settings.TimeRangeValue) return true;
-        if (_cachedTimeRangeUnit != settings.TimeRangeUnit) return true;
-        if (_cachedIncludeRetainers != settings.IncludeRetainers) return true;
-        if (_cachedShowRetainerBreakdownInGraph != settings.ShowRetainerBreakdownInGraph) return true;
-        if (_cachedGroupingMode != settings.GroupingMode) return true;
-        if (_cachedNameFormat != _configService.Config.CharacterNameFormat) return true;
-        
-        return (DateTime.UtcNow - _lastGraphRefresh).TotalSeconds > 5.0;
-    }
-    
-    private void RefreshGraphData()
-    {
-        var settings = Settings;
-        
-        _lastGraphRefresh = DateTime.UtcNow;
-        _cachedSeriesCount = settings.Columns.Count;
-        _cachedTimeRangeValue = settings.TimeRangeValue;
-        _cachedTimeRangeUnit = settings.TimeRangeUnit;
-        _cachedIncludeRetainers = settings.IncludeRetainers;
-        _cachedShowRetainerBreakdownInGraph = settings.ShowRetainerBreakdownInGraph;
-        _cachedNameFormat = _configService.Config.CharacterNameFormat;
-        _cachedGroupingMode = settings.GroupingMode;
-        _graphCacheIsDirty = false;
-        
-        var mergedIndicesWithGraph = new HashSet<int>();
-        foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
-        {
-            foreach (var idx in group.ColumnIndices)
-            {
-                mergedIndicesWithGraph.Add(idx);
-            }
-        }
-        
-        List<ItemColumnConfig> series;
-        using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
-        {
-            var filteredColumns = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping);
-            series = filteredColumns
-                .Where((c, idx) => c.ShowInGraph && !mergedIndicesWithGraph.Contains(idx))
-                .ToList();
-        }
-        
-        var timeRange = GetTimeRange();
-        var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
-        
-        HashSet<ulong>? allowedCharacters = null;
-        if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
-        {
-            allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
-        }
-        
-        var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
-        
-        var seriesByItem = new Dictionary<string, List<string>>();
-        var itemColors = new Dictionary<string, Vector4>();
-        
-        var totalItemCount = series.Count + settings.MergedColumnGroups.Count(g => g.ShowInGraph);
-        var isSingleItem = totalItemCount == 1;
-        
-        using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
-        {
-            var itemIndex = 0;
-            foreach (var seriesConfig in series)
-            {
-                var itemName = GetSeriesDisplayName(seriesConfig);
-                var seriesData = LoadSeriesData(seriesConfig, settings, startTime, allowedCharacters, isSingleItem);
-                if (seriesData != null)
-                {
-                    if (!isSingleItem)
-                    {
-                        if (!seriesByItem.ContainsKey(itemName))
-                        {
-                            seriesByItem[itemName] = new List<string>();
-                            var color = GetEffectiveSeriesColor(seriesConfig, settings, itemIndex);
-                            itemColors[itemName] = color;
-                        }
-                        foreach (var s in seriesData)
-                        {
-                            seriesByItem[itemName].Add(s.name);
-                        }
-                    }
-                    seriesList.AddRange(seriesData);
-                }
-                itemIndex++;
-            }
-            
-            foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
-            {
-                var groupName = group.Name;
-                var mergedSeriesData = LoadMergedSeriesData(group, settings, startTime, allowedCharacters, isSingleItem);
-                if (mergedSeriesData != null)
-                {
-                    if (!isSingleItem)
-                    {
-                        if (!seriesByItem.ContainsKey(groupName))
-                        {
-                            seriesByItem[groupName] = new List<string>();
-                            if (group.Color.HasValue)
-                            {
-                                itemColors[groupName] = group.Color.Value;
-                            }
-                            else
-                            {
-                                itemColors[groupName] = GetDefaultSeriesColor(itemIndex);
-                            }
-                        }
-                        foreach (var s in mergedSeriesData)
-                        {
-                            seriesByItem[groupName].Add(s.name);
-                        }
-                    }
-                    seriesList.AddRange(mergedSeriesData);
-                }
-                itemIndex++;
-            }
-        }
-        
-        _cachedSeriesData = seriesList.Count > 0 ? seriesList : null;
-        
-        // Build groups for the legend (only when there are multiple items with multiple series each)
-        if (!isSingleItem && seriesByItem.Count > 1)
-        {
-            var groups = new List<MTGraphSeriesGroup>();
-            foreach (var (itemName, seriesNames) in seriesByItem)
-            {
-                // Only create a group if the item has multiple series
-                if (seriesNames.Count > 1)
-                {
-                    var color = itemColors.TryGetValue(itemName, out var c) 
-                        ? new Vector3(c.X, c.Y, c.Z) 
-                        : new Vector3(0.6f, 0.6f, 0.6f);
-                    
-                    groups.Add(new MTGraphSeriesGroup
-                    {
-                        Name = itemName,
-                        Color = color,
-                        SeriesNames = seriesNames
-                    });
-                }
-            }
-            _cachedSeriesGroups = groups.Count > 0 ? groups : null;
-        }
-        else
-        {
-            _cachedSeriesGroups = null;
-        }
-    }
-    
-    private TimeSpan? GetTimeRange()
-    {
-        var settings = Settings;
-        return TimeRangeSelectorWidget.GetTimeSpan(settings.TimeRangeValue, settings.TimeRangeUnit);
-    }
-    
     /// <summary>
     /// Gets a display name for the provided character ID.
     /// Uses formatted name from cache service, respecting the name format setting.
@@ -323,68 +121,7 @@ public partial class DataTool
                         }
                         
                         // Merge player and retainer data using forward-fill logic.
-                        // This ensures that at any timestamp, we combine the latest known player value
-                        // with the latest known retainer value, even if they weren't sampled at the same time.
-                        // This handles the case where player inventory value stays constant (no new samples)
-                        // while retainer values change (new samples created).
-                        
-                        // Group points by character ID first
-                        var playerByChar = points
-                            .GroupBy(p => p.characterId)
-                            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
-                        
-                        var retainerByChar = retainerPts
-                            .GroupBy(p => p.characterId)
-                            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
-                        
-                        // Get all unique character IDs
-                        var allCharIds = playerByChar.Keys.Union(retainerByChar.Keys).ToList();
-                        
-                        var mergedPoints = new List<(ulong characterId, DateTime timestamp, long value)>();
-                        
-                        foreach (var charId in allCharIds)
-                        {
-                            var playerPts = playerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
-                            var retPts = retainerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
-                            
-                            // Collect all unique timestamps (rounded to minute)
-                            var allTimestamps = playerPts
-                                .Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                                .Union(retPts.Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc)))
-                                .OrderBy(t => t)
-                                .Distinct()
-                                .ToList();
-                            
-                            // Build lookup for player and retainer values by rounded timestamp
-                            var playerLookup = playerPts
-                                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
-                            
-                            var retainerLookup = retPts
-                                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
-                            
-                            // Forward-fill: carry forward the last known value for each series
-                            long lastPlayerValue = 0;
-                            long lastRetainerValue = 0;
-                            
-                            foreach (var ts in allTimestamps)
-                            {
-                                // Update with new value if available, otherwise keep last known
-                                if (playerLookup.TryGetValue(ts, out var pVal))
-                                    lastPlayerValue = pVal;
-                                if (retainerLookup.TryGetValue(ts, out var rVal))
-                                    lastRetainerValue = rVal;
-                                
-                                mergedPoints.Add((charId, ts, lastPlayerValue + lastRetainerValue));
-                            }
-                        }
-                        
-                        points = mergedPoints.OrderBy(p => p.timestamp).ToList();
+                        points = MergePlayerAndRetainerData(points, retainerPts);
                     }
                 }
                 
@@ -517,6 +254,74 @@ public partial class DataTool
             LogDebug($"LoadSeriesData error: {ex.Message}");
             return null;
         }
+    }
+    
+    /// <summary>
+    /// Merges player and retainer data using forward-fill logic.
+    /// This ensures that at any timestamp, we combine the latest known player value
+    /// with the latest known retainer value, even if they weren't sampled at the same time.
+    /// </summary>
+    private static List<(ulong characterId, DateTime timestamp, long value)> MergePlayerAndRetainerData(
+        IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> playerPoints,
+        List<(ulong characterId, DateTime timestamp, long value)> retainerPoints)
+    {
+        // Group points by character ID first
+        var playerByChar = playerPoints
+            .GroupBy(p => p.characterId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
+        
+        var retainerByChar = retainerPoints
+            .GroupBy(p => p.characterId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(p => p.timestamp).ToList());
+        
+        // Get all unique character IDs
+        var allCharIds = playerByChar.Keys.Union(retainerByChar.Keys).ToList();
+        
+        var mergedPoints = new List<(ulong characterId, DateTime timestamp, long value)>();
+        
+        foreach (var charId in allCharIds)
+        {
+            var playerPts = playerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
+            var retPts = retainerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
+            
+            // Collect all unique timestamps (rounded to minute)
+            var allTimestamps = playerPts
+                .Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .Union(retPts.Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc)))
+                .OrderBy(t => t)
+                .Distinct()
+                .ToList();
+            
+            // Build lookup for player and retainer values by rounded timestamp
+            var playerLookup = playerPts
+                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
+            
+            var retainerLookup = retPts
+                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
+                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
+            
+            // Forward-fill: carry forward the last known value for each series
+            long lastPlayerValue = 0;
+            long lastRetainerValue = 0;
+            
+            foreach (var ts in allTimestamps)
+            {
+                // Update with new value if available, otherwise keep last known
+                if (playerLookup.TryGetValue(ts, out var pVal))
+                    lastPlayerValue = pVal;
+                if (retainerLookup.TryGetValue(ts, out var rVal))
+                    lastRetainerValue = rVal;
+                
+                mergedPoints.Add((charId, ts, lastPlayerValue + lastRetainerValue));
+            }
+        }
+        
+        return mergedPoints.OrderBy(p => p.timestamp).ToList();
     }
     
     /// <summary>
@@ -971,9 +776,6 @@ public partial class DataTool
     private static Vector4 GetRetainerSeriesColor(Vector4 baseColor, int retainerIndex)
     {
         // Create color variations by rotating hue and adjusting saturation
-        var hueShift = (retainerIndex * 0.15f) % 1.0f;
-        
-        // Simple hue rotation approximation
         var r = baseColor.X;
         var g = baseColor.Y;
         var b = baseColor.Z;
