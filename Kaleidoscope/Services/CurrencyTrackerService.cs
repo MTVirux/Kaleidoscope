@@ -476,12 +476,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Exports data to a CSV file and returns the file path (legacy Gil-only method).
-    /// </summary>
-    [Obsolete("Use ExportCsv(TrackedDataType, ulong?) instead")]
-    public string? ExportCsv(ulong? characterId = null) => ExportCsv(TrackedDataType.Gil, characterId);
-
-    /// <summary>
     /// Gets points within a date range for a data type.
     /// </summary>
     /// <param name="dataType">The tracked data type.</param>

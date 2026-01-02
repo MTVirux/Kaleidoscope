@@ -79,13 +79,6 @@ public class PriceTrackingSettings
     /// <summary>Selected world IDs when using ByWorld scope mode.</summary>
     public HashSet<int> SelectedWorldIds { get; set; } = new();
 
-    /// <summary>
-    /// Deprecated: Use InventoryValueSettings.ValueScopeMode and related settings instead.
-    /// Kept for config backwards compatibility.
-    /// </summary>
-    [Obsolete("Use InventoryValueSettings.ValueScopeMode instead")]
-    public HashSet<int> ExcludedWorldIds { get; set; } = new();
-
     /// <summary>Item IDs to exclude from tracking.</summary>
     public HashSet<int> ExcludedItemIds { get; set; } = new();
 
@@ -210,24 +203,6 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// Per-world price match mode overrides. Key is world ID.
     /// </summary>
     public Dictionary<int, PriceMatchMode> WorldPriceMatchModes { get; set; } = new();
-
-    // === Legacy settings (deprecated, kept for config compatibility) ===
-    
-    /// <summary>Deprecated: Use DefaultPriceMatchMode instead.</summary>
-    [Obsolete("Use DefaultPriceMatchMode and hierarchical overrides instead")]
-    public PriceTrackingScopeMode ValueScopeMode { get; set; } = PriceTrackingScopeMode.All;
-
-    /// <summary>Deprecated: Use RegionPriceMatchModes instead.</summary>
-    [Obsolete("Use RegionPriceMatchModes instead")]
-    public HashSet<string> ValueSelectedRegions { get; set; } = new();
-
-    /// <summary>Deprecated: Use DataCenterPriceMatchModes instead.</summary>
-    [Obsolete("Use DataCenterPriceMatchModes instead")]
-    public HashSet<string> ValueSelectedDataCenters { get; set; } = new();
-
-    /// <summary>Deprecated: Use WorldPriceMatchModes instead.</summary>
-    [Obsolete("Use WorldPriceMatchModes instead")]
-    public HashSet<int> ValueSelectedWorldIds { get; set; } = new();
     
     // === IGraphWidgetSettings implementation ===
     

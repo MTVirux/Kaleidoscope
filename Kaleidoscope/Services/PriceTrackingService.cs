@@ -730,17 +730,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         return _worldData.GetWorldIdsForPriceMatchMode(characterWorldId, mode);
     }
 
-    /// <summary>
-    /// Gets the set of world IDs to include in inventory value calculations based on InventoryValueSettings.
-    /// Returns null if all worlds should be included (no filtering).
-    /// </summary>
-    [Obsolete("Use GetValueCalculationWorldIds(int characterWorldId) instead")]
-    private HashSet<int>? GetValueCalculationWorldIds()
-    {
-        // Legacy fallback - use Global mode
-        return null;
-    }
-
     #endregion
 
     #region World Data and Marketable Items

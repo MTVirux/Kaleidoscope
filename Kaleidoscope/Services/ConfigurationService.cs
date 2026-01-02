@@ -130,22 +130,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             }
         }
 
-        // Migrate from legacy ActiveLayoutName if needed
-#pragma warning disable CS0618 // Suppress obsolete warning for migration
-        if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName))
-        {
-            var legacyLayout = Config.Layouts.FirstOrDefault(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase));
-            if (legacyLayout != null)
-            {
-                if (legacyLayout.Type == LayoutType.Windowed && string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName))
-                    Config.ActiveWindowedLayoutName = legacyLayout.Name;
-                else if (legacyLayout.Type == LayoutType.Fullscreen && string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
-                    Config.ActiveFullscreenLayoutName = legacyLayout.Name;
-            }
-            Config.ActiveLayoutName = string.Empty;
-        }
-#pragma warning restore CS0618
-
         // Validate windowed active layout
         var windowedLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
         if (!string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) &&

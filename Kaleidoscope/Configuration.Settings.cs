@@ -138,16 +138,6 @@ public class ItemTableSettings : IItemTableWidgetSettings
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
     /// <summary>
-    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
-    /// </summary>
-    [Obsolete("Use NumberFormat instead. Kept for migration.")]
-    public bool UseCompactNumbers
-    {
-        get => NumberFormat.Style == NumberFormatStyle.Compact;
-        set => NumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
-    }
-    
-    /// <summary>
     /// Optional custom color for the table header row.
     /// </summary>
     public System.Numerics.Vector4? HeaderColor { get; set; }
@@ -302,16 +292,6 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// </summary>
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    /// <summary>
-    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
-    /// </summary>
-    [Obsolete("Use NumberFormat instead. Kept for migration.")]
-    public bool UseCompactNumbers
-    {
-        get => NumberFormat.Style == NumberFormatStyle.Compact;
-        set => NumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
-    }
-    
     // === IGraphWidgetSettings implementation ===
     
     /// <summary>Mode for determining series colors in the graph.</summary>
@@ -459,16 +439,6 @@ public class DataToolSettings :
     {
         get => GraphNumberFormat;
         set => GraphNumberFormat = value;
-    }
-    
-    /// <summary>
-    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
-    /// </summary>
-    [Obsolete("Use TableNumberFormat/GraphNumberFormat instead. Kept for migration.")]
-    public bool UseCompactNumbers
-    {
-        get => TableNumberFormat.Style == NumberFormatStyle.Compact;
-        set => TableNumberFormat.Style = value ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
     }
     
     /// <summary>

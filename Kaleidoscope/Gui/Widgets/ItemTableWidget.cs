@@ -183,13 +183,6 @@ public interface IItemTableWidgetSettings
     NumberFormatConfig NumberFormat { get; set; }
     
     /// <summary>
-    /// Whether to use compact number notation (e.g., 10M instead of 10,000,000).
-    /// Provided for backward compatibility - use NumberFormat instead.
-    /// </summary>
-    [Obsolete("Use NumberFormat instead.")]
-    bool UseCompactNumbers { get; set; }
-    
-    /// <summary>
     /// Index of the column to sort by (0 = character name, 1+ = data columns).
     /// </summary>
     int SortColumnIndex { get; set; }

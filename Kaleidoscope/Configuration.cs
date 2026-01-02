@@ -117,9 +117,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoSaveLayoutChanges { get; set; } = false;
 
-    [Obsolete("Use ActiveWindowedLayoutName or ActiveFullscreenLayoutName instead")]
-    public string ActiveLayoutName { get; set; } = string.Empty;
-
     // GilTracker settings
     public bool GilTrackerHideCharacterSelector { get; set; } = false;
     public bool GilTrackerShowMultipleLines { get; set; } = false;

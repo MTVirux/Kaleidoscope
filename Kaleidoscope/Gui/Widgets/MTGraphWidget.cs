@@ -68,12 +68,6 @@ public class MTGraphWidget : ISettingsProvider
         };
     }
 
-    /// <summary>
-    /// Creates a new MTGraphWidget with a legacy GraphConfig for backward compatibility.
-    /// </summary>
-    [Obsolete("Use MTGraphConfig instead. This constructor is for backward compatibility.")]
-    public MTGraphWidget(GraphConfig config) : this(config?.ToMTGraphConfig() ?? new MTGraphConfig()) { }
-
     #endregion
 
     #region Properties
@@ -623,69 +617,4 @@ public class MTGraphWidget : ISettingsProvider
     }
 
     #endregion
-}
-
-/// <summary>
-/// Legacy configuration class for backward compatibility.
-/// New code should use MTGraphConfig directly.
-/// </summary>
-[Obsolete("Use MTGui.Graph.MTGraphConfig instead.")]
-public class GraphConfig
-{
-    public float MinValue { get; set; } = 0f;
-    public float MaxValue { get; set; } = 100_000_000f;
-    public string PlotId { get; set; } = "sampleplot";
-    public string NoDataText { get; set; } = "No data yet.";
-    public float FloatEpsilon { get; set; } = 0.0001f;
-    public bool ShowValueLabel { get; set; } = false;
-    public float ValueLabelOffsetX { get; set; } = 0f;
-    public float ValueLabelOffsetY { get; set; } = 0f;
-    public float LegendWidth { get; set; } = 140f;
-    public bool ShowLegend { get; set; } = true;
-    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.InsideTopLeft;
-    public float LegendHeightPercent { get; set; } = 25f;
-    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
-    public bool ShowXAxisTimestamps { get; set; } = true;
-    public bool ShowCrosshair { get; set; } = true;
-    public bool ShowGridLines { get; set; } = true;
-    public bool ShowCurrentPriceLine { get; set; } = true;
-    public bool AutoScrollEnabled { get; set; } = false;
-    public int AutoScrollTimeValue { get; set; } = 1;
-    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
-    public bool ShowControlsDrawer { get; set; } = true;
-    public float AutoScrollNowPosition { get; set; } = 75f;
-    
-    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
-    
-    /// <summary>
-    /// Converts this legacy config to the new MTGraphConfig.
-    /// </summary>
-    internal MTGraphConfig ToMTGraphConfig()
-    {
-        return new MTGraphConfig
-        {
-            MinValue = MinValue,
-            MaxValue = MaxValue,
-            PlotId = PlotId,
-            NoDataText = NoDataText,
-            FloatEpsilon = FloatEpsilon,
-            ShowValueLabel = ShowValueLabel,
-            ValueLabelOffsetX = ValueLabelOffsetX,
-            ValueLabelOffsetY = ValueLabelOffsetY,
-            LegendWidth = LegendWidth,
-            ShowLegend = ShowLegend,
-            LegendPosition = LegendPosition,
-            LegendHeightPercent = LegendHeightPercent,
-            GraphType = GraphType,
-            ShowXAxisTimestamps = ShowXAxisTimestamps,
-            ShowCrosshair = ShowCrosshair,
-            ShowGridLines = ShowGridLines,
-            ShowCurrentPriceLine = ShowCurrentPriceLine,
-            AutoScrollEnabled = AutoScrollEnabled,
-            AutoScrollTimeValue = AutoScrollTimeValue,
-            AutoScrollTimeUnit = AutoScrollTimeUnit,
-            AutoScrollNowPosition = AutoScrollNowPosition,
-            ShowControlsDrawer = ShowControlsDrawer
-        };
-    }
 }
