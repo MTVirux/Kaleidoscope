@@ -99,10 +99,42 @@ public sealed class LoggingCategory
             // Custom log directory
             DrawLogDirectoryInput(config);
             
-            // Show current log file path
-            var logPath = FilenameService.Instance?.LogFilePath ?? "Not available";
-            ImGui.TextDisabled($"Log file: {logPath}");
+            // Show current log file path or split mode status
+            DrawLogFileStatus(config);
             
+            ImGui.Spacing();
+            
+            // Split by category toggle
+            var splitByCategory = config.FileLoggingSplitByCategory;
+            if (ImGui.Checkbox("Split Logs by Category", ref splitByCategory))
+            {
+                config.FileLoggingSplitByCategory = splitByCategory;
+                _configService.Save();
+                LogService.UpdateFileLogging();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(
+                    "When enabled, logs are written to separate files based on category.\n" +
+                    "Example: kaleidoscope_database.log, kaleidoscope_ui.log, etc.");
+            }
+
+            // Split by character toggle
+            var splitByCharacter = config.FileLoggingSplitByCharacter;
+            if (ImGui.Checkbox("Split Logs by Character", ref splitByCharacter))
+            {
+                config.FileLoggingSplitByCharacter = splitByCharacter;
+                _configService.Save();
+                LogService.UpdateFileLogging();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(
+                    "When enabled, logs are organized into character-specific subdirectories.\n" +
+                    "Example: logs/Firstname_Lastname/kaleidoscope.log\n" +
+                    "Note: Only applies to log messages that have character context.");
+            }
+
             ImGui.Spacing();
             
             // Include timestamps toggle
@@ -118,7 +150,7 @@ public sealed class LoggingCategory
             var maxSize = config.FileLoggingMaxSizeMB;
             if (ImGui.InputInt("Max File Size (MB)", ref maxSize))
             {
-                maxSize = Math.Clamp(maxSize, 1, 100);
+                maxSize = Math.Clamp(maxSize, 1, 102400); // 1 MB to 100 GB
                 config.FileLoggingMaxSizeMB = maxSize;
                 _configService.Save();
             }
@@ -175,39 +207,20 @@ public sealed class LoggingCategory
             
             ImGui.SameLine();
             
-            if (ImGui.Button("Clear Log File"))
+            if (ImGui.Button("Clear Log Files"))
             {
-                try
-                {
-                    var path = FilenameService.Instance?.LogFilePath;
-                    if (path != null && File.Exists(path))
-                    {
-                        // Disable file logging temporarily
-                        config.FileLoggingEnabled = false;
-                        LogService.UpdateFileLogging();
-                        
-                        // Delete the file
-                        File.Delete(path);
-                        
-                        // Re-enable file logging
-                        config.FileLoggingEnabled = true;
-                        _configService.Save();
-                        LogService.UpdateFileLogging();
-                        
-                        LogService.Info("[LoggingCategory] Log file cleared");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogService.Warning($"[LoggingCategory] Failed to clear log file: {ex.Message}");
-                    // Make sure file logging is re-enabled
-                    config.FileLoggingEnabled = true;
-                    LogService.UpdateFileLogging();
-                }
+                ClearAllLogFiles(config);
             }
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("Delete the current log file and start fresh.");
+                if (config.FileLoggingSplitByCategory || config.FileLoggingSplitByCharacter)
+                {
+                    ImGui.SetTooltip("Delete all log files (main, category, and character logs) and start fresh.");
+                }
+                else
+                {
+                    ImGui.SetTooltip("Delete the current log file and start fresh.");
+                }
             }
             
             // Show file status
@@ -309,6 +322,49 @@ public sealed class LoggingCategory
         }
         
         ImGui.Spacing();
+    }
+
+    private void DrawLogFileStatus(Configuration config)
+    {
+        var splitByCategory = config.FileLoggingSplitByCategory;
+        var splitByCharacter = config.FileLoggingSplitByCharacter;
+
+        if (splitByCategory || splitByCharacter)
+        {
+            // Show split mode status
+            var logDir = FilenameService.Instance?.LogDirectory ?? "Not available";
+            ImGui.TextDisabled($"Log directory: {logDir}");
+            
+            if (splitByCategory && splitByCharacter)
+            {
+                ImGui.TextDisabled("Mode: Split by category + character");
+                ImGui.TextDisabled("Example: logs/<character>/kaleidoscope_<category>.log");
+            }
+            else if (splitByCategory)
+            {
+                ImGui.TextDisabled("Mode: Split by category");
+                ImGui.TextDisabled("Example: kaleidoscope_database.log, kaleidoscope_ui.log");
+            }
+            else
+            {
+                ImGui.TextDisabled("Mode: Split by character");
+                ImGui.TextDisabled("Example: logs/<character>/kaleidoscope.log");
+            }
+
+            // Show active writers count
+            var categoryCount = LogService.ActiveCategoryWriters;
+            var characterCount = LogService.ActiveCharacterWriters;
+            if (categoryCount > 0 || characterCount > 0)
+            {
+                ImGui.TextColored(EnabledColor, $"✓ Active: {categoryCount} category files, {characterCount} character files");
+            }
+        }
+        else
+        {
+            // Show single file path
+            var logPath = FilenameService.Instance?.LogFilePath ?? "Not available";
+            ImGui.TextDisabled($"Log file: {logPath}");
+        }
     }
 
     private void DrawMasterSwitch()
@@ -451,5 +507,98 @@ public sealed class LoggingCategory
         }
         
         return count;
+    }
+
+    private void ClearAllLogFiles(Configuration config)
+    {
+        try
+        {
+            // Disable file logging temporarily to release file handles
+            config.FileLoggingEnabled = false;
+            LogService.UpdateFileLogging();
+
+            var deletedCount = 0;
+            var logDir = FilenameService.Instance?.LogDirectory;
+
+            // Delete main log file
+            var mainPath = FilenameService.Instance?.LogFilePath;
+            if (mainPath != null && File.Exists(mainPath))
+            {
+                File.Delete(mainPath);
+                deletedCount++;
+            }
+
+            // Delete category-specific log files
+            if (logDir != null && Directory.Exists(logDir))
+            {
+                foreach (var file in Directory.GetFiles(logDir, "kaleidoscope_*.log"))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                        deletedCount++;
+                    }
+                    catch (Exception)
+                    {
+                        // Skip files that can't be deleted
+                    }
+                }
+            }
+
+            // Delete character-specific log directories
+            var logsSubDir = logDir != null ? Path.Combine(logDir, "logs") : null;
+            if (logsSubDir != null && Directory.Exists(logsSubDir))
+            {
+                foreach (var charDir in Directory.GetDirectories(logsSubDir))
+                {
+                    try
+                    {
+                        // Delete all log files in character directory
+                        foreach (var file in Directory.GetFiles(charDir, "*.log"))
+                        {
+                            File.Delete(file);
+                            deletedCount++;
+                        }
+
+                        // Try to delete the directory if empty
+                        if (Directory.GetFiles(charDir).Length == 0 && Directory.GetDirectories(charDir).Length == 0)
+                        {
+                            Directory.Delete(charDir);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Skip directories that can't be processed
+                    }
+                }
+
+                // Try to delete the logs directory if empty
+                try
+                {
+                    if (Directory.GetFiles(logsSubDir).Length == 0 && Directory.GetDirectories(logsSubDir).Length == 0)
+                    {
+                        Directory.Delete(logsSubDir);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Ignore
+                }
+            }
+
+            // Re-enable file logging
+            config.FileLoggingEnabled = true;
+            _configService.Save();
+            LogService.UpdateFileLogging();
+
+            LogService.Info($"[LoggingCategory] Cleared {deletedCount} log file(s)");
+        }
+        catch (Exception ex)
+        {
+            LogService.Warning($"[LoggingCategory] Failed to clear log files: {ex.Message}");
+            // Make sure file logging is re-enabled
+            config.FileLoggingEnabled = true;
+            LogService.UpdateFileLogging();
+        }
     }
 }

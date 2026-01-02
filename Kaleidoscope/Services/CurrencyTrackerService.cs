@@ -237,7 +237,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+                characterName = GameStateService.LocalPlayerName;
+                LogService.Debug(LogCategory.CurrencyTracker, characterName, $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
             }
 
             // Queue all changed values for background database write
@@ -265,7 +266,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
+            var charName = GameStateService.LocalPlayerName;
+            LogService.Debug(LogCategory.CurrencyTracker, charName, $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
 
@@ -297,7 +299,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background write error: {ex.Message}");
+                        LogService.Debug(LogCategory.CurrencyTracker, workItem.CharacterName, $"[CurrencyTrackerService] Background write error: {ex.Message}");
                     }
                 }
             }

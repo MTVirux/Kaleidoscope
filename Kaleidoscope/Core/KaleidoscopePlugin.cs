@@ -24,13 +24,13 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
             var dalamudLog = _services.GetService<IPluginLog>();
             LogService.Initialize(dalamudLog);
 
-            // Set up configuration for category-based log filtering and file logging
+            // Set up FilenameService with config BEFORE LogService so file logging paths are ready
             var configService = _services.GetService<ConfigurationService>();
-            LogService.SetConfiguration(configService.Config);
-            
-            // Set up FilenameService with config for custom log directory
             var filenameService = _services.GetService<FilenameService>();
             filenameService.SetConfiguration(configService.Config);
+            
+            // Set up configuration for category-based log filtering and file logging
+            LogService.SetConfiguration(configService.Config);
 
             var playerState = _services.GetService<IPlayerState>();
             var objectTable = _services.GetService<IObjectTable>();

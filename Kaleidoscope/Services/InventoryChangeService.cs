@@ -262,8 +262,9 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 {
                     try
                     {
+                        var characterName = GameStateService.LocalPlayerName ?? "Unknown";
                         var changesSummary = string.Join(", ", changedValues.Select(kv => $"{kv.Key}={kv.Value}"));
-                        LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Detected value changes: {changesSummary}");
+                        LogService.Debug(LogCategory.Inventory, characterName, $"[InventoryChangeService] Detected value changes: {changesSummary}");
                     }
                     catch
                     {

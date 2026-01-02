@@ -122,9 +122,16 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         var characterId = GameStateService.PlayerContentId;
         if (characterId != 0)
         {
+            // Set the current character context for file logging
+            var characterName = GameStateService.LocalPlayerName;
+            if (!string.IsNullOrEmpty(characterName))
+            {
+                LogService.SetCurrentCharacter(characterName);
+            }
+            
             // Schedule a cache update - this will scan and update the memory cache
             _pendingPlayerCache = true;
-            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
+            LogService.Debug(LogCategory.Inventory, characterName, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
         }
     }
     
@@ -133,6 +140,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     private void OnLogout(int type, int code)
     {
+        // Clear character context for file logging
+        LogService.SetCurrentCharacter(null);
+        
         _allCharactersCacheDirty = true;
         
         // Flush pending item samples on logout
@@ -301,7 +311,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
             UpdateMemoryCache(characterId, entry);
 
-            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
+            LogService.Debug(LogCategory.Inventory, playerName, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
         catch (Exception ex)
         {

@@ -108,6 +108,18 @@ public class Configuration : IPluginConfiguration
     public string FileLoggingDirectory { get; set; } = string.Empty;
 
     /// <summary>
+    /// Whether to split log files by category (e.g., kaleidoscope_database.log, kaleidoscope_ui.log).
+    /// When enabled, each log category writes to its own file.
+    /// </summary>
+    public bool FileLoggingSplitByCategory { get; set; } = false;
+
+    /// <summary>
+    /// Whether to split log files by character (e.g., logs/FirstName LastName/kaleidoscope.log).
+    /// When enabled, logs are organized into character-specific subdirectories where applicable.
+    /// </summary>
+    public bool FileLoggingSplitByCharacter { get; set; } = false;
+
+    /// <summary>
     /// Format for displaying character names throughout the UI.
     /// </summary>
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;
