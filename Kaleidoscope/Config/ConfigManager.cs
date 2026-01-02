@@ -33,7 +33,7 @@ public class ConfigManager
         }
         catch (Exception ex)
         {
-            LogService.Warning($"Failed to load config '{fileName}', using default: {ex.Message}");
+            LogService.Warning(LogCategory.Config, $"Failed to load config '{fileName}', using default: {ex.Message}");
         }
 
         var defaultValue = factory();
@@ -51,7 +51,7 @@ public class ConfigManager
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save config '{fileName}': {ex.Message}", ex);
+            LogService.Error(LogCategory.Config, $"Failed to save config '{fileName}': {ex.Message}", ex);
         }
     }
 }

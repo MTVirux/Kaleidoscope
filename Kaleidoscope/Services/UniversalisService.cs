@@ -59,7 +59,7 @@ public sealed class UniversalisService : IDisposable, IService
             PropertyNameCaseInsensitive = true
         };
 
-        _log.Debug($"UniversalisService initialized with rate limit of {MaxRequestsPerSecond} req/s");
+        LogService.Debug(LogCategory.Universalis, $"UniversalisService initialized with rate limit of {MaxRequestsPerSecond} req/s");
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public sealed class UniversalisService : IDisposable, IService
         // Wait outside the lock if needed
         if (waitTime > TimeSpan.Zero)
         {
-            _log.Debug($"UniversalisService: Rate limiting, waiting {waitTime.TotalMilliseconds:F0}ms");
+            LogService.Debug(LogCategory.Universalis, $"UniversalisService: Rate limiting, waiting {waitTime.TotalMilliseconds:F0}ms");
             await Task.Delay(waitTime, cancellationToken);
         }
         
@@ -193,7 +193,7 @@ public sealed class UniversalisService : IDisposable, IService
         var scope = GetConfiguredScope();
         if (string.IsNullOrEmpty(scope))
         {
-            _log.Warning("UniversalisService: Cannot determine query scope - no character logged in?");
+            LogService.Warning(LogCategory.Universalis, "UniversalisService: Cannot determine query scope - no character logged in?");
             return null;
         }
 
@@ -214,7 +214,7 @@ public sealed class UniversalisService : IDisposable, IService
         var scope = GetConfiguredScope();
         if (string.IsNullOrEmpty(scope))
         {
-            _log.Warning("UniversalisService: Cannot determine query scope - no character logged in?");
+            LogService.Warning(LogCategory.Universalis, "UniversalisService: Cannot determine query scope - no character logged in?");
             return null;
         }
 
@@ -301,7 +301,7 @@ public sealed class UniversalisService : IDisposable, IService
         if (itemIdList.Count == 0) return null;
         if (itemIdList.Count > 100)
         {
-            _log.Warning("UniversalisService: Requested more than 100 items, truncating to first 100");
+            LogService.Warning(LogCategory.Universalis, "UniversalisService: Requested more than 100 items, truncating to first 100");
             itemIdList = itemIdList.Take(100).ToList();
         }
 
@@ -345,7 +345,7 @@ public sealed class UniversalisService : IDisposable, IService
         if (itemIdList.Count == 0) return null;
         if (itemIdList.Count > 100)
         {
-            _log.Warning("UniversalisService: Requested more than 100 items, truncating to first 100");
+            LogService.Warning(LogCategory.Universalis, "UniversalisService: Requested more than 100 items, truncating to first 100");
             itemIdList = itemIdList.Take(100).ToList();
         }
 
@@ -455,7 +455,7 @@ public sealed class UniversalisService : IDisposable, IService
             if (_cachedMarketableItems != null)
                 return _cachedMarketableItems;
 
-            _log.Debug("UniversalisService: Fetching and caching marketable items");
+            LogService.Debug(LogCategory.Universalis, "UniversalisService: Fetching and caching marketable items");
             _cachedMarketableItems = await GetAsync<List<int>>("marketable", cancellationToken);
             return _cachedMarketableItems;
         }
@@ -534,7 +534,7 @@ public sealed class UniversalisService : IDisposable, IService
             if (_cachedWorlds != null)
                 return _cachedWorlds;
 
-            _log.Debug("UniversalisService: Fetching and caching worlds");
+            LogService.Debug(LogCategory.Universalis, "UniversalisService: Fetching and caching worlds");
             _cachedWorlds = await GetAsync<List<UniversalisWorld>>("worlds", cancellationToken);
             return _cachedWorlds;
         }
@@ -566,7 +566,7 @@ public sealed class UniversalisService : IDisposable, IService
             if (_cachedDataCenters != null)
                 return _cachedDataCenters;
 
-            _log.Debug("UniversalisService: Fetching and caching data centers");
+            LogService.Debug(LogCategory.Universalis, "UniversalisService: Fetching and caching data centers");
             _cachedDataCenters = await GetAsync<List<UniversalisDataCenter>>("data-centers", cancellationToken);
             return _cachedDataCenters;
         }
@@ -596,12 +596,12 @@ public sealed class UniversalisService : IDisposable, IService
             // Wait for rate limiter before making request
             await WaitForRateLimitAsync(cancellationToken);
 
-            _log.Debug($"UniversalisService: GET {url}");
+            LogService.Debug(LogCategory.Universalis, $"UniversalisService: GET {url}");
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                _log.Warning($"UniversalisService: Request failed with status {response.StatusCode} for {url}");
+                LogService.Warning(LogCategory.Universalis, $"UniversalisService: Request failed with status {response.StatusCode} for {url}");
                 return null;
             }
 
@@ -612,22 +612,22 @@ public sealed class UniversalisService : IDisposable, IService
         }
         catch (TaskCanceledException)
         {
-            _log.Debug($"UniversalisService: Request cancelled for {url}");
+            LogService.Debug(LogCategory.Universalis, $"UniversalisService: Request cancelled for {url}");
             return null;
         }
         catch (HttpRequestException ex)
         {
-            _log.Warning($"UniversalisService: HTTP error for {url}: {ex.Message}");
+            LogService.Warning(LogCategory.Universalis, $"UniversalisService: HTTP error for {url}: {ex.Message}");
             return null;
         }
         catch (JsonException ex)
         {
-            _log.Error($"UniversalisService: JSON parse error for {url}: {ex.Message}");
+            LogService.Error(LogCategory.Universalis, $"UniversalisService: JSON parse error for {url}: {ex.Message}");
             return null;
         }
         catch (Exception ex)
         {
-            _log.Error($"UniversalisService: Unexpected error for {url}: {ex.Message}");
+            LogService.Error(LogCategory.Universalis, $"UniversalisService: Unexpected error for {url}: {ex.Message}");
             return null;
         }
     }
@@ -645,7 +645,7 @@ public sealed class UniversalisService : IDisposable, IService
         try { _httpClient.Dispose(); }
         catch (Exception) { /* Ignore disposal errors */ }
         
-        _log.Debug("UniversalisService disposed");
+        LogService.Debug(LogCategory.Universalis, "UniversalisService disposed");
     }
 }
 

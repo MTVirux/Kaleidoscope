@@ -104,7 +104,7 @@ public static class ToolPresets
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create Crystal Table preset", ex);
+            LogService.Error(LogCategory.UI, "Failed to create Crystal Table preset", ex);
             return null;
         }
     }

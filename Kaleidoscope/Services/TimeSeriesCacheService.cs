@@ -73,7 +73,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         _log = log;
         _configService = configService;
         _characterDataCache = characterDataCache;
-        _log.Debug("[TimeSeriesCacheService] Initialized");
+        LogService.Debug(LogCategory.Cache, "[TimeSeriesCacheService] Initialized");
     }
 
     #region Cache Read Operations
@@ -88,12 +88,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (_cache.TryGetValue(key, out var cache))
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] {variable}:{characterId}");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] {variable}:{characterId}");
             return cache.GetPoints();
         }
 
         Interlocked.Increment(ref _cacheMisses);
-        LogService.Verbose($"[Cache MISS] {variable}:{characterId}");
+        LogService.Verbose(LogCategory.Cache, $"[Cache MISS] {variable}:{characterId}");
         return Array.Empty<(DateTime, long)>();
     }
 
@@ -106,12 +106,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (_cache.TryGetValue(key, out var cache))
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] {variable}:{characterId} (since {since:HH:mm:ss})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] {variable}:{characterId} (since {since:HH:mm:ss})");
             return cache.GetPointsSince(since);
         }
 
         Interlocked.Increment(ref _cacheMisses);
-        LogService.Verbose($"[Cache MISS] {variable}:{characterId} (since {since:HH:mm:ss})");
+        LogService.Verbose(LogCategory.Cache, $"[Cache MISS] {variable}:{characterId} (since {since:HH:mm:ss})");
         return Array.Empty<(DateTime, long)>();
     }
 
@@ -167,12 +167,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllCachedPoints({variable}) - {result.Count} points");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllCachedPoints({variable}) - {result.Count} points");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllCachedPoints({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllCachedPoints({variable})");
         }
 
         // Sort by timestamp
@@ -232,12 +232,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllCachedCharacterSeries({variable}) - {result.Count} series");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllCachedCharacterSeries({variable}) - {result.Count} series");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllCachedCharacterSeries({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllCachedCharacterSeries({variable})");
         }
 
         return result;
@@ -367,12 +367,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetLatestValuesForVariable({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetLatestValuesForVariable({variable})");
         }
 
         return result;
@@ -415,12 +415,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllPointsBatch({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllPointsBatch({variable})");
         }
 
         return result;
@@ -465,12 +465,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
         }
 
         return result;
@@ -757,12 +757,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 _inventoryValueCacheMaxTimestamp == dbMaxTimestamp)
             {
                 Interlocked.Increment(ref _cacheHits);
-                LogService.Verbose($"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
+                LogService.Verbose(LogCategory.Cache, $"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
                 return _inventoryValueCache;
             }
 
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose("[Cache MISS] InventoryValueHistory");
+            LogService.Verbose(LogCategory.Cache, "[Cache MISS] InventoryValueHistory");
             return null;
         }
     }
@@ -808,7 +808,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _inventoryValueCacheTime = DateTime.UtcNow;
         }
         
-        LogService.Debug($"[TimeSeriesCacheService] Inventory value cache populated with {recordCount} records");
+        LogService.Debug(LogCategory.Cache, $"[TimeSeriesCacheService] Inventory value cache populated with {recordCount} records");
     }
 
     /// <summary>
@@ -846,12 +846,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             if (_inventoryValueCache != null)
             {
                 Interlocked.Increment(ref _cacheHits);
-                LogService.Verbose($"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
+                LogService.Verbose(LogCategory.Cache, $"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
                 return _inventoryValueCache;
             }
 
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose("[Cache MISS] InventoryValueHistory - cache empty");
+            LogService.Verbose(LogCategory.Cache, "[Cache MISS] InventoryValueHistory - cache empty");
             return null;
         }
     }

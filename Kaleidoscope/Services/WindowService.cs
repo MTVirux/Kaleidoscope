@@ -54,7 +54,7 @@ public sealed class WindowService : IDisposable, IRequiredService
         // Subscribe to fullscreen state changes to update UI hide settings
         _stateService.OnFullscreenChanged += OnFullscreenChanged;
 
-        _log.Debug("WindowService initialized");
+        LogService.Debug(LogCategory.UI, "WindowService initialized");
     }
 
     private void RegisterWindows()

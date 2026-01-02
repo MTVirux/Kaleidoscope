@@ -223,7 +223,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to register tools", ex);
+            LogService.Error(LogCategory.UI, "Failed to register tools", ex);
         }
     }
 
@@ -255,7 +255,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTool (Graph)", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DataTool (Graph)", ex);
             return null;
         }
     }
@@ -280,7 +280,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTool (Table)", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DataTool (Table)", ex);
             return null;
         }
     }
@@ -301,7 +301,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create WebsocketFeedTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create WebsocketFeedTool", ex);
             return null;
         }
     }
@@ -313,7 +313,7 @@ public static class WindowToolRegistrar
             if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null || ctx.ItemDataService == null || 
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
-                LogService.Debug("CreateTopInventoryValueTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateTopInventoryValueTool: Required service is null");
                 return null;
             }
             return new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
@@ -322,7 +322,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create TopInventoryValueTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create TopInventoryValueTool", ex);
             return null;
         }
     }
@@ -335,7 +335,7 @@ public static class WindowToolRegistrar
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
                 ctx.SalePriceCacheService == null)
             {
-                LogService.Debug("CreateItemSalesHistoryTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateItemSalesHistoryTool: Required service is null");
                 return null;
             }
             return new ItemSalesHistoryTool(
@@ -351,7 +351,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create ItemSalesHistoryTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create ItemSalesHistoryTool", ex);
             return null;
         }
     }
@@ -364,7 +364,7 @@ public static class WindowToolRegistrar
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
                 ctx.SalePriceCacheService == null)
             {
-                LogService.Debug("CreateItemSalesTrackingTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateItemSalesTrackingTool: Required service is null");
                 return null;
             }
             return new ItemSalesTrackingTool(
@@ -381,7 +381,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create ItemSalesTrackingTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create ItemSalesTrackingTool", ex);
             return null;
         }
     }
@@ -394,7 +394,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create UniversalisWebSocketStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create UniversalisWebSocketStatusTool", ex);
             return null;
         }
     }
@@ -407,7 +407,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create AutoRetainerStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create AutoRetainerStatusTool", ex);
             return null;
         }
     }
@@ -420,7 +420,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create AutoRetainerControlTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create AutoRetainerControlTool", ex);
             return null;
         }
     }
@@ -433,7 +433,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create RetainerVentureStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create RetainerVentureStatusTool", ex);
             return null;
         }
     }
@@ -446,7 +446,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create SubmersibleVentureStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create SubmersibleVentureStatusTool", ex);
             return null;
         }
     }
@@ -459,7 +459,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create UniversalisApiStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create UniversalisApiStatusTool", ex);
             return null;
         }
     }
@@ -472,7 +472,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DatabaseSizeTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DatabaseSizeTool", ex);
             return null;
         }
     }
@@ -483,14 +483,14 @@ public static class WindowToolRegistrar
         {
             if (ctx.InventoryCacheService == null)
             {
-                LogService.Debug("CreateCacheSizeTool: InventoryCacheService is null");
+                LogService.Debug(LogCategory.UI, "CreateCacheSizeTool: InventoryCacheService is null");
                 return null;
             }
             return new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create CacheSizeTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create CacheSizeTool", ex);
             return null;
         }
     }
@@ -503,7 +503,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create FpsTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create FpsTool", ex);
             return null;
         }
     }
@@ -541,7 +541,7 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to create tool instance '{id}'", ex);
+            LogService.Error(LogCategory.UI, $"Failed to create tool instance '{id}'", ex);
             return null;
         }
     }

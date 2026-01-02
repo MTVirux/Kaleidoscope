@@ -49,6 +49,7 @@ public sealed class ConfigWindow : Window
     private StorageCategory? _storageCategory;
     private TestsCategory? _testsCategory;
     private CachesCategory? _cachesCategory;
+    private LoggingCategory? _loggingCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -68,6 +69,7 @@ public sealed class ConfigWindow : Window
         public const int Profiler = 10; // Hidden tab, only shown with CTRL+ALT
         public const int Tests = 11; // Hidden tab, only shown with CTRL+ALT
         public const int Caches = 12; // Hidden tab, only shown with CTRL+ALT
+        public const int Logging = 13; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -139,7 +141,7 @@ public sealed class ConfigWindow : Window
                         Config.ConfigWindowPos = ImGui.GetWindowPos();
                         Config.ConfigWindowSize = ImGui.GetWindowSize();
                     }
-                    catch (Exception ex) { LogService.Debug($"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
+                    catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[ConfigWindow] Failed to capture window position: {ex.Message}"); }
                 }
                 _configService.MarkDirty();
                 lockTb.Icon = Config.PinConfigWindow ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
@@ -171,6 +173,7 @@ public sealed class ConfigWindow : Window
             _priceTrackingService);
         _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
+        _loggingCategory = new LoggingCategory(_configService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -245,6 +248,7 @@ public sealed class ConfigWindow : Window
             if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
             if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
             if (ImGui.Selectable("Caches", _selectedTab == TabIndex.Caches)) _selectedTab = TabIndex.Caches;
+            if (ImGui.Selectable("Logging", _selectedTab == TabIndex.Logging)) _selectedTab = TabIndex.Logging;
             if (ImGui.Selectable("Tests", _selectedTab == TabIndex.Tests)) _selectedTab = TabIndex.Tests;
         }
         ImGui.EndChild();
@@ -303,6 +307,13 @@ public sealed class ConfigWindow : Window
                 // Only draw caches if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
                 if (showProfiler)
                     _cachesCategory?.Draw();
+                else
+                    _selectedTab = TabIndex.General;
+                break;
+            case TabIndex.Logging:
+                // Only draw logging if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
+                if (showProfiler)
+                    _loggingCategory?.Draw();
                 else
                     _selectedTab = TabIndex.General;
                 break;

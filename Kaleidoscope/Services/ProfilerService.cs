@@ -325,7 +325,7 @@ public sealed class ProfilerService : IDisposable, IService
     {
         _log = log;
         _configService = configService;
-        _log.Debug("ProfilerService initialized");
+        LogService.Debug(LogCategory.UI, "ProfilerService initialized");
     }
 
     /// <summary>
@@ -404,7 +404,7 @@ public sealed class ProfilerService : IDisposable, IService
             }
         }
 
-        _log.Debug("ProfilerService: All stats reset");
+        LogService.Debug(LogCategory.UI, "ProfilerService: All stats reset");
     }
 
     /// <summary>
@@ -502,7 +502,7 @@ public sealed class ProfilerService : IDisposable, IService
 
     public void Dispose()
     {
-        _log.Debug("ProfilerService disposed");
+        LogService.Debug(LogCategory.UI, "ProfilerService disposed");
     }
 
     public enum ProfileTargetType
@@ -585,7 +585,7 @@ public sealed class ProfilerService : IDisposable, IService
                     // Log slow tool draws
                     if (_service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
                     {
-                        _service._log.Debug($"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
+                        LogService.Debug(LogCategory.UI, $"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
                     }
                     break;
             }
@@ -622,7 +622,7 @@ public sealed class ProfilerService : IDisposable, IService
             // Log slow child operations
             if (_service != null && _service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
             {
-                _service._log.Debug($"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
+                LogService.Debug(LogCategory.UI, $"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
             }
         }
     }

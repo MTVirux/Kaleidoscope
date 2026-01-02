@@ -248,7 +248,7 @@ public sealed class MTItemComboDropdown : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[MTItemComboDropdown] Error building item list: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[MTItemComboDropdown] Error building item list: {ex.Message}");
         }
         
         return items;

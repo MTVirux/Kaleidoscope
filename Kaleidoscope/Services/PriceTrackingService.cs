@@ -139,7 +139,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         _framework.Update += OnFrameworkUpdate;
 
-        _log.Debug("[PriceTracking] Service initialized with background thread for price updates");
+        LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Service initialized with background thread for price updates");
 
         _ = InitializeAsync();
     }
@@ -148,11 +148,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     {
         try
         {
-            _log.Debug("[PriceTracking] InitializeAsync starting");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] InitializeAsync starting");
             
             if (_disposed)
             {
-                _log.Debug("[PriceTracking] InitializeAsync - already disposed, exiting");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] InitializeAsync - already disposed, exiting");
                 return;
             }
             
@@ -172,15 +172,15 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             if (_disposed)
             {
-                _log.Debug("[PriceTracking] InitializeAsync - disposed after data fetch, exiting");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] InitializeAsync - disposed after data fetch, exiting");
                 return;
             }
             
             // Start WebSocket if enabled
-            _log.Debug($"[PriceTracking] InitializeAsync - Settings.Enabled = {Settings.Enabled}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] InitializeAsync - Settings.Enabled = {Settings.Enabled}");
             if (Settings.Enabled)
             {
-                _log.Debug("[PriceTracking] InitializeAsync - starting WebSocket");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] InitializeAsync - starting WebSocket");
                 await _webSocketService.StartAsync();
                 await _webSocketService.SubscribeToAllAsync();
                 
@@ -190,11 +190,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 await FetchStaleInventoryPricesAsync();
             }
 
-            _log.Debug("[PriceTracking] Initialization complete");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Initialization complete");
         }
         catch (Exception ex)
         {
-            _log.Error($"[PriceTracking] Initialization failed: {ex.Message}");
+            LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Initialization failed: {ex.Message}");
         }
     }
 
@@ -206,7 +206,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     {
         try
         {
-            _log.Debug("[PriceTracking] Populating recent sales cache from database...");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Populating recent sales cache from database...");
             
             // Get recent sales from DB (last 5 per item/world/hq type)
             var recentSales = DbService.GetRecentSalesForCache(
@@ -224,11 +224,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _recentSalesCache[key] = entry;
             }
             
-            _log.Debug($"[PriceTracking] Loaded {_recentSalesCache.Count} item/world combinations into recent sales cache");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Loaded {_recentSalesCache.Count} item/world combinations into recent sales cache");
         }
         catch (Exception ex)
         {
-            _log.Error($"[PriceTracking] Failed to populate recent sales cache: {ex.Message}");
+            LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Failed to populate recent sales cache: {ex.Message}");
         }
     }
 
@@ -305,7 +305,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 if (entry.OnMannequin)
                 {
                     var itemName = _itemDataService.GetItemName(entry.ItemId);
-                    _log.Verbose($"[PriceTracking] Ignoring mannequin sale for {itemName} ({entry.ItemId})");
+                    LogService.Verbose(LogCategory.PriceTracking, $"[PriceTracking] Ignoring mannequin sale for {itemName} ({entry.ItemId})");
                     return;
                 }
 
@@ -315,7 +315,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 if (previousPrice >= 10000 && entry.PricePerUnit >= (long)previousPrice * 100)
                 {
                     var itemName = _itemDataService.GetItemName(entry.ItemId);
-                    _log.Debug($"[PriceTracking] Ignoring price spike for {itemName} ({entry.ItemId}): {entry.PricePerUnit:N0} is 100x+ higher than previous {previousPrice:N0}");
+                    LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Ignoring price spike for {itemName} ({entry.ItemId}): {entry.PricePerUnit:N0} is 100x+ higher than previous {previousPrice:N0}");
                     return;
                 }
 
@@ -404,7 +404,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                             var itemName = _itemDataService.GetItemName(entry.ItemId);
                             var worldName = _worldData?.GetWorldName(entry.WorldId) ?? entry.WorldId.ToString();
                             var refType = Settings.UseMedianForReference ? "median" : "avg";
-                            _log.Debug($"[PriceTracking] Ignoring sale for {itemName} on {worldName}: " +
+                            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Ignoring sale for {itemName} on {worldName}: " +
                                 $"price {entry.PricePerUnit:N0} ({filterReason}), ref {referencePrice:N0} ({refType}), qty {entry.Quantity}");
                             return;
                         }
@@ -494,7 +494,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Error processing price update: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Error processing price update: {ex.Message}");
         }
     }
 
@@ -629,7 +629,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }
                 catch (Exception ex)
                 {
-                    LogService.Verbose($"[PriceTracking] Background batch write error: {ex.Message}");
+                    LogService.Verbose(LogCategory.PriceTracking, $"[PriceTracking] Background batch write error: {ex.Message}");
                 }
             }
         }
@@ -643,7 +643,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            LogService.Error($"[PriceTracking] Background worker crashed: {ex.Message}", ex);
+            LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Background worker crashed: {ex.Message}", ex);
         }
     }
 
@@ -743,7 +743,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try
         {
-            _log.Debug("[PriceTracking] Fetching world data from Universalis");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Fetching world data from Universalis");
 
             // Fetch worlds and data centers in parallel
             var worldsTask = _universalisService.GetWorldsAsync();
@@ -764,7 +764,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 };
                 _lastWorldDataFetch = DateTime.UtcNow;
 
-                _log.Debug($"[PriceTracking] Loaded {worlds.Count} worlds, {dataCenters.Count} data centers");
+                LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Loaded {worlds.Count} worlds, {dataCenters.Count} data centers");
                 
                 // Notify subscribers that world data is now available
                 OnWorldDataLoaded?.Invoke();
@@ -772,7 +772,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Warning($"[PriceTracking] Failed to fetch world data: {ex.Message}");
+            LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Failed to fetch world data: {ex.Message}");
         }
     }
 
@@ -785,7 +785,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         
         try
         {
-            _log.Debug("[PriceTracking] Fetching marketable items from Universalis");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Fetching marketable items from Universalis");
 
             var items = await _universalisService.GetMarketableItemsAsync();
 
@@ -794,12 +794,12 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _marketableItems = items.ToHashSet();
                 _lastMarketableItemsFetch = DateTime.UtcNow;
 
-                _log.Debug($"[PriceTracking] Loaded {items.Count} marketable items");
+                LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Loaded {items.Count} marketable items");
             }
         }
         catch (Exception ex)
         {
-            _log.Warning($"[PriceTracking] Failed to fetch marketable items: {ex.Message}");
+            LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Failed to fetch marketable items: {ex.Message}");
         }
     }
 
@@ -861,7 +861,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 return null;
             }
 
-            _log.Debug($"[PriceTracking] Fetching price for item {itemId} from API");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching price for item {itemId} from API");
 
             var data = await _universalisService.GetAggregatedDataAsync(scope, (uint)itemId);
             if (data?.Results == null || data.Results.Count == 0)
@@ -897,7 +897,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] API fetch failed for item {itemId}: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] API fetch failed for item {itemId}: {ex.Message}");
             return null;
         }
     }
@@ -1040,11 +1040,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             // Re-populate the full cache on background thread so main thread doesn't block
             PopulateInventoryValueCache();
 
-            _log.Debug($"[PriceTracking] Saved value snapshots for {characterIds.Count} characters (parallel)");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Saved value snapshots for {characterIds.Count} characters (parallel)");
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Error taking value snapshots: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Error taking value snapshots: {ex.Message}");
         }
     }
 
@@ -1091,11 +1091,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 _currencyTrackerService.QueueInventoryValueSample(charId, item, characterName);
             }
 
-            _log.Verbose($"[PriceTracking] Event-driven value samples for {characterIds.Count} characters");
+            LogService.Verbose(LogCategory.PriceTracking, $"[PriceTracking] Event-driven value samples for {characterIds.Count} characters");
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Error taking event-driven value snapshots: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Error taking event-driven value snapshots: {ex.Message}");
         }
     }
 
@@ -1109,11 +1109,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         {
             var historyData = DbService.GetAllInventoryValueHistory();
             _cacheService.SetInventoryValueCache(historyData);
-            _log.Debug($"[PriceTracking] Populated inventory value cache with {historyData.Count} records");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Populated inventory value cache with {historyData.Count} records");
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Error populating inventory value cache: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Error populating inventory value cache: {ex.Message}");
         }
     }
 
@@ -1134,7 +1134,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     var deleted = DbService.CleanupOldPriceData(settings.RetentionDays);
                     if (deleted > 0)
                     {
-                        _log.Debug($"[PriceTracking] Cleaned up {deleted} old records (time-based)");
+                        LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Cleaned up {deleted} old records (time-based)");
                     }
                     break;
 
@@ -1143,14 +1143,14 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     var deletedBySize = DbService.CleanupPriceDataBySize(maxBytes);
                     if (deletedBySize > 0)
                     {
-                        _log.Debug($"[PriceTracking] Cleaned up {deletedBySize} records (size-based)");
+                        LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Cleaned up {deletedBySize} records (size-based)");
                     }
                     break;
             }
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Cleanup error: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Cleanup error: {ex.Message}");
         }
 
         await Task.CompletedTask;
@@ -1186,7 +1186,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             var wid = _worldData?.GetWorldId(scope);
             if (!wid.HasValue) return;
 
-            _log.Debug($"[PriceTracking] Fetching prices for {itemIds.Count} inventory items");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching prices for {itemIds.Count} inventory items");
 
             // Fetch in batches of 100
             foreach (var batch in itemIds.Chunk(100))
@@ -1211,11 +1211,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 await Task.Delay(100);
             }
 
-            _log.Debug("[PriceTracking] Finished fetching inventory prices");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Finished fetching inventory prices");
         }
         catch (Exception ex)
         {
-            _log.Warning($"[PriceTracking] Error fetching inventory prices: {ex.Message}");
+            LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Error fetching inventory prices: {ex.Message}");
         }
     }
 
@@ -1246,7 +1246,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             if (allItemIds == null || allItemIds.Count == 0)
             {
-                _log.Debug("[PriceTracking] No inventory items to check for stale prices");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] No inventory items to check for stale prices");
                 return;
             }
 
@@ -1256,24 +1256,24 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             if (staleItemIds.Count == 0)
             {
-                _log.Debug("[PriceTracking] All inventory items have fresh price data");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] All inventory items have fresh price data");
                 return;
             }
 
             if (string.IsNullOrEmpty(scope))
             {
-                _log.Debug("[PriceTracking] No scope configured, skipping stale price fetch");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] No scope configured, skipping stale price fetch");
                 return;
             }
 
             var wid = _worldData?.GetWorldId(scope);
             if (!wid.HasValue)
             {
-                _log.Debug("[PriceTracking] No world ID for scope, skipping stale price fetch");
+                LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] No world ID for scope, skipping stale price fetch");
                 return;
             }
 
-            _log.Debug($"[PriceTracking] Fetching prices for {staleItemIds.Count} stale inventory items");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching prices for {staleItemIds.Count} stale inventory items");
 
             // Fetch in batches of 100
             var staleItemsList = staleItemIds.ToList();
@@ -1301,11 +1301,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 await Task.Delay(100);
             }
 
-            _log.Debug($"[PriceTracking] Finished fetching stale inventory prices ({staleItemIds.Count} items)");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Finished fetching stale inventory prices ({staleItemIds.Count} items)");
         }
         catch (Exception ex)
         {
-            _log.Warning($"[PriceTracking] Error fetching stale inventory prices: {ex.Message}");
+            LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Error fetching stale inventory prices: {ex.Message}");
         }
     }
 
@@ -1385,7 +1385,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[PriceTracking] Error getting top items: {ex.Message}");
+            LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Error getting top items: {ex.Message}");
         }
 
         return result;
@@ -1421,7 +1421,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     {
         if (!Settings.Enabled) return;
 
-        _log.Debug("[PriceTracking] Reconnecting WebSocket to apply channel subscription changes...");
+        LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Reconnecting WebSocket to apply channel subscription changes...");
         await _webSocketService.StopAsync();
         _webSocketService.ClearSubscribedChannels();
         await _webSocketService.StartAsync();
@@ -1435,7 +1435,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     {
         try
         {
-            _log.Debug("[PriceTracking] Resetting all Universalis data...");
+            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Resetting all Universalis data...");
 
             // Clear in-memory cache
             _priceCache.Clear();
@@ -1445,18 +1445,18 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             if (result)
             {
-                _log.Info("[PriceTracking] All Universalis data has been reset");
+                LogService.Info(LogCategory.PriceTracking, "[PriceTracking] All Universalis data has been reset");
             }
             else
             {
-                _log.Warning("[PriceTracking] Failed to reset Universalis data");
+                LogService.Warning(LogCategory.PriceTracking, "[PriceTracking] Failed to reset Universalis data");
             }
 
             return result;
         }
         catch (Exception ex)
         {
-            _log.Error($"[PriceTracking] Error resetting data: {ex.Message}");
+            LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Error resetting data: {ex.Message}");
             return false;
         }
     }

@@ -149,7 +149,7 @@ public abstract class ToolComponent : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ToolComponent] DrawSettings error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] DrawSettings error: {ex.Message}");
         }
     }
     
@@ -290,7 +290,7 @@ public abstract class ToolComponent : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"Tooltip error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Tooltip error: {ex.Message}");
         }
     }
     
@@ -300,12 +300,12 @@ public abstract class ToolComponent : IDisposable
     /// Logs a debug message with the tool type name as context.
     /// Use this instead of hardcoding tool names in log messages.
     /// </summary>
-    protected void LogDebug(string message) => LogService.Debug($"[{GetType().Name}] {message}");
+    protected void LogDebug(string message) => LogService.Debug(LogCategory.UI, $"[{GetType().Name}] {message}");
     
     /// <summary>
     /// Logs an error message with the tool type name as context.
     /// </summary>
-    protected void LogError(string message) => LogService.Error($"[{GetType().Name}] {message}");
+    protected void LogError(string message) => LogService.Error(LogCategory.UI, $"[{GetType().Name}] {message}");
     
     #endregion
     

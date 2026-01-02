@@ -176,7 +176,7 @@ public class WindowContentContainer
             if (_anyDragging == dragging) return;
             _anyDragging = dragging;
             try { OnDraggingChanged?.Invoke(dragging); }
-            catch (Exception ex) { LogService.Debug($"OnDraggingChanged error: {ex.Message}"); }
+            catch (Exception ex) { LogService.Debug(LogCategory.UI, $"OnDraggingChanged error: {ex.Message}"); }
         }
 
         // Update the global resizing state and notify if changed
@@ -185,7 +185,7 @@ public class WindowContentContainer
             if (_anyResizing == resizing) return;
             _anyResizing = resizing;
             try { OnResizingChanged?.Invoke(resizing); }
-            catch (Exception ex) { LogService.Debug($"OnResizingChanged error: {ex.Message}"); }
+            catch (Exception ex) { LogService.Debug(LogCategory.UI, $"OnResizingChanged error: {ex.Message}"); }
         }
 
         // Notify host that layout has changed. Dirty state is managed by LayoutEditingService.
@@ -201,7 +201,7 @@ public class WindowContentContainer
             }
             catch (Exception ex)
             {
-                LogService.Error("Error while invoking OnLayoutChanged", ex);
+                LogService.Error(LogCategory.UI, "Error while invoking OnLayoutChanged", ex);
             }
         }
 
@@ -219,7 +219,7 @@ public class WindowContentContainer
             var registration = _toolRegistry.FirstOrDefault(r => r.Id == source.Id);
             if (registration == null)
             {
-                LogService.Debug($"DuplicateTool: no registration found for tool id='{source.Id}'");
+                LogService.Debug(LogCategory.UI, $"DuplicateTool: no registration found for tool id='{source.Id}'");
                 return;
             }
 
@@ -228,7 +228,7 @@ public class WindowContentContainer
             var newTool = registration.Factory(source.Position + offset);
             if (newTool == null)
             {
-                LogService.Debug($"DuplicateTool: factory returned null for tool id='{source.Id}'");
+                LogService.Debug(LogCategory.UI, $"DuplicateTool: factory returned null for tool id='{source.Id}'");
                 return;
             }
 
@@ -258,15 +258,15 @@ public class WindowContentContainer
 
             // Copy tool-specific settings
             var toolSettings = source.ExportToolSettings();
-            LogService.Debug($"DuplicateTool: exported {toolSettings?.Count ?? 0} settings from source tool");
+            LogService.Debug(LogCategory.UI, $"DuplicateTool: exported {toolSettings?.Count ?? 0} settings from source tool");
             if (toolSettings?.Count > 0)
             {
                 newTool.ImportToolSettings(toolSettings);
-                LogService.Debug($"DuplicateTool: imported settings to new tool");
+                LogService.Debug(LogCategory.UI, $"DuplicateTool: imported settings to new tool");
             }
 
             AddToolInstance(newTool);
-            LogService.Debug($"DuplicateTool: duplicated tool id='{source.Id}'");
+            LogService.Debug(LogCategory.UI, $"DuplicateTool: duplicated tool id='{source.Id}'");
         }
 
         #endregion
@@ -433,7 +433,7 @@ public class WindowContentContainer
             if (tool == null) return;
             
             _tools.Add(new ToolEntry(tool));
-            LogService.Debug($"AddToolInstance: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
+            LogService.Debug(LogCategory.UI, $"AddToolInstance: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
             
             // Subscribe to tool settings changes to trigger layout saves
             tool.OnToolSettingsChanged += () => MarkLayoutDirty();
@@ -453,7 +453,7 @@ public class WindowContentContainer
             try
             {
                 _tools.Add(new ToolEntry(tool));
-                LogService.Debug($"AddToolInstanceWithoutDirty: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
+                LogService.Debug(LogCategory.UI, $"AddToolInstanceWithoutDirty: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={_tools.Count}");
                 
                 // Subscribe to tool settings changes to trigger layout saves
                 tool.OnToolSettingsChanged += () => MarkLayoutDirty();
@@ -504,7 +504,7 @@ public class WindowContentContainer
                 
                 ret.Add(state);
             }
-            LogService.Debug($"ExportLayout: exported {ret.Count} tools");
+            LogService.Debug(LogCategory.UI, $"ExportLayout: exported {ret.Count} tools");
             return ret;
         }
 
@@ -527,10 +527,10 @@ public class WindowContentContainer
 
         private void ApplyLayoutInternal(List<ToolLayoutState> layout)
         {
-            LogService.Debug($"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
+            LogService.Debug(LogCategory.UI, $"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
             if (_toolRegistry.Count > 0)
             {
-                LogService.Debug($"ApplyLayout: registered tool factories ({_toolRegistry.Count})");
+                LogService.Debug(LogCategory.UI, $"ApplyLayout: registered tool factories ({_toolRegistry.Count})");
             }
             
             // Track the original tool count before adding new tools
@@ -593,7 +593,7 @@ public class WindowContentContainer
                             match.ImportToolSettings(entry.ToolSettings);
                         }
                         if (matchIdx >= 0) matchedIndices.Add(matchIdx);
-                        LogService.Debug($"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
+                        LogService.Debug(LogCategory.UI, $"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
                         continue;
                     }
 
@@ -603,7 +603,7 @@ public class WindowContentContainer
                     var reg = _toolRegistry.Find(r => string.Equals(r.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
                     if (reg != null && reg.Factory != null)
                     {
-                        LogService.Debug($"ApplyLayout: attempting registry factory by id='{reg.Id}' for entry '{entry.Id}'");
+                        LogService.Debug(LogCategory.UI, $"ApplyLayout: attempting registry factory by id='{reg.Id}' for entry '{entry.Id}'");
                         try
                         {
                             var created = reg.Factory(entry.Position);
@@ -633,13 +633,13 @@ public class WindowContentContainer
                                 AddToolInstance(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
                                 matchedIndices.Add(_tools.Count - 1);
-                                LogService.Debug($"ApplyLayout: created tool via registry id='{reg.Id}' for entry '{entry.Id}' (type={entry.Type})");
+                                LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via registry id='{reg.Id}' for entry '{entry.Id}' (type={entry.Type})");
                                 createdAny = true;
                             }
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"ApplyLayout: registry factory '{reg.Id}' threw: {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"ApplyLayout: registry factory '{reg.Id}' threw: {ex.Message}");
                         }
                     }
 
@@ -678,14 +678,14 @@ public class WindowContentContainer
                                     AddToolInstance(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
                                     matchedIndices.Add(_tools.Count - 1);
-                                    LogService.Debug($"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
+                                    LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
                                     createdAny = true;
                                     break;
                                 }
                             }
                             catch (Exception ex)
                             {
-                                LogService.Debug($"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
+                                LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
                             }
                         }
                     }
@@ -704,7 +704,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Debug($"[WindowContentContainer] Type.GetType failed for '{entry.Type}': {ex.Message}");
+                                LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Type.GetType failed for '{entry.Type}': {ex.Message}");
                                 found = null;
                             }
                             if (found == null)
@@ -718,7 +718,7 @@ public class WindowContentContainer
                                     }
                                     catch (Exception ex)
                                     {
-                                        LogService.Debug($"[WindowContentContainer] Assembly type resolution failed for '{entry.Type}' in {asm.GetName().Name}: {ex.Message}");
+                                        LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Assembly type resolution failed for '{entry.Type}' in {asm.GetName().Name}: {ex.Message}");
                                     }
                                 }
                             }
@@ -753,34 +753,34 @@ public class WindowContentContainer
                                         AddToolInstance(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
                                         matchedIndices.Add(_tools.Count - 1);
-                                        LogService.Debug($"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
+                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
                                         createdAny = true;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogService.Debug($"Reflection creation failed for type '{entry.Type}': {ex.Message}");
+                                    LogService.Debug(LogCategory.UI, $"Reflection creation failed for type '{entry.Type}': {ex.Message}");
                                 }
                             }
                             else
                             {
-                                LogService.Debug($"ApplyLayout: reflection could not find type '{entry.Type}'");
+                                LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection could not find type '{entry.Type}'");
                             }
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"ApplyLayout: reflection attempt failed for '{entry.Type}': {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection attempt failed for '{entry.Type}': {ex.Message}");
                         }
                     }
 
                     if (!createdAny)
                     {
-                        LogService.Debug($"ApplyLayout: no existing tool matched and creation failed for '{entry.Id}' / '{entry.Type}'");
+                        LogService.Debug(LogCategory.UI, $"ApplyLayout: no existing tool matched and creation failed for '{entry.Id}' / '{entry.Type}'");
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error($"Failed to apply layout entry '{entry.Id}'", ex);
+                    LogService.Error(LogCategory.UI, $"Failed to apply layout entry '{entry.Id}'", ex);
                 }
             }
             
@@ -793,13 +793,13 @@ public class WindowContentContainer
                     try
                     {
                         var tool = _tools[i].Tool;
-                        LogService.Debug($"ApplyLayout: removing unmatched tool '{tool.Title}' (id={tool.Id}, type={tool.GetType().FullName})");
+                        LogService.Debug(LogCategory.UI, $"ApplyLayout: removing unmatched tool '{tool.Title}' (id={tool.Id}, type={tool.GetType().FullName})");
                         tool.Dispose();
                         _tools.RemoveAt(i);
                     }
                     catch (Exception ex)
                     {
-                        LogService.Error($"Failed to remove unmatched tool at index {i}", ex);
+                        LogService.Error(LogCategory.UI, $"Failed to remove unmatched tool at index {i}", ex);
                     }
                 }
             }
@@ -862,7 +862,7 @@ public class WindowContentContainer
                 }
                 catch (Exception ex)
                 {
-                    LogService.Debug($"Window resize tool update error: {ex.Message}");
+                    LogService.Debug(LogCategory.UI, $"Window resize tool update error: {ex.Message}");
                 }
             }
             _lastContentSize = availRegion;
@@ -926,7 +926,7 @@ public class WindowContentContainer
                 }
                 catch (Exception ex)
                 {
-                    LogService.Debug($"Grid drawing error: {ex.Message}");
+                    LogService.Debug(LogCategory.UI, $"Grid drawing error: {ex.Message}");
                 }
             }
 
@@ -956,7 +956,7 @@ public class WindowContentContainer
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"Tool click detection error: {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"Tool click detection error: {ex.Message}");
                         }
 
                         if (clickedTool >= 0)
@@ -1040,14 +1040,14 @@ public class WindowContentContainer
                                                 }
                                                 catch (Exception ex)
                                                 {
-                                                    LogService.Debug($"Tool snap error: {ex.Message}");
+                                                    LogService.Debug(LogCategory.UI, $"Tool snap error: {ex.Message}");
                                                 }
                                                 AddToolInstance(tool);
                                             }
                                         }
                                         catch (Exception ex)
                                         {
-                                            LogService.Error($"Failed to create tool '{reg.Id}'", ex);
+                                            LogService.Error(LogCategory.UI, $"Failed to create tool '{reg.Id}'", ex);
                                         }
                                     }
                                 }
@@ -1086,7 +1086,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Error("Failed to save layout", ex);
+                                LogService.Error(LogCategory.UI, "Failed to save layout", ex);
                             }
                         }
                         
@@ -1101,7 +1101,7 @@ public class WindowContentContainer
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogService.Error("Failed to discard changes", ex);
+                                    LogService.Error(LogCategory.UI, "Failed to discard changes", ex);
                                 }
                             }
                         }
@@ -1136,7 +1136,7 @@ public class WindowContentContainer
                                         }
                                         catch (Exception ex)
                                         {
-                                            LogService.Error($"Failed to load layout '{n}'", ex);
+                                            LogService.Error(LogCategory.UI, $"Failed to load layout '{n}'", ex);
                                         }
                                         ImGui.CloseCurrentPopup();
                                     }
@@ -1144,7 +1144,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Error("Failed to get layout names", ex);
+                                LogService.Error(LogCategory.UI, "Failed to get layout names", ex);
                             }
 
                             ImGui.EndMenu();
@@ -1170,13 +1170,13 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Error("Failed to open layouts manager", ex);
+                                LogService.Error(LogCategory.UI, "Failed to open layouts manager", ex);
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogService.Error("Error in context menu", ex);
+                        LogService.Error(LogCategory.UI, "Error in context menu", ex);
                     }
 
                     ImGui.EndPopup();
@@ -1206,7 +1206,7 @@ public class WindowContentContainer
                                     }
                                     catch (Exception ex)
                                     {
-                                        LogService.Error($"Failed to save layout '{_layoutNameBuffer}'", ex);
+                                        LogService.Error(LogCategory.UI, $"Failed to save layout '{_layoutNameBuffer}'", ex);
                                     }
                                     ImGui.CloseCurrentPopup();
                                     _saveLayoutPopupOpen = false;
@@ -1221,7 +1221,7 @@ public class WindowContentContainer
                         }
                         catch (Exception ex)
                         {
-                            LogService.Error("Error in save layout popup", ex);
+                            LogService.Error(LogCategory.UI, "Error in save layout popup", ex);
                         }
                         ImGui.EndPopup();
                     }
@@ -1248,7 +1248,7 @@ public class WindowContentContainer
                                     }
                                     catch (Exception ex)
                                     {
-                                        LogService.Error($"Failed to create layout '{_newLayoutNameBuffer}'", ex);
+                                        LogService.Error(LogCategory.UI, $"Failed to create layout '{_newLayoutNameBuffer}'", ex);
                                     }
                                     try
                                     {
@@ -1257,7 +1257,7 @@ public class WindowContentContainer
                                     }
                                     catch (Exception ex)
                                     {
-                                        LogService.Error($"Failed to load new layout '{_newLayoutNameBuffer}'", ex);
+                                        LogService.Error(LogCategory.UI, $"Failed to load new layout '{_newLayoutNameBuffer}'", ex);
                                     }
                                     ImGui.CloseCurrentPopup();
                                     _newLayoutPopupOpen = false;
@@ -1272,7 +1272,7 @@ public class WindowContentContainer
                         }
                         catch (Exception ex)
                         {
-                            LogService.Error("Error in new layout popup", ex);
+                            LogService.Error(LogCategory.UI, "Error in new layout popup", ex);
                         }
                         ImGui.EndPopup();
                     }
@@ -1309,7 +1309,7 @@ public class WindowContentContainer
                 }
                 catch (Exception ex)
                 {
-                    LogService.Debug($"Background draw error: {ex.Message}");
+                    LogService.Debug(LogCategory.UI, $"Background draw error: {ex.Message}");
                 }
                 
                 // Calculate internal padding in pixels (replaces default window padding)
@@ -1373,7 +1373,7 @@ public class WindowContentContainer
                     // Check if main window is being interacted with - if so, block new tool interactions
                     var mainWindowInteracting = false;
                     try { mainWindowInteracting = IsMainWindowInteracting?.Invoke() ?? false; }
-                    catch (Exception ex) { LogService.Debug($"[WindowContentContainer] IsMainWindowInteracting callback error: {ex.Message}"); }
+                    catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[WindowContentContainer] IsMainWindowInteracting callback error: {ex.Message}"); }
 
                     // Check if any OTHER tool is already being dragged or resized - if so, block new interactions
                     var anotherToolInteracting = false;
@@ -1471,7 +1471,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Debug($"Drag snap error: {ex.Message}");
+                                LogService.Debug(LogCategory.UI, $"Drag snap error: {ex.Message}");
                             }
                             // mark layout changed on drag end so host can persist
                             MarkLayoutDirty();
@@ -1542,7 +1542,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Debug($"Resize snap error: {ex.Message}");
+                                LogService.Debug(LogCategory.UI, $"Resize snap error: {ex.Message}");
                             }
                             // mark layout changed on resize end so host can persist
                             MarkLayoutDirty();
@@ -1598,7 +1598,7 @@ public class WindowContentContainer
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"Tool context find error: {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"Tool context find error: {ex.Message}");
                         }
                     }
 
@@ -1669,7 +1669,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Error("Failed to duplicate tool", ex);
+                                LogService.Error(LogCategory.UI, "Failed to duplicate tool", ex);
                             }
                             ImGui.CloseCurrentPopup();
                         }
@@ -1722,7 +1722,7 @@ public class WindowContentContainer
                             }
                             catch (Exception ex)
                             {
-                                LogService.Error("Failed to remove component", ex);
+                                LogService.Error(LogCategory.UI, "Failed to remove component", ex);
                             }
                             ImGui.CloseCurrentPopup();
                         }
@@ -1732,7 +1732,7 @@ public class WindowContentContainer
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Error in tool context menu", ex);
+                    LogService.Error(LogCategory.UI, "Error in tool context menu", ex);
                 }
                 ImGui.EndPopup();
                 _contextToolIndex = -1;
@@ -1832,7 +1832,7 @@ public class WindowContentContainer
             }
             catch (Exception ex)
             {
-                LogService.Error("Error in tool rename modal", ex);
+                LogService.Error(LogCategory.UI, "Error in tool rename modal", ex);
             }
 
             ImGui.EndPopup();
@@ -1906,12 +1906,12 @@ public class WindowContentContainer
                         if (settings != null && OnSavePreset != null)
                         {
                             OnSavePreset.Invoke(toolToSave.Id, _savePresetName.Trim(), settings);
-                            LogService.Debug($"Saved preset '{_savePresetName}' for tool type '{toolToSave.Id}'");
+                            LogService.Debug(LogCategory.UI, $"Saved preset '{_savePresetName}' for tool type '{toolToSave.Id}'");
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogService.Error("Error saving preset", ex);
+                        LogService.Error(LogCategory.UI, "Error saving preset", ex);
                     }
                     ImGui.CloseCurrentPopup();
                     _savePresetPopupOpen = false;
@@ -1935,7 +1935,7 @@ public class WindowContentContainer
             }
             catch (Exception ex)
             {
-                LogService.Error("Error in save preset modal", ex);
+                LogService.Error(LogCategory.UI, "Error in save preset modal", ex);
             }
 
             ImGui.EndPopup();
@@ -1977,7 +1977,7 @@ public class WindowContentContainer
             }
             catch (Exception ex)
             {
-                LogService.Error("Error while drawing tool settings", ex);
+                LogService.Error(LogCategory.UI, "Error while drawing tool settings", ex);
                 ImGui.TextColored(new Vector4(1f, 0.3f, 0.3f, 1f), "Error rendering settings");
             }
 
@@ -1989,7 +1989,7 @@ public class WindowContentContainer
         }
         catch (Exception ex)
         {
-            LogService.Error("Error in tool settings window", ex);
+            LogService.Error(LogCategory.UI, "Error in tool settings window", ex);
         }
 
         ImGui.End();
@@ -2112,11 +2112,11 @@ public class WindowContentContainer
                     
                     // Notify host to persist the settings
                     try { OnGridSettingsChanged?.Invoke(_currentGridSettings); }
-                    catch (Exception ex) { LogService.Debug($"OnGridSettingsChanged error: {ex.Message}"); }
+                    catch (Exception ex) { LogService.Debug(LogCategory.UI, $"OnGridSettingsChanged error: {ex.Message}"); }
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Error applying grid settings", ex);
+                    LogService.Error(LogCategory.UI, "Error applying grid settings", ex);
                 }
                 
                 ImGui.CloseCurrentPopup();
@@ -2133,7 +2133,7 @@ public class WindowContentContainer
         }
         catch (Exception ex)
         {
-            LogService.Error("Error in grid resolution modal", ex);
+            LogService.Error(LogCategory.UI, "Error in grid resolution modal", ex);
         }
         
         ImGui.EndPopup();
@@ -2225,7 +2225,7 @@ public class WindowContentContainer
         }
         catch (Exception ex)
         {
-            LogService.Error("Error in unsaved changes dialog", ex);
+            LogService.Error(LogCategory.UI, "Error in unsaved changes dialog", ex);
         }
 
         ImGui.EndPopup();

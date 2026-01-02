@@ -321,11 +321,11 @@ public sealed class CurrenciesCategory
             }
             
             _configService.MarkDirty();
-            LogService.Debug($"[CurrenciesCategory] Saved color for {dataType}: {color?.ToString("X8") ?? "(cleared)"}");
+            LogService.Debug(LogCategory.UI, $"[CurrenciesCategory] Saved color for {dataType}: {color?.ToString("X8") ?? "(cleared)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save item color for {dataType}", ex);
+            LogService.Error(LogCategory.UI, $"Failed to save item color for {dataType}", ex);
         }
     }
 

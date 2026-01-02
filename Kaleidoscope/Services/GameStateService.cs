@@ -102,13 +102,13 @@ public static unsafe class GameStateService
     public static InventoryManager* InventoryManagerInstance()
     {
         try { return InventoryManager.Instance(); }
-        catch (Exception ex) { LogService.Debug($"InventoryManager.Instance() failed: {ex.Message}"); return null; }
+        catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"InventoryManager.Instance() failed: {ex.Message}"); return null; }
     }
 
     public static RetainerManager* RetainerManagerInstance()
     {
         try { return RetainerManager.Instance(); }
-        catch (Exception ex) { LogService.Debug($"RetainerManager.Instance() failed: {ex.Message}"); return null; }
+        catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"RetainerManager.Instance() failed: {ex.Message}"); return null; }
     }
 
     #endregion
@@ -125,7 +125,7 @@ public static unsafe class GameStateService
         get
         {
             try { return _objectTable?.LocalPlayer?.Name.ToString(); }
-            catch (Exception ex) { LogService.Debug($"LocalPlayer name access failed: {ex.Message}"); return null; }
+            catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"LocalPlayer name access failed: {ex.Message}"); return null; }
         }
     }
 
@@ -157,7 +157,7 @@ public static unsafe class GameStateService
         }
         catch (Exception ex)
         {
-            LogService.Debug($"GetAllRetainersGil failed: {ex.Message}");
+            LogService.Debug(LogCategory.GameState, $"GetAllRetainersGil failed: {ex.Message}");
             return 0;
         }
     }
@@ -184,7 +184,7 @@ public static unsafe class GameStateService
         }
         catch (Exception ex)
         {
-            LogService.Debug($"GetActiveRetainerItemCount failed: {ex.Message}");
+            LogService.Debug(LogCategory.GameState, $"GetActiveRetainerItemCount failed: {ex.Message}");
             return 0;
         }
     }
@@ -203,7 +203,7 @@ public static unsafe class GameStateService
         }
         catch (Exception ex)
         {
-            LogService.Debug($"GetActiveRetainerCrystalCount failed: {ex.Message}");
+            LogService.Debug(LogCategory.GameState, $"GetActiveRetainerCrystalCount failed: {ex.Message}");
             return 0;
         }
     }
@@ -291,7 +291,7 @@ public static unsafe class GameStateService
         }
         catch (Exception ex)
         {
-            LogService.Debug($"GetFreeCompanyCredits failed: {ex.Message}");
+            LogService.Debug(LogCategory.GameState, $"GetFreeCompanyCredits failed: {ex.Message}");
             return null;
         }
     }

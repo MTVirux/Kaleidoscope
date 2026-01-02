@@ -355,7 +355,7 @@ public sealed class CharactersCategory
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CharactersCategory] Failed to refresh character list: {ex.Message}");
+            LogService.Debug(LogCategory.Character, $"[CharactersCategory] Failed to refresh character list: {ex.Message}");
             _characters = new();
         }
     }
@@ -377,11 +377,11 @@ public sealed class CharactersCategory
             // Invalidate DB cache to pick up changes
             _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
-            LogService.Debug($"[CharactersCategory] Saved display name for {cid}: {trimmed ?? "(cleared)"}");
+            LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved display name for {cid}: {trimmed ?? "(cleared)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save display name for {cid}", ex);
+            LogService.Error(LogCategory.Character, $"Failed to save display name for {cid}", ex);
         }
         finally
         {
@@ -404,11 +404,11 @@ public sealed class CharactersCategory
             // Invalidate DB cache to pick up changes
             _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
-            LogService.Debug($"[CharactersCategory] Saved time series color for {cid}: {color?.ToString("X8") ?? "(cleared)"}");
+            LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved time series color for {cid}: {color?.ToString("X8") ?? "(cleared)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save time series color for {cid}", ex);
+            LogService.Error(LogCategory.Character, $"Failed to save time series color for {cid}", ex);
         }
         finally
         {

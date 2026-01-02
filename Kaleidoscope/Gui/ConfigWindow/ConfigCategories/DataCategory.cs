@@ -45,7 +45,7 @@ public sealed class DataCategory
             }
             catch (Exception ex)
             {
-                LogService.Error("Failed to export CSV", ex);
+                LogService.Error(LogCategory.UI, "Failed to export CSV", ex);
             }
         }
 
@@ -101,11 +101,11 @@ public sealed class DataCategory
                 try
                 {
                     _currencyTrackerService.ClearAllData();
-                    LogService.Info("Cleared all GilTracker data");
+                    LogService.Info(LogCategory.UI, "Cleared all GilTracker data");
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Failed to clear data", ex);
+                    LogService.Error(LogCategory.UI, "Failed to clear data", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -125,11 +125,11 @@ public sealed class DataCategory
                 try
                 {
                     var count = _currencyTrackerService.CleanUnassociatedCharacters();
-                    LogService.Info($"Cleaned {count} unassociated character records");
+                    LogService.Info(LogCategory.UI, $"Cleaned {count} unassociated character records");
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Failed to sanitize data", ex);
+                    LogService.Error(LogCategory.UI, "Failed to sanitize data", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -183,12 +183,12 @@ public sealed class DataCategory
                     _importStatus = $"Imported {_importCount} characters from AutoRetainer";
                     if (updatedCount > 0)
                         _importStatus += $" ({updatedCount} updated with new gil values)";
-                    LogService.Info(_importStatus);
+                    LogService.Info(LogCategory.UI, _importStatus);
                 }
                 catch (Exception ex)
                 {
                     _importStatus = $"Import failed: {ex.Message}";
-                    LogService.Error("Failed to import from AutoRetainer", ex);
+                    LogService.Error(LogCategory.UI, "Failed to import from AutoRetainer", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }

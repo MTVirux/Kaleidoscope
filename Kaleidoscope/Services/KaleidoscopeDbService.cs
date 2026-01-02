@@ -117,7 +117,7 @@ public sealed class KaleidoscopeDbService : IDisposable
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] Failed to initialize database: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Failed to initialize database: {ex.Message}", ex);
                 _connection = null;
             }
         }
@@ -152,7 +152,7 @@ public sealed class KaleidoscopeDbService : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[KaleidoscopeDb] Failed to initialize read connection: {ex.Message}");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Failed to initialize read connection: {ex.Message}");
             _readConnection = null;
         }
     }
@@ -320,7 +320,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
         catch (Exception ex)
         {
-            LogService.Error($"[KaleidoscopeDb] Migration failed: {ex.Message}", ex);
+            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Migration failed: {ex.Message}", ex);
         }
     }
 
@@ -354,7 +354,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             using var alterCmd = _connection.CreateCommand();
             alterCmd.CommandText = "ALTER TABLE item_prices ADD COLUMN last_sale_nq INTEGER NOT NULL DEFAULT 0";
             alterCmd.ExecuteNonQuery();
-            LogService.Debug("[KaleidoscopeDb] Migration: Added last_sale_nq column to item_prices");
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added last_sale_nq column to item_prices");
         }
 
         if (!hasLastSaleHq)
@@ -362,7 +362,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             using var alterCmd = _connection.CreateCommand();
             alterCmd.CommandText = "ALTER TABLE item_prices ADD COLUMN last_sale_hq INTEGER NOT NULL DEFAULT 0";
             alterCmd.ExecuteNonQuery();
-            LogService.Debug("[KaleidoscopeDb] Migration: Added last_sale_hq column to item_prices");
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added last_sale_hq column to item_prices");
         }
     }
 
@@ -393,7 +393,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
                 CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
             createCmd.ExecuteNonQuery();
-            LogService.Debug("[KaleidoscopeDb] Migration: Created inventory_value_items table");
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Created inventory_value_items table");
         }
     }
 
@@ -426,7 +426,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             using var alterCmd = _connection.CreateCommand();
             alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN display_name TEXT";
             alterCmd.ExecuteNonQuery();
-            LogService.Debug("[KaleidoscopeDb] Migration: Added display_name column to character_names");
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added display_name column to character_names");
         }
     }
 
@@ -459,7 +459,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             using var alterCmd = _connection.CreateCommand();
             alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN time_series_color INTEGER";
             alterCmd.ExecuteNonQuery();
-            LogService.Debug("[KaleidoscopeDb] Migration: Added time_series_color column to character_names");
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added time_series_color column to character_names");
         }
     }
 
@@ -506,7 +506,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetOrCreateSeries failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetOrCreateSeries failed: {ex.Message}", ex);
                 return null;
             }
         }
@@ -535,7 +535,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetLastValue failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLastValue failed: {ex.Message}");
                 return null;
             }
         }
@@ -569,7 +569,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetLastValueForCharacter failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLastValueForCharacter failed: {ex.Message}");
                 return null;
             }
         }
@@ -621,7 +621,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetLatestValuesForVariable failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLatestValuesForVariable failed: {ex.Message}");
             }
         }
 
@@ -649,7 +649,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] InsertPoint failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] InsertPoint failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -704,7 +704,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetPoints failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPoints failed: {ex.Message}");
             }
         }
 
@@ -745,7 +745,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetPointsSince failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsSince failed: {ex.Message}");
             }
         }
 
@@ -787,7 +787,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetAllPoints failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllPoints failed: {ex.Message}");
             }
         }
 
@@ -865,7 +865,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetAllPointsBatch failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllPointsBatch failed: {ex.Message}");
             }
         }
 
@@ -943,7 +943,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetPointsBatchWithSuffix failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsBatchWithSuffix failed: {ex.Message}");
             }
         }
 
@@ -1023,7 +1023,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetPointsInWindow failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsInWindow failed: {ex.Message}");
             }
         }
 
@@ -1063,7 +1063,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetDataTimeRange failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetDataTimeRange failed: {ex.Message}");
             }
         }
 
@@ -1102,7 +1102,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetAvailableCharacters failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAvailableCharacters failed: {ex.Message}");
             }
         }
 
@@ -1138,7 +1138,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetAllVariablesWithPrefix failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllVariablesWithPrefix failed: {ex.Message}");
             }
         }
 
@@ -1189,7 +1189,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] SaveCharacterName failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterName failed: {ex.Message}");
                 return false;
             }
         }
@@ -1226,7 +1226,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] SaveCharacterDisplayName failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterDisplayName failed: {ex.Message}");
                 return false;
             }
         }
@@ -1263,7 +1263,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] SaveCharacterTimeSeriesColor failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterTimeSeriesColor failed: {ex.Message}");
                 return false;
             }
         }
@@ -1380,7 +1380,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetCharacterNameCache failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterNameCache failed: {ex.Message}");
             }
         }
         
@@ -1492,7 +1492,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ClearCharacterData failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearCharacterData failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -1518,12 +1518,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.CommandText = "DELETE FROM series WHERE variable = $v";
                 cmd.ExecuteNonQuery();
 
-                LogService.Info($"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
                 return true;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ClearAllData failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllData failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -1578,12 +1578,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.CommandText = "DELETE FROM sale_records";
                 cmd.ExecuteNonQuery();
 
-                LogService.Info("[KaleidoscopeDb] Cleared all data from all tables");
+                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all data from all tables");
                 return true;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ClearAllTables failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllTables failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -1644,7 +1644,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] GetPointsInRange failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsInRange failed: {ex.Message}");
             }
         }
 
@@ -1698,7 +1698,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] CountPointsInRange failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] CountPointsInRange failed: {ex.Message}");
                 return (0, 0);
             }
         }
@@ -1742,12 +1742,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.Parameters.AddWithValue("$end", end.Ticks);
 
                 var deleted = cmd.ExecuteNonQuery();
-                LogService.Info($"[KaleidoscopeDb] Deleted {deleted} points for '{variable}' between {start:O} and {end:O}");
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Deleted {deleted} points for '{variable}' between {start:O} and {end:O}");
                 return deleted;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] DeletePointsInRange failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeletePointsInRange failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -1818,7 +1818,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ExportPointsInRangeToCsv failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ExportPointsInRangeToCsv failed: {ex.Message}", ex);
             }
         }
 
@@ -1842,12 +1842,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 using var cmd = _connection.CreateCommand();
                 cmd.CommandText = "VACUUM";
                 cmd.ExecuteNonQuery();
-                LogService.Info("[KaleidoscopeDb] VACUUM completed successfully");
+                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] VACUUM completed successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] VACUUM failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] VACUUM failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -1901,20 +1901,20 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     tx.Commit();
-                    LogService.Info($"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated characters");
+                    LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated characters");
                     return idsToRemove.Count;
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error($"[KaleidoscopeDb] Transaction failed: {ex.Message}", ex);
+                    LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Transaction failed: {ex.Message}", ex);
                     try { tx.Rollback(); } 
-                    catch (Exception rollbackEx) { LogService.Debug($"[KaleidoscopeDb] Rollback also failed: {rollbackEx.Message}"); }
+                    catch (Exception rollbackEx) { LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Rollback also failed: {rollbackEx.Message}"); }
                     return 0;
                 }
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] CleanUnassociatedCharacters failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanUnassociatedCharacters failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -1978,7 +1978,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
+                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
                     }
                 }
 
@@ -1993,13 +1993,13 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
+                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[KaleidoscopeDb] MigrateStoredNames failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] MigrateStoredNames failed: {ex.Message}");
             }
         }
     }
@@ -2063,7 +2063,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ExportToCsv failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ExportToCsv failed: {ex.Message}", ex);
             }
         }
 
@@ -2117,7 +2117,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetRetainerItemCount failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetRetainerItemCount failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -2210,7 +2210,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                     }
 
                     transaction.Commit();
-                    LogService.Verbose($"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
+                    LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
                 }
                 catch
                 {
@@ -2220,7 +2220,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveInventoryCache failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryCache failed: {ex.Message}", ex);
             }
         }
     }
@@ -2296,7 +2296,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetInventoryCache failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryCache failed: {ex.Message}", ex);
                 return null;
             }
         }
@@ -2377,7 +2377,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetAllInventoryCaches failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryCaches failed: {ex.Message}", ex);
             }
         }
 
@@ -2457,7 +2457,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetAllInventoryCachesAllCharacters failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryCachesAllCharacters failed: {ex.Message}", ex);
             }
         }
 
@@ -2486,7 +2486,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] DeleteInventoryCache failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteInventoryCache failed: {ex.Message}", ex);
             }
         }
     }
@@ -2537,7 +2537,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetItemCountSummary failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemCountSummary failed: {ex.Message}", ex);
             }
         }
 
@@ -2587,7 +2587,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveItemPrice failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveItemPrice failed: {ex.Message}", ex);
             }
         }
     }
@@ -2655,7 +2655,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveItemPricesBatch failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveItemPricesBatch failed: {ex.Message}", ex);
             }
         }
     }
@@ -2685,7 +2685,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SavePriceHistory failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SavePriceHistory failed: {ex.Message}", ex);
             }
         }
     }
@@ -2726,7 +2726,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetItemPrice failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPrice failed: {ex.Message}", ex);
             }
         }
 
@@ -2774,7 +2774,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetMinPrice failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMinPrice failed: {ex.Message}", ex);
             }
         }
 
@@ -2832,7 +2832,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetItemPricesBatch failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPricesBatch failed: {ex.Message}", ex);
             }
         }
 
@@ -2891,7 +2891,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetItemPricesDetailedBatch failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPricesDetailedBatch failed: {ex.Message}", ex);
             }
         }
 
@@ -2940,7 +2940,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetStaleItemIds failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetStaleItemIds failed: {ex.Message}", ex);
             }
         }
 
@@ -3021,7 +3021,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveInventoryValueHistory failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryValueHistory failed: {ex.Message}", ex);
             }
         }
     }
@@ -3069,7 +3069,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetInventoryValueHistory failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryValueHistory failed: {ex.Message}", ex);
             }
         }
 
@@ -3118,7 +3118,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetAllInventoryValueHistory failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryValueHistory failed: {ex.Message}", ex);
             }
         }
 
@@ -3167,7 +3167,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetAggregatedInventoryValueHistory failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAggregatedInventoryValueHistory failed: {ex.Message}", ex);
             }
         }
 
@@ -3260,7 +3260,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetInventoryValueHistoryStats failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryValueHistoryStats failed: {ex.Message}", ex);
             }
         }
 
@@ -3297,12 +3297,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 cmd.CommandText = "DELETE FROM sale_records";
                 cmd.ExecuteNonQuery();
 
-                LogService.Info("[KaleidoscopeDb] Cleared all price tracking data");
+                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all price tracking data");
                 return true;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] ClearAllPriceData failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllPriceData failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -3338,7 +3338,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveSaleRecord failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSaleRecord failed: {ex.Message}", ex);
             }
         }
     }
@@ -3402,7 +3402,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] SaveSaleRecordsBatch failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSaleRecordsBatch failed: {ex.Message}", ex);
             }
         }
     }
@@ -3435,7 +3435,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetMostRecentSalePrice failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMostRecentSalePrice failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -3470,7 +3470,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetMostRecentSalePriceForWorld failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMostRecentSalePriceForWorld failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -3560,7 +3560,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetLatestSalePrices failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetLatestSalePrices failed: {ex.Message}", ex);
             }
         }
 
@@ -3635,7 +3635,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetRecentSalesForCache failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetRecentSalesForCache failed: {ex.Message}", ex);
             }
         }
 
@@ -3707,7 +3707,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetSaleRecords failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetSaleRecords failed: {ex.Message}", ex);
             }
         }
 
@@ -3736,7 +3736,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] DeleteSaleRecord failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteSaleRecord failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -3876,7 +3876,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                                 updateItemCmd.ExecuteNonQuery();
                             }
 
-                            LogService.Debug($"[KaleidoscopeDb] Recalculated {historyToUpdate.Count} inventory value history records for item {saleItemId.Value} (new price: {newPrice})");
+                            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Recalculated {historyToUpdate.Count} inventory value history records for item {saleItemId.Value} (new price: {newPrice})");
                         }
                     }
 
@@ -3891,7 +3891,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] DeleteSaleRecordWithHistoryCleanup failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteSaleRecordWithHistoryCleanup failed: {ex.Message}", ex);
                 return false;
             }
         }
@@ -3916,7 +3916,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetSaleRecordCount failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetSaleRecordCount failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -3953,14 +3953,14 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
                 if (deleted > 0)
                 {
-                    LogService.Debug($"[KaleidoscopeDb] Cleaned up {deleted} old price/value/sale records");
+                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {deleted} old price/value/sale records");
                 }
 
                 return deleted;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] CleanupOldPriceData failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanupOldPriceData failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -3991,7 +3991,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] GetPriceDataSize failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetPriceDataSize failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -4038,14 +4038,14 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
                 if (totalDeleted > 0)
                 {
-                    LogService.Debug($"[KaleidoscopeDb] Cleaned up {totalDeleted} price history/sale records to fit size limit");
+                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} price history/sale records to fit size limit");
                 }
 
                 return totalDeleted;
             }
             catch (Exception ex)
             {
-                LogService.Error($"[KaleidoscopeDb] CleanupPriceDataBySize failed: {ex.Message}", ex);
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanupPriceDataBySize failed: {ex.Message}", ex);
                 return 0;
             }
         }
@@ -4099,13 +4099,13 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
                 walSizeAfter = new FileInfo(walPath).Length;
 
             var bytesReclaimed = walSizeBefore - walSizeAfter;
-            LogService.Debug($"[KaleidoscopeDb] Checkpoint complete: reclaimed {bytesReclaimed:N0} bytes from WAL");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Checkpoint complete: reclaimed {bytesReclaimed:N0} bytes from WAL");
             
             return (true, bytesReclaimed);
         }
         catch (Exception ex)
         {
-            LogService.Error($"[KaleidoscopeDb] Checkpoint failed: {ex.Message}", ex);
+            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Checkpoint failed: {ex.Message}", ex);
             
             // Try to reopen read connection even on failure
             try { EnsureReadConnection(); } catch { /* ignore */ }
@@ -4153,13 +4153,13 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             var dbReclaimed = sizeBefore - sizeAfter;
             var totalReclaimed = walReclaimed + dbReclaimed;
             
-            LogService.Debug($"[KaleidoscopeDb] VacuumWithStats complete: reclaimed {dbReclaimed:N0} bytes from DB, {walReclaimed:N0} bytes from WAL");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] VacuumWithStats complete: reclaimed {dbReclaimed:N0} bytes from DB, {walReclaimed:N0} bytes from WAL");
             
             return (true, totalReclaimed);
         }
         catch (Exception ex)
         {
-            LogService.Error($"[KaleidoscopeDb] VacuumWithStats failed: {ex.Message}", ex);
+            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] VacuumWithStats failed: {ex.Message}", ex);
             return (false, 0);
         }
     }
@@ -4175,7 +4175,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[KaleidoscopeDb] Checkpoint on dispose failed: {ex.Message}");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Checkpoint on dispose failed: {ex.Message}");
         }
 
         lock (_writeLock)

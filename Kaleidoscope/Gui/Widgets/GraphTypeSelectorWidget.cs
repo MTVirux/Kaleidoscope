@@ -10,7 +10,10 @@ namespace Kaleidoscope.Gui.Widgets;
 public static class GraphTypeSelectorWidget
 {
     /// <summary>Display names for graph types.</summary>
-    private static readonly string[] GraphTypeNames = { "Area", "Line", "Stairs", "Bars" };
+    private static readonly string[] GraphTypeNames = { "Stairs", "Stairs Area" };
+    
+    /// <summary>Mapping from combo index to MTGraphType.</summary>
+    private static readonly MTGraphType[] GraphTypeValues = { MTGraphType.Stairs, MTGraphType.StairsArea };
 
     /// <summary>
     /// Draws a graph type selector dropdown.
@@ -24,10 +27,11 @@ public static class GraphTypeSelectorWidget
         bool changed = false;
 
         ImGui.SetNextItemWidth(width);
-        var typeIndex = (int)graphType;
+        var typeIndex = Array.IndexOf(GraphTypeValues, graphType);
+        if (typeIndex < 0) typeIndex = 0; // Default to first option if not found
         if (ImGui.Combo(label, ref typeIndex, GraphTypeNames, GraphTypeNames.Length))
         {
-            graphType = (MTGraphType)typeIndex;
+            graphType = GraphTypeValues[typeIndex];
             changed = true;
         }
 
@@ -51,10 +55,8 @@ public static class GraphTypeSelectorWidget
             ImGui.PushTextWrapPos(ImGui.GetFontSize() * 20.0f);
             ImGui.TextUnformatted(
                 "Graph visualization style:\n" +
-                "• Area: Filled area chart - good for showing volume\n" +
-                "• Line: Simple line chart\n" +
                 "• Stairs: Step chart showing discrete changes\n" +
-                "• Bars: Vertical bar chart");
+                "• Stairs Area: Step chart with filled area below");
             ImGui.PopTextWrapPos();
             ImGui.EndTooltip();
         }
@@ -71,10 +73,8 @@ public static class GraphTypeSelectorWidget
     {
         return graphType switch
         {
-            MTGraphType.Area => "Filled area chart - good for showing volume over time",
-            MTGraphType.Line => "Simple line chart",
             MTGraphType.Stairs => "Step chart showing discrete value changes",
-            MTGraphType.Bars => "Vertical bar chart",
+            MTGraphType.StairsArea => "Step chart with filled area below",
             _ => "Unknown graph type"
         };
     }

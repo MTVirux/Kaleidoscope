@@ -76,7 +76,7 @@ public partial class ItemSalesTrackingTool
         catch (Exception ex)
         {
             _errorMessage = $"Error fetching data: {ex.Message}";
-            LogService.Error($"[ItemSalesTrackingTool] FetchHistoryForItemsAsync error: {ex.Message}");
+            LogService.Error(LogCategory.UI, $"[ItemSalesTrackingTool] FetchHistoryForItemsAsync error: {ex.Message}");
         }
         finally
         {

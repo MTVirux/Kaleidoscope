@@ -658,12 +658,12 @@ public class ItemDetailsPopup
                 // Notify that inventory value history was modified
                 _currencyTrackerService.NotifyInventoryValueHistoryChanged();
                 
-                LogService.Debug($"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
+                LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
             }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error deleting sale: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error deleting sale: {ex.Message}");
         }
     }
 
@@ -682,7 +682,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
         }
     }
 
@@ -714,7 +714,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
             _localSalesLoaded = true;
         }
         finally
@@ -967,7 +967,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading inventory data: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading inventory data: {ex.Message}");
         }
     }
 
@@ -1137,7 +1137,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading inventory data async: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading inventory data async: {ex.Message}");
             _inventoryLoaded = true;
         }
         finally
@@ -1185,7 +1185,7 @@ public class ItemDetailsPopup
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
-            LogService.Debug($"[ItemDetailsPopup] Fetch error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Fetch error: {ex.Message}");
         }
         finally
         {

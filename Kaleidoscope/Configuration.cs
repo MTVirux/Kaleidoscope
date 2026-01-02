@@ -76,6 +76,18 @@ public class Configuration : IPluginConfiguration
     public bool DeveloperModeEnabled { get; set; } = false;
 
     /// <summary>
+    /// Enabled log categories for verbose/debug output filtering.
+    /// Only logs matching enabled categories will be emitted.
+    /// </summary>
+    public LogCategory EnabledLogCategories { get; set; } = LogCategory.None;
+
+    /// <summary>
+    /// Whether category-based log filtering is active.
+    /// When false, all logs pass through regardless of category.
+    /// </summary>
+    public bool LogCategoryFilteringEnabled { get; set; } = false;
+
+    /// <summary>
     /// Format for displaying character names throughout the UI.
     /// </summary>
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;

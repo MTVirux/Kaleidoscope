@@ -24,6 +24,10 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
             var dalamudLog = _services.GetService<IPluginLog>();
             LogService.Initialize(dalamudLog);
 
+            // Set up configuration for category-based log filtering
+            var configService = _services.GetService<ConfigurationService>();
+            LogService.SetConfiguration(configService.Config);
+
             var playerState = _services.GetService<IPlayerState>();
             var objectTable = _services.GetService<IObjectTable>();
             GameStateService.Initialize(playerState, objectTable);

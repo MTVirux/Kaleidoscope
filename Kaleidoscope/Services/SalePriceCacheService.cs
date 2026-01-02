@@ -52,7 +52,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
     {
         _log = log;
         _dbService = currencyTrackerService?.DbService;
-        _log.Debug("[SalePriceCache] Service initialized");
+        LogService.Debug(LogCategory.Cache, "[SalePriceCache] Service initialized");
     }
     
     #region Public Properties - Statistics
@@ -289,7 +289,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
         _globalSaleCache.Clear();
         _worldSaleCache.Clear();
         _batchSaleCache.Clear();
-        _log.Debug("[SalePriceCache] All caches cleared");
+        LogService.Debug(LogCategory.Cache, "[SalePriceCache] All caches cleared");
     }
     
     /// <summary>

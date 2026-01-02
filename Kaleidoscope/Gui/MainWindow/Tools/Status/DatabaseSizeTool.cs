@@ -154,7 +154,7 @@ public class DatabaseSizeTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DatabaseSizeTool] Failed to open directory: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[DatabaseSizeTool] Failed to open directory: {ex.Message}");
         }
     }
 

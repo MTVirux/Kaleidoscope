@@ -164,14 +164,14 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         {
             if (!_arIpc.IsAvailable)
             {
-                LogService.Debug("AutoRetainer not available for auto-import");
+                LogService.Debug(LogCategory.CurrencyTracker, "AutoRetainer not available for auto-import");
                 return;
             }
             
             var characters = _arIpc.GetAllCharacterData();
             if (characters.Count == 0)
             {
-                LogService.Debug("No characters returned from AutoRetainer");
+                LogService.Debug(LogCategory.CurrencyTracker, "No characters returned from AutoRetainer");
                 return;
             }
             
@@ -206,12 +206,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 var msg = $"Auto-imported {importCount} characters from AutoRetainer";
                 if (updatedCount > 0)
                     msg += $" ({updatedCount} updated with new gil values)";
-                LogService.Info(msg);
+                LogService.Info(LogCategory.CurrencyTracker, msg);
             }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"AutoRetainer auto-import failed: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, $"AutoRetainer auto-import failed: {ex.Message}");
         }
     }
 
@@ -237,7 +237,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+                LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
             }
 
             // Queue all changed values for background database write
@@ -297,7 +297,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[CurrencyTrackerService] Background write error: {ex.Message}");
+                        LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background write error: {ex.Message}");
                     }
                 }
             }
@@ -312,7 +312,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            LogService.Error($"[CurrencyTrackerService] Background worker crashed: {ex.Message}", ex);
+            LogService.Error(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background worker crashed: {ex.Message}", ex);
         }
     }
 
@@ -748,7 +748,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         catch (AggregateException) { /* Expected if task was canceled */ }
         catch (Exception ex)
         {
-            LogService.Debug($"[CurrencyTrackerService] Background worker shutdown error: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background worker shutdown error: {ex.Message}");
         }
 
         _cts.Dispose();

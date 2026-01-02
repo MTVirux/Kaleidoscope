@@ -306,7 +306,7 @@ public sealed class MTCharacterCombo : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[MTCharacterCombo] Error building character list: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[MTCharacterCombo] Error building character list: {ex.Message}");
         }
         
         return items;

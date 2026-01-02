@@ -72,7 +72,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
 
         _messageLogTimer = new System.Threading.Timer(LogMessageCounts, null, MessageLogIntervalMs, MessageLogIntervalMs);
 
-        _log.Verbose("[UniversalisWebSocket] Service initialized");
+        LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Service initialized");
     }
 
     /// <summary>
@@ -80,23 +80,23 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     /// </summary>
     public async Task StartAsync()
     {
-        _log.Verbose($"[UniversalisWebSocket] StartAsync called - disposed={_disposed}, enabled={Settings.Enabled}, connected={_isConnected}");
+        LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] StartAsync called - disposed={_disposed}, enabled={Settings.Enabled}, connected={_isConnected}");
         
         if (_disposed)
         {
-            _log.Verbose("[UniversalisWebSocket] Cannot start - already disposed");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Cannot start - already disposed");
             return;
         }
         
         if (!Settings.Enabled)
         {
-            _log.Verbose("[UniversalisWebSocket] Price tracking is disabled, not starting");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Price tracking is disabled, not starting");
             return;
         }
 
         if (_isConnected || _webSocket?.State == WebSocketState.Connecting)
         {
-            _log.Verbose("[UniversalisWebSocket] Already connected or connecting");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Already connected or connecting");
             return;
         }
 
@@ -108,7 +108,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     /// </summary>
     public async Task StopAsync()
     {
-        _log.Verbose("[UniversalisWebSocket] Stopping WebSocket connection");
+        LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Stopping WebSocket connection");
 
         _cts?.Cancel();
 
@@ -123,7 +123,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             }
             catch (Exception ex)
             {
-                _log.Verbose($"[UniversalisWebSocket] Error during close: {ex.Message}");
+                LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error during close: {ex.Message}");
             }
             finally
             {
@@ -140,7 +140,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     {
         if (_disposed)
         {
-            _log.Verbose("[UniversalisWebSocket] ConnectAsync - already disposed");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] ConnectAsync - already disposed");
             return;
         }
         
@@ -149,14 +149,14 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         var msSinceLastAttempt = (now - _lastConnectAttempt).TotalMilliseconds;
         if (msSinceLastAttempt < ReconnectDelayMs)
         {
-            _log.Verbose($"[UniversalisWebSocket] ConnectAsync - rate limited, {msSinceLastAttempt:F0}ms since last attempt");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] ConnectAsync - rate limited, {msSinceLastAttempt:F0}ms since last attempt");
             return;
         }
         _lastConnectAttempt = now;
 
         try
         {
-            _log.Verbose($"[UniversalisWebSocket] Connecting to {WebSocketUrl}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Connecting to {WebSocketUrl}");
 
             _cts?.Cancel();
             _cts = new CancellationTokenSource();
@@ -168,7 +168,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             await _webSocket.ConnectAsync(new Uri(WebSocketUrl), _cts.Token);
 
             _isConnected = true;
-            _log.Verbose("[UniversalisWebSocket] Connected successfully");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Connected successfully");
             OnConnectionStateChanged?.Invoke(true);
 
             // Re-subscribe to channels
@@ -179,7 +179,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Warning($"[UniversalisWebSocket] Connection failed: {ex.Message}");
+            LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Connection failed: {ex.Message}");
             _isConnected = false;
             OnConnectionStateChanged?.Invoke(false);
         }
@@ -204,7 +204,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    _log.Verbose("[UniversalisWebSocket] Server closed connection");
+                    LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Server closed connection");
                     break;
                 }
 
@@ -217,7 +217,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                 else if (result.MessageType == WebSocketMessageType.Text)
                 {
                     var text = System.Text.Encoding.UTF8.GetString(ms.ToArray());
-                    _log.Verbose($"[UniversalisWebSocket] Received text message: {text}");
+                    LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Received text message: {text}");
                 }
             }
         }
@@ -227,11 +227,11 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (WebSocketException ex)
         {
-            _log.Warning($"[UniversalisWebSocket] WebSocket error: {ex.Message}");
+            LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] WebSocket error: {ex.Message}");
         }
         catch (Exception ex)
         {
-            _log.Error($"[UniversalisWebSocket] Receive loop error: {ex.Message}");
+            LogService.Error(LogCategory.Universalis, $"[UniversalisWebSocket] Receive loop error: {ex.Message}");
         }
         finally
         {
@@ -241,7 +241,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             // Attempt reconnect if not cancelled
             if (!ct.IsCancellationRequested && Settings.Enabled)
             {
-                _log.Verbose("[UniversalisWebSocket] Scheduling reconnect");
+                LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Scheduling reconnect");
                 _ = Task.Delay(ReconnectDelayMs, CancellationToken.None).ContinueWith(_ => ConnectAsync());
             }
         }
@@ -277,13 +277,13 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                     ProcessSalesAdd(data);
                     break;
                 default:
-                    _log.Verbose($"[UniversalisWebSocket] Unknown event type: {eventType}");
+                    LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Unknown event type: {eventType}");
                     break;
             }
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error processing message: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error processing message: {ex.Message}");
         }
 
         await Task.CompletedTask;
@@ -329,7 +329,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error parsing BSON event type: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error parsing BSON event type: {ex.Message}");
         }
 
         return null;
@@ -415,7 +415,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error processing listings add: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error processing listings add: {ex.Message}");
         }
     }
 
@@ -453,7 +453,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error processing listings remove: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error processing listings remove: {ex.Message}");
         }
     }
 
@@ -492,7 +492,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error processing sales add: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error processing sales add: {ex.Message}");
         }
     }
 
@@ -526,7 +526,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] BSON parse error: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] BSON parse error: {ex.Message}");
         }
 
         return result;
@@ -644,7 +644,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         // Check if any channels are enabled
         if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
         {
-            _log.Verbose("[UniversalisWebSocket] No channels enabled, skipping subscription");
+            LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] No channels enabled, skipping subscription");
             return;
         }
 
@@ -705,11 +705,11 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         {
             var message = CreateSubscribeMessage(channel);
             await SendMessageAsync(message);
-            _log.Verbose($"[UniversalisWebSocket] Subscribed to: {channel}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Subscribed to: {channel}");
         }
         catch (Exception ex)
         {
-            _log.Warning($"[UniversalisWebSocket] Failed to subscribe to {channel}: {ex.Message}");
+            LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Failed to subscribe to {channel}: {ex.Message}");
         }
     }
 
@@ -732,11 +732,11 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         {
             var message = CreateUnsubscribeMessage(channel);
             await SendMessageAsync(message);
-            _log.Verbose($"[UniversalisWebSocket] Unsubscribed from: {channel}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Unsubscribed from: {channel}");
         }
         catch (Exception ex)
         {
-            _log.Warning($"[UniversalisWebSocket] Failed to unsubscribe from {channel}: {ex.Message}");
+            LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Failed to unsubscribe from {channel}: {ex.Message}");
         }
     }
 
@@ -750,7 +750,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         {
             _subscribedChannels.Clear();
         }
-        _log.Verbose("[UniversalisWebSocket] Cleared all subscribed channels");
+        LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Cleared all subscribed channels");
     }
 
     /// <summary>
@@ -778,11 +778,11 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             {
                 var message = CreateSubscribeMessage(channel);
                 await SendMessageAsync(message);
-                _log.Verbose($"[UniversalisWebSocket] Re-subscribed to: {channel}");
+                LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Re-subscribed to: {channel}");
             }
             catch (Exception ex)
             {
-                _log.Warning($"[UniversalisWebSocket] Failed to re-subscribe to {channel}: {ex.Message}");
+                LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Failed to re-subscribe to {channel}: {ex.Message}");
             }
         }
     }
@@ -875,7 +875,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         var total = listingsAdd + listingsRemove + salesAdd;
         if (total > 0)
         {
-            _log.Verbose($"[UniversalisWebSocket] Messages received: ListingsAdd={listingsAdd}, ListingsRemove={listingsRemove}, SalesAdd={salesAdd}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Messages received: ListingsAdd={listingsAdd}, ListingsRemove={listingsRemove}, SalesAdd={salesAdd}");
         }
     }
 
@@ -884,7 +884,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         if (_disposed) return;
         _disposed = true;
         
-        _log.Verbose("[UniversalisWebSocket] Disposing service");
+        LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Disposing service");
 
         // Dispose the message log timer
         try
@@ -894,7 +894,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error disposing message log timer: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error disposing message log timer: {ex.Message}");
         }
 
         // Cancel the token to stop the receive loop
@@ -918,7 +918,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             }
             catch (Exception ex)
             {
-                _log.Verbose($"[UniversalisWebSocket] Error aborting WebSocket: {ex.Message}");
+                LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error aborting WebSocket: {ex.Message}");
             }
             finally
             {
@@ -928,7 +928,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                 }
                 catch (Exception ex)
                 {
-                    _log.Verbose($"[UniversalisWebSocket] Error disposing WebSocket: {ex.Message}");
+                    LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error disposing WebSocket: {ex.Message}");
                 }
                 _webSocket = null;
             }
@@ -940,11 +940,11 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[UniversalisWebSocket] Error disposing CTS: {ex.Message}");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error disposing CTS: {ex.Message}");
         }
         _cts = null;
         _isConnected = false;
 
-        _log.Verbose("[UniversalisWebSocket] Disposed");
+        LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Disposed");
     }
 }

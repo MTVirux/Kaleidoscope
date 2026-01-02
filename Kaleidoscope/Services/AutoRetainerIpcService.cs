@@ -126,7 +126,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                 IsAvailable = true;
                 StopRetryTimer();
 #if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose($"AutoRetainer IPC connected, found {cids?.Count ?? 0} registered CIDs");
+                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC connected, found {cids?.Count ?? 0} registered CIDs");
 #endif
             }
             catch (Exception)
@@ -134,7 +134,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
                 IsAvailable = false;
                 StartRetryTimer();
 #if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose($"AutoRetainer not available: {ex.Message}");
+                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer not available: {ex.Message}");
 #endif
             }
             
@@ -143,7 +143,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to initialize AutoRetainer IPC: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to initialize AutoRetainer IPC: {ex.Message}");
 #endif
             IsAvailable = false;
             StartRetryTimer();
@@ -156,7 +156,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         
         _retryTimer = new Timer(_ => TryReconnect(), null, RetryIntervalMs, RetryIntervalMs);
 #if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose($"AutoRetainer IPC retry timer started (interval: {RetryIntervalMs}ms)");
+        LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC retry timer started (interval: {RetryIntervalMs}ms)");
 #endif
     }
 
@@ -167,7 +167,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         _retryTimer.Dispose();
         _retryTimer = null;
 #if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose("AutoRetainer IPC retry timer stopped");
+        LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer IPC retry timer stopped");
 #endif
     }
 
@@ -188,7 +188,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
             IsAvailable = true;
             StopRetryTimer();
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer IPC reconnected, found {cids?.Count ?? 0} registered CIDs");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC reconnected, found {cids?.Count ?? 0} registered CIDs");
 #endif
             
             // Re-initialize all subscribers now that AutoRetainer is available
@@ -212,14 +212,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             var cids = _getRegisteredCIDs.InvokeFunc();
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer returned {cids?.Count ?? 0} CIDs");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer returned {cids?.Count ?? 0} CIDs");
 #endif
             return cids;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get registered CIDs from AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to get registered CIDs from AutoRetainer: {ex.Message}");
 #endif
             IsAvailable = false;
             return null;
@@ -251,13 +251,13 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
             if (data == null)
             {
 #if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose($"AutoRetainer returned null data for CID {cid}");
+                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer returned null data for CID {cid}");
 #endif
                 return null;
             }
             
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer data type for CID {cid}: {data.GetType().FullName}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer data type for CID {cid}: {data.GetType().FullName}");
 #endif
             
             string name = "";
@@ -369,7 +369,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
             }
             
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer character: {name}@{world}, Gil: {gil}, FCID: {fcid}, Retainers: {retainers.Count}, Vessels: {vessels.Count}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character: {name}@{world}, Gil: {gil}, FCID: {fcid}, Retainers: {retainers.Count}, Vessels: {vessels.Count}");
 #endif
             
             // Note: FC gil is not available via IPC - FCData is stored separately in AutoRetainer
@@ -378,7 +378,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to get character data from AutoRetainer for CID {cid}: {ex.Message}\n{ex.StackTrace}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to get character data from AutoRetainer for CID {cid}: {ex.Message}\n{ex.StackTrace}");
 #endif
             return null;
         }
@@ -405,13 +405,13 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         if (cids == null || cids.Count == 0)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose("AutoRetainer returned no CIDs");
+            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer returned no CIDs");
 #endif
             return result;
         }
         
 #if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose($"Processing {cids.Count} CIDs from AutoRetainer");
+        LogService.Verbose(LogCategory.AutoRetainer, $"Processing {cids.Count} CIDs from AutoRetainer");
 #endif
         
         foreach (var cid in cids)
@@ -424,7 +424,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         }
         
 #if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose($"Returning {result.Count} characters from AutoRetainer");
+        LogService.Verbose(LogCategory.AutoRetainer, $"Returning {result.Count} characters from AutoRetainer");
 #endif
         return result;
     }
@@ -454,7 +454,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
 #endif
             return null;
         }
@@ -474,7 +474,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
 #endif
             return null;
         }
@@ -494,7 +494,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
 #endif
             return null;
         }
@@ -514,7 +514,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
 #endif
             return null;
         }
@@ -648,14 +648,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             _setSuppressed.InvokeAction(suppressed);
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer suppressed set to: {suppressed}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer suppressed set to: {suppressed}");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to set suppressed on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set suppressed on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -672,14 +672,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             _setMultiModeEnabled.InvokeAction(enabled);
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer Multi-Mode set to: {enabled}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer Multi-Mode set to: {enabled}");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to set Multi-Mode on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set Multi-Mode on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -696,14 +696,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             _abortAllTasks.InvokeAction();
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose("AutoRetainer tasks aborted");
+            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer tasks aborted");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to abort tasks on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to abort tasks on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -720,14 +720,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             _disableAllFunctions.InvokeAction();
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose("AutoRetainer all functions disabled");
+            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer all functions disabled");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to disable all functions on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to disable all functions on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -744,14 +744,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             _enableMultiMode.InvokeAction();
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose("AutoRetainer Multi-Mode enabled");
+            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer Multi-Mode enabled");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to enable Multi-Mode on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to enable Multi-Mode on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -770,14 +770,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         {
             var result = _relog.InvokeFunc(characterNameWithWorld);
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer relog to {characterNameWithWorld}: {result}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer relog to {characterNameWithWorld}: {result}");
 #endif
             return result;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to relog via AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to relog via AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -820,14 +820,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
             }
             
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer character {cid} retainers enabled set to: {enabled}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character {cid} retainers enabled set to: {enabled}");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to set character retainers enabled on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set character retainers enabled on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -870,14 +870,14 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
             }
             
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"AutoRetainer character {cid} deployables enabled set to: {enabled}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character {cid} deployables enabled set to: {enabled}");
 #endif
             return true;
         }
         catch (Exception)
         {
 #if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose($"Failed to set character deployables enabled on AutoRetainer: {ex.Message}");
+            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set character deployables enabled on AutoRetainer: {ex.Message}");
 #endif
             return false;
         }
@@ -899,7 +899,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
         // This is separate from OfflineCharacterData and there's no IPC exposed to modify it.
         // The WriteOfflineCharacterData IPC only writes character data, not the config.
 #if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose($"Cannot set retainer '{retainerName}' enabled state via IPC - AutoRetainer does not expose this functionality. Use AutoRetainer UI directly.");
+        LogService.Verbose(LogCategory.AutoRetainer, $"Cannot set retainer '{retainerName}' enabled state via IPC - AutoRetainer does not expose this functionality. Use AutoRetainer UI directly.");
 #endif
         return false;
     }

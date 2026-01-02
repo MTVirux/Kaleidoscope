@@ -126,7 +126,7 @@ public class LayoutItemWidget
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"[LayoutItemWidget] Export failed: {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"[LayoutItemWidget] Export failed: {ex.Message}");
                         }
                     }
                     

@@ -35,7 +35,7 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
 
         CreateEntry();
 
-        _log.Debug("TitleScreenMenuService initialized");
+        LogService.Debug(LogCategory.UI, "TitleScreenMenuService initialized");
     }
 
     private void CreateEntry()
@@ -48,17 +48,17 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
 
             if (!File.Exists(iconPath))
             {
-                _log.Warning($"Title screen icon not found at {iconPath}, skipping title screen menu entry");
+                LogService.Warning(LogCategory.UI, $"Title screen icon not found at {iconPath}, skipping title screen menu entry");
                 return;
             }
 
             var icon = _textureProvider.GetFromFile(iconPath);
             _menuEntry = _titleScreenMenu.AddEntry("Kaleidoscope", icon, OnMenuEntryClicked);
-            _log.Debug("Title screen menu entry added");
+            LogService.Debug(LogCategory.UI, "Title screen menu entry added");
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to add title screen menu entry: {ex}");
+            LogService.Error(LogCategory.UI, $"Failed to add title screen menu entry: {ex}");
         }
     }
 
@@ -70,11 +70,11 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
             {
                 _titleScreenMenu.RemoveEntry(_menuEntry);
                 _menuEntry = null;
-                _log.Debug("Title screen menu entry removed");
+                LogService.Debug(LogCategory.UI, "Title screen menu entry removed");
             }
             catch (Exception ex)
             {
-                _log.Error($"Failed to remove title screen menu entry: {ex}");
+                LogService.Error(LogCategory.UI, $"Failed to remove title screen menu entry: {ex}");
             }
         }
     }

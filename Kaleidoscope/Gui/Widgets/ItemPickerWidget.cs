@@ -422,7 +422,7 @@ public class ItemPickerWidget
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[ItemPickerWidget] Error building item cache: {ex.Message}");
+                LogService.Debug(LogCategory.UI, $"[ItemPickerWidget] Error building item cache: {ex.Message}");
                 _allItemsCache = new List<(uint, string)>();
                 _allItemsCacheById = new List<(uint, string)>();
             }

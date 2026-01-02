@@ -62,7 +62,7 @@ public sealed class ListingsService : IDisposable, IService
 
         _webSocketService.OnPriceUpdate += OnPriceUpdate;
 
-        _log.Debug("[ListingsService] Service initialized");
+        LogService.Debug(LogCategory.Listings, "[ListingsService] Service initialized");
     }
 
     /// <summary>
@@ -75,21 +75,21 @@ public sealed class ListingsService : IDisposable, IService
 
         try
         {
-            _log.Debug("[ListingsService] Starting initialization and backfill");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] Starting initialization and backfill");
             _backfillCts = new CancellationTokenSource();
 
             await BackfillStaleListingsAsync(worldData, marketableItems, _backfillCts.Token);
 
             _initialized = true;
-            _log.Debug("[ListingsService] Initialization complete");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] Initialization complete");
         }
         catch (OperationCanceledException)
         {
-            _log.Debug("[ListingsService] Backfill cancelled");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] Backfill cancelled");
         }
         catch (Exception ex)
         {
-            _log.Error($"[ListingsService] Initialization failed: {ex.Message}");
+            LogService.Error(LogCategory.Listings, $"[ListingsService] Initialization failed: {ex.Message}");
         }
     }
 
@@ -104,7 +104,7 @@ public sealed class ListingsService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Verbose($"[ListingsService] Error processing price update: {ex.Message}");
+            LogService.Verbose(LogCategory.Listings, $"[ListingsService] Error processing price update: {ex.Message}");
         }
     }
 
@@ -281,7 +281,7 @@ public sealed class ListingsService : IDisposable, IService
     {
         if (worldData == null)
         {
-            _log.Debug("[ListingsService] No world data available for backfill");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] No world data available for backfill");
             return;
         }
 
@@ -306,7 +306,7 @@ public sealed class ListingsService : IDisposable, IService
 
         if (allItemIds.Count == 0)
         {
-            _log.Debug("[ListingsService] No inventory items to backfill");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] No inventory items to backfill");
             return;
         }
 
@@ -316,7 +316,7 @@ public sealed class ListingsService : IDisposable, IService
 
         if (scopeAndWorldIds.Count == 0)
         {
-            _log.Debug("[ListingsService] No scope configured for backfill");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] No scope configured for backfill");
             return;
         }
 
@@ -339,11 +339,11 @@ public sealed class ListingsService : IDisposable, IService
 
             if (itemsToFetch.Count == 0)
             {
-                _log.Debug($"[ListingsService] All inventory items have fresh listings for scope '{scope}'");
+                LogService.Debug(LogCategory.Listings, $"[ListingsService] All inventory items have fresh listings for scope '{scope}'");
                 continue;
             }
 
-            _log.Debug($"[ListingsService] Backfilling {itemsToFetch.Count} stale/missing listings for scope '{scope}'...");
+            LogService.Debug(LogCategory.Listings, $"[ListingsService] Backfilling {itemsToFetch.Count} stale/missing listings for scope '{scope}'...");
 
             // Fetch in batches
             var batchNumber = 0;
@@ -355,7 +355,7 @@ public sealed class ListingsService : IDisposable, IService
 
                 try
                 {
-                    _log.Debug($"[ListingsService] Fetching batch {batchNumber}/{totalBatches} ({batch.Length} items) for scope '{scope}'...");
+                    LogService.Debug(LogCategory.Listings, $"[ListingsService] Fetching batch {batchNumber}/{totalBatches} ({batch.Length} items) for scope '{scope}'...");
 
                     var data = await _universalisService.GetMarketBoardDataAsync(
                         scope,
@@ -404,12 +404,12 @@ public sealed class ListingsService : IDisposable, IService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _log.Warning($"[ListingsService] Error fetching batch for scope '{scope}': {ex.Message}");
+                    LogService.Warning(LogCategory.Listings, $"[ListingsService] Error fetching batch for scope '{scope}': {ex.Message}");
                 }
             }
         }
 
-        _log.Debug($"[ListingsService] Backfill complete, fetched {fetched} listings from API");
+        LogService.Debug(LogCategory.Listings, $"[ListingsService] Backfill complete, fetched {fetched} listings from API");
     }
 
     /// <summary>
@@ -540,14 +540,14 @@ public sealed class ListingsService : IDisposable, IService
 
         if (string.IsNullOrEmpty(scope))
         {
-            _log.Debug("[ListingsService] No scope configured for manual backfill");
+            LogService.Debug(LogCategory.Listings, "[ListingsService] No scope configured for manual backfill");
             return;
         }
 
         var itemList = itemIds.ToList();
         if (itemList.Count == 0) return;
 
-        _log.Debug($"[ListingsService] Manual backfill for {itemList.Count} items from API...");
+        LogService.Debug(LogCategory.Listings, $"[ListingsService] Manual backfill for {itemList.Count} items from API...");
 
         foreach (var batch in itemList.Chunk(MaxBackfillBatchSize))
         {
@@ -596,7 +596,7 @@ public sealed class ListingsService : IDisposable, IService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _log.Warning($"[ListingsService] Error in manual backfill: {ex.Message}");
+                LogService.Warning(LogCategory.Listings, $"[ListingsService] Error in manual backfill: {ex.Message}");
             }
         }
     }
@@ -607,7 +607,7 @@ public sealed class ListingsService : IDisposable, IService
     public void ClearCache()
     {
         _listingsCache.Clear();
-        _log.Debug("[ListingsService] Cache cleared");
+        LogService.Debug(LogCategory.Listings, "[ListingsService] Cache cleared");
     }
 
     public void Dispose()
@@ -622,6 +622,6 @@ public sealed class ListingsService : IDisposable, IService
         try { _backfillCts?.Dispose(); }
         catch (Exception) { /* Ignore */ }
 
-        _log.Debug("[ListingsService] Disposed");
+        LogService.Debug(LogCategory.Listings, "[ListingsService] Disposed");
     }
 }

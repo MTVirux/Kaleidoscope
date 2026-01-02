@@ -143,7 +143,7 @@ public sealed class CachesCategory
         if (ImGui.Button("Clear Time Series Cache"))
         {
             _currencyTrackerService.CacheService.ClearAll();
-            LogService.Info("[CachesCategory] Cleared time series cache");
+            LogService.Info(LogCategory.Cache, "[CachesCategory] Cleared time series cache");
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Clears all cached time series data. Will reload from DB on next access.");
@@ -151,7 +151,7 @@ public sealed class CachesCategory
         if (ImGui.Button("Invalidate Inventory Cache"))
         {
             _inventoryCacheService.InvalidateAllCaches();
-            LogService.Info("[CachesCategory] Invalidated inventory cache");
+            LogService.Info(LogCategory.Cache, "[CachesCategory] Invalidated inventory cache");
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Marks inventory cache as dirty. Will reload from DB on next access.");
@@ -159,7 +159,7 @@ public sealed class CachesCategory
         if (ImGui.Button("Refresh Character Data"))
         {
             _characterDataService.MarkDirty();
-            LogService.Info("[CachesCategory] Marked character data cache as dirty");
+            LogService.Info(LogCategory.Cache, "[CachesCategory] Marked character data cache as dirty");
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Forces character data to refresh on next access.");

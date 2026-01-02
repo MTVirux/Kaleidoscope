@@ -102,3 +102,56 @@ public enum DataToolViewMode
     /// <summary>Display data as a time-series graph.</summary>
     Graph = 1
 }
+
+/// <summary>
+/// Categories for filtering debug/verbose log output.
+/// Each category corresponds to a major subsystem or service.
+/// </summary>
+[Flags]
+public enum LogCategory
+{
+    /// <summary>No categories enabled.</summary>
+    None = 0,
+
+    /// <summary>Database operations (SQLite queries, migrations, etc.).</summary>
+    Database = 1 << 0,
+
+    /// <summary>Time-series and data cache operations.</summary>
+    Cache = 1 << 1,
+
+    /// <summary>Game state access (inventory, retainers, currencies).</summary>
+    GameState = 1 << 2,
+
+    /// <summary>Price tracking and Universalis data storage.</summary>
+    PriceTracking = 1 << 3,
+
+    /// <summary>Universalis API and WebSocket communication.</summary>
+    Universalis = 1 << 4,
+
+    /// <summary>AutoRetainer IPC integration.</summary>
+    AutoRetainer = 1 << 5,
+
+    /// <summary>Currency and data tracking service.</summary>
+    CurrencyTracker = 1 << 6,
+
+    /// <summary>Inventory caching and scanning.</summary>
+    Inventory = 1 << 7,
+
+    /// <summary>Character data and name resolution.</summary>
+    Character = 1 << 8,
+
+    /// <summary>Layout persistence and editing.</summary>
+    Layout = 1 << 9,
+
+    /// <summary>UI rendering and tool components.</summary>
+    UI = 1 << 10,
+
+    /// <summary>Market listings service.</summary>
+    Listings = 1 << 11,
+
+    /// <summary>Configuration and settings.</summary>
+    Config = 1 << 12,
+
+    /// <summary>All categories enabled.</summary>
+    All = ~None
+}

@@ -356,11 +356,11 @@ public sealed class ItemsCategory
                 StoreHistory = true
             });
             _configService.MarkDirty();
-            LogService.Debug($"[ItemsCategory] Added item {itemId} to tracking with StoreHistory=true");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Added item {itemId} to tracking with StoreHistory=true");
         }
         else
         {
-            LogService.Debug($"[ItemsCategory] Item {itemId} already being tracked");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Item {itemId} already being tracked");
         }
     }
     
@@ -387,7 +387,7 @@ public sealed class ItemsCategory
         {
             _configService.MarkDirty();
             _itemNameCache.Remove(itemId);
-            LogService.Debug($"[ItemsCategory] Removed item {itemId} from tracking");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Removed item {itemId} from tracking");
         }
     }
     
@@ -395,7 +395,7 @@ public sealed class ItemsCategory
     {
         if (_currencyTrackerService == null)
         {
-            LogService.Debug("[ItemsCategory] Cannot delete item history: CurrencyTrackerService not available");
+            LogService.Debug(LogCategory.UI, "[ItemsCategory] Cannot delete item history: CurrencyTrackerService not available");
             return;
         }
         
@@ -416,11 +416,11 @@ public sealed class ItemsCategory
         var itemName = GetItemName(itemId);
         if (playerDeleted || retainerDeleted)
         {
-            LogService.Info($"[ItemsCategory] Deleted historical data for item '{itemName}' (ID: {itemId})");
+            LogService.Info(LogCategory.UI, $"[ItemsCategory] Deleted historical data for item '{itemName}' (ID: {itemId})");
         }
         else
         {
-            LogService.Debug($"[ItemsCategory] No historical data found for item '{itemName}' (ID: {itemId})");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] No historical data found for item '{itemName}' (ID: {itemId})");
         }
     }
     
@@ -586,7 +586,7 @@ public sealed class ItemsCategory
                         // Add with white color (0xFFFFFFFF in ABGR)
                         gameItemColors[itemId] = 0xFFFFFFFF;
                         _configService.MarkDirty();
-                        LogService.Debug($"[ItemsCategory] Added item {itemId} with default color");
+                        LogService.Debug(LogCategory.UI, $"[ItemsCategory] Added item {itemId} with default color");
                     }
                     _itemCombo.ClearSelection();
                 }
@@ -686,11 +686,11 @@ public sealed class ItemsCategory
             }
             
             _configService.MarkDirty();
-            LogService.Debug($"[ItemsCategory] Saved color for item {itemId}: {color?.ToString("X8") ?? "(removed)"}");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Saved color for item {itemId}: {color?.ToString("X8") ?? "(removed)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save game item color for {itemId}", ex);
+            LogService.Error(LogCategory.UI, $"Failed to save game item color for {itemId}", ex);
         }
     }
 

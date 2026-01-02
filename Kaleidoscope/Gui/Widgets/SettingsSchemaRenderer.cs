@@ -41,7 +41,7 @@ public static class SettingsSchemaRenderer
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[SettingsSchemaRenderer] Error drawing {def.Key}: {ex.Message}");
+                LogService.Debug(LogCategory.UI, $"[SettingsSchemaRenderer] Error drawing {def.Key}: {ex.Message}");
             }
         }
         
@@ -252,7 +252,7 @@ public static class SettingsSchemaRenderer
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[SettingsSchemaRenderer] Tooltip error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[SettingsSchemaRenderer] Tooltip error: {ex.Message}");
         }
     }
 }

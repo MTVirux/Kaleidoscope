@@ -792,7 +792,7 @@ public sealed class TestsCategory
         }
         catch (Exception ex)
         {
-            LogService.Error($"RunAllTestsAsync failed: {ex.Message}");
+            LogService.Error(LogCategory.UI, $"RunAllTestsAsync failed: {ex.Message}");
             _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message));
         }
         finally

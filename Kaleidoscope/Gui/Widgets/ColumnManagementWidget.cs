@@ -790,7 +790,7 @@ public static class ColumnManagementWidget
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ColumnManagementWidget] Error importing columns: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ColumnManagementWidget] Error importing columns: {ex.Message}");
         }
         
         return result;

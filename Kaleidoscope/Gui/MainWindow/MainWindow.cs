@@ -980,7 +980,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                 PersistWindowPositionIfChanged();
             }
         }
-        catch (Exception ex) { LogService.Debug($"[MainWindow] Draw failed: {ex.Message}"); }
+        catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[MainWindow] Draw failed: {ex.Message}"); }
         
         // Draw quick access bar if CTRL+ALT is held (drawn after window content)
         try
