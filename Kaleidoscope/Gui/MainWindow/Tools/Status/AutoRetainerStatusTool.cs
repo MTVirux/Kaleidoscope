@@ -52,7 +52,7 @@ public class AutoRetainerStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[AutoRetainerStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

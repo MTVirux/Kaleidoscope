@@ -173,11 +173,9 @@ public class LabelTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[LabelTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
-
-    public override bool HasSettings => true;
 
     protected override bool HasToolSettings => true;
     

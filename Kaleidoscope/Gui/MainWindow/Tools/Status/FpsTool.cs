@@ -99,7 +99,7 @@ public class FpsTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[FpsTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

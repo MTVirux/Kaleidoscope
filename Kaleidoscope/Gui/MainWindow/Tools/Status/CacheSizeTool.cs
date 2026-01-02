@@ -66,7 +66,7 @@ public class CacheSizeTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CacheSizeTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -91,7 +91,7 @@ public class CacheSizeTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CacheSizeTool] Failed to update cache stats: {ex.Message}");
+            LogDebug($"Failed to update cache stats: {ex.Message}");
             _cachedCharacterCount = 0;
             _cachedEntryCount = 0;
             _cachedItemCount = 0;

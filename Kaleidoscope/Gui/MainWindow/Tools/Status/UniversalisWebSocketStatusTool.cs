@@ -69,7 +69,7 @@ public class UniversalisWebSocketStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[UniversalisWebSocketStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

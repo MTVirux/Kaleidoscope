@@ -514,7 +514,7 @@ public partial class DataTool
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DataTool] LoadSeriesData error: {ex.Message}");
+            LogDebug($"LoadSeriesData error: {ex.Message}");
             return null;
         }
     }
@@ -710,7 +710,7 @@ public partial class DataTool
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DataTool] LoadMergedSeriesData error: {ex.Message}");
+            LogDebug($"LoadMergedSeriesData error: {ex.Message}");
             return null;
         }
     }
@@ -959,7 +959,7 @@ public partial class DataTool
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DataTool] GetRetainerNamesMap error: {ex.Message}");
+            LogDebug($"GetRetainerNamesMap error: {ex.Message}");
         }
         return retainerNames;
     }

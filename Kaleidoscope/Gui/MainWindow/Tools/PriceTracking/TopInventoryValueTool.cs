@@ -163,7 +163,7 @@ public class TopInventoryValueTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopInventoryValueTool] Error refreshing characters: {ex.Message}");
+            LogDebug($"Error refreshing characters: {ex.Message}");
         }
     }
 
@@ -250,7 +250,7 @@ public class TopInventoryValueTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopInventoryValueTool] Error refreshing: {ex.Message}");
+            LogDebug($"Error refreshing: {ex.Message}");
         }
         finally
         {
@@ -297,7 +297,7 @@ public class TopInventoryValueTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[TopInventoryValueTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -481,7 +481,7 @@ public class TopInventoryValueTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopInventoryValueTool] Error fetching tooltip data for item {itemId}: {ex.Message}");
+            LogDebug($"Error fetching tooltip data for item {itemId}: {ex.Message}");
             _tooltipCache[itemId] = new TooltipMarketData(null, DateTime.UtcNow, Warning: $"Error: {ex.Message}");
         }
     }
@@ -599,15 +599,12 @@ public class TopInventoryValueTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    protected override void DrawToolSettings()
     {
         try
         {
-            if (!MTTreeHelpers.DrawCollapsingSection("Top Items Settings", true))
-                return;
-                
             var settings = Settings;
 
             var maxItems = settings.MaxItems;
@@ -733,7 +730,7 @@ public class TopInventoryValueTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[TopInventoryValueTool] Settings error: {ex.Message}");
+            LogDebug($"Settings error: {ex.Message}");
         }
     }
 

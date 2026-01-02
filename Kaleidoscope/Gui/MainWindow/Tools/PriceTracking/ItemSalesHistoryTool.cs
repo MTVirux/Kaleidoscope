@@ -86,7 +86,7 @@ public class ItemSalesHistoryTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[ItemSalesHistoryTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -338,7 +338,7 @@ public class ItemSalesHistoryTool : ToolComponent
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
-            LogService.Debug($"[ItemSalesHistoryTool] Fetch error: {ex.Message}");
+            LogDebug($"Fetch error: {ex.Message}");
         }
         finally
         {
@@ -346,13 +346,10 @@ public class ItemSalesHistoryTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    protected override void DrawToolSettings()
     {
-        if (!MTTreeHelpers.DrawCollapsingSection("Item Sales History Settings", true))
-            return;
-
         // Default max entries
         var maxEntries = _maxEntries;
         if (ImGui.SliderInt("Default Max Entries", ref maxEntries, 10, 500))

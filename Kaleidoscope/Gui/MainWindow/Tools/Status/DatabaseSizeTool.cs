@@ -106,7 +106,7 @@ public class DatabaseSizeTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DatabaseSizeTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -175,7 +175,6 @@ public class DatabaseSizeTool : ToolComponent
         };
     }
 
-    public override bool HasSettings => true;
     protected override bool HasToolSettings => true;
     
     protected override object? GetToolSettingsSchema() => Schema;

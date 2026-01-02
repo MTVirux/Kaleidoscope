@@ -69,7 +69,7 @@ public class GettingStartedTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[GettingStartedTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

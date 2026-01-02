@@ -14,7 +14,6 @@ public abstract class StatusToolBase : ToolComponent
     /// </summary>
     public bool ShowDetails { get; set; } = true;
 
-    public override bool HasSettings => true;
     protected override bool HasToolSettings => true;
 
     protected override void DrawToolSettings()

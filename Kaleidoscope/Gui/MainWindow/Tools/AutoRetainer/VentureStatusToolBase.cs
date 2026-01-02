@@ -168,7 +168,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[{GetType().Name}] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -187,7 +187,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[{GetType().Name}] Refresh error: {ex.Message}");
+            LogDebug($"Refresh error: {ex.Message}");
         }
     }
 
@@ -485,7 +485,6 @@ public abstract class VentureStatusToolBase : ToolComponent
             : notReady.Concat(ready).ToList();
     }
 
-    public override bool HasSettings => true;
     protected override bool HasToolSettings => true;
 
     protected override void DrawToolSettings()

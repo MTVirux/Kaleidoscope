@@ -94,7 +94,7 @@ public class WebsocketFeedTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[WebsocketFeedTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -254,15 +254,12 @@ public class WebsocketFeedTool : ToolComponent
         ImGui.TextUnformatted($"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
     }
 
-    public override bool HasSettings => true;
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    protected override void DrawToolSettings()
     {
         try
         {
-            if (!MTTreeHelpers.DrawCollapsingSection("Websocket Feed Settings", true))
-                return;
-                
             var settings = Settings;
 
             // Max entries
@@ -334,7 +331,7 @@ public class WebsocketFeedTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[WebsocketFeedTool] Settings error: {ex.Message}");
+            LogDebug($"Settings error: {ex.Message}");
         }
     }
 

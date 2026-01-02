@@ -174,7 +174,7 @@ public partial class DataTool
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DataTool] RefreshTableData error: {ex.Message}");
+            LogDebug($"RefreshTableData error: {ex.Message}");
         }
     }
     
@@ -203,7 +203,7 @@ public partial class DataTool
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[DataTool] PopulateCurrencyData error: {ex.Message}");
+                LogDebug($"PopulateCurrencyData error: {ex.Message}");
             }
         }
     }
@@ -277,7 +277,7 @@ public partial class DataTool
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[DataTool] PopulateItemData error: {ex.Message}");
+                LogDebug($"PopulateItemData error: {ex.Message}");
             }
         }
     }

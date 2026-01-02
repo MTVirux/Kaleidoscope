@@ -64,7 +64,7 @@ public class UniversalisApiStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[UniversalisApiStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

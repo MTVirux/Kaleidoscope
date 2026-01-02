@@ -63,7 +63,7 @@ public class ImPlotReferenceTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ImPlotReferenceTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

@@ -132,7 +132,7 @@ public class ItemSalesTrackingTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[ItemSalesTrackingTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -379,7 +379,7 @@ public class ItemSalesTrackingTool : ToolComponent
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[ItemSalesTrackingTool] Error fetching batch history for scope {scope}: {ex.Message}");
+                        LogDebug($"Error fetching batch history for scope {scope}: {ex.Message}");
                     }
                 }
 
