@@ -293,4 +293,108 @@ public abstract class ToolComponent : IDisposable
             LogService.Debug($"Tooltip error: {ex.Message}");
         }
     }
+    
+    #region Logging Helpers
+    
+    /// <summary>
+    /// Logs a debug message with the tool type name as context.
+    /// Use this instead of hardcoding tool names in log messages.
+    /// </summary>
+    protected void LogDebug(string message) => LogService.Debug($"[{GetType().Name}] {message}");
+    
+    /// <summary>
+    /// Logs an error message with the tool type name as context.
+    /// </summary>
+    protected void LogError(string message) => LogService.Error($"[{GetType().Name}] {message}");
+    
+    #endregion
+    
+    #region Settings Serialization Helpers
+    
+    /// <summary>
+    /// Exports a Vector4 color to the settings dictionary with RGBA component keys.
+    /// Usage: ExportColor(dict, "ReadyColor", ReadyColor);
+    /// </summary>
+    protected static void ExportColor(Dictionary<string, object?> settings, string key, Vector4 color)
+    {
+        settings[$"{key}R"] = color.X;
+        settings[$"{key}G"] = color.Y;
+        settings[$"{key}B"] = color.Z;
+        settings[$"{key}A"] = color.W;
+    }
+    
+    /// <summary>
+    /// Imports a Vector4 color from the settings dictionary with RGBA component keys.
+    /// Usage: ReadyColor = ImportColor(settings, "ReadyColor", DefaultReadyColor);
+    /// </summary>
+    protected static Vector4 ImportColor(Dictionary<string, object?>? settings, string key, Vector4 defaultValue)
+    {
+        if (settings == null) return defaultValue;
+        return new Vector4(
+            GetSetting(settings, $"{key}R", defaultValue.X),
+            GetSetting(settings, $"{key}G", defaultValue.Y),
+            GetSetting(settings, $"{key}B", defaultValue.Z),
+            GetSetting(settings, $"{key}A", defaultValue.W));
+    }
+    
+    /// <summary>
+    /// Exports a HashSet to the settings dictionary as a List for JSON serialization.
+    /// Usage: ExportHashSet(dict, "HiddenCharacters", HiddenCharacters);
+    /// </summary>
+    protected static void ExportHashSet<T>(Dictionary<string, object?> settings, string key, HashSet<T> hashSet)
+    {
+        settings[key] = hashSet.ToList();
+    }
+    
+    /// <summary>
+    /// Imports a HashSet from the settings dictionary, handling JsonElement deserialization.
+    /// Usage: HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+    /// </summary>
+    protected static HashSet<T> ImportHashSet<T>(Dictionary<string, object?>? settings, string key, HashSet<T> defaultValue)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return defaultValue;
+        
+        try
+        {
+            // Handle System.Text.Json JsonElement (from JSON deserialization)
+            if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var result = new HashSet<T>();
+                foreach (var item in jsonElement.EnumerateArray())
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<T>(item.GetRawText());
+                    if (parsed != null)
+                        result.Add(parsed);
+                }
+                return result;
+            }
+            
+            // Handle Newtonsoft.Json JArray
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                return new HashSet<T>(jArray.ToObject<List<T>>() ?? new List<T>());
+            }
+            
+            // Handle direct List<T>
+            if (value is List<T> list)
+            {
+                return new HashSet<T>(list);
+            }
+            
+            // Handle IEnumerable<T>
+            if (value is IEnumerable<T> enumerable)
+            {
+                return new HashSet<T>(enumerable);
+            }
+        }
+        catch
+        {
+            // Fall through to default
+        }
+        
+        return defaultValue;
+    }
+    
+    #endregion
 }
