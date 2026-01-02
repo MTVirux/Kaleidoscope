@@ -88,6 +88,26 @@ public class Configuration : IPluginConfiguration
     public bool LogCategoryFilteringEnabled { get; set; } = false;
 
     /// <summary>
+    /// Whether to write logs to an external file in the plugin directory.
+    /// </summary>
+    public bool FileLoggingEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Maximum size of the log file in megabytes before rotation.
+    /// </summary>
+    public int FileLoggingMaxSizeMB { get; set; } = 10;
+
+    /// <summary>
+    /// Whether to include timestamps in file log entries.
+    /// </summary>
+    public bool FileLoggingIncludeTimestamps { get; set; } = true;
+
+    /// <summary>
+    /// Custom directory for log files. If empty, uses the default plugin config directory.
+    /// </summary>
+    public string FileLoggingDirectory { get; set; } = string.Empty;
+
+    /// <summary>
     /// Format for displaying character names throughout the UI.
     /// </summary>
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;

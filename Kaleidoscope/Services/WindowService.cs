@@ -21,6 +21,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly ConfigurationService _configService;
     private readonly StateService _stateService;
+    private readonly FileDialogService _fileDialogService;
     private readonly WindowSystem _windowSystem;
     private readonly MainWindow _mainWindow;
     private readonly ConfigWindow _configWindow;
@@ -32,6 +33,7 @@ public sealed class WindowService : IDisposable, IRequiredService
         IUiBuilder uiBuilder,
         ConfigurationService configService,
         StateService stateService,
+        FileDialogService fileDialogService,
         MainWindow mainWindow,
         ConfigWindow configWindow)
     {
@@ -39,6 +41,7 @@ public sealed class WindowService : IDisposable, IRequiredService
         _pluginInterface = pluginInterface;
         _configService = configService;
         _stateService = stateService;
+        _fileDialogService = fileDialogService;
         _mainWindow = mainWindow;
         _configWindow = configWindow;
         _uiBuilder = uiBuilder;
@@ -117,7 +120,11 @@ public sealed class WindowService : IDisposable, IRequiredService
         _uiBuilder.DisableGposeUiHide = isFullscreen;
     }
 
-    private void Draw() => _windowSystem.Draw();
+    private void Draw()
+    {
+        _windowSystem.Draw();
+        _fileDialogService.Draw();
+    }
 
     public void OpenMainWindow() => _mainWindow.IsOpen = true;
     public void OpenConfigWindow() => _configWindow.IsOpen = true;

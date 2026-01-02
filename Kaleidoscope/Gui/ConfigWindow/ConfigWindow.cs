@@ -217,6 +217,14 @@ public sealed class ConfigWindow : Window
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
         }
+        
+        // When focused, ensure this window stays above the fullscreen main window
+        // This handles the case where user clicks on this window after interacting with main window
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows))
+        {
+            var window = ImGuiP.GetCurrentWindow();
+            ImGuiP.BringWindowToDisplayFront(window);
+        }
 
         // Check if CTRL+ALT are held while this window is focused for profiler access
         // Or if developer mode is permanently enabled

@@ -75,7 +75,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         PopulateCacheAsync();
 
-        _log.Debug("[InventoryCacheService] Initialized");
+        LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Initialized");
     }
     
     /// <summary>
@@ -100,11 +100,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 }
                 _allCharactersCacheDirty = false;
                 
-                _log.Debug($"[InventoryCacheService] Pre-populated cache with {data.Count} inventory entries");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Pre-populated cache with {data.Count} inventory entries");
             }
             catch (Exception ex)
             {
-                _log.Error($"[InventoryCacheService] Failed to pre-populate cache: {ex.Message}");
+                LogService.Error(LogCategory.Inventory, $"[InventoryCacheService] Failed to pre-populate cache: {ex.Message}");
             }
             finally
             {
@@ -124,7 +124,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             // Schedule a cache update - this will scan and update the memory cache
             _pendingPlayerCache = true;
-            _log.Debug($"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
         }
     }
     
@@ -143,11 +143,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             var (success, bytesReclaimed) = _currencyTrackerService.DbService.Checkpoint();
             if (success && bytesReclaimed > 0)
-                _log.Debug($"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
         }
         catch (Exception ex)
         {
-            _log.Debug($"[InventoryCacheService] WAL checkpoint on logout failed: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] WAL checkpoint on logout failed: {ex.Message}");
         }
     }
     
@@ -235,13 +235,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     private void OnRetainerInventoryReady()
     {
-        _log.Debug("[InventoryCacheService] Retainer inventory ready, scheduling cache");
+        LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Retainer inventory ready, scheduling cache");
         _pendingRetainerCache = true;
     }
 
     private void OnRetainerClosed()
     {
-        _log.Debug("[InventoryCacheService] Retainer closed, resetting tracking");
+        LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Retainer closed, resetting tracking");
         ResetRetainerCacheTracking();
     }
 
@@ -301,11 +301,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
             UpdateMemoryCache(characterId, entry);
 
-            _log.Debug($"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
         catch (Exception ex)
         {
-            _log.Error($"[InventoryCacheService] Failed to cache player inventory: {ex.Message}");
+            LogService.Error(LogCategory.Inventory, $"[InventoryCacheService] Failed to cache player inventory: {ex.Message}");
         }
     }
 
@@ -367,11 +367,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 SampleTrackedItems(characterId, playerCache.Items);
             }
 
-            _log.Debug($"[InventoryCacheService] Cached retainer inventory '{retainerName}': {entry.Items.Count} items, {entry.Gil:N0} gil");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Cached retainer inventory '{retainerName}': {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
         catch (Exception ex)
         {
-            _log.Error($"[InventoryCacheService] Failed to cache retainer inventory: {ex.Message}");
+            LogService.Error(LogCategory.Inventory, $"[InventoryCacheService] Failed to cache retainer inventory: {ex.Message}");
         }
     }
 
@@ -422,13 +422,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     var entry = InventoryCacheEntry.ForRetainer(characterId, retainerId, retainer->NameString);
                     entry.Gil = retainer->Gil;
                     _currencyTrackerService.DbService.SaveInventoryCache(entry);
-                    _log.Debug($"[InventoryCacheService] Created placeholder for retainer '{retainer->NameString}'");
+                    LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Created placeholder for retainer '{retainer->NameString}'");
                 }
             }
         }
         catch (Exception ex)
         {
-            _log.Error($"[InventoryCacheService] Failed to cache retainer metadata: {ex.Message}");
+            LogService.Error(LogCategory.Inventory, $"[InventoryCacheService] Failed to cache retainer metadata: {ex.Message}");
         }
     }
 
@@ -469,7 +469,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[InventoryCacheService] Failed to scan container {containerType}: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Failed to scan container {containerType}: {ex.Message}");
         }
     }
 
@@ -687,12 +687,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
             if (trackedItems.Count > 0)
             {
-                _log.Debug($"[InventoryCacheService] Sampled {trackedItems.Count} tracked items (player + {retainerCaches.Count} retainers) for character {characterId}");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Sampled {trackedItems.Count} tracked items (player + {retainerCaches.Count} retainers) for character {characterId}");
             }
         }
         catch (Exception ex)
         {
-            _log.Debug($"[InventoryCacheService] Failed to sample tracked items: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Failed to sample tracked items: {ex.Message}");
         }
     }
 
@@ -726,7 +726,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         if (count > 0)
         {
-            _log.Debug($"[InventoryCacheService] Flushed {count} pending item samples ({reason})");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushed {count} pending item samples ({reason})");
         }
     }
 
@@ -823,7 +823,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _allCharactersCache = null;
         _pendingSamples.Clear();
 
-        _log.Debug("[InventoryCacheService] Disposed");
+        LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Disposed");
     }
 }
 

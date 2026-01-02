@@ -93,7 +93,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         LoadLayouts();
         SyncFromSubConfigs();
 
-        _log.Debug("ConfigurationService initialized with debounced save support");
+        LogService.Debug(LogCategory.Config, "ConfigurationService initialized with debounced save support");
     }
 
     private void NormalizeLayouts()
@@ -167,7 +167,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to load layouts: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Failed to load layouts: {ex.Message}");
         }
     }
 
@@ -293,7 +293,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         try
         {
             _pluginInterface.SavePluginConfig(Config);
-            _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
+            LogService.Info(LogCategory.Config, $"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
             
             Interlocked.Increment(ref _saveCount);
             _lastSaveTime = DateTime.UtcNow;
@@ -301,7 +301,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving plugin config: {ex}");
+            LogService.Error(LogCategory.Config, $"Error saving plugin config: {ex}");
         }
 
         SaveSubConfigs();
@@ -313,7 +313,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error invoking OnConfigChanged: {ex}");
+            LogService.Error(LogCategory.Config, $"Error invoking OnConfigChanged: {ex}");
         }
     }
 
@@ -351,7 +351,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error invoking OnActiveLayoutChanged: {ex}");
+            LogService.Error(LogCategory.Config, $"Error invoking OnActiveLayoutChanged: {ex}");
         }
     }
 
@@ -390,7 +390,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving sub-configs: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Error saving sub-configs: {ex.Message}");
         }
     }
 
@@ -399,11 +399,11 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         try
         {
             ConfigManager.Save("layouts.json", Config.Layouts);
-            _log.Debug($"Saved layouts: {Config.Layouts?.Count ?? 0}");
+            LogService.Debug(LogCategory.Config, $"Saved layouts: {Config.Layouts?.Count ?? 0}");
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving layouts: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Error saving layouts: {ex.Message}");
         }
     }
 
@@ -466,11 +466,11 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
                     _pluginInterface.SavePluginConfig(Config);
                     SaveSubConfigs();
                     _isDirty = false;
-                    _log.Information("Flushed pending config changes on dispose");
+                    LogService.Info(LogCategory.Config, "Flushed pending config changes on dispose");
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"Error flushing config on dispose: {ex}");
+                    LogService.Error(LogCategory.Config, $"Error flushing config on dispose: {ex}");
                 }
             }
         }

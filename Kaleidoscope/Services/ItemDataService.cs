@@ -22,7 +22,7 @@ public sealed class ItemDataService : IService
         _dataManager = dataManager;
         _log = log;
 
-        _log.Debug("[ItemDataService] Initialized");
+        LogService.Debug(LogCategory.Inventory, "[ItemDataService] Initialized");
     }
 
     /// <summary>
@@ -54,7 +54,7 @@ public sealed class ItemDataService : IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[ItemDataService] Error looking up item {itemId}: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[ItemDataService] Error looking up item {itemId}: {ex.Message}");
         }
 
         // Fallback
@@ -91,7 +91,7 @@ public sealed class ItemDataService : IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[ItemDataService] Error looking up item {itemId}: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[ItemDataService] Error looking up item {itemId}: {ex.Message}");
         }
 
         item = default;
@@ -115,7 +115,7 @@ public sealed class ItemDataService : IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[ItemDataService] Error looking up icon for item {itemId}: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[ItemDataService] Error looking up icon for item {itemId}: {ex.Message}");
         }
 
         return 0;
@@ -127,6 +127,6 @@ public sealed class ItemDataService : IService
     public void ClearCache()
     {
         _itemNameCache.Clear();
-        _log.Debug("[ItemDataService] Cache cleared");
+        LogService.Debug(LogCategory.Inventory, "[ItemDataService] Cache cleared");
     }
 }

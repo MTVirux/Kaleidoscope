@@ -151,7 +151,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
 
-        _log.Information("[CurrencyTrackerService] Initialized with background thread for database writes");
+        LogService.Info(LogCategory.CurrencyTracker, "[CurrencyTrackerService] Initialized with background thread for database writes");
     }
 
     /// <summary>
@@ -265,7 +265,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
 
@@ -325,7 +325,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         var cacheConfig = _configService.Config.TimeSeriesCacheConfig;
         if (!cacheConfig.PrePopulateOnStartup)
         {
-            _log.Debug("[CurrencyTrackerService] Cache pre-population disabled");
+            LogService.Debug(LogCategory.CurrencyTracker, "[CurrencyTrackerService] Cache pre-population disabled");
             return;
         }
 
@@ -336,7 +336,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var loadedPoints = 0L;
 
             // Character names are now loaded by CharacterDataCacheService.Initialize()
-            _log.Debug($"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
+            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
 
             // Load data for each tracked data type (currencies)
             foreach (var dataType in _registry.Definitions.Keys)
@@ -383,11 +383,11 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 }
             }
 
-            _log.Information($"[CurrencyTrackerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
+            LogService.Info(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
         }
         catch (Exception ex)
         {
-            _log.Error($"[CurrencyTrackerService] Failed to populate cache from database: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Failed to populate cache from database: {ex.Message}");
         }
     }
 
@@ -405,7 +405,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     public void ClearAllData(TrackedDataType dataType)
     {
         _dbService.ClearAllData(dataType.ToString());
-        _log.Information($"Cleared all {dataType} data");
+        LogService.Info(LogCategory.CurrencyTracker, $"Cleared all {dataType} data");
     }
 
     /// <summary>
@@ -414,7 +414,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     public void ClearAllData()
     {
         _dbService.ClearAllTables();
-        _log.Information("Cleared all tracking data");
+        LogService.Info(LogCategory.CurrencyTracker, "Cleared all tracking data");
     }
 
     /// <summary>
@@ -428,7 +428,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             totalCount += _dbService.CleanUnassociatedCharacters(dataType.ToString());
         }
         if (totalCount > 0)
-            _log.Information($"Cleaned {totalCount} unassociated character series");
+            LogService.Info(LogCategory.CurrencyTracker, $"Cleaned {totalCount} unassociated character series");
         return totalCount;
     }
 
@@ -439,7 +439,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     {
         var count = _dbService.CleanUnassociatedCharacters(dataType.ToString());
         if (count > 0)
-            _log.Information($"Cleaned {count} unassociated {dataType} character series");
+            LogService.Info(LogCategory.CurrencyTracker, $"Cleaned {count} unassociated {dataType} character series");
         return count;
     }
 
@@ -465,12 +465,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, csvContent);
-            _log.Information($"Exported {dataType} data to {filePath}");
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {dataType} data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export {dataType} CSV: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {dataType} CSV: {ex.Message}");
             return null;
         }
     }
@@ -520,7 +520,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         if (deleted > 0)
         {
             _cacheService.InvalidateVariable(variable);
-            _log.Information($"Deleted {deleted} points for {dataType} and invalidated cache");
+            LogService.Info(LogCategory.CurrencyTracker, $"Deleted {deleted} points for {dataType} and invalidated cache");
         }
         
         return deleted;
@@ -554,12 +554,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, csvContent);
-            _log.Information($"Exported {dataType} range data to {filePath}");
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {dataType} range data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export {dataType} range CSV: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {dataType} range CSV: {ex.Message}");
             return null;
         }
     }
@@ -608,7 +608,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         if (deleted > 0)
         {
             _cacheService.InvalidateVariable(variable);
-            _log.Information($"Deleted {deleted} points for {variable} and invalidated cache");
+            LogService.Info(LogCategory.CurrencyTracker, $"Deleted {deleted} points for {variable} and invalidated cache");
         }
         
         return deleted;
@@ -641,12 +641,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, csvContent);
-            _log.Information($"Exported {variable} range data to {filePath}");
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {variable} range data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export {variable} range CSV: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {variable} range CSV: {ex.Message}");
             return null;
         }
     }
@@ -709,12 +709,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, allCsvContent.ToString());
-            _log.Information($"Exported {variables.Count} variable(s) range data to {filePath}");
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {variables.Count} variable(s) range data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export multi-variable range CSV: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export multi-variable range CSV: {ex.Message}");
             return null;
         }
     }

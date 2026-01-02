@@ -92,19 +92,19 @@ public sealed class MainWindow : Window, IService, IDisposable
     public void ClearAllData()
     {
         try { _currencyTrackerService.ClearAllData(); }
-        catch (Exception ex) { _log.Error($"ClearAllData failed: {ex.Message}"); }
+        catch (Exception ex) { LogService.Error(LogCategory.UI, $"ClearAllData failed: {ex.Message}"); }
     }
 
     public int CleanUnassociatedCharacters()
     {
         try { return _currencyTrackerService.CleanUnassociatedCharacters(); }
-        catch (Exception ex) { _log.Error($"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
+        catch (Exception ex) { LogService.Error(LogCategory.UI, $"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
     }
 
     public string? ExportCsv()
     {
         try { return _currencyTrackerService.ExportCsv(TrackedDataType.Gil); }
-        catch (Exception ex) { _log.Error($"ExportCsv failed: {ex.Message}"); return null; }
+        catch (Exception ex) { LogService.Error(LogCategory.UI, $"ExportCsv failed: {ex.Message}"); return null; }
     }
 
     public MainWindow(
@@ -170,7 +170,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Handle active layout changes from config (e.g., from layouts config panel)
         _configService.OnActiveLayoutChanged += OnActiveLayoutChangedFromConfig;
 
-        _log.Debug("MainWindow initialized");
+        LogService.Debug(LogCategory.UI, "MainWindow initialized");
     }
     
     private void OnDirtyStateChanged(bool isDirty)
@@ -289,7 +289,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                 else
                     EnterFullscreenMode();
             }
-            catch (Exception ex) { _log.Error($"Fullscreen toggle failed: {ex.Message}"); }
+            catch (Exception ex) { LogService.Error(LogCategory.UI, $"Fullscreen toggle failed: {ex.Message}"); }
         };
         TitleBarButtons.Add(_fullscreenButton);
 
@@ -388,7 +388,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         }
         catch (Exception ex)
         {
-            _log.Debug($"Failed to add default tool after layout apply: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Failed to add default tool after layout apply: {ex.Message}");
         }
 
         WireLayoutCallbacks();
@@ -473,7 +473,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             _layoutEditingService.InitializeFromPersisted(name, targetType, tools, _contentContainer.GridSettings);
             UpdateWindowTitle();
             
-            _log.Information($"Saved {targetType} layout '{name}' ({existing.Tools.Count} tools)");
+            LogService.Info(LogCategory.UI, $"Saved {targetType} layout '{name}' ({existing.Tools.Count} tools)");
         };
 
         _contentContainer.OnLoadLayout = name =>
@@ -509,7 +509,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                     _layoutEditingService.InitializeFromPersisted(name, targetType, found.Tools, _contentContainer.GridSettings);
                     UpdateWindowTitle();
                     
-                    _log.Information($"Loaded {targetType} layout '{name}' ({found.Tools.Count} tools)");
+                    LogService.Info(LogCategory.UI, $"Loaded {targetType} layout '{name}' ({found.Tools.Count} tools)");
                 }
             });
         };
@@ -582,7 +582,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             Config.UserToolPresets.Add(preset);
             _configService.MarkDirty();
             
-            _log.Information($"Saved user preset '{presetName}' for tool type '{toolType}'");
+            LogService.Info(LogCategory.UI, $"Saved user preset '{presetName}' for tool type '{toolType}'");
         };
     }
 
@@ -624,7 +624,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                     else
                         EnterFullscreenMode();
                 }
-                catch (Exception ex) { _log.Error($"Quick access fullscreen toggle failed: {ex.Message}"); }
+                catch (Exception ex) { LogService.Error(LogCategory.UI, $"Quick access fullscreen toggle failed: {ex.Message}"); }
             },
             onSave: () =>
             {
@@ -704,7 +704,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Load the fullscreen layout
         LoadLayoutForCurrentMode();
         
-        _log.Debug("Entered fullscreen mode");
+        LogService.Debug(LogCategory.UI, "Entered fullscreen mode");
     }
 
     /// <summary>
@@ -724,7 +724,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Load the windowed layout
         LoadLayoutForCurrentMode();
         
-        _log.Debug("Exited fullscreen mode");
+        LogService.Debug(LogCategory.UI, "Exited fullscreen mode");
     }
 
     /// <summary>
@@ -769,7 +769,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                 layout.Tools, 
                 _contentContainer.GridSettings);
             
-            _log.Information($"Loaded {targetType} layout '{layout.Name}' ({layout.Tools.Count} tools)");
+            LogService.Info(LogCategory.UI, $"Loaded {targetType} layout '{layout.Name}' ({layout.Tools.Count} tools)");
         }
         else
         {
@@ -820,7 +820,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             }
             catch (Exception ex)
             {
-                _log.Debug($"[MainWindow] Fullscreen viewport setup failed: {ex.Message}");
+                LogService.Debug(LogCategory.UI, $"[MainWindow] Fullscreen viewport setup failed: {ex.Message}");
             }
             
             // Apply fullscreen background color
@@ -902,8 +902,14 @@ public sealed class MainWindow : Window, IService, IDisposable
     public override void Draw()
     {
         // In fullscreen mode, bring window to the front of the display order so it renders over other plugins.
-        // But skip this when any popup is open, so popups/context menus/dropdowns render on top.
-        if (_isFullscreenMode && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+        // But skip this when:
+        // - Any popup is open (context menus, dropdowns, modals)
+        // - Another window is focused (ConfigWindow, tool settings, etc.) so they can receive clicks
+        // We check if this window (including child windows) is NOT focused, meaning another window has focus.
+        var isThisWindowFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        if (_isFullscreenMode 
+            && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel)
+            && isThisWindowFocused)
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
@@ -958,7 +964,7 @@ public sealed class MainWindow : Window, IService, IDisposable
                 _prevFrameSize = curSize;
                 _prevFrameInitialized = true;
             }
-            catch (Exception ex) { _log.Debug($"[MainWindow] Window interaction detection failed: {ex.Message}"); }
+            catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[MainWindow] Window interaction detection failed: {ex.Message}"); }
         }
 
         // Main content drawing: render the HUD content container
@@ -987,7 +993,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         {
             _quickAccessBar?.Draw();
         }
-        catch (Exception ex) { _log.Debug($"[MainWindow] Quick access bar draw failed: {ex.Message}"); }
+        catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[MainWindow] Quick access bar draw failed: {ex.Message}"); }
     }
 
     private void PersistWindowPositionIfChanged()
@@ -1010,11 +1016,11 @@ public sealed class MainWindow : Window, IService, IDisposable
                     _lastSavedPos = curPos;
                     _lastSavedSize = curSize;
                     _lastSaveTime = now;
-                    _log.Verbose($"Saved main window pos/size: {curPos}, {curSize}");
+                    LogService.Verbose(LogCategory.UI, $"Saved main window pos/size: {curPos}, {curSize}");
                 }
             }
         }
-        catch (Exception ex) { _log.Debug($"[MainWindow] Window pos/size auto-save failed: {ex.Message}"); }
+        catch (Exception ex) { LogService.Debug(LogCategory.UI, $"[MainWindow] Window pos/size auto-save failed: {ex.Message}"); }
     }
 
     public override void PostDraw()

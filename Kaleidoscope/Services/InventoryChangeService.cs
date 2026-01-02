@@ -75,7 +75,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _gameInventory.InventoryChanged += OnDalamudInventoryChanged;
         _framework.Update += OnFrameworkUpdate;
 
-        _log.Debug("[InventoryChangeService] Initialized with IGameInventory events + currency polling");
+        LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Initialized with IGameInventory events + currency polling");
     }
 
     private void OnDalamudInventoryChanged(IReadOnlyCollection<InventoryEventArgs> events)
@@ -91,7 +91,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         try
         {
             var containerList = string.Join(',', events.Select(e => e.Item.ContainerType.ToString()));
-            _log.Debug($"[InventoryChangeService] Dalamud InventoryChanged fired: {events.Count} events; containers={containerList}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Dalamud InventoryChanged fired: {events.Count} events; containers={containerList}");
         }
         catch
         {
@@ -118,14 +118,14 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
         if (hasCrystalChange)
         {
-            _log.Debug("[InventoryChangeService] Crystal container change detected");
+            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Crystal container change detected");
             try
             {
                 OnCrystalsChanged?.Invoke();
             }
             catch (Exception ex)
             {
-                _log.Debug($"[InventoryChangeService] OnCrystalsChanged callback error: {ex.Message}");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnCrystalsChanged callback error: {ex.Message}");
             }
         }
     }
@@ -169,7 +169,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             _pendingInventoryUpdate = false;
             _lastEventTime = now;
 
-            _log.Debug($"[InventoryChangeService] Debounced inventory event processed at {now:o}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Debounced inventory event processed at {now:o}");
         }
 
         // Track retainer state changes for stabilization
@@ -183,26 +183,26 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 // Retainer just opened - start stabilization period
                 _retainerOpenedTime = now;
                 _isRetainerStabilizing = true;
-                _log.Debug($"[InventoryChangeService] Retainer opened, waiting {ConfigStatic.RetainerStabilizationDelayMs}ms for data stabilization");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Retainer opened, waiting {ConfigStatic.RetainerStabilizationDelayMs}ms for data stabilization");
             }
             else
             {
                 // Retainer closed - stop stabilizing and clear cache
                 _isRetainerStabilizing = false;
-                _log.Debug("[InventoryChangeService] Retainer closed, clearing value cache");
+                LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed, clearing value cache");
                 ClearValueCache();
                 try { OnRetainerClosed?.Invoke(); }
-                catch (Exception ex) { _log.Debug($"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
+                catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
             }
         }
 
         if (_isRetainerStabilizing && now - _retainerOpenedTime >= _retainerStabilizationDelay)
         {
             _isRetainerStabilizing = false;
-            _log.Debug("[InventoryChangeService] Retainer data stabilized, resuming value checks");
+            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer data stabilized, resuming value checks");
             ClearValueCache();
             try { OnRetainerInventoryReady?.Invoke(); }
-            catch (Exception ex) { _log.Debug($"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
+            catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
         }
 
         // Skip value checks while retainer data is stabilizing
@@ -263,7 +263,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                     try
                     {
                         var changesSummary = string.Join(", ", changedValues.Select(kv => $"{kv.Key}={kv.Value}"));
-                        _log.Debug($"[InventoryChangeService] Detected value changes: {changesSummary}");
+                        LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Detected value changes: {changesSummary}");
                     }
                     catch
                     {
@@ -275,13 +275,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 }
                 catch (Exception ex)
                 {
-                    _log.Debug($"[InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
+                    LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            _log.Debug($"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
         }
     }
 
@@ -292,7 +292,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     {
         _pendingInventoryUpdate = true;
         _lastValueCheck = DateTime.MinValue; // Force immediate value check
-        _log.Debug("[InventoryChangeService] TriggerUpdate called; forcing immediate value check");
+        LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] TriggerUpdate called; forcing immediate value check");
     }
 
     /// <summary>
@@ -309,6 +309,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _framework.Update -= OnFrameworkUpdate;
         _gameInventory.InventoryChanged -= OnDalamudInventoryChanged;
 
-        _log.Debug("[InventoryChangeService] Disposed");
+        LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Disposed");
     }
 }

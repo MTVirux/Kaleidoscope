@@ -1968,6 +1968,13 @@ public class WindowContentContainer
             }
             return;
         }
+        
+        // When focused, bring this window to front so it stays above the fullscreen main window
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows))
+        {
+            var window = ImGuiP.GetCurrentWindow();
+            ImGuiP.BringWindowToDisplayFront(window);
+        }
 
         try
         {

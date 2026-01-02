@@ -45,11 +45,11 @@ public sealed class CommandService : IDisposable, IRequiredService
                 ShowInHelp = true
             });
 
-            _log.Debug($"Registered commands: {CommandMain}, {CommandFull}");
+            LogService.Debug(LogCategory.UI, $"Registered commands: {CommandMain}, {CommandFull}");
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to register commands: {ex.Message}");
+            LogService.Error(LogCategory.UI, $"Failed to register commands: {ex.Message}");
         }
     }
 
@@ -78,7 +78,7 @@ public sealed class CommandService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Warning($"Failed to unregister commands: {ex.Message}");
+            LogService.Warning(LogCategory.UI, $"Failed to unregister commands: {ex.Message}");
         }
     }
 }

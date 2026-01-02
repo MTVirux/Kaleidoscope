@@ -51,7 +51,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         _log = log;
         _configService = configService;
-        _log.Debug("[CharacterDataCacheService] Initialized (awaiting DB connection)");
+        LogService.Debug(LogCategory.Character, "[CharacterDataCacheService] Initialized (awaiting DB connection)");
     }
 
     #region Initialization
@@ -67,7 +67,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         _dbService = dbService;
         PopulateFromDatabase();
         _initialized = true;
-        _log.Debug($"[CharacterDataCacheService] Initialized with {_cache.Count} characters from database");
+        LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Initialized with {_cache.Count} characters from database");
     }
 
     /// <summary>
@@ -93,7 +93,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Error($"[CharacterDataCacheService] Failed to populate from database: {ex.Message}");
+            LogService.Error(LogCategory.Character, $"[CharacterDataCacheService] Failed to populate from database: {ex.Message}");
         }
     }
 
@@ -105,7 +105,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         _cache.Clear();
         PopulateFromDatabase();
-        _log.Debug($"[CharacterDataCacheService] Refreshed cache with {_cache.Count} characters");
+        LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Refreshed cache with {_cache.Count} characters");
     }
 
     #endregion
@@ -502,7 +502,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     public void Dispose()
     {
         _cache.Clear();
-        _log.Debug("[CharacterDataCacheService] Disposed");
+        LogService.Debug(LogCategory.Character, "[CharacterDataCacheService] Disposed");
     }
 }
 

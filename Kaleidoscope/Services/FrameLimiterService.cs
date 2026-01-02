@@ -134,7 +134,7 @@ public sealed class FrameLimiterService : IDisposable, IService
             DisableChillFrames();
         }
         
-        _log.Information($"FrameLimiterService initialized. Enabled: {_isEnabled}, Target: {_targetFramerate} FPS, ChillFrames available: {IsChillFramesAvailable}");
+        LogService.Info(LogCategory.UI, $"FrameLimiterService initialized. Enabled: {_isEnabled}, Target: {_targetFramerate} FPS, ChillFrames available: {IsChillFramesAvailable}");
     }
     
     /// <summary>
@@ -153,7 +153,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"ChillFrames IPC not available: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"ChillFrames IPC not available: {ex.Message}");
             IsChillFramesAvailable = false;
         }
     }
@@ -171,7 +171,7 @@ public sealed class FrameLimiterService : IDisposable, IService
             if (result == true)
             {
                 _chillFramesDisabled = true;
-                _log.Debug("ChillFrames limiter disabled via IPC");
+                LogService.Debug(LogCategory.UI, "ChillFrames limiter disabled via IPC");
             }
         }
         catch (IpcNotReadyError)
@@ -181,7 +181,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"Failed to disable ChillFrames: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Failed to disable ChillFrames: {ex.Message}");
             IsChillFramesAvailable = false;
         }
     }
@@ -199,7 +199,7 @@ public sealed class FrameLimiterService : IDisposable, IService
             if (result == true)
             {
                 _chillFramesDisabled = false;
-                _log.Debug("ChillFrames limiter re-enabled via IPC");
+                LogService.Debug(LogCategory.UI, "ChillFrames limiter re-enabled via IPC");
             }
         }
         catch (IpcNotReadyError)
@@ -210,7 +210,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"Failed to enable ChillFrames: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Failed to enable ChillFrames: {ex.Message}");
             IsChillFramesAvailable = false;
             _chillFramesDisabled = false;
         }
@@ -266,6 +266,6 @@ public sealed class FrameLimiterService : IDisposable, IService
             EnableChillFrames();
         }
         
-        _log.Debug("FrameLimiterService disposed");
+        LogService.Debug(LogCategory.UI, "FrameLimiterService disposed");
     }
 }

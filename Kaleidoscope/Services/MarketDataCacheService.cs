@@ -38,7 +38,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     {
         _log = log;
         _configService = configService;
-        _log.Debug("[MarketDataCache] Service initialized");
+        LogService.Debug(LogCategory.Cache, "[MarketDataCache] Service initialized");
     }
     
     #region Public Properties - Statistics
@@ -315,7 +315,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     public void ClearPriceCache()
     {
         _priceCache.Clear();
-        _log.Debug("[MarketDataCache] Price cache cleared");
+        LogService.Debug(LogCategory.Cache, "[MarketDataCache] Price cache cleared");
     }
     
     private void EvictOldestEntries(int count)
@@ -335,7 +335,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
         
         _lastEvictionTime = DateTime.UtcNow;
-        _log.Debug($"[MarketDataCache] Evicted {count} oldest entries");
+        LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Evicted {count} oldest entries");
     }
     
     #endregion
@@ -403,7 +403,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
             _recentSalesCache[key] = entry;
         }
         
-        _log.Debug($"[MarketDataCache] Loaded {data.Count} recent sales entries from database");
+        LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Loaded {data.Count} recent sales entries from database");
     }
     
     /// <summary>
@@ -413,7 +413,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     {
         _recentSalesCache.Clear();
         _lastSalePriceCache.Clear();
-        _log.Debug("[MarketDataCache] Recent sales cache cleared");
+        LogService.Debug(LogCategory.Cache, "[MarketDataCache] Recent sales cache cleared");
     }
     
     #endregion
@@ -452,7 +452,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         if (count > 0)
         {
             _lastEvictionTime = DateTime.UtcNow;
-            _log.Debug($"[MarketDataCache] Maintenance removed {count} expired entries");
+            LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Maintenance removed {count} expired entries");
         }
         
         return count;
@@ -492,7 +492,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         _priceCache.Clear();
         _recentSalesCache.Clear();
         _lastSalePriceCache.Clear();
-        _log.Debug("[MarketDataCache] Disposed");
+        LogService.Debug(LogCategory.Cache, "[MarketDataCache] Disposed");
     }
 }
 

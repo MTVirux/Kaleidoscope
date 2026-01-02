@@ -73,7 +73,7 @@ public sealed class CharacterDataService : IDisposable, IService
             _priceTrackingService.OnWorldDataLoaded += MarkDirty;
         }
 
-        _log.Debug("[CharacterDataService] Initialized");
+        LogService.Debug(LogCategory.Character, "[CharacterDataService] Initialized");
     }
 
     /// <summary>
@@ -294,7 +294,7 @@ public sealed class CharacterDataService : IDisposable, IService
             _lastRefresh = DateTime.UtcNow;
             _needsRefresh = false;
 
-            _log.Debug($"[CharacterDataService] Refreshed cache with {characters.Count} characters");
+            LogService.Debug(LogCategory.Character, $"[CharacterDataService] Refreshed cache with {characters.Count} characters");
 
             try
             {
@@ -302,12 +302,12 @@ public sealed class CharacterDataService : IDisposable, IService
             }
             catch (Exception ex)
             {
-                _log.Warning($"[CharacterDataService] Error invoking OnCharactersRefreshed: {ex.Message}");
+                LogService.Warning(LogCategory.Character, $"[CharacterDataService] Error invoking OnCharactersRefreshed: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
-            _log.Error($"[CharacterDataService] Error refreshing cache: {ex.Message}");
+            LogService.Error(LogCategory.Character, $"[CharacterDataService] Error refreshing cache: {ex.Message}");
             _cachedCharacters ??= new List<CharacterInfo>();
             _cachedCharacterDict ??= new Dictionary<ulong, CharacterInfo>();
         }
@@ -333,7 +333,7 @@ public sealed class CharacterDataService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[CharacterDataService] Error getting AutoRetainer worlds: {ex.Message}");
+            LogService.Debug(LogCategory.Character, $"[CharacterDataService] Error getting AutoRetainer worlds: {ex.Message}");
         }
 
         return result;

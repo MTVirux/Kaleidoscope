@@ -1,7 +1,9 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services;
 using System.Numerics;
+using System.Diagnostics;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
@@ -48,6 +50,11 @@ public sealed class LoggingCategory
         ImGui.Separator();
         ImGui.Spacing();
 
+        DrawFileLogging();
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         DrawMasterSwitch();
         ImGui.Spacing();
         ImGui.Separator();
@@ -64,6 +71,244 @@ public sealed class LoggingCategory
         ImGui.Spacing();
 
         DrawUsageInfo();
+    }
+
+    private void DrawFileLogging()
+    {
+        ImGui.TextUnformatted("File Logging:");
+        ImGui.Spacing();
+
+        var config = _configService.Config;
+        var fileLoggingEnabled = config.FileLoggingEnabled;
+        
+        if (ImGui.Checkbox("Enable File Logging", ref fileLoggingEnabled))
+        {
+            config.FileLoggingEnabled = fileLoggingEnabled;
+            _configService.Save();
+            LogService.UpdateFileLogging();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Write all logs to an external file in the plugin directory.");
+        }
+
+        if (fileLoggingEnabled)
+        {
+            ImGui.Indent();
+            
+            // Custom log directory
+            DrawLogDirectoryInput(config);
+            
+            // Show current log file path
+            var logPath = FilenameService.Instance?.LogFilePath ?? "Not available";
+            ImGui.TextDisabled($"Log file: {logPath}");
+            
+            ImGui.Spacing();
+            
+            // Include timestamps toggle
+            var includeTimestamps = config.FileLoggingIncludeTimestamps;
+            if (ImGui.Checkbox("Include Timestamps", ref includeTimestamps))
+            {
+                config.FileLoggingIncludeTimestamps = includeTimestamps;
+                _configService.Save();
+            }
+            
+            // Max file size
+            ImGui.SetNextItemWidth(100f);
+            var maxSize = config.FileLoggingMaxSizeMB;
+            if (ImGui.InputInt("Max File Size (MB)", ref maxSize))
+            {
+                maxSize = Math.Clamp(maxSize, 1, 100);
+                config.FileLoggingMaxSizeMB = maxSize;
+                _configService.Save();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("When the log file exceeds this size, it will be rotated to a timestamped backup.");
+            }
+            
+            ImGui.Spacing();
+            
+            // Action buttons
+            if (ImGui.Button("Open Log File"))
+            {
+                try
+                {
+                    var path = FilenameService.Instance?.LogFilePath;
+                    if (path != null && File.Exists(path))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = path,
+                            UseShellExecute = true
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Warning($"[LoggingCategory] Failed to open log file: {ex.Message}");
+                }
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Open Log Folder"))
+            {
+                try
+                {
+                    var logPath2 = FilenameService.Instance?.LogFilePath;
+                    var folder = logPath2 != null ? Path.GetDirectoryName(logPath2) : FilenameService.Instance?.ConfigDirectory;
+                    if (folder != null && Directory.Exists(folder))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = folder,
+                            UseShellExecute = true
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Warning($"[LoggingCategory] Failed to open log folder: {ex.Message}");
+                }
+            }
+            
+            ImGui.SameLine();
+            
+            if (ImGui.Button("Clear Log File"))
+            {
+                try
+                {
+                    var path = FilenameService.Instance?.LogFilePath;
+                    if (path != null && File.Exists(path))
+                    {
+                        // Disable file logging temporarily
+                        config.FileLoggingEnabled = false;
+                        LogService.UpdateFileLogging();
+                        
+                        // Delete the file
+                        File.Delete(path);
+                        
+                        // Re-enable file logging
+                        config.FileLoggingEnabled = true;
+                        _configService.Save();
+                        LogService.UpdateFileLogging();
+                        
+                        LogService.Info("[LoggingCategory] Log file cleared");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Warning($"[LoggingCategory] Failed to clear log file: {ex.Message}");
+                    // Make sure file logging is re-enabled
+                    config.FileLoggingEnabled = true;
+                    LogService.UpdateFileLogging();
+                }
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Delete the current log file and start fresh.");
+            }
+            
+            // Show file status
+            ImGui.Spacing();
+            if (LogService.IsFileLoggingActive)
+            {
+                ImGui.TextColored(EnabledColor, "✓ File logging is active");
+            }
+            else
+            {
+                ImGui.TextColored(DisabledColor, "File logging is not active");
+            }
+            
+            ImGui.Unindent();
+        }
+    }
+
+    private void DrawLogDirectoryInput(Configuration config)
+    {
+        ImGui.TextUnformatted("Log Directory:");
+        
+        var customDir = config.FileLoggingDirectory;
+        var defaultDir = FilenameService.Instance?.ConfigDirectory ?? "";
+        var displayDir = string.IsNullOrWhiteSpace(customDir) ? "" : customDir;
+        var placeholder = $"Default: {defaultDir}";
+        
+        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 70f);
+        if (ImGui.InputTextWithHint("##logDir", placeholder, ref displayDir, 512))
+        {
+            config.FileLoggingDirectory = displayDir;
+            // Don't save yet - wait for deactivation
+        }
+        
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            _configService.Save();
+            // Restart file logging with new path
+            LogService.UpdateFileLogging();
+        }
+        
+        ImGui.SameLine();
+        
+        // Browse button
+        ImGui.PushFont(UiBuilder.IconFont);
+        var browseClicked = ImGui.Button($"{FontAwesomeIcon.FolderOpen.ToIconString()}##browseLogDir");
+        ImGui.PopFont();
+        
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Browse for a custom log directory");
+        }
+        
+        if (browseClicked)
+        {
+            var startDir = !string.IsNullOrWhiteSpace(customDir) && Directory.Exists(customDir) 
+                ? customDir 
+                : defaultDir;
+            
+            FileDialogService.Instance?.OpenFolderPicker("Select Log Directory", (success, selectedPath) =>
+            {
+                if (success && !string.IsNullOrWhiteSpace(selectedPath))
+                {
+                    config.FileLoggingDirectory = selectedPath;
+                    _configService.Save();
+                    // Restart file logging with new path
+                    LogService.UpdateFileLogging();
+                }
+            }, startDir);
+        }
+        
+        ImGui.SameLine();
+        
+        // Reset button
+        var hasCustomDir = !string.IsNullOrWhiteSpace(config.FileLoggingDirectory);
+        if (!hasCustomDir)
+        {
+            ImGui.BeginDisabled();
+        }
+        
+        ImGui.PushFont(UiBuilder.IconFont);
+        var resetClicked = ImGui.Button($"{FontAwesomeIcon.Undo.ToIconString()}##resetLogDir");
+        ImGui.PopFont();
+        
+        if (!hasCustomDir)
+        {
+            ImGui.EndDisabled();
+        }
+        
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Reset to default directory");
+        }
+        
+        if (resetClicked && hasCustomDir)
+        {
+            config.FileLoggingDirectory = string.Empty;
+            _configService.Save();
+            LogService.UpdateFileLogging();
+        }
+        
+        ImGui.Spacing();
     }
 
     private void DrawMasterSwitch()

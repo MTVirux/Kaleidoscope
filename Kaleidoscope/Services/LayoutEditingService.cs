@@ -89,7 +89,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         _snapshotDebounceTimer.AutoReset = false;
 
         TryRestoreDirtySnapshot();
-        _log.Debug("LayoutEditingService initialized with debounced snapshot saves");
+        LogService.Debug(LogCategory.Layout, "LayoutEditingService initialized with debounced snapshot saves");
     }
 
     private void OnSnapshotDebounceElapsed(object? sender, ElapsedEventArgs e)
@@ -111,7 +111,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         // Keep restored dirty state if present
         if (_isDirty && _workingLayout != null)
         {
-            _log.Debug($"Keeping restored dirty state for '{_currentLayoutName}'");
+            LogService.Debug(LogCategory.Layout, $"Keeping restored dirty state for '{_currentLayoutName}'");
             return;
         }
 
@@ -121,7 +121,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         _workingGridSettings = gridSettings?.Clone();
         _isDirty = false;
 
-        _log.Debug($"Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
+        LogService.Debug(LogCategory.Layout, $"Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
     }
 
     /// <summary>
@@ -140,14 +140,14 @@ public sealed class LayoutEditingService : IDisposable, IService
             var wasDirty = _isDirty;
             _isDirty = true;
             Save();
-            _log.Debug($"Layout auto-saved for '{_currentLayoutName}'");
+            LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
             return;
         }
 
         if (!_isDirty)
         {
             _isDirty = true;
-            _log.Debug($"Layout marked dirty for '{_currentLayoutName}'");
+            LogService.Debug(LogCategory.Layout, $"Layout marked dirty for '{_currentLayoutName}'");
             OnDirtyStateChanged?.Invoke(true);
         }
 
@@ -178,7 +178,7 @@ public sealed class LayoutEditingService : IDisposable, IService
     {
         if (!_isDirty)
         {
-            _log.Debug("Save called but layout is not dirty");
+            LogService.Debug(LogCategory.Layout, "Save called but layout is not dirty");
             return;
         }
 
@@ -211,12 +211,12 @@ public sealed class LayoutEditingService : IDisposable, IService
                 Interlocked.Increment(ref _saveCount);
                 _lastSaveTime = DateTime.UtcNow;
                 
-                _log.Information($"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
+                LogService.Info(LogCategory.Layout, $"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
                 OnDirtyStateChanged?.Invoke(false);
             }
             catch (Exception ex)
             {
-                _log.Error($"LayoutEditingService: Failed to save layout: {ex.Message}");
+                LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to save layout: {ex.Message}");
             }
         }
         
@@ -227,7 +227,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         {
             if (!_isDirty)
             {
-                _log.Debug("LayoutEditingService: DiscardChanges called but layout is not dirty");
+                LogService.Debug(LogCategory.Layout, "LayoutEditingService: DiscardChanges called but layout is not dirty");
                 return;
             }
             
@@ -253,13 +253,13 @@ public sealed class LayoutEditingService : IDisposable, IService
                 _isDirty = false;
                 ClearDirtySnapshot();
                 
-                _log.Information($"LayoutEditingService: Discarded changes, reverted to persisted layout '{_currentLayoutName}'");
+                LogService.Info(LogCategory.Layout, $"LayoutEditingService: Discarded changes, reverted to persisted layout '{_currentLayoutName}'");
                 OnDirtyStateChanged?.Invoke(false);
                 OnLayoutReverted?.Invoke();
             }
             catch (Exception ex)
             {
-                _log.Error($"LayoutEditingService: Failed to discard changes: {ex.Message}");
+                LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to discard changes: {ex.Message}");
             }
         }
         
@@ -287,7 +287,7 @@ public sealed class LayoutEditingService : IDisposable, IService
             _showUnsavedChangesDialog = true;
             OnShowUnsavedChangesDialog?.Invoke();
             
-            _log.Debug($"LayoutEditingService: Blocked destructive action '{description}' due to unsaved changes");
+            LogService.Debug(LogCategory.Layout, $"LayoutEditingService: Blocked destructive action '{description}' due to unsaved changes");
             return false;
         }
         
@@ -305,18 +305,18 @@ public sealed class LayoutEditingService : IDisposable, IService
                 case UnsavedChangesChoice.Save:
                     Save();
                     pending?.ContinueAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Save, continuing action");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Save, continuing action");
                     break;
                     
                 case UnsavedChangesChoice.Discard:
                     DiscardChanges();
                     pending?.ContinueAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Discard, continuing action");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Discard, continuing action");
                     break;
                     
                 case UnsavedChangesChoice.Cancel:
                     pending?.CancelAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Cancel, action aborted");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Cancel, action aborted");
                     break;
             }
         }
@@ -416,11 +416,11 @@ public sealed class LayoutEditingService : IDisposable, IService
                 Interlocked.Increment(ref _snapshotWriteCount);
                 _lastSnapshotTime = DateTime.UtcNow;
                 
-                _log.Verbose("LayoutEditingService: Saved dirty snapshot");
+                LogService.Verbose(LogCategory.Layout, "LayoutEditingService: Saved dirty snapshot");
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to save dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to save dirty snapshot: {ex.Message}");
             }
         }
         
@@ -431,12 +431,12 @@ public sealed class LayoutEditingService : IDisposable, IService
                 if (File.Exists(DirtySnapshotPath))
                 {
                     File.Delete(DirtySnapshotPath);
-                    _log.Verbose("LayoutEditingService: Cleared dirty snapshot");
+                    LogService.Verbose(LogCategory.Layout, "LayoutEditingService: Cleared dirty snapshot");
                 }
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to clear dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to clear dirty snapshot: {ex.Message}");
             }
         }
         
@@ -458,12 +458,12 @@ public sealed class LayoutEditingService : IDisposable, IService
                     _workingGridSettings = snapshot.GridSettings;
                     _isDirty = true;
                     
-                    _log.Information($"LayoutEditingService: Restored dirty snapshot for layout '{_currentLayoutName}'");
+                    LogService.Info(LogCategory.Layout, $"LayoutEditingService: Restored dirty snapshot for layout '{_currentLayoutName}'");
                 }
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to restore dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to restore dirty snapshot: {ex.Message}");
                 // Clean up corrupt snapshot
                 ClearDirtySnapshot();
             }
@@ -660,7 +660,7 @@ public sealed class LayoutEditingService : IDisposable, IService
             OnDirtyStateChanged = null;
             OnShowUnsavedChangesDialog = null;
             OnLayoutReverted = null;
-            _log.Debug("LayoutEditingService disposed");
+            LogService.Debug(LogCategory.Layout, "LayoutEditingService disposed");
         }
         
         #endregion
