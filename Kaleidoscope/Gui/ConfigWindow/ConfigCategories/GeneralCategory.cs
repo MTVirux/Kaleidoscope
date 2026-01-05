@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services;
 
@@ -26,6 +27,7 @@ public sealed class GeneralCategory
 {
     private readonly ConfigurationService _configService;
     private readonly FrameLimiterService _frameLimiterService;
+    private readonly IUiBuilder _uiBuilder;
 
     private Configuration Config => _configService.Config;
     
@@ -59,10 +61,11 @@ public sealed class GeneralCategory
         FrameLimiterPreset.Disabled
     };
 
-    public GeneralCategory(ConfigurationService configService, FrameLimiterService frameLimiterService)
+    public GeneralCategory(ConfigurationService configService, FrameLimiterService frameLimiterService, IUiBuilder uiBuilder)
     {
         _configService = configService;
         _frameLimiterService = frameLimiterService;
+        _uiBuilder = uiBuilder;
     }
 
     public void Draw()
@@ -81,6 +84,20 @@ public sealed class GeneralCategory
         {
             Config.ExclusiveFullscreen = exclusiveFs;
             _configService.MarkDirty();
+        }
+
+        var showDuringCutscenes = Config.ShowDuringCutscenes;
+        if (ImGui.Checkbox("Show during cutscenes", ref showDuringCutscenes))
+        {
+            Config.ShowDuringCutscenes = showDuringCutscenes;
+            _configService.MarkDirty();
+            // Apply immediately - set Dalamud's UI hide settings
+            _uiBuilder.DisableCutsceneUiHide = showDuringCutscenes;
+            _uiBuilder.DisableGposeUiHide = showDuringCutscenes;
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Keep the Kaleidoscope window visible during cutscenes and GPose.\nOverrides Dalamud's \"Hide plugin UI during cutscenes\" setting for this plugin.");
         }
         
         ImGui.Spacing();

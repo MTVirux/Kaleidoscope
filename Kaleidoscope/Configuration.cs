@@ -25,6 +25,12 @@ public class Configuration : IPluginConfiguration
     public bool PinConfigWindow { get; set; } = false;
 
     /// <summary>
+    /// When enabled, the Kaleidoscope window stays visible during cutscenes and GPose.
+    /// This overrides Dalamud's "Hide plugin UI during cutscenes" setting for this plugin.
+    /// </summary>
+    public bool ShowDuringCutscenes { get; set; } = true;
+
+    /// <summary>
     /// Whether profiling is enabled for draw time tracking.
     /// </summary>
     public bool ProfilerEnabled { get; set; } = false;

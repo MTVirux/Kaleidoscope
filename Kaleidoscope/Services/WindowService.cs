@@ -115,9 +115,12 @@ public sealed class WindowService : IDisposable, IRequiredService
     
     private void UpdateUiHideSettings(bool isFullscreen)
     {
-        // When in fullscreen mode, prevent the UI from hiding during cutscenes and gpose
-        _uiBuilder.DisableCutsceneUiHide = isFullscreen;
-        _uiBuilder.DisableGposeUiHide = isFullscreen;
+        // Prevent the UI from hiding during cutscenes and gpose if:
+        // - In fullscreen mode (always keep visible), OR
+        // - User has enabled ShowDuringCutscenes setting
+        var showDuringCutscenes = isFullscreen || _configService.Config.ShowDuringCutscenes;
+        _uiBuilder.DisableCutsceneUiHide = showDuringCutscenes;
+        _uiBuilder.DisableGposeUiHide = showDuringCutscenes;
     }
 
     private void Draw()
@@ -147,6 +150,15 @@ public sealed class WindowService : IDisposable, IRequiredService
     }
 
     public void ApplyLayout(string name) => _mainWindow.ApplyLayoutByName(name);
+
+    /// <summary>
+    /// Refreshes the UI hide settings based on current configuration and state.
+    /// Call this after changing ShowDuringCutscenes config setting.
+    /// </summary>
+    public void RefreshUiHideSettings()
+    {
+        UpdateUiHideSettings(_stateService.IsFullscreen);
+    }
 
     public void Dispose()
     {
