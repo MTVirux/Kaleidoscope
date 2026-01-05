@@ -26,13 +26,11 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly IPluginLog _log;
     
-    // Dirty tracking and debounced saves
     private bool _isDirty;
     private System.Timers.Timer? _saveDebounceTimer;
     private readonly object _saveLock = new();
     private const int SaveDebounceMs = 500; // Coalesce saves within 500ms
     
-    // Statistics for monitoring
     private long _saveCount;
     private long _saveSkippedCount;
     private long _configAccessCount;
@@ -85,7 +83,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             ConfigWindowSize = Config.ConfigWindowSize
         });
 
-        // Initialize debounce timer (500ms delay)
         _saveDebounceTimer = new System.Timers.Timer(500);
         _saveDebounceTimer.Elapsed += OnDebounceTimerElapsed;
         _saveDebounceTimer.AutoReset = false;
@@ -100,7 +97,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     {
         Config.Layouts ??= new List<ContentLayoutState>();
 
-        // Deduplicate layouts by (Name, Type) pair - rename duplicates instead of removing them
         var seenNames = new Dictionary<(string Name, LayoutType Type), int>(
             new LayoutNameTypeComparer());
         
@@ -110,10 +106,8 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             var key = (Name: keyName, Type: layout.Type);
             if (seenNames.TryGetValue(key, out var count))
             {
-                // This is a duplicate - rename it
                 seenNames[key] = count + 1;
                 var newName = $"{keyName} ({count + 1})";
-                // Make sure the new name is also unique
                 while (Config.Layouts.Any(l => l != layout && 
                                                l.Type == layout.Type && 
                                                string.Equals(l.Name, newName, StringComparison.OrdinalIgnoreCase)))
@@ -130,7 +124,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             }
         }
 
-        // Validate windowed active layout
         var windowedLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
         if (!string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) &&
             !windowedLayouts.Any(x => string.Equals(x.Name, Config.ActiveWindowedLayoutName, StringComparison.OrdinalIgnoreCase)))
@@ -142,7 +135,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             Config.ActiveWindowedLayoutName = windowedLayouts.First().Name;
         }
 
-        // Validate fullscreen active layout
         var fullscreenLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Fullscreen).ToList();
         if (!string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) &&
             !fullscreenLayouts.Any(x => string.Equals(x.Name, Config.ActiveFullscreenLayoutName, StringComparison.OrdinalIgnoreCase)))
@@ -207,17 +199,14 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         {
             var color = elementColorsAbgr[element];
             
-            // Shard
             var shardId = (uint)(baseId + element);
             if (!Config.GameItemColors.ContainsKey(shardId))
                 Config.GameItemColors[shardId] = color;
             
-            // Crystal
             var crystalId = (uint)(baseId + tierOffset + element);
             if (!Config.GameItemColors.ContainsKey(crystalId))
                 Config.GameItemColors[crystalId] = color;
             
-            // Cluster
             var clusterId = (uint)(baseId + 2 * tierOffset + element);
             if (!Config.GameItemColors.ContainsKey(clusterId))
                 Config.GameItemColors[clusterId] = color;
@@ -250,7 +239,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             _isDirty = true;
             Interlocked.Increment(ref _configAccessCount);
             
-            // Reset debounce timer
             _saveDebounceTimer?.Stop();
             _saveDebounceTimer?.Start();
         }
@@ -306,7 +294,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
         SaveSubConfigs();
 
-        // Notify subscribers that config has changed
         try
         {
             OnConfigChanged?.Invoke();
@@ -344,7 +331,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
         Save();
 
-        // Notify subscribers to apply the new layout
         try
         {
             OnActiveLayoutChanged?.Invoke(layoutName, layoutType);
@@ -451,14 +437,12 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     
     public void Dispose()
     {
-        // Flush any pending saves
         lock (_saveLock)
         {
             _saveDebounceTimer?.Stop();
             _saveDebounceTimer?.Dispose();
             _saveDebounceTimer = null;
             
-            // Save if dirty on dispose
             if (_isDirty)
             {
                 try
