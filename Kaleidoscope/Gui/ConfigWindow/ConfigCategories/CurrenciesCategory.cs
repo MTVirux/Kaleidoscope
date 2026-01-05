@@ -100,7 +100,7 @@ public sealed class CurrenciesCategory
 
         if (definitions.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No tracked data types available.");
+            ImGui.TextColored(UiColors.Info, "No tracked data types available.");
             return;
         }
 
@@ -119,7 +119,7 @@ public sealed class CurrenciesCategory
         
         if (categories.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No currencies match your search.");
+            ImGui.TextColored(UiColors.Info, "No currencies match your search.");
             return;
         }
 
@@ -214,7 +214,7 @@ public sealed class CurrenciesCategory
         var summaryText = string.IsNullOrWhiteSpace(_searchFilter)
             ? $"{totalCount} currencies total, {colorCount} with custom colors"
             : $"Showing {filteredCount} of {totalCount} currencies, {colorCount} with custom colors";
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), summaryText);
+        ImGui.TextColored(UiColors.Info, summaryText);
     }
 
     private void DrawColorCell(TrackedDataType dataType, Configuration config)

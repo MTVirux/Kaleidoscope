@@ -2068,7 +2068,7 @@ public class WindowContentContainer
                 // Show preview of calculated values
                 var previewCols = _editingGridSettings.GetEffectiveColumns(16f, 9f);
                 var previewRows = _editingGridSettings.GetEffectiveRows(16f, 9f);
-                ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), $"Preview (16:9): {previewCols} columns × {previewRows} rows");
+                ImGui.TextColored(UiColors.Info, $"Preview (16:9): {previewCols} columns × {previewRows} rows");
             }
             else
             {
@@ -2089,7 +2089,7 @@ public class WindowContentContainer
                 
                 ImGui.Spacing();
                 
-                ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), $"Grid: {_editingGridSettings.Columns} columns × {_editingGridSettings.Rows} rows");
+                ImGui.TextColored(UiColors.Info, $"Grid: {_editingGridSettings.Columns} columns × {_editingGridSettings.Rows} rows");
             }
             
             ImGui.Spacing();

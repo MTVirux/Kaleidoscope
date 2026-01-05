@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models.Settings;
@@ -238,38 +239,12 @@ public abstract class ToolComponent : IDisposable
     
     /// <summary>
     /// Helper method to safely get a typed value from settings dictionary.
-    /// Handles JSON deserialization for complex types.
+    /// Delegates to SettingsImportHelper for JSON deserialization handling.
     /// </summary>
     protected static T? GetSetting<T>(Dictionary<string, object?>? settings, string key, T? defaultValue = default)
     {
-        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
-            return defaultValue;
-        
-        try
-        {
-            // Handle Newtonsoft.Json JValue/JToken (used by ConfigManager)
-            if (value is Newtonsoft.Json.Linq.JToken jToken)
-            {
-                return jToken.ToObject<T>();
-            }
-            
-            // Handle System.Text.Json JsonElement (when loaded from JSON)
-            if (value is System.Text.Json.JsonElement jsonElement)
-            {
-                return System.Text.Json.JsonSerializer.Deserialize<T>(jsonElement.GetRawText());
-            }
-            
-            // Direct cast for simple types
-            if (value is T typedValue)
-                return typedValue;
-            
-            // Try convert for numeric types
-            return (T)Convert.ChangeType(value, typeof(T));
-        }
-        catch
-        {
-            return defaultValue;
-        }
+        // Delegate to centralized implementation to avoid code duplication
+        return SettingsImportHelper.GetSetting(settings, key, defaultValue);
     }
 
     protected void ShowSettingTooltip(string description, string defaultText)

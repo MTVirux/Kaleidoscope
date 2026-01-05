@@ -176,10 +176,10 @@ public static class SettingsImportHelper
 
         try
         {
-            // Handle Newtonsoft.Json JValue
-            if (value is Newtonsoft.Json.Linq.JValue jValue)
+            // Handle Newtonsoft.Json JToken (base class for JValue, JObject, JArray)
+            if (value is Newtonsoft.Json.Linq.JToken jToken)
             {
-                return jValue.ToObject<T>() ?? defaultValue;
+                return jToken.ToObject<T>() ?? defaultValue;
             }
 
             // Handle System.Text.Json.JsonElement

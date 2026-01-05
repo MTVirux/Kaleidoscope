@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -262,7 +263,7 @@ public class WorldSelectionWidget
                     // DC checkbox (selects/deselects all worlds in DC)
                     if (mixed)
                     {
-                        ImGui.PushStyleColor(ImGuiCol.CheckMark, new Vector4(0.7f, 0.7f, 0.7f, 1f));
+                        ImGui.PushStyleColor(ImGuiCol.CheckMark, UiColors.Info);
                     }
 
                     if (ImGui.Checkbox($"{dcName}##{_id}_dc_{dcName}", ref allSelected))

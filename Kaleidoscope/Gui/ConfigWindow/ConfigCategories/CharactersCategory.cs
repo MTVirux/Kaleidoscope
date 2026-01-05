@@ -66,7 +66,7 @@ public sealed class CharactersCategory
 
         if (_characters.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No characters found in database.");
+            ImGui.TextColored(UiColors.Info, "No characters found in database.");
             return;
         }
 
@@ -274,7 +274,7 @@ public sealed class CharactersCategory
         ImGui.Spacing();
         var customCount = _characters.Count(c => !string.IsNullOrEmpty(c.displayName));
         var colorCount = _characters.Count(c => c.timeSeriesColor.HasValue);
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+        ImGui.TextColored(UiColors.Info, 
             $"{_characters.Count} characters total, {customCount} with custom display names, {colorCount} with custom colors");
     }
 

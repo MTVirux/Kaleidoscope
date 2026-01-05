@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -56,8 +57,8 @@ public class ImPlotReferenceTool : ToolComponent
 
             ImGui.Separator();
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Tip: Use the graph settings to change chart type,");
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "legend position, and time range.");
+            ImGui.TextColored(UiColors.Info, "Tip: Use the graph settings to change chart type,");
+            ImGui.TextColored(UiColors.Info, "legend position, and time range.");
 
             ImGui.PopTextWrapPos();
         }

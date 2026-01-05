@@ -5,6 +5,7 @@ using Dalamud.Interface;
 using Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 using Kaleidoscope.Services;
 using OtterGui.Classes;
+using OtterGui.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow;
@@ -15,7 +16,7 @@ namespace Kaleidoscope.Gui.ConfigWindow;
 /// <remarks>
 /// Provides a sidebar-based navigation between General, Data, Characters, Currencies, and Layouts configuration categories.
 /// </remarks>
-public sealed class ConfigWindow : Window
+public sealed class ConfigWindow : Window, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;

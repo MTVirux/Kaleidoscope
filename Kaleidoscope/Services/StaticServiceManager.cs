@@ -1,7 +1,4 @@
 using Dalamud.Plugin;
-using Kaleidoscope.Gui.ConfigWindow;
-using Kaleidoscope.Gui.MainWindow;
-using OtterGui.Classes;
 using OtterGui.Log;
 using OtterGui.Services;
 
@@ -11,12 +8,17 @@ namespace Kaleidoscope.Services;
 /// Builds the Kaleidoscope service container.
 /// </summary>
 /// <remarks>
-/// Services are organized into categories for clarity:
-/// - Meta: Core infrastructure (config, filenames)
-/// - State: Application state management
-/// - Data: Data tracking and persistence
-/// - Market: Universalis integration and price tracking
-/// - Ui: Windows and UI services
+/// <para>
+/// Service registration follows the OtterGui pattern used by Glamourer:
+/// - Services implementing <see cref="IService"/> are auto-discovered and lazy-loaded
+/// - Services implementing <see cref="IRequiredService"/> are auto-discovered and eagerly initialized
+/// - Dalamud services are registered explicitly via <see cref="DalamudServices"/>
+/// </para>
+/// <para>
+/// Auto-discovery via <see cref="ServiceManager.AddIServices"/> scans the assembly for all types
+/// implementing IService or IRequiredService and registers them as singletons automatically.
+/// This eliminates the need for explicit AddSingleton calls and prevents double-registration.
+/// </para>
 /// </remarks>
 public static class StaticServiceManager
 {
@@ -24,70 +26,16 @@ public static class StaticServiceManager
     {
         var services = new ServiceManager(log)
             .AddExistingService(log)
-            .AddExistingService(plugin)
-            .AddMeta()
-            .AddState()
-            .AddData()
-            .AddMarket()
-            .AddUi();
+            .AddExistingService(plugin);
 
+        // Register Dalamud-provided services (must be before auto-discovery)
         DalamudServices.AddServices(services, pi);
+
+        // Auto-discover and register all services implementing IService/IRequiredService
+        // This includes: services, windows, widgets, and UI components
         services.AddIServices(typeof(KaleidoscopePlugin).Assembly);
+
         services.CreateProvider();
         return services;
     }
-
-    /// <summary>
-    /// Core infrastructure services required for plugin operation.
-    /// </summary>
-    private static ServiceManager AddMeta(this ServiceManager services)
-        => services
-            .AddSingleton<FilenameService>()
-            .AddSingleton<ConfigurationService>()
-            .AddSingleton<CommandService>();
-
-    /// <summary>
-    /// Application state management services.
-    /// </summary>
-    private static ServiceManager AddState(this ServiceManager services)
-        => services
-            .AddSingleton<StateService>()
-            .AddSingleton<LayoutEditingService>()
-            .AddSingleton<ProfilerService>()
-            .AddSingleton<FrameLimiterService>();
-
-    /// <summary>
-    /// Data tracking, persistence, and caching services.
-    /// </summary>
-    private static ServiceManager AddData(this ServiceManager services)
-        => services
-            .AddSingleton<TrackedDataRegistry>()
-            .AddSingleton<TimeSeriesCacheService>()
-            .AddSingleton<CurrencyTrackerService>()
-            .AddSingleton<InventoryCacheService>()
-            .AddSingleton<InventoryChangeService>()
-            .AddSingleton<CharacterDataService>()
-            .AddSingleton<FavoritesService>()
-            .AddSingleton<AutoRetainerIpcService>();
-
-    /// <summary>
-    /// Universalis integration and market data services.
-    /// </summary>
-    private static ServiceManager AddMarket(this ServiceManager services)
-        => services
-            .AddSingleton<UniversalisService>()
-            .AddSingleton<UniversalisWebSocketService>()
-            .AddSingleton<ListingsService>()
-            .AddSingleton<MarketDataCacheService>()
-            .AddSingleton<PriceTrackingService>();
-
-    /// <summary>
-    /// Window and UI services.
-    /// </summary>
-    private static ServiceManager AddUi(this ServiceManager services)
-        => services
-            .AddSingleton<MessageService>()
-            .AddSingleton<WindowService>()
-            .AddSingleton<MainWindow>()
-            .AddSingleton<ConfigWindow>();
 }

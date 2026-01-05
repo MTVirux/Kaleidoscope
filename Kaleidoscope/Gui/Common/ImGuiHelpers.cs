@@ -309,5 +309,53 @@ public static class ImGuiHelpers
     }
     
     #endregion
+    
+    #region Tooltips
+    
+    /// <summary>
+    /// Shows a simple tooltip if the previous item is hovered.
+    /// </summary>
+    /// <param name="text">The tooltip text to display.</param>
+    public static void Tooltip(string text)
+    {
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(text);
+    }
+    
+    /// <summary>
+    /// Shows a multi-line tooltip if the previous item is hovered.
+    /// </summary>
+    /// <param name="lines">Lines of text to display in the tooltip.</param>
+    public static void TooltipMultiline(params string[] lines)
+    {
+        if (!ImGui.IsItemHovered()) return;
+        
+        ImGui.BeginTooltip();
+        foreach (var line in lines)
+            ImGui.TextUnformatted(line);
+        ImGui.EndTooltip();
+    }
+    
+    /// <summary>
+    /// Shows a tooltip with a description and default value info.
+    /// </summary>
+    /// <param name="description">The description text.</param>
+    /// <param name="defaultValue">The default value description.</param>
+    public static void SettingTooltip(string description, string? defaultValue = null)
+    {
+        if (!ImGui.IsItemHovered()) return;
+        
+        ImGui.BeginTooltip();
+        if (!string.IsNullOrEmpty(description))
+            ImGui.TextUnformatted(description);
+        if (!string.IsNullOrEmpty(defaultValue))
+        {
+            ImGui.Separator();
+            ImGui.TextUnformatted($"Default: {defaultValue}");
+        }
+        ImGui.EndTooltip();
+    }
+    
+    #endregion
 }
 

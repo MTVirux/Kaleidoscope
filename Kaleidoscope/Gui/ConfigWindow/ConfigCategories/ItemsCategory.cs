@@ -113,7 +113,7 @@ public sealed class ItemsCategory
         }
         else
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+            ImGui.TextColored(UiColors.Info, 
                 "No items have historical tracking enabled. Enable tracking per-item below.");
         }
         
@@ -157,8 +157,8 @@ public sealed class ItemsCategory
         
         if (trackedItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No items are being tracked.");
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Use the item picker above to add items to track.");
+            ImGui.TextColored(UiColors.Info, "No items are being tracked.");
+            ImGui.TextColored(UiColors.Muted, "Use the item picker above to add items to track.");
             return;
         }
         
@@ -183,7 +183,7 @@ public sealed class ItemsCategory
         
         if (filteredItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No tracked items match your search.");
+            ImGui.TextColored(UiColors.Info, "No tracked items match your search.");
             return;
         }
         
@@ -311,7 +311,7 @@ public sealed class ItemsCategory
         
         // Summary
         var recordingCount = trackedItems.Values.Count(i => config.ItemsWithHistoricalTracking.Contains(i.ItemId));
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+        ImGui.TextColored(UiColors.Info, 
             $"{trackedItems.Count} tracked items, {recordingCount} recording history");
     }
     
@@ -463,8 +463,8 @@ public sealed class ItemsCategory
 
         if (gameItemColors.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No game items with custom colors yet.");
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Use the item picker above to add items.");
+            ImGui.TextColored(UiColors.Info, "No game items with custom colors yet.");
+            ImGui.TextColored(UiColors.Muted, "Use the item picker above to add items.");
             return;
         }
         
@@ -479,7 +479,7 @@ public sealed class ItemsCategory
         
         if (filteredItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No items match your search.");
+            ImGui.TextColored(UiColors.Info, "No items match your search.");
             return;
         }
 
@@ -566,7 +566,7 @@ public sealed class ItemsCategory
         var summaryText = string.IsNullOrWhiteSpace(_searchFilter)
             ? $"{totalCount} items with custom colors"
             : $"Showing {filteredCount} of {totalCount} items";
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), summaryText);
+        ImGui.TextColored(UiColors.Info, summaryText);
     }
 
     private void DrawAddItemSection(Dictionary<uint, uint> gameItemColors)

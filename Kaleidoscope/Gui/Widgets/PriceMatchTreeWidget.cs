@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Universalis;
 using System.Numerics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -231,12 +232,12 @@ public class PriceMatchTreeWidget
         else if (hasOverride)
         {
             previewText = PriceMatchModeNames[(int)effectiveMode];
-            previewColor = new Vector4(0.5f, 0.8f, 1f, 1f); // Blue for override
+            previewColor = UiColors.Highlight; // Blue for override
         }
         else
         {
             previewText = $"{PriceMatchModeNames[(int)effectiveMode]} (inherited)";
-            previewColor = new Vector4(0.7f, 0.7f, 0.7f, 1f); // Gray for inherited
+            previewColor = UiColors.Info; // Gray for inherited
         }
 
         ImGui.SetNextItemWidth(155);

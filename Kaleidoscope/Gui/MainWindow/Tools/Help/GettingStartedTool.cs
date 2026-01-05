@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -63,7 +64,7 @@ public class GettingStartedTool : ToolComponent
 
             ImGui.Separator();
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "You can remove this tool once you're comfortable.");
+            ImGui.TextColored(UiColors.Info, "You can remove this tool once you're comfortable.");
 
             ImGui.PopTextWrapPos();
         }

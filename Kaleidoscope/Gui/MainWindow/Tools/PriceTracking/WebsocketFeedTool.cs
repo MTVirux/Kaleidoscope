@@ -202,10 +202,10 @@ public class WebsocketFeedTool : ToolComponent
         // Event type color
         var eventColor = entry.EventType switch
         {
-            "Listing Added" => new Vector4(0.3f, 0.9f, 0.3f, 1f),    // Green for new listings
-            "Listing Removed" => new Vector4(0.9f, 0.6f, 0.3f, 1f), // Orange for removed
-            "Sale" => new Vector4(0.3f, 0.7f, 0.9f, 1f),            // Blue for sales
-            _ => new Vector4(0.7f, 0.7f, 0.7f, 1f)
+            "Listing Added" => UiColors.Good,      // Green for new listings
+            "Listing Removed" => UiColors.Warning, // Orange for removed
+            "Sale" => UiColors.Highlight,          // Blue for sales
+            _ => UiColors.Info
         };
 
         var eventIcon = entry.EventType switch

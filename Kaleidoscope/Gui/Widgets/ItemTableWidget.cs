@@ -1577,7 +1577,7 @@ public class ItemTableWidget : ISettingsProvider
                                 var prefix = isLastRetainer ? "└ " : "├ ";
                                 DrawAlignedCellText(
                                     $"{prefix}{retainerKey.Name}",
-                                    new Vector4(0.7f, 0.7f, 0.7f, 1f),
+                                    UiColors.Info,
                                     settings.CharacterColumnHorizontalAlignment,
                                     settings.CharacterColumnVerticalAlignment);
                                 ImGui.Unindent(16f);
