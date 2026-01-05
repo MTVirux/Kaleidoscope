@@ -111,7 +111,9 @@ public partial class ItemSalesTrackingTool : ToolComponent
         _graphWidget.BindSettings(
             _instanceSettings,
             () => { _seriesDataDirty = true; NotifyToolSettingsChanged(); },
-            "Graph Settings");
+            "Graph Settings",
+            showLegendSettings: true,
+            hideCharacterColorMode: true);
         
         RegisterSettingsProvider(_graphWidget);
 
@@ -215,7 +217,7 @@ public partial class ItemSalesTrackingTool : ToolComponent
                 continue;
 
             var itemName = _itemDataService.GetItemName(itemId) ?? $"Item {itemId}";
-            var color = GetSeriesColor(colorIndex++);
+            var color = GetEffectiveSeriesColor(itemId, colorIndex++);
 
             // Apply outlier filter if enabled
             IEnumerable<(DateTime Timestamp, float Price)> filteredData = salesData;
@@ -276,7 +278,34 @@ public partial class ItemSalesTrackingTool : ToolComponent
         }
     }
 
-    private static Vector4 GetSeriesColor(int index)
+    /// <summary>
+    /// Gets the effective color for a series based on ColorMode setting.
+    /// </summary>
+    private Vector4 GetEffectiveSeriesColor(uint itemId, int seriesIndex)
+    {
+        // Check ColorMode for preferred item colors
+        if (Settings.ColorMode == Models.GraphColorMode.PreferredItemColors)
+        {
+            var preferredColor = GetPreferredItemColor(itemId);
+            if (preferredColor.HasValue)
+                return preferredColor.Value;
+        }
+        
+        // Fallback to default color rotation
+        return GetDefaultSeriesColor(seriesIndex);
+    }
+    
+    /// <summary>
+    /// Gets the preferred color for an item from configuration.
+    /// </summary>
+    private Vector4? GetPreferredItemColor(uint itemId)
+    {
+        if (_configService.Config.GameItemColors.TryGetValue(itemId, out var colorUint))
+            return Gui.Common.ColorUtils.UintToVector4(colorUint);
+        return null;
+    }
+
+    private static Vector4 GetDefaultSeriesColor(int index)
     {
         // Color palette for different items
         var colors = new[]

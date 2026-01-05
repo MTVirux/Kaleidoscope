@@ -23,6 +23,7 @@ public class MTGraphWidget : ISettingsProvider
     private Action? _onSettingsChanged;
     private string _settingsName = "Graph Settings";
     private bool _showLegendSettings = true;
+    private bool _hideCharacterColorMode;
     
     /// <summary>
     /// Display names for legend positions.
@@ -292,16 +293,23 @@ public class MTGraphWidget : ISettingsProvider
     /// <summary>
     /// Binds the widget to an IGraphWidgetSettings object for automatic synchronization.
     /// </summary>
+    /// <param name="settings">The settings object to bind.</param>
+    /// <param name="onSettingsChanged">Callback when settings change.</param>
+    /// <param name="settingsName">Display name for the settings section.</param>
+    /// <param name="showLegendSettings">Whether to show legend settings in the UI.</param>
+    /// <param name="hideCharacterColorMode">Whether to hide the 'Use preferred character colors' option from the color mode dropdown.</param>
     public void BindSettings(
         IGraphWidgetSettings settings,
         Action? onSettingsChanged = null,
         string? settingsName = null,
-        bool showLegendSettings = true)
+        bool showLegendSettings = true,
+        bool hideCharacterColorMode = false)
     {
         _boundSettings = settings;
         _onSettingsChanged = onSettingsChanged;
         if (settingsName != null) _settingsName = settingsName;
         _showLegendSettings = showLegendSettings;
+        _hideCharacterColorMode = hideCharacterColorMode;
         
         SyncFromBoundSettings();
     }
@@ -369,12 +377,25 @@ public class MTGraphWidget : ISettingsProvider
         // Color mode setting
         var colorMode = (int)settings.ColorMode;
         ImGui.SetNextItemWidth(200);
-        if (ImGui.Combo("Color Mode", ref colorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
+        if (_hideCharacterColorMode)
         {
-            settings.ColorMode = (GraphColorMode)colorMode;
-            changed = true;
+            // Only show "Don't use" and "Use preferred item colors" options
+            if (ImGui.Combo("Color Mode", ref colorMode, "Don't use\0Use preferred item colors\0"))
+            {
+                settings.ColorMode = (GraphColorMode)colorMode;
+                changed = true;
+            }
+            ShowSettingsTooltip("How to determine series colors: use item/currency preferred colors or default palette.");
         }
-        ShowSettingsTooltip("How to determine series colors: use item/currency preferred colors, character preferred colors, or default palette.");
+        else
+        {
+            if (ImGui.Combo("Color Mode", ref colorMode, "Don't use\0Use preferred item colors\0Use preferred character colors\0"))
+            {
+                settings.ColorMode = (GraphColorMode)colorMode;
+                changed = true;
+            }
+            ShowSettingsTooltip("How to determine series colors: use item/currency preferred colors, character preferred colors, or default palette.");
+        }
         
         ImGui.Spacing();
         
