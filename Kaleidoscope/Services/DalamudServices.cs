@@ -1,6 +1,7 @@
 using Dalamud.Game.Command;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using OtterGui.Classes;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -29,5 +30,8 @@ public static class DalamudServices
         services.AddDalamudService<IDataManager>(pi);
         services.AddDalamudService<ITitleScreenMenu>(pi);
         services.AddDalamudService<INotificationManager>(pi);
+        
+        // OtterGui services (not auto-discovered since they're in a different assembly)
+        services.AddSingleton<MessageService>();
     }
 }

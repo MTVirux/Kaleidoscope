@@ -25,6 +25,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private readonly ItemDataService _itemDataService;
     private readonly TimeSeriesCacheService _cacheService;
     private readonly SalePriceCacheService _salePriceCacheService;
+    private readonly KaleidoscopeDbService _dbService;
+    private readonly CharacterDataCacheService _characterDataCache;
 
     // Cached world/DC data from Universalis
     private UniversalisWorldData? _worldData;
@@ -63,8 +65,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
-    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
-    private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
 
     /// <summary>Gets the cached world data.</summary>
     public UniversalisWorldData? WorldData => _worldData;
@@ -108,7 +108,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         ListingsService listingsService,
         ItemDataService itemDataService,
         TimeSeriesCacheService cacheService,
-        SalePriceCacheService salePriceCacheService)
+        SalePriceCacheService salePriceCacheService,
+        KaleidoscopeDbService dbService,
+        CharacterDataCacheService characterDataCache)
     {
         _log = log;
         _framework = framework;
@@ -121,6 +123,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _itemDataService = itemDataService;
         _cacheService = cacheService;
         _salePriceCacheService = salePriceCacheService;
+        _dbService = dbService;
+        _characterDataCache = characterDataCache;
 
         _priceUpdateQueue = Channel.CreateUnbounded<PriceUpdateWorkItem>(new UnboundedChannelOptions
         {
@@ -209,7 +213,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Populating recent sales cache from database...");
             
             // Get recent sales from DB (last 5 per item/world/hq type)
-            var recentSales = DbService.GetRecentSalesForCache(
+            var recentSales = _dbService.GetRecentSalesForCache(
                 maxSalesPerType: RecentSalesCacheEntry.MaxSalesPerType);
             
             foreach (var (key, prices) in recentSales)
@@ -563,13 +567,13 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                         var saleRecords = sales.Select(w => (
                             w.ItemId, w.WorldId, w.PricePerUnit, w.Quantity, w.IsHq, w.Total, w.BuyerName
                         )).ToList();
-                        DbService.SaveSaleRecordsBatch(saleRecords);
+                        _dbService.SaveSaleRecordsBatch(saleRecords);
                         
                         // Save item prices in batch
                         var salePrices = sales.Select(w => (
                             w.ItemId, w.WorldId, w.ExistingMinNq, w.ExistingMinHq, w.LastSaleNq, w.LastSaleHq
                         )).ToList();
-                        DbService.SaveItemPricesBatch(salePrices);
+                        _dbService.SaveItemPricesBatch(salePrices);
                         
                         // Update in-memory caches
                         foreach (var w in sales)
@@ -606,7 +610,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                         var listingPrices = listings.Select(w => (
                             w.ItemId, w.WorldId, w.CachedMinNq, w.CachedMinHq, 0, 0 // No sale prices for listings
                         )).ToList();
-                        DbService.SaveItemPricesBatch(listingPrices);
+                        _dbService.SaveItemPricesBatch(listingPrices);
                         
                         foreach (var w in listings)
                         {
@@ -831,7 +835,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         // Try database
         var dbResult = worldId.HasValue 
-            ? DbService.GetItemPrice(itemId, worldId.Value)
+            ? _dbService.GetItemPrice(itemId, worldId.Value)
             : null;
         
         if (dbResult.HasValue)
@@ -888,7 +892,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 var wid = _worldData.GetWorldId(scope);
                 if (wid.HasValue)
                 {
-                    DbService.SaveItemPrice(itemId, wid.Value, nqPrice, hqPrice, 
+                    _dbService.SaveItemPrice(itemId, wid.Value, nqPrice, hqPrice, 
                         lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
                 }
             }
@@ -1003,7 +1007,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         try
         {
             // Get character data from cache (no DB access)
-            var characterData = CharacterDataCache.GetAllCharacterNames();
+            var characterData = _characterDataCache.GetAllCharacterNames();
             var characterIds = characterData
                 .Select(c => c.characterId)
                 .Distinct()
@@ -1030,7 +1034,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             foreach (var (charId, total, gil, item, contributions, characterName) in results)
             {
                 // Save to inventory_value_history (existing behavior)
-                DbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
+                _dbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
                 
                 // Also queue to standard time-series tracking
                 // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
@@ -1060,7 +1064,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         try
         {
             // Get character data from cache (no DB access)
-            var characterData = CharacterDataCache.GetAllCharacterNames();
+            var characterData = _characterDataCache.GetAllCharacterNames();
             var characterIds = characterData
                 .Select(c => c.characterId)
                 .Distinct()
@@ -1107,7 +1111,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     {
         try
         {
-            var historyData = DbService.GetAllInventoryValueHistory();
+            var historyData = _dbService.GetAllInventoryValueHistory();
             _cacheService.SetInventoryValueCache(historyData);
             LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Populated inventory value cache with {historyData.Count} records");
         }
@@ -1131,7 +1135,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             switch (settings.RetentionType)
             {
                 case PriceRetentionType.ByTime:
-                    var deleted = DbService.CleanupOldPriceData(settings.RetentionDays);
+                    var deleted = _dbService.CleanupOldPriceData(settings.RetentionDays);
                     if (deleted > 0)
                     {
                         LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Cleaned up {deleted} old records (time-based)");
@@ -1140,7 +1144,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
                 case PriceRetentionType.BySize:
                     var maxBytes = settings.RetentionSizeMb * 1024L * 1024L;
-                    var deletedBySize = DbService.CleanupPriceDataBySize(maxBytes);
+                    var deletedBySize = _dbService.CleanupPriceDataBySize(maxBytes);
                     if (deletedBySize > 0)
                     {
                         LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Cleaned up {deletedBySize} records (size-based)");
@@ -1205,7 +1209,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }).ToList();
 
                 // Batch save to reduce lock contention
-                DbService.SaveItemPricesBatch(pricesToSave);
+                _dbService.SaveItemPricesBatch(pricesToSave);
 
                 // Rate limiting - wait between batches
                 await Task.Delay(100);
@@ -1252,7 +1256,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             // Get items with stale or missing sale data (older than 5 minutes)
             var staleThreshold = TimeSpan.FromMinutes(5);
-            var staleItemIds = DbService.GetStaleItemIds(allItemIds, staleThreshold);
+            var staleItemIds = _dbService.GetStaleItemIds(allItemIds, staleThreshold);
 
             if (staleItemIds.Count == 0)
             {
@@ -1295,7 +1299,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 }).ToList();
 
                 // Batch save to reduce lock contention
-                DbService.SaveItemPricesBatch(pricesToSave);
+                _dbService.SaveItemPricesBatch(pricesToSave);
 
                 // Rate limiting - wait between batches
                 await Task.Delay(100);
@@ -1441,7 +1445,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             _priceCache.Clear();
 
             // Clear database tables
-            var result = DbService.ClearAllPriceData();
+            var result = _dbService.ClearAllPriceData();
 
             if (result)
             {

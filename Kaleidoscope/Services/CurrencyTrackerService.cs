@@ -114,7 +114,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         TrackedDataRegistry registry,
         InventoryChangeService inventoryChangeService,
         TimeSeriesCacheService cacheService,
-        CharacterDataCacheService characterDataCache)
+        CharacterDataCacheService characterDataCache,
+        KaleidoscopeDbService dbService)
     {
         _log = log;
         _filenames = filenames;
@@ -124,9 +125,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _inventoryChangeService = inventoryChangeService;
         _cacheService = cacheService;
         _characterDataCache = characterDataCache;
-
-        var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
-        _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
+        _dbService = dbService;
 
         _characterDataCache.Initialize(_dbService);
 

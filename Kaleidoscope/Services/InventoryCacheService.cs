@@ -21,7 +21,8 @@ namespace Kaleidoscope.Services;
 public sealed class InventoryCacheService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
-    private readonly CurrencyTrackerService _currencyTrackerService;
+    private readonly KaleidoscopeDbService _dbService;
+    private readonly TimeSeriesCacheService _cacheService;
     private readonly IObjectTable _objectTable;
     private readonly IFramework _framework;
     private readonly InventoryChangeService _inventoryChangeService;
@@ -53,7 +54,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     public InventoryCacheService(
         IPluginLog log,
-        CurrencyTrackerService currencyTrackerService,
+        KaleidoscopeDbService dbService,
+        TimeSeriesCacheService cacheService,
         IObjectTable objectTable,
         IFramework framework,
         InventoryChangeService inventoryChangeService,
@@ -61,7 +63,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         ConfigurationService configService)
     {
         _log = log;
-        _currencyTrackerService = currencyTrackerService;
+        _dbService = dbService;
+        _cacheService = cacheService;
         _objectTable = objectTable;
         _framework = framework;
         _inventoryChangeService = inventoryChangeService;
@@ -93,7 +96,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             try
             {
-                var data = _currencyTrackerService.DbService.GetAllInventoryCachesAllCharacters();
+                var data = _dbService.GetAllInventoryCachesAllCharacters();
                 
                 // Populate both caches under lock to prevent race conditions with UpdateMemoryCache
                 lock (_cacheLock)
@@ -157,7 +160,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         // Compact WAL file on logout to prevent it from growing too large
         try
         {
-            var (success, bytesReclaimed) = _currencyTrackerService.DbService.Checkpoint();
+            var (success, bytesReclaimed) = _dbService.Checkpoint();
             if (success && bytesReclaimed > 0)
                 LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
         }
@@ -310,14 +313,14 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
 
             // Save to database
-            _currencyTrackerService.DbService.SaveInventoryCache(entry);
+            _dbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
             
             // Ensure character is in character_names table for discoverability in data tables
             // This is needed because character rows are populated from character_names, not inventory_cache
             if (!string.IsNullOrEmpty(playerName))
             {
-                _currencyTrackerService.DbService.SaveCharacterName(characterId, playerName);
+                _dbService.SaveCharacterName(characterId, playerName);
             }
             
             // Sample tracked items to time-series for historical graphing
@@ -377,7 +380,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
 
             // Save to database
-            _currencyTrackerService.DbService.SaveInventoryCache(entry);
+            _dbService.SaveInventoryCache(entry);
             _lastCachedRetainerId = retainerId;
             
             // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
@@ -425,7 +428,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 if (retainerId == 0) continue;
 
                 // Check if we already have a cache for this retainer
-                var existing = _currencyTrackerService.DbService.GetInventoryCache(
+                var existing = _dbService.GetInventoryCache(
                     characterId, 
                     InventorySourceType.Retainer, 
                     retainerId);
@@ -438,7 +441,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                         existing.Gil = retainer->Gil;
                         existing.Name = retainer->NameString;
                         existing.UpdatedAt = DateTime.UtcNow;
-                        _currencyTrackerService.DbService.SaveInventoryCache(existing);
+                        _dbService.SaveInventoryCache(existing);
                     }
                 }
                 else
@@ -446,7 +449,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     // Create a placeholder entry (inventory items will be filled when retainer is opened)
                     var entry = InventoryCacheEntry.ForRetainer(characterId, retainerId, retainer->NameString);
                     entry.Gil = retainer->Gil;
-                    _currencyTrackerService.DbService.SaveInventoryCache(entry);
+                    _dbService.SaveInventoryCache(entry);
                     LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Created placeholder for retainer '{retainer->NameString}'");
                 }
             }
@@ -516,7 +519,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
             
             // Cache miss - load from database
-            var entries = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId);
+            var entries = _dbService.GetAllInventoryCaches(characterId);
             
             // Store in memory cache (this data is static for offline characters)
             _inventoryMemoryCache[characterId] = entries;
@@ -745,14 +748,14 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         var count = 0;
         var keys = _pendingSamples.Keys.ToList();
-        var cacheService = _currencyTrackerService.CacheService;
+        var cacheService = _cacheService;
         
         foreach (var key in keys)
         {
             if (_pendingSamples.TryRemove(key, out var sample))
             {
                 // Save to database
-                _currencyTrackerService.DbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
+                _dbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
                 
                 // Also update the in-memory cache so UI doesn't lose the data
                 cacheService.AddPoint(key.VariableName, key.CharacterId, sample.Value, sample.Timestamp);
