@@ -22,19 +22,15 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     private SqliteConnection? _connection;
     private SqliteConnection? _readConnection;
     
-    // Character name cache to avoid repeated DB queries
-    // Stores (gameName, displayName, timeSeriesColor) tuple for each character
     private Dictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)>? _characterNameCache;
     private DateTime _characterNameCacheTime = DateTime.MinValue;
-    private const double CharacterNameCacheExpirySeconds = 30.0; // Cache for 30 seconds
+    private const double CharacterNameCacheExpirySeconds = 30.0;
     
-    // Inventory value history stats cache (updated on writes, read without DB access)
     private readonly object _inventoryValueStatsLock = new();
     private long _cachedInventoryValueRecordCount;
     private long? _cachedInventoryValueMaxTimestamp;
     private bool _inventoryValueStatsCacheValid;
     
-    // Cache size in KB (negative value for SQLite PRAGMA)
     private readonly int _cacheSizeKb;
 
     public string? DbPath => _dbPath;
@@ -48,7 +44,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     {
         _dbPath = filenames.DatabasePath;
         var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
-        // Clamp to reasonable range and convert to KB
         cacheSizeMb = Math.Clamp(cacheSizeMb, 1, 64);
         _cacheSizeKb = cacheSizeMb * 1000; // Convert MB to KB (approximate)
         EnsureConnection();
@@ -369,7 +364,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (_connection == null) return;
 
-        // Check if table exists
         using var checkCmd = _connection.CreateCommand();
         checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_value_items'";
         var exists = checkCmd.ExecuteScalar() != null;
@@ -401,7 +395,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (_connection == null) return;
 
-        // Check if column exists
         using var checkCmd = _connection.CreateCommand();
         checkCmd.CommandText = "PRAGMA table_info(character_names)";
         
@@ -416,7 +409,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
         }
 
-        // Add missing column
         if (!hasDisplayName)
         {
             using var alterCmd = _connection.CreateCommand();
@@ -434,7 +426,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         if (_connection == null) return;
 
-        // Check if column exists
         using var checkCmd = _connection.CreateCommand();
         checkCmd.CommandText = "PRAGMA table_info(character_names)";
         
@@ -449,7 +440,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
         }
 
-        // Add missing column
         if (!hasTimeSeriesColor)
         {
             using var alterCmd = _connection.CreateCommand();
