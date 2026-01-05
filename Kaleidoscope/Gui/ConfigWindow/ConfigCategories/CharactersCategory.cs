@@ -16,13 +16,11 @@ public sealed class CharactersCategory
     private readonly TimeSeriesCacheService _cacheService;
     private readonly AutoRetainerIpcService _autoRetainerService;
 
-    // Editing state
     private ulong _editingCharacterId = 0;
     private string _editBuffer = "";
     private bool _needsRefresh = true;
     private List<(ulong cid, string? gameName, string? displayName, uint? timeSeriesColor)> _characters = new();
     
-    // Color editing state - tracks which color picker is active and its current value
     private ulong _editingColorCid = 0;
     private Vector4 _colorEditBuffer = Vector4.One;
 
@@ -49,7 +47,6 @@ public sealed class CharactersCategory
         ImGui.TextWrapped("You can set a custom display name and time series color for each character.");
         ImGui.Spacing();
 
-        // Refresh button
         if (ImGui.Button("Refresh") || _needsRefresh)
         {
             RefreshCharacterList();
@@ -70,16 +67,12 @@ public sealed class CharactersCategory
             return;
         }
 
-        // Draw table
         var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        
-        // Calculate available height for table (leave space for other content)
         var availableHeight = ImGui.GetContentRegionAvail().Y - 50;
         if (availableHeight < 100) availableHeight = 100;
 
         if (ImGui.BeginTable("CharacterNamesTable", 5, tableFlags, new Vector2(0, availableHeight)))
         {
-            // Setup columns
             ImGui.TableSetupColumn("CID", ImGuiTableColumnFlags.WidthFixed, 160);
             ImGui.TableSetupColumn("Game Name", ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Display Name", ImGuiTableColumnFlags.WidthStretch, 1f);
@@ -92,7 +85,6 @@ public sealed class CharactersCategory
             {
                 ImGui.TableNextRow();
 
-                // CID column - clickable to copy to clipboard
                 ImGui.TableNextColumn();
                 var cidStr = cid.ToString();
                 if (ImGui.Selectable(cidStr, false, ImGuiSelectableFlags.None, new Vector2(0, 0)))
@@ -106,16 +98,13 @@ public sealed class CharactersCategory
                     ImGui.EndTooltip();
                 }
 
-                // Game Name column
                 ImGui.TableNextColumn();
                 var gameNameDisplay = string.IsNullOrEmpty(gameName) ? "(unknown)" : gameName;
                 ImGui.TextUnformatted(gameNameDisplay);
 
-                // Display Name column (editable)
                 ImGui.TableNextColumn();
                 if (_editingCharacterId == cid)
                 {
-                    // Editing mode
                     ImGui.SetNextItemWidth(-1);
                     var enterPressed = ImGui.InputText($"##edit_{cid}", ref _editBuffer, 100, ImGuiInputTextFlags.EnterReturnsTrue);
                     
@@ -124,7 +113,6 @@ public sealed class CharactersCategory
                         SaveDisplayName(cid, _editBuffer);
                     }
                     
-                    // Focus the input on first frame
                     if (ImGui.IsItemActivated())
                     {
                         ImGui.SetKeyboardFocusHere(-1);
@@ -132,7 +120,6 @@ public sealed class CharactersCategory
                 }
                 else
                 {
-                    // Display mode
                     if (!string.IsNullOrEmpty(displayName))
                     {
                         ImGui.TextUnformatted(displayName);
@@ -143,12 +130,10 @@ public sealed class CharactersCategory
                     }
                 }
 
-                // Color column
                 ImGui.TableNextColumn();
                 
                 ImGui.PushID((int)cid);
                 
-                // Use edit buffer if actively editing this row, otherwise read from data
                 Vector4 colorValue;
                 var hasColor = timeSeriesColor.HasValue;
                 
@@ -162,18 +147,14 @@ public sealed class CharactersCategory
                 }
                 else
                 {
-                    // No color set - use a placeholder gray for the picker
                     colorValue = new Vector4(0.5f, 0.5f, 0.5f, 1f);
                 }
                 
-                // Show "Auto" label if no color is set and not editing
                 if (!hasColor && _editingColorCid != cid)
                 {
-                    // Draw a small color button that looks like a placeholder
                     if (ImGui.ColorButton("##colorPreview", new Vector4(0.3f, 0.3f, 0.3f, 0.5f), 
                         ImGuiColorEditFlags.NoTooltip, new Vector2(20, 20)))
                     {
-                        // Start editing with a default color
                         _editingColorCid = cid;
                         _colorEditBuffer = new Vector4(1f, 1f, 1f, 1f);
                     }
@@ -188,29 +169,24 @@ public sealed class CharactersCategory
                 }
                 else
                 {
-                    // Color picker for set colors or when actively editing
                     if (ImGui.ColorEdit4("##color", ref colorValue, 
                         ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
                     {
-                        // Update buffer while editing
                         _colorEditBuffer = colorValue;
                     }
                     
-                    // Track when we start editing (for already-set colors)
                     if (ImGui.IsItemActivated() && hasColor)
                     {
                         _editingColorCid = cid;
                         _colorEditBuffer = colorValue;
                     }
                     
-                    // Save when the user finishes editing (releases mouse button or closes picker)
                     if (ImGui.IsItemDeactivatedAfterEdit())
                     {
                         SaveTimeSeriesColor(cid, ColorUtils.Vector4ToUint(_colorEditBuffer));
                         _editingColorCid = 0;
                     }
                     
-                    // Clear button to reset to auto
                     if (hasColor || _editingColorCid == cid)
                     {
                         ImGui.SameLine();
@@ -230,11 +206,9 @@ public sealed class CharactersCategory
                 
                 ImGui.PopID();
 
-                // Actions column
                 ImGui.TableNextColumn();
                 if (_editingCharacterId == cid)
                 {
-                    // Save/Cancel buttons
                     if (ImGui.Button($"Save##{cid}"))
                     {
                         SaveDisplayName(cid, _editBuffer);
@@ -248,14 +222,12 @@ public sealed class CharactersCategory
                 }
                 else
                 {
-                    // Edit button
                     if (ImGui.Button($"Edit##{cid}"))
                     {
                         _editingCharacterId = cid;
                         _editBuffer = displayName ?? "";
                     }
                     
-                    // Clear button (only if display name is set)
                     if (!string.IsNullOrEmpty(displayName))
                     {
                         ImGui.SameLine();
@@ -270,7 +242,6 @@ public sealed class CharactersCategory
             ImGui.EndTable();
         }
 
-        // Summary
         ImGui.Spacing();
         var customCount = _characters.Count(c => !string.IsNullOrEmpty(c.displayName));
         var colorCount = _characters.Count(c => c.timeSeriesColor.HasValue);
@@ -286,7 +257,6 @@ public sealed class CharactersCategory
         {
             _characters = _currencyTrackerService.DbService?.GetAllCharacterDataExtended() ?? new();
             
-            // Apply configured sort order
             var sortOrder = _configService.Config.CharacterSortOrder;
             
             switch (sortOrder)
@@ -310,18 +280,15 @@ public sealed class CharactersCategory
                     break;
                     
                 case CharacterSortOrder.AutoRetainer:
-                    // Get AutoRetainer order, fall back to alphabetical if not available
                     var arOrder = _autoRetainerService.GetRegisteredCharacterIds();
                     if (arOrder != null && arOrder.Count > 0)
                     {
-                        // Create lookup for order index
                         var orderLookup = new Dictionary<ulong, int>();
                         for (var i = 0; i < arOrder.Count; i++)
                         {
                             orderLookup[arOrder[i]] = i;
                         }
                         
-                        // Sort by AutoRetainer order, characters not in AR go to the end alphabetically
                         _characters.Sort((a, b) =>
                         {
                             var hasA = orderLookup.TryGetValue(a.cid, out var orderA);
@@ -334,7 +301,6 @@ public sealed class CharactersCategory
                             if (hasB)
                                 return 1;  // B comes first
                             
-                            // Both not in AR, sort alphabetically
                             var nameA = a.gameName ?? a.cid.ToString();
                             var nameB = b.gameName ?? b.cid.ToString();
                             return string.Compare(nameA, nameB, StringComparison.OrdinalIgnoreCase);
@@ -342,7 +308,6 @@ public sealed class CharactersCategory
                     }
                     else
                     {
-                        // Fall back to alphabetical
                         _characters.Sort((a, b) =>
                         {
                             var nameA = a.gameName ?? a.cid.ToString();
@@ -364,17 +329,11 @@ public sealed class CharactersCategory
     {
         try
         {
-            // Trim and treat empty string as null
             var trimmed = displayName?.Trim();
             if (string.IsNullOrEmpty(trimmed)) trimmed = null;
 
-            // Save to database
             _currencyTrackerService.DbService?.SaveCharacterDisplayName(cid, trimmed);
-            
-            // Update cache service
             _cacheService.SetCharacterDisplayName(cid, trimmed);
-            
-            // Invalidate DB cache to pick up changes
             _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved display name for {cid}: {trimmed ?? "(cleared)"}");
@@ -395,13 +354,8 @@ public sealed class CharactersCategory
     {
         try
         {
-            // Save to database
             _currencyTrackerService.DbService?.SaveCharacterTimeSeriesColor(cid, color);
-            
-            // Update cache service
             _cacheService.SetCharacterTimeSeriesColor(cid, color);
-            
-            // Invalidate DB cache to pick up changes
             _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved time series color for {cid}: {color?.ToString("X8") ?? "(cleared)"}");
@@ -438,13 +392,11 @@ public sealed class CharactersCategory
             _configService.MarkDirty();
         }
 
-        // Show example
         ImGui.SameLine();
         ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), $"(e.g., \"{formatExamples[currentFormat]}\")");
         
         ImGui.Spacing();
         
-        // Sort order setting
         ImGui.TextUnformatted("Character Sort Order");
         ImGui.Separator();
         ImGui.TextWrapped("Choose how characters are sorted in lists throughout the UI.");
@@ -461,7 +413,6 @@ public sealed class CharactersCategory
             _needsRefresh = true; // Refresh to apply new sort order
         }
         
-        // Show note about AutoRetainer if selected and not available
         if (_configService.Config.CharacterSortOrder == CharacterSortOrder.AutoRetainer && !_autoRetainerService.IsAvailable)
         {
             ImGui.TextColored(new Vector4(1f, 0.7f, 0.3f, 1f), "AutoRetainer not available - using alphabetical order.");
