@@ -1969,8 +1969,11 @@ public class WindowContentContainer
             return;
         }
         
-        // When focused, bring this window to front so it stays above the fullscreen main window
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows))
+        // When focused, bring this window to front so it stays above the fullscreen main window.
+        // Skip when any popup is open (dropdowns, context menus, etc.) to prevent z-order issues
+        // where this window would cover its own dropdowns.
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)
+            && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
