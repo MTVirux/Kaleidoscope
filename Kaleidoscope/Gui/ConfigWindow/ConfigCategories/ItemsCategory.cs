@@ -23,21 +23,16 @@ public sealed class ItemsCategory
     private readonly FavoritesService? _favoritesService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
     
-    // Color editing state
     private uint? _editingColorItemId = null;
     private Vector4 _colorEditBuffer = Vector4.One;
     
-    // Search state
     private string _searchFilter = string.Empty;
     private string _trackedItemsSearchFilter = string.Empty;
     
-    // Item picker for adding new items (for colors section)
     private readonly MTItemComboDropdown? _itemCombo;
     
-    // Item picker for tracking items (for tracked items section)
     private readonly MTItemComboDropdown? _trackItemCombo;
     
-    // Cached item names for display
     private readonly Dictionary<uint, string> _itemNameCache = new();
 
     public ItemsCategory(
@@ -215,11 +210,9 @@ public sealed class ItemsCategory
                 ImGui.TableNextRow();
                 ImGui.PushID((int)info.ItemId);
 
-                // Icon column
                 ImGui.TableNextColumn();
                 DrawItemIcon(info.ItemId);
 
-                // Item name column
                 ImGui.TableNextColumn();
                 var itemName = GetItemName(info.ItemId);
                 ImGui.TextUnformatted(itemName);
@@ -228,14 +221,12 @@ public sealed class ItemsCategory
                     ImGui.SetTooltip($"Item ID: {info.ItemId}");
                 }
 
-                // Source column
                 ImGui.TableNextColumn();
                 var sources = new List<string>();
                 if (info.InItemTable) sources.Add("Table");
                 if (info.InItemGraph) sources.Add("Graph");
                 ImGui.TextDisabled(string.Join(", ", sources));
 
-                // Store History checkbox column (per-item toggle)
                 ImGui.TableNextColumn();
                 var storeHistory = config.ItemsWithHistoricalTracking.Contains(info.ItemId);
                 if (ImGui.Checkbox("##storeHistory", ref storeHistory))
@@ -256,7 +247,6 @@ public sealed class ItemsCategory
                         "This setting applies across all tools in the project.");
                 }
 
-                // Status column
                 ImGui.TableNextColumn();
                 if (storeHistory)
                 {
@@ -267,10 +257,8 @@ public sealed class ItemsCategory
                     ImGui.TextDisabled("Off");
                 }
                 
-                // Actions column
                 ImGui.TableNextColumn();
                 
-                // Delete history button
                 if (ImGui.SmallButton("Clear##clr"))
                 {
                     itemToDeleteHistory = info.ItemId;
@@ -282,7 +270,6 @@ public sealed class ItemsCategory
                 
                 ImGui.SameLine();
                 
-                // Remove item button
                 if (ImGuiHelpers.DangerSmallButton("×##del"))
                 {
                     itemToDelete = info.ItemId;
