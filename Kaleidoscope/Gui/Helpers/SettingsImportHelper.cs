@@ -5,6 +5,10 @@ namespace Kaleidoscope.Gui.Helpers;
 /// <summary>
 /// Utility methods for importing settings from serialized dictionaries.
 /// Handles multiple JSON formats (Newtonsoft.Json, System.Text.Json, in-memory).
+/// 
+/// NOTE: For ToolComponent subclasses, prefer using the base class helper methods
+/// (GetSetting, ImportColor, ImportColorArray, ImportHashSet, ImportList, ConvertToDictionary)
+/// instead of this static class. This class is intended for non-ToolComponent usage (widgets, services).
 /// </summary>
 public static class SettingsImportHelper
 {

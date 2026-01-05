@@ -396,5 +396,172 @@ public abstract class ToolComponent : IDisposable
         return defaultValue;
     }
     
+    /// <summary>
+    /// Exports a Vector4 color to the settings dictionary as a float array [R, G, B, A].
+    /// Use this format when storing colors as a single key (vs ExportColor which uses RGBA component keys).
+    /// Usage: ExportColorArray(dict, "CharacterColumnColor", color);
+    /// </summary>
+    protected static void ExportColorArray(Dictionary<string, object?> settings, string key, Vector4? color)
+    {
+        if (color.HasValue)
+            settings[key] = new[] { color.Value.X, color.Value.Y, color.Value.Z, color.Value.W };
+    }
+    
+    /// <summary>
+    /// Imports a Vector4 color from a float array format [R, G, B, A].
+    /// Returns null if the key is not found or invalid.
+    /// Usage: target.CharacterColumnColor = ImportColorArray(settings, "CharacterColumnColor");
+    /// </summary>
+    protected static Vector4? ImportColorArray(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        try
+        {
+            // Handle Newtonsoft.Json JArray (used by ConfigManager)
+            if (value is Newtonsoft.Json.Linq.JArray jArray && jArray.Count >= 4)
+            {
+                return new Vector4(
+                    jArray[0].ToObject<float>(),
+                    jArray[1].ToObject<float>(),
+                    jArray[2].ToObject<float>(),
+                    jArray[3].ToObject<float>());
+            }
+
+            // Handle System.Text.Json.JsonElement
+            if (value is System.Text.Json.JsonElement jsonElement &&
+                jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var arr = jsonElement.EnumerateArray().Select(v => v.GetSingle()).ToArray();
+                if (arr.Length >= 4)
+                    return new Vector4(arr[0], arr[1], arr[2], arr[3]);
+            }
+
+            // Handle in-memory float[] (from direct ExportToolSettings)
+            if (value is float[] floatArr && floatArr.Length >= 4)
+            {
+                return new Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Imports a List of values from various serialized formats.
+    /// Usage: var ids = ImportList&lt;ulong&gt;(settings, "CharacterIds");
+    /// </summary>
+    protected static List<T>? ImportList<T>(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        try
+        {
+            // Handle System.Text.Json JsonElement
+            if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var result = new List<T>();
+                foreach (var item in jsonElement.EnumerateArray())
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<T>(item.GetRawText());
+                    if (parsed != null)
+                        result.Add(parsed);
+                }
+                return result;
+            }
+            
+            // Handle Newtonsoft.Json JArray
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                return jArray.ToObject<List<T>>() ?? new List<T>();
+            }
+
+            // Handle direct List<T>
+            if (value is List<T> list)
+            {
+                return new List<T>(list);
+            }
+
+            // Handle IEnumerable<T>
+            if (value is IEnumerable<T> enumerable)
+            {
+                return enumerable.ToList();
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Converts an object to a Dictionary from various serialized formats.
+    /// Handles Newtonsoft.Json JObject, System.Text.Json.JsonElement, and raw dictionaries.
+    /// Usage: var nested = ConvertToDictionary(settings["NestedObject"]);
+    /// </summary>
+    protected static Dictionary<string, object?>? ConvertToDictionary(object? obj)
+    {
+        if (obj == null) return null;
+        
+        try
+        {
+            // Handle Newtonsoft.Json JObject
+            if (obj is Newtonsoft.Json.Linq.JObject jObj)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var prop in jObj.Properties())
+                {
+                    result[prop.Name] = prop.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null 
+                        ? null 
+                        : prop.Value;
+                }
+                return result;
+            }
+            
+            // Handle System.Text.Json.JsonElement
+            if (obj is System.Text.Json.JsonElement jsonElement && 
+                jsonElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var prop in jsonElement.EnumerateObject())
+                {
+                    result[prop.Name] = prop.Value;
+                }
+                return result;
+            }
+            
+            // Handle IDictionary<string, object?>
+            if (obj is IDictionary<string, object?> dict)
+            {
+                return new Dictionary<string, object?>(dict);
+            }
+            
+            // Handle Dictionary<string, object>
+            if (obj is Dictionary<string, object> rawDict)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (var kvp in rawDict)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+                return result;
+            }
+        }
+        catch
+        {
+            // Graceful fallback
+        }
+        
+        return null;
+    }
+    
     #endregion
 }
