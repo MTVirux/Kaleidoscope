@@ -361,6 +361,18 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         loadedSeries++;
                         loadedPoints += points.Count;
                     }
+                    else
+                    {
+                        // No points within time window - ensure we still have the latest value
+                        // This handles cases where data exists but hasn't changed recently
+                        var lastPoint = _dbService.GetLastPointForCharacter(variable, charId);
+                        if (lastPoint.HasValue)
+                        {
+                            _cacheService.PopulateFromDatabase(variable, charId, new[] { lastPoint.Value });
+                            loadedSeries++;
+                            loadedPoints++;
+                        }
+                    }
                 }
             }
             
@@ -381,6 +393,17 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         _cacheService.PopulateFromDatabase(variable, charId, points);
                         loadedSeries++;
                         loadedPoints += points.Count;
+                    }
+                    else
+                    {
+                        // No points within time window - ensure we still have the latest value
+                        var lastPoint = _dbService.GetLastPointForCharacter(variable, charId);
+                        if (lastPoint.HasValue)
+                        {
+                            _cacheService.PopulateFromDatabase(variable, charId, new[] { lastPoint.Value });
+                            loadedSeries++;
+                            loadedPoints++;
+                        }
                     }
                 }
             }

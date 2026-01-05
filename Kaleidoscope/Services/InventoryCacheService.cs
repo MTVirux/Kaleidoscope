@@ -35,6 +35,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     // Track when the full "all characters" cache was last loaded
     private List<InventoryCacheEntry>? _allCharactersCache;
     private bool _allCharactersCacheDirty = true;
+    
+    // Lock object for synchronizing cache updates between PopulateCacheAsync and UpdateMemoryCache
+    private readonly object _cacheLock = new();
 
     private ulong _lastCachedRetainerId = 0;
     private DateTime _lastPlayerCacheTime = DateTime.MinValue;
@@ -92,13 +95,16 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             {
                 var data = _currencyTrackerService.DbService.GetAllInventoryCachesAllCharacters();
                 
-                // Populate both caches
-                _allCharactersCache = data;
-                foreach (var group in data.GroupBy(e => e.CharacterId))
+                // Populate both caches under lock to prevent race conditions with UpdateMemoryCache
+                lock (_cacheLock)
                 {
-                    _inventoryMemoryCache[group.Key] = group.ToList();
+                    _allCharactersCache = data;
+                    foreach (var group in data.GroupBy(e => e.CharacterId))
+                    {
+                        _inventoryMemoryCache[group.Key] = group.ToList();
+                    }
+                    _allCharactersCacheDirty = false;
                 }
-                _allCharactersCacheDirty = false;
                 
                 LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Pre-populated cache with {data.Count} inventory entries");
             }
@@ -167,8 +173,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     public void InvalidateCharacterCache(ulong characterId)
     {
-        _inventoryMemoryCache.TryRemove(characterId, out _);
-        _allCharactersCacheDirty = true;
+        lock (_cacheLock)
+        {
+            _inventoryMemoryCache.TryRemove(characterId, out _);
+            _allCharactersCacheDirty = true;
+        }
     }
     
     /// <summary>
@@ -176,9 +185,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     public void InvalidateAllCaches()
     {
-        _inventoryMemoryCache.Clear();
-        _allCharactersCache = null;
-        _allCharactersCacheDirty = true;
+        lock (_cacheLock)
+        {
+            _inventoryMemoryCache.Clear();
+            _allCharactersCache = null;
+            _allCharactersCacheDirty = true;
+        }
     }
     
     /// <summary>
@@ -187,35 +199,38 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     private void UpdateMemoryCache(ulong characterId, InventoryCacheEntry entry)
     {
-        // Update per-character cache
-        var characterCaches = _inventoryMemoryCache.GetOrAdd(characterId, _ => new List<InventoryCacheEntry>());
-        
-        // Find and replace existing entry for same source type + retainer ID, or add new
-        var existingIndex = characterCaches.FindIndex(c => 
-            c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
-        
-        if (existingIndex >= 0)
+        lock (_cacheLock)
         {
-            characterCaches[existingIndex] = entry;
-        }
-        else
-        {
-            characterCaches.Add(entry);
-        }
-        
-        // Update all-characters cache if it exists
-        if (_allCharactersCache != null)
-        {
-            var allIndex = _allCharactersCache.FindIndex(c => 
-                c.CharacterId == characterId && c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
+            // Update per-character cache
+            var characterCaches = _inventoryMemoryCache.GetOrAdd(characterId, _ => new List<InventoryCacheEntry>());
             
-            if (allIndex >= 0)
+            // Find and replace existing entry for same source type + retainer ID, or add new
+            var existingIndex = characterCaches.FindIndex(c => 
+                c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
+            
+            if (existingIndex >= 0)
             {
-                _allCharactersCache[allIndex] = entry;
+                characterCaches[existingIndex] = entry;
             }
             else
             {
-                _allCharactersCache.Add(entry);
+                characterCaches.Add(entry);
+            }
+            
+            // Update all-characters cache if it exists
+            if (_allCharactersCache != null)
+            {
+                var allIndex = _allCharactersCache.FindIndex(c => 
+                    c.CharacterId == characterId && c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
+                
+                if (allIndex >= 0)
+                {
+                    _allCharactersCache[allIndex] = entry;
+                }
+                else
+                {
+                    _allCharactersCache.Add(entry);
+                }
             }
         }
     }
@@ -486,24 +501,28 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// <summary>
     /// Gets all cached inventories for a specific character.
     /// Uses in-memory cache for efficiency - offline characters' data is static.
+    /// Returns a snapshot copy of the list to prevent concurrent modification issues.
     /// </summary>
     public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
     {
         if (characterId == 0) return new List<InventoryCacheEntry>();
         
-        // Check memory cache first
-        if (_inventoryMemoryCache.TryGetValue(characterId, out var cached))
+        lock (_cacheLock)
         {
-            return cached;
+            // Check memory cache first
+            if (_inventoryMemoryCache.TryGetValue(characterId, out var cached))
+            {
+                return cached.ToList(); // Return a copy to prevent concurrent modification
+            }
+            
+            // Cache miss - load from database
+            var entries = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId);
+            
+            // Store in memory cache (this data is static for offline characters)
+            _inventoryMemoryCache[characterId] = entries;
+            
+            return entries.ToList(); // Return a copy
         }
-        
-        // Cache miss - load from database
-        var entries = _currencyTrackerService.DbService.GetAllInventoryCaches(characterId);
-        
-        // Store in memory cache (this data is static for offline characters)
-        _inventoryMemoryCache[characterId] = entries;
-        
-        return entries;
     }
     
     /// <summary>
@@ -520,25 +539,33 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// Gets all cached inventories across all characters.
     /// Uses in-memory cache for efficiency - offline characters' data is static.
     /// Returns empty list if cache is not yet populated (non-blocking).
+    /// Returns a snapshot copy of the list to prevent concurrent modification issues.
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventories()
     {
-        // If cache is valid, return it
-        if (!_allCharactersCacheDirty && _allCharactersCache != null)
-        {
-            return _allCharactersCache;
-        }
-        
         // If cache is populating on background thread, return empty list (non-blocking)
         if (_cachePopulating)
         {
             return new List<InventoryCacheEntry>();
         }
         
+        lock (_cacheLock)
+        {
+            // If cache is valid, return a copy
+            if (!_allCharactersCacheDirty && _allCharactersCache != null)
+            {
+                return _allCharactersCache.ToList(); // Return a copy to prevent concurrent modification
+            }
+        }
+        
         // Cache is dirty but not populating - trigger async population and return empty
         // This prevents blocking the UI thread
         PopulateCacheAsync();
-        return _allCharactersCache ?? new List<InventoryCacheEntry>();
+        
+        lock (_cacheLock)
+        {
+            return _allCharactersCache?.ToList() ?? new List<InventoryCacheEntry>();
+        }
     }
 
     /// <summary>
