@@ -16,7 +16,7 @@ namespace Kaleidoscope.Gui.ConfigWindow;
 /// <remarks>
 /// Provides a sidebar-based navigation between General, Data, Characters, Currencies, and Layouts configuration categories.
 /// </remarks>
-public sealed class ConfigWindow : Window, IService
+public sealed class ConfigWindow : Window, IService, IDisposable
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -346,5 +346,13 @@ public sealed class ConfigWindow : Window, IService
                 break;
         }
         ImGui.EndChild();
+    }
+    
+    /// <summary>
+    /// Disposes category instances that hold resources.
+    /// </summary>
+    public void Dispose()
+    {
+        _storageCategory?.Dispose();
     }
 }

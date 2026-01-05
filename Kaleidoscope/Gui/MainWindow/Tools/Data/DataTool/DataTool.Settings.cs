@@ -565,7 +565,7 @@ public partial class DataTool
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.UI, $"Failed to import {typeName}: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[DataTool] Failed to import {typeName}: {ex.Message}");
         }
         
         return result;

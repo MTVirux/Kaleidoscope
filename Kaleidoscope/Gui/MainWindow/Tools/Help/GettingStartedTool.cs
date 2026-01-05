@@ -73,6 +73,4 @@ public class GettingStartedTool : ToolComponent
             LogDebug($"Draw error: {ex.Message}");
         }
     }
-
-    public override bool HasSettings => false;
 }

@@ -67,6 +67,4 @@ public class ImPlotReferenceTool : ToolComponent
             LogDebug($"Draw error: {ex.Message}");
         }
     }
-
-    public override bool HasSettings => false;
 }
