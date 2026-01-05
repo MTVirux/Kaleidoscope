@@ -50,6 +50,7 @@ public sealed class ConfigWindow : Window
     private TestsCategory? _testsCategory;
     private CachesCategory? _cachesCategory;
     private LoggingCategory? _loggingCategory;
+    private SqlQueryCategory? _sqlQueryCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -70,6 +71,7 @@ public sealed class ConfigWindow : Window
         public const int Tests = 11; // Hidden tab, only shown with CTRL+ALT
         public const int Caches = 12; // Hidden tab, only shown with CTRL+ALT
         public const int Logging = 13; // Hidden tab, only shown with CTRL+ALT
+        public const int SqlQuery = 14; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -101,6 +103,7 @@ public sealed class ConfigWindow : Window
         CharacterDataService characterDataService,
         MarketDataCacheService marketDataCacheService,
         FrameLimiterService frameLimiterService,
+        IUiBuilder uiBuilder,
         MessageService messageService)
         : base("Kaleidoscope Configuration")
     {
@@ -152,7 +155,7 @@ public sealed class ConfigWindow : Window
         TitleBarButtons.Add(_lockButton);
 
         // Create category renderers
-        _generalCategory = new GeneralCategory(_configService, frameLimiterService);
+        _generalCategory = new GeneralCategory(_configService, frameLimiterService, uiBuilder);
         _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService);
         _layoutsCategory = new LayoutsCategory(_configService);
         _customizationCategory = new CustomizationCategory(Config, _configService.Save, _layoutEditingService);
@@ -174,6 +177,7 @@ public sealed class ConfigWindow : Window
         _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
         _loggingCategory = new LoggingCategory(_configService);
+        _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -210,8 +214,13 @@ public sealed class ConfigWindow : Window
 
     public override void Draw()
     {
+        // Check if any popup is open (combo dropdowns, context menus, modals)
+        // We must NOT bring the window to front when a popup is open, as that would
+        // render the window above the popup, making dropdowns appear "under" the window
+        var isPopupOpen = ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel);
+        
         // Bring window to front when first opened (so it appears above the fullscreen main window)
-        if (_bringToFrontOnNextDraw)
+        if (_bringToFrontOnNextDraw && !isPopupOpen)
         {
             _bringToFrontOnNextDraw = false;
             var window = ImGuiP.GetCurrentWindow();
@@ -220,7 +229,8 @@ public sealed class ConfigWindow : Window
         
         // When focused, ensure this window stays above the fullscreen main window
         // This handles the case where user clicks on this window after interacting with main window
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows))
+        // Skip when popups are open so dropdowns render above this window
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !isPopupOpen)
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
@@ -257,6 +267,7 @@ public sealed class ConfigWindow : Window
             if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
             if (ImGui.Selectable("Caches", _selectedTab == TabIndex.Caches)) _selectedTab = TabIndex.Caches;
             if (ImGui.Selectable("Logging", _selectedTab == TabIndex.Logging)) _selectedTab = TabIndex.Logging;
+            if (ImGui.Selectable("SQL Query", _selectedTab == TabIndex.SqlQuery)) _selectedTab = TabIndex.SqlQuery;
             if (ImGui.Selectable("Tests", _selectedTab == TabIndex.Tests)) _selectedTab = TabIndex.Tests;
         }
         ImGui.EndChild();
@@ -322,6 +333,13 @@ public sealed class ConfigWindow : Window
                 // Only draw logging if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
                 if (showProfiler)
                     _loggingCategory?.Draw();
+                else
+                    _selectedTab = TabIndex.General;
+                break;
+            case TabIndex.SqlQuery:
+                // Only draw SQL query if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
+                if (showProfiler)
+                    _sqlQueryCategory?.Draw();
                 else
                     _selectedTab = TabIndex.General;
                 break;
