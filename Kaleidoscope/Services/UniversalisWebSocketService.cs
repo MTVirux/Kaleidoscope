@@ -251,11 +251,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     {
         try
         {
-            // Try to deserialize as BSON using MongoDB.Bson
-            // For now, we'll attempt JSON parsing for simpler implementation
-            // The Universalis WebSocket uses BSON, but the structure is the same
-            
-            // Attempt to parse the event type from BSON
+            // Parse BSON-encoded message (Universalis WebSocket protocol)
             var eventType = ParseEventType(data);
             if (string.IsNullOrEmpty(eventType))
             {
