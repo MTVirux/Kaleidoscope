@@ -355,6 +355,7 @@ public class ItemSalesHistoryTool : ToolComponent
         if (ImGui.SliderInt("Default Max Entries", ref maxEntries, 10, 500))
         {
             _maxEntries = maxEntries;
+            NotifyToolSettingsChanged();
         }
         ImGui.TextDisabled("Number of sale entries to fetch and display.");
     }

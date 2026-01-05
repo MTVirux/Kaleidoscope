@@ -701,31 +701,23 @@ public abstract class VentureStatusToolBase : ToolComponent
     /// </summary>
     public override Dictionary<string, object?>? ExportToolSettings()
     {
-        return new Dictionary<string, object?>
+        var settings = new Dictionary<string, object?>
         {
             ["GroupByCharacter"] = GroupByCharacter,
             ["HideCharacterName"] = HideCharacterName,
             ["SortOrder"] = (int)SortOrder,
             ["ReadyOnTop"] = ReadyOnTop,
-            ["HiddenCharacters"] = HiddenCharacters.ToList(),
-            [HiddenEntitiesSettingsKey] = HiddenEntities.ToList(),
-            ["ReadyColorR"] = ReadyColor.X,
-            ["ReadyColorG"] = ReadyColor.Y,
-            ["ReadyColorB"] = ReadyColor.Z,
-            ["ReadyColorA"] = ReadyColor.W,
-            ["ActiveColorR"] = ActiveColor.X,
-            ["ActiveColorG"] = ActiveColor.Y,
-            ["ActiveColorB"] = ActiveColor.Z,
-            ["ActiveColorA"] = ActiveColor.W,
-            ["DisabledColorR"] = DisabledColor.X,
-            ["DisabledColorG"] = DisabledColor.Y,
-            ["DisabledColorB"] = DisabledColor.Z,
-            ["DisabledColorA"] = DisabledColor.W,
-            [$"{NoVentureColorSettingsKey}R"] = NoVentureColor.X,
-            [$"{NoVentureColorSettingsKey}G"] = NoVentureColor.Y,
-            [$"{NoVentureColorSettingsKey}B"] = NoVentureColor.Z,
-            [$"{NoVentureColorSettingsKey}A"] = NoVentureColor.W
         };
+        
+        ExportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+        ExportHashSet(settings, HiddenEntitiesSettingsKey, HiddenEntities);
+        
+        ExportColor(settings, "ReadyColor", ReadyColor);
+        ExportColor(settings, "ActiveColor", ActiveColor);
+        ExportColor(settings, "DisabledColor", DisabledColor);
+        ExportColor(settings, NoVentureColorSettingsKey, NoVentureColor);
+        
+        return settings;
     }
 
     /// <summary>
@@ -740,41 +732,13 @@ public abstract class VentureStatusToolBase : ToolComponent
         SortOrder = (VentureSortOrder)GetSetting(settings, "SortOrder", (int)SortOrder);
         ReadyOnTop = GetSetting(settings, "ReadyOnTop", ReadyOnTop);
 
-        var hiddenChars = GetSetting<List<ulong>>(settings, "HiddenCharacters", null);
-        if (hiddenChars != null)
-        {
-            HiddenCharacters = new HashSet<ulong>(hiddenChars);
-        }
+        HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+        HiddenEntities = ImportHashSet(settings, HiddenEntitiesSettingsKey, HiddenEntities);
 
-        var hiddenEntities = GetSetting<List<string>>(settings, HiddenEntitiesSettingsKey, null);
-        if (hiddenEntities != null)
-        {
-            HiddenEntities = new HashSet<string>(hiddenEntities);
-        }
-
-        ReadyColor = new Vector4(
-            GetSetting(settings, "ReadyColorR", ReadyColor.X),
-            GetSetting(settings, "ReadyColorG", ReadyColor.Y),
-            GetSetting(settings, "ReadyColorB", ReadyColor.Z),
-            GetSetting(settings, "ReadyColorA", ReadyColor.W));
-
-        ActiveColor = new Vector4(
-            GetSetting(settings, "ActiveColorR", ActiveColor.X),
-            GetSetting(settings, "ActiveColorG", ActiveColor.Y),
-            GetSetting(settings, "ActiveColorB", ActiveColor.Z),
-            GetSetting(settings, "ActiveColorA", ActiveColor.W));
-
-        DisabledColor = new Vector4(
-            GetSetting(settings, "DisabledColorR", DisabledColor.X),
-            GetSetting(settings, "DisabledColorG", DisabledColor.Y),
-            GetSetting(settings, "DisabledColorB", DisabledColor.Z),
-            GetSetting(settings, "DisabledColorA", DisabledColor.W));
-
-        NoVentureColor = new Vector4(
-            GetSetting(settings, $"{NoVentureColorSettingsKey}R", NoVentureColor.X),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}G", NoVentureColor.Y),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}B", NoVentureColor.Z),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}A", NoVentureColor.W));
+        ReadyColor = ImportColor(settings, "ReadyColor", DefaultReadyColor);
+        ActiveColor = ImportColor(settings, "ActiveColor", DefaultActiveColor);
+        DisabledColor = ImportColor(settings, "DisabledColor", DefaultDisabledColor);
+        NoVentureColor = ImportColor(settings, NoVentureColorSettingsKey, DefaultNoVentureColor);
     }
 
     public override void Dispose()

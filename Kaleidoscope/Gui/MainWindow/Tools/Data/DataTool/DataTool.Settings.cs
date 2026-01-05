@@ -1,7 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
-using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
@@ -381,7 +380,7 @@ public partial class DataTool
         var target = _instanceSettings;
         
         // View mode
-        target.ViewMode = (DataToolViewMode)SettingsImportHelper.GetSetting(settings, "ViewMode", (int)target.ViewMode);
+        target.ViewMode = (DataToolViewMode)GetSetting(settings, "ViewMode", (int)target.ViewMode);
         
         // Columns
         if (settings.TryGetValue("Columns", out var columnsObj) && columnsObj != null)
@@ -391,82 +390,82 @@ public partial class DataTool
         }
         
         // Shared settings
-        target.IncludeRetainers = SettingsImportHelper.GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
-        target.ShowActionButtons = SettingsImportHelper.GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
+        target.IncludeRetainers = GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
+        target.ShowActionButtons = GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
         
         // Table number format
         if (settings.ContainsKey("TableNumberFormatStyle"))
         {
-            target.TableNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "TableNumberFormatStyle", (int)target.TableNumberFormat.Style);
-            target.TableNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "TableNumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
+            target.TableNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "TableNumberFormatStyle", (int)target.TableNumberFormat.Style);
+            target.TableNumberFormat.DecimalPlaces = GetSetting(settings, "TableNumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
         }
         else if (settings.ContainsKey("NumberFormatStyle"))
         {
             // Backward compatibility: migrate old shared NumberFormat to table format
-            target.TableNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "NumberFormatStyle", (int)target.TableNumberFormat.Style);
-            target.TableNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "NumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
+            target.TableNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)target.TableNumberFormat.Style);
+            target.TableNumberFormat.DecimalPlaces = GetSetting(settings, "NumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
         }
         else if (settings.ContainsKey("UseCompactNumbers"))
         {
             // Backward compatibility: migrate old UseCompactNumbers setting
-            var useCompact = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", false);
+            var useCompact = GetSetting(settings, "UseCompactNumbers", false);
             target.TableNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
         }
         
         // Graph number format
         if (settings.ContainsKey("GraphNumberFormatStyle"))
         {
-            target.GraphNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "GraphNumberFormatStyle", (int)target.GraphNumberFormat.Style);
-            target.GraphNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "GraphNumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
+            target.GraphNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "GraphNumberFormatStyle", (int)target.GraphNumberFormat.Style);
+            target.GraphNumberFormat.DecimalPlaces = GetSetting(settings, "GraphNumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
         }
         else if (settings.ContainsKey("NumberFormatStyle"))
         {
             // Backward compatibility: migrate old shared NumberFormat to graph format too
-            target.GraphNumberFormat.Style = (NumberFormatStyle)SettingsImportHelper.GetSetting(settings, "NumberFormatStyle", (int)target.GraphNumberFormat.Style);
-            target.GraphNumberFormat.DecimalPlaces = SettingsImportHelper.GetSetting(settings, "NumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
+            target.GraphNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)target.GraphNumberFormat.Style);
+            target.GraphNumberFormat.DecimalPlaces = GetSetting(settings, "NumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
         }
         else if (settings.ContainsKey("UseCompactNumbers"))
         {
             // Backward compatibility: migrate old UseCompactNumbers setting
-            var useCompact = SettingsImportHelper.GetSetting(settings, "UseCompactNumbers", false);
+            var useCompact = GetSetting(settings, "UseCompactNumbers", false);
             target.GraphNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
         }
         
-        target.UseCharacterFilter = SettingsImportHelper.GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);
+        target.UseCharacterFilter = GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);
         
-        var selectedIds = SettingsImportHelper.ImportUlongList(settings, "SelectedCharacterIds");
+        var selectedIds = ImportList<ulong>(settings, "SelectedCharacterIds");
         if (selectedIds != null)
         {
             target.SelectedCharacterIds.Clear();
             target.SelectedCharacterIds.AddRange(selectedIds);
         }
         
-        target.GroupingMode = (TableGroupingMode)SettingsImportHelper.GetSetting(settings, "GroupingMode", (int)target.GroupingMode);
+        target.GroupingMode = (TableGroupingMode)GetSetting(settings, "GroupingMode", (int)target.GroupingMode);
         
         // Special grouping
         if (settings.TryGetValue("SpecialGrouping", out var specialGroupingObj))
         {
-            var specialGroupingDict = SettingsImportHelper.ConvertToDictionary(specialGroupingObj);
+            var specialGroupingDict = ConvertToDictionary(specialGroupingObj);
             SpecialGroupingWidget.ImportSettings(target.SpecialGrouping, specialGroupingDict);
         }
         
         // Table-specific
-        target.ShowTotalRow = SettingsImportHelper.GetSetting(settings, "ShowTotalRow", target.ShowTotalRow);
-        target.Sortable = SettingsImportHelper.GetSetting(settings, "Sortable", target.Sortable);
-        target.CharacterColumnWidth = SettingsImportHelper.GetSetting(settings, "CharacterColumnWidth", target.CharacterColumnWidth);
-        target.SortColumnIndex = SettingsImportHelper.GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
-        target.SortAscending = SettingsImportHelper.GetSetting(settings, "SortAscending", target.SortAscending);
-        target.UseFullNameWidth = SettingsImportHelper.GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
-        target.AutoSizeEqualColumns = SettingsImportHelper.GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
-        target.HorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
-        target.VerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
-        target.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
-        target.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
-        target.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
-        target.HeaderVerticalAlignment = (MTTableVerticalAlignment)SettingsImportHelper.GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
-        target.HideCharacterColumnInAllMode = SettingsImportHelper.GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
-        target.TextColorMode = (TableTextColorMode)SettingsImportHelper.GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
-        target.ShowRetainerBreakdown = SettingsImportHelper.GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
+        target.ShowTotalRow = GetSetting(settings, "ShowTotalRow", target.ShowTotalRow);
+        target.Sortable = GetSetting(settings, "Sortable", target.Sortable);
+        target.CharacterColumnWidth = GetSetting(settings, "CharacterColumnWidth", target.CharacterColumnWidth);
+        target.SortColumnIndex = GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
+        target.SortAscending = GetSetting(settings, "SortAscending", target.SortAscending);
+        target.UseFullNameWidth = GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
+        target.AutoSizeEqualColumns = GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
+        target.HorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
+        target.VerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
+        target.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
+        target.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
+        target.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
+        target.HeaderVerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
+        target.HideCharacterColumnInAllMode = GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
+        target.TextColorMode = (TableTextColorMode)GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
+        target.ShowRetainerBreakdown = GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
         
         // Import merged column groups
         if (settings.TryGetValue("MergedColumnGroups", out var mergedColGroupsObj) && mergedColGroupsObj != null)
@@ -485,36 +484,36 @@ public partial class DataTool
         }
         
         // Colors
-        target.CharacterColumnColor = SettingsImportHelper.ImportColor(settings, "CharacterColumnColor");
-        target.HeaderColor = SettingsImportHelper.ImportColor(settings, "HeaderColor");
-        target.EvenRowColor = SettingsImportHelper.ImportColor(settings, "EvenRowColor");
-        target.OddRowColor = SettingsImportHelper.ImportColor(settings, "OddRowColor");
+        target.CharacterColumnColor = ImportColorArray(settings, "CharacterColumnColor");
+        target.HeaderColor = ImportColorArray(settings, "HeaderColor");
+        target.EvenRowColor = ImportColorArray(settings, "EvenRowColor");
+        target.OddRowColor = ImportColorArray(settings, "OddRowColor");
         
         // Hidden characters
-        target.HiddenCharacters = SettingsImportHelper.ImportUlongHashSet(settings, "HiddenCharacters") ?? new HashSet<ulong>();
+        target.HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", target.HiddenCharacters);
         
         // Graph-specific
-        target.ColorMode = (Models.GraphColorMode)SettingsImportHelper.GetSetting(settings, "ColorMode", (int)target.ColorMode);
-        target.LegendWidth = SettingsImportHelper.GetSetting(settings, "LegendWidth", target.LegendWidth);
-        target.LegendHeightPercent = SettingsImportHelper.GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
-        target.ShowLegend = SettingsImportHelper.GetSetting(settings, "ShowLegend", target.ShowLegend);
-        target.LegendCollapsed = SettingsImportHelper.GetSetting(settings, "LegendCollapsed", target.LegendCollapsed);
-        target.LegendPosition = (MTLegendPosition)SettingsImportHelper.GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
-        target.GraphType = (MTGraphType)SettingsImportHelper.GetSetting(settings, "GraphType", (int)target.GraphType);
-        target.ShowXAxisTimestamps = SettingsImportHelper.GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
-        target.ShowCrosshair = SettingsImportHelper.GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
-        target.ShowGridLines = SettingsImportHelper.GetSetting(settings, "ShowGridLines", target.ShowGridLines);
-        target.ShowCurrentPriceLine = SettingsImportHelper.GetSetting(settings, "ShowCurrentPriceLine", target.ShowCurrentPriceLine);
-        target.ShowValueLabel = SettingsImportHelper.GetSetting(settings, "ShowValueLabel", target.ShowValueLabel);
-        target.ValueLabelOffsetX = SettingsImportHelper.GetSetting(settings, "ValueLabelOffsetX", target.ValueLabelOffsetX);
-        target.ValueLabelOffsetY = SettingsImportHelper.GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
-        target.AutoScrollEnabled = SettingsImportHelper.GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
-        target.AutoScrollTimeValue = SettingsImportHelper.GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
-        target.AutoScrollTimeUnit = (MTTimeUnit)SettingsImportHelper.GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
-        target.AutoScrollNowPosition = SettingsImportHelper.GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
-        target.ShowControlsDrawer = SettingsImportHelper.GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
-        target.TimeRangeValue = SettingsImportHelper.GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
-        target.TimeRangeUnit = (MTTimeUnit)SettingsImportHelper.GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        target.ColorMode = (Models.GraphColorMode)GetSetting(settings, "ColorMode", (int)target.ColorMode);
+        target.LegendWidth = GetSetting(settings, "LegendWidth", target.LegendWidth);
+        target.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
+        target.ShowLegend = GetSetting(settings, "ShowLegend", target.ShowLegend);
+        target.LegendCollapsed = GetSetting(settings, "LegendCollapsed", target.LegendCollapsed);
+        target.LegendPosition = (MTLegendPosition)GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
+        target.GraphType = (MTGraphType)GetSetting(settings, "GraphType", (int)target.GraphType);
+        target.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
+        target.ShowCrosshair = GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
+        target.ShowGridLines = GetSetting(settings, "ShowGridLines", target.ShowGridLines);
+        target.ShowCurrentPriceLine = GetSetting(settings, "ShowCurrentPriceLine", target.ShowCurrentPriceLine);
+        target.ShowValueLabel = GetSetting(settings, "ShowValueLabel", target.ShowValueLabel);
+        target.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", target.ValueLabelOffsetX);
+        target.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
+        target.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
+        target.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
+        target.AutoScrollTimeUnit = (MTTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
+        target.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
+        target.TimeRangeValue = GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
+        target.TimeRangeUnit = (MTTimeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
         
         // Update character combo
         if (_characterCombo != null)
@@ -556,7 +555,7 @@ public partial class DataTool
             
             foreach (var item in enumerable)
             {
-                var dict = SettingsImportHelper.ConvertToDictionary(item);
+                var dict = ConvertToDictionary(item);
                 if (dict == null) continue;
                 
                 var parsed = itemFactory(dict);
@@ -581,16 +580,13 @@ public partial class DataTool
         {
             var group = new MergedColumnGroup
             {
-                Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
-                Width = SettingsImportHelper.GetSetting(dict, "Width", 80f),
-                Color = SettingsImportHelper.ImportColor(dict, "Color"),
-                ShowInTable = SettingsImportHelper.GetSetting(dict, "ShowInTable", true),
-                ShowInGraph = SettingsImportHelper.GetSetting(dict, "ShowInGraph", true)
+                Name = GetSetting(dict, "Name", "Merged") ?? "Merged",
+                Width = GetSetting(dict, "Width", 80f),
+                Color = ImportColorArray(dict, "Color"),
+                ShowInTable = GetSetting(dict, "ShowInTable", true),
+                ShowInGraph = GetSetting(dict, "ShowInGraph", true),
+                ColumnIndices = ImportList<int>(dict, "ColumnIndices") ?? new List<int>()
             };
-            
-            var indices = SettingsImportHelper.ImportIntList(dict, "ColumnIndices");
-            if (indices != null)
-                group.ColumnIndices = indices;
             
             return group;
         }, nameof(MergedColumnGroup));
@@ -605,13 +601,10 @@ public partial class DataTool
         {
             var group = new MergedRowGroup
             {
-                Name = SettingsImportHelper.GetSetting(dict, "Name", "Merged"),
-                Color = SettingsImportHelper.ImportColor(dict, "Color")
+                Name = GetSetting(dict, "Name", "Merged") ?? "Merged",
+                Color = ImportColorArray(dict, "Color"),
+                CharacterIds = ImportList<ulong>(dict, "CharacterIds") ?? new List<ulong>()
             };
-            
-            var charIds = SettingsImportHelper.ImportUlongList(dict, "CharacterIds");
-            if (charIds != null)
-                group.CharacterIds = charIds;
             
             return group;
         }, nameof(MergedRowGroup));

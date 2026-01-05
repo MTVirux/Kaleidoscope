@@ -482,7 +482,7 @@ public class WebsocketFeedTool : ToolComponent
     public override Dictionary<string, object?>? ExportToolSettings()
     {
         var s = Settings;
-        return new Dictionary<string, object?>
+        var settings = new Dictionary<string, object?>
         {
             ["MaxEntries"] = s.MaxEntries,
             ["ShowListingsAdd"] = s.ShowListingsAdd,
@@ -491,11 +491,14 @@ public class WebsocketFeedTool : ToolComponent
             ["AutoScroll"] = s.AutoScroll,
             ["LatestOnTop"] = s.LatestOnTop,
             ["FilterScopeMode"] = (int)s.FilterScopeMode,
-            ["FilterRegions"] = s.FilterRegions.ToList(),
-            ["FilterDataCenters"] = s.FilterDataCenters.ToList(),
-            ["FilterWorldIds"] = s.FilterWorldIds.ToList(),
             ["FilterItemId"] = s.FilterItemId
         };
+        
+        ExportHashSet(settings, "FilterRegions", s.FilterRegions);
+        ExportHashSet(settings, "FilterDataCenters", s.FilterDataCenters);
+        ExportHashSet(settings, "FilterWorldIds", s.FilterWorldIds);
+        
+        return settings;
     }
 
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
@@ -512,28 +515,9 @@ public class WebsocketFeedTool : ToolComponent
         s.FilterScopeMode = (PriceTrackingScopeMode)GetSetting(settings, "FilterScopeMode", (int)s.FilterScopeMode);
         s.FilterItemId = GetSetting(settings, "FilterItemId", s.FilterItemId);
 
-        // Restore HashSet properties from lists (handles JsonElement from deserialization)
-        if (settings.TryGetValue("FilterRegions", out var regionsObj) && regionsObj != null)
-        {
-            if (regionsObj is System.Text.Json.JsonElement regionsJson && regionsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterRegions = new HashSet<string>(regionsJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
-            }
-        }
-        if (settings.TryGetValue("FilterDataCenters", out var dcObj) && dcObj != null)
-        {
-            if (dcObj is System.Text.Json.JsonElement dcJson && dcJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterDataCenters = new HashSet<string>(dcJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
-            }
-        }
-        if (settings.TryGetValue("FilterWorldIds", out var worldsObj) && worldsObj != null)
-        {
-            if (worldsObj is System.Text.Json.JsonElement worldsJson && worldsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterWorldIds = new HashSet<int>(worldsJson.EnumerateArray().Select(v => v.GetInt32()));
-            }
-        }
+        s.FilterRegions = ImportHashSet(settings, "FilterRegions", s.FilterRegions);
+        s.FilterDataCenters = ImportHashSet(settings, "FilterDataCenters", s.FilterDataCenters);
+        s.FilterWorldIds = ImportHashSet(settings, "FilterWorldIds", s.FilterWorldIds);
 
         // Reset widget initialization flag so it picks up imported settings
         _worldSelectionWidgetInitialized = false;
