@@ -293,7 +293,8 @@ public partial class DataTool
             ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null,
             ["Width"] = g.Width,
             ["ShowInTable"] = g.ShowInTable,
-            ["ShowInGraph"] = g.ShowInGraph
+            ["ShowInGraph"] = g.ShowInGraph,
+            ["DisplayOrder"] = g.DisplayOrder
         }).ToList();
         
         // Serialize merged row groups
@@ -585,7 +586,8 @@ public partial class DataTool
                 Color = ImportColorArray(dict, "Color"),
                 ShowInTable = GetSetting(dict, "ShowInTable", true),
                 ShowInGraph = GetSetting(dict, "ShowInGraph", true),
-                ColumnIndices = ImportList<int>(dict, "ColumnIndices") ?? new List<int>()
+                ColumnIndices = ImportList<int>(dict, "ColumnIndices") ?? new List<int>(),
+                DisplayOrder = GetSetting(dict, "DisplayOrder", -1)
             };
             
             return group;

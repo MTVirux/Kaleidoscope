@@ -25,6 +25,7 @@ public partial class ItemTableWidget
     
     /// <summary>
     /// Builds the list of display columns, combining individual columns and merged groups.
+    /// Items are sorted by display order to allow interleaving merged groups with individual columns.
     /// </summary>
     private List<DisplayColumn> BuildDisplayColumns(IReadOnlyList<ItemColumnConfig> columns, IItemTableWidgetSettings settings, float autoWidth)
     {
@@ -40,10 +41,41 @@ public partial class ItemTableWidget
             }
         }
         
-        // Track which merged groups we've already added (by their first column index)
-        var addedMergedGroups = new HashSet<int>();
+        // Build a unified list with display orders
+        var orderedItems = new List<(int displayOrder, DisplayColumn column)>();
         
-        // Iterate through all columns in order
+        // Add merged groups with their display orders
+        foreach (var group in settings.MergedColumnGroups)
+        {
+            // Skip if the merged group is hidden
+            if (!group.ShowInTable)
+                continue;
+            
+            // Only include visible columns in the merged group
+            var visibleIndices = group.ColumnIndices
+                .Where(idx => idx >= 0 && idx < columns.Count && columns[idx].ShowInTable)
+                .ToList();
+            
+            if (visibleIndices.Count > 0)
+            {
+                // Use DisplayOrder if set (-1 is sentinel for "auto"), otherwise use minimum column index * 10
+                var displayOrder = group.DisplayOrder != -1 
+                    ? group.DisplayOrder 
+                    : group.ColumnIndices.Min() * 10;
+                
+                orderedItems.Add((displayOrder, new DisplayColumn
+                {
+                    IsMerged = true,
+                    Header = group.Name,
+                    Width = settings.AutoSizeEqualColumns ? autoWidth : group.Width,
+                    Color = group.Color,
+                    SourceColumnIndices = visibleIndices,
+                    MergedGroup = group
+                }));
+            }
+        }
+        
+        // Add individual (non-merged) columns with their display orders
         for (int i = 0; i < columns.Count; i++)
         {
             var column = columns[i];
@@ -52,61 +84,25 @@ public partial class ItemTableWidget
             if (!column.ShowInTable)
                 continue;
             
+            // Skip columns that are part of a merged group
             if (mergedIndices.Contains(i))
+                continue;
+            
+            // Regular column - display order is index * 10
+            orderedItems.Add((i * 10, new DisplayColumn
             {
-                // This column is part of a merged group - find which one
-                var group = settings.MergedColumnGroups.FirstOrDefault(g => g.ColumnIndices.Contains(i));
-                if (group != null)
-                {
-                    // Skip if the merged group itself is hidden
-                    if (!group.ShowInTable)
-                        continue;
-                    
-                    // Only add the merged group once (at the position of its first column that's visible)
-                    // Get the first visible column index in this group
-                    var firstVisibleIdx = group.ColumnIndices
-                        .Where(idx => idx >= 0 && idx < columns.Count && columns[idx].ShowInTable)
-                        .DefaultIfEmpty(-1)
-                        .Min();
-                    
-                    if (firstVisibleIdx >= 0 && i == firstVisibleIdx && !addedMergedGroups.Contains(group.ColumnIndices.Min()))
-                    {
-                        addedMergedGroups.Add(group.ColumnIndices.Min());
-                        // Only include visible columns in the merged group
-                        var visibleIndices = group.ColumnIndices
-                            .Where(idx => idx >= 0 && idx < columns.Count && columns[idx].ShowInTable)
-                            .ToList();
-                        
-                        if (visibleIndices.Count > 0)
-                        {
-                            displayColumns.Add(new DisplayColumn
-                            {
-                                IsMerged = true,
-                                Header = group.Name,
-                                Width = settings.AutoSizeEqualColumns ? autoWidth : group.Width,
-                                Color = group.Color,
-                                SourceColumnIndices = visibleIndices,
-                                MergedGroup = group
-                            });
-                        }
-                    }
-                    // Skip other columns in the same merged group
-                }
-            }
-            else
-            {
-                // Regular column (not merged)
-                displayColumns.Add(new DisplayColumn
-                {
-                    IsMerged = false,
-                    Header = GetColumnHeader(column),
-                    Width = settings.AutoSizeEqualColumns ? autoWidth : column.Width,
-                    Color = column.Color,
-                    SourceColumnIndices = new List<int> { i },
-                    MergedGroup = null
-                });
-            }
+                IsMerged = false,
+                Header = GetColumnHeader(column),
+                Width = settings.AutoSizeEqualColumns ? autoWidth : column.Width,
+                Color = column.Color,
+                SourceColumnIndices = new List<int> { i },
+                MergedGroup = null
+            }));
         }
+        
+        // Sort by display order and extract columns
+        orderedItems.Sort((a, b) => a.displayOrder.CompareTo(b.displayOrder));
+        displayColumns = orderedItems.Select(x => x.column).ToList();
         
         return displayColumns;
     }

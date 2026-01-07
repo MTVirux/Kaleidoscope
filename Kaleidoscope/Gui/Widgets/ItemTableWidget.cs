@@ -103,6 +103,14 @@ public class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
     /// Only applicable when all member items have historical tracking enabled.
     /// </summary>
     public bool ShowInGraph { get; set; } = true;
+    
+    /// <summary>
+    /// Display order for this merged group, used to interleave with regular columns.
+    /// Individual columns use their list index as display order.
+    /// A merged group with DisplayOrder=2 appears between columns 1 and 2.
+    /// Use -1 for "end of list" (default for backwards compatibility).
+    /// </summary>
+    public int DisplayOrder { get; set; } = -1;
 }
 
 /// <summary>
