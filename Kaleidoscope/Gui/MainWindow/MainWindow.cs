@@ -603,6 +603,9 @@ public sealed class MainWindow : Window, IService, IDisposable
 
         // Wire main window interaction state so container can block tool interactions
         _contentContainer.IsMainWindowInteracting = () => _stateService.IsMainWindowInteracting;
+
+        // Wire fullscreen state so tool settings windows can stay on top
+        _contentContainer.IsFullscreenMode = () => _isFullscreenMode;
     }
 
     private void InitializeQuickAccessBar()

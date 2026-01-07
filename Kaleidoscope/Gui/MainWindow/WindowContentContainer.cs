@@ -136,6 +136,10 @@ public partial class WindowContentContainer
         // When true, tool interactions should be blocked to prevent accidental moves
         public Func<bool>? IsMainWindowInteracting;
 
+        // Callback to check if fullscreen mode is active
+        // Used to ensure tool settings windows stay on top
+        public Func<bool>? IsFullscreenMode;
+
         // Track global interaction state for this container
         private bool _anyDragging = false;
         private bool _anyResizing = false;

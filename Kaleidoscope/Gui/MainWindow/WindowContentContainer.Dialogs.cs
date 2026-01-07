@@ -225,11 +225,13 @@ public partial class WindowContentContainer
             return;
         }
         
-        // When focused, bring this window to front so it stays above the fullscreen main window.
+        // In fullscreen mode, always bring tool settings window to front so it stays above the main window.
+        // In windowed mode, only bring to front when focused.
         // Skip when any popup is open (dropdowns, context menus, etc.) to prevent z-order issues
         // where this window would cover its own dropdowns.
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)
-            && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+        var isFullscreen = IsFullscreenMode?.Invoke() ?? false;
+        var shouldBringToFront = isFullscreen || ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        if (shouldBringToFront && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
