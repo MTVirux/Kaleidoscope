@@ -578,14 +578,11 @@ public sealed class TrackedDataRegistry : IRequiredService
             catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get crystal {i}: {ex.Message}"); }
         }
         
-        // Add retainer crystals if a retainer is currently active
-        if (GameStateService.IsRetainerActive())
+        // Add all retainer crystals from ItemFinderModule cache (works without retainer window open)
+        var retainerCrystals = GameStateService.GetAllRetainersCrystals();
+        for (int i = 0; i < 18; i++)
         {
-            for (uint i = 2; i <= 19; i++)
-            {
-                try { total += GameStateService.GetActiveRetainerCrystalCount(im, i); }
-                catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get retainer crystal {i}: {ex.Message}"); }
-            }
+            total += retainerCrystals[i];
         }
         
         return total;
@@ -611,16 +608,12 @@ public sealed class TrackedDataRegistry : IRequiredService
         try { total += im->GetInventoryItemCount(clusterId); } 
         catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get cluster {clusterId}: {ex.Message}"); }
         
-        // Add retainer crystals if a retainer is currently active
-        if (GameStateService.IsRetainerActive())
-        {
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, shardId); } 
-            catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get retainer shard {shardId}: {ex.Message}"); }
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, crystalId); } 
-            catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get retainer crystal {crystalId}: {ex.Message}"); }
-            try { total += GameStateService.GetActiveRetainerCrystalCount(im, clusterId); } 
-            catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get retainer cluster {clusterId}: {ex.Message}"); }
-        }
+        // Add all retainer crystals for this element from ItemFinderModule cache
+        // Array indices: Shards 0-5, Crystals 6-11, Clusters 12-17 (each offset by element index)
+        var retainerCrystals = GameStateService.GetAllRetainersCrystals();
+        total += retainerCrystals[element];           // Shard
+        total += retainerCrystals[6 + element];       // Crystal
+        total += retainerCrystals[12 + element];      // Cluster
         
         return total;
     }

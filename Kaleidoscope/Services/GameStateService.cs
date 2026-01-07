@@ -3,6 +3,7 @@ using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Kaleidoscope.Services;
@@ -190,25 +191,6 @@ public static unsafe class GameStateService
     }
 
     /// <summary>
-    /// Gets crystal count from the currently active retainer's crystal inventory.
-    /// Only works when a retainer is selected/open.
-    /// </summary>
-    public static int GetActiveRetainerCrystalCount(InventoryManager* im, uint itemId)
-    {
-        if (im == null) return 0;
-
-        try
-        {
-            return im->GetItemCountInContainer(itemId, InventoryType.RetainerCrystals);
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.GameState, $"GetActiveRetainerCrystalCount failed: {ex.Message}");
-            return 0;
-        }
-    }
-
-    /// <summary>
     /// Checks if a retainer is currently active (selected/open).
     /// </summary>
     public static bool IsRetainerActive()
@@ -259,6 +241,58 @@ public static unsafe class GameStateService
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Gets all retainer crystal counts from the ItemFinderModule cache.
+    /// This works without having a retainer window open, using the game's item finder cache.
+    /// Returns an array of 18 values: [FireShard, IceShard, WindShard, EarthShard, LightningShard, WaterShard,
+    ///                                  FireCrystal, IceCrystal, WindCrystal, EarthCrystal, LightningCrystal, WaterCrystal,
+    ///                                  FireCluster, IceCluster, WindCluster, EarthCluster, LightningCluster, WaterCluster]
+    /// </summary>
+    public static long[] GetAllRetainersCrystals()
+    {
+        // 18 entries: 6 elements × 3 tiers (Shard, Crystal, Cluster)
+        var totals = new long[18];
+        
+        try
+        {
+            var rm = RetainerManagerInstance();
+            if (rm == null || !rm->IsReady) return totals;
+            
+            var ifm = ItemFinderModule.Instance();
+            if (ifm == null) return totals;
+            
+            var count = rm->GetRetainerCount();
+            for (uint i = 0; i < count; i++)
+            {
+                var retainer = rm->GetRetainerBySortedIndex(i);
+                if (retainer == null || !retainer->Available || retainer->RetainerId == 0)
+                    continue;
+                
+                if (!ifm->RetainerInventories.TryGetValuePointer(retainer->RetainerId, out var invPtr) || invPtr == null)
+                    continue;
+                
+                // TryGetValuePointer returns Pointer<ItemFinderRetainerInventory>*, need to dereference and get the raw pointer
+                var inv = (ItemFinderRetainerInventory*)(*invPtr);
+                if (inv == null) continue;
+                
+                // CrystalQuantities: 18 entries stored by tier first, then element
+                // Indices 0-5: Shards (Fire, Ice, Wind, Earth, Lightning, Water)
+                // Indices 6-11: Crystals (Fire, Ice, Wind, Earth, Lightning, Water)
+                // Indices 12-17: Clusters (Fire, Ice, Wind, Earth, Lightning, Water)
+                for (int idx = 0; idx < 18; idx++)
+                {
+                    totals[idx] += inv->CrystalQuantities[idx];
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"GetAllRetainersCrystals failed: {ex.Message}");
+        }
+        
+        return totals;
     }
 
     #endregion
