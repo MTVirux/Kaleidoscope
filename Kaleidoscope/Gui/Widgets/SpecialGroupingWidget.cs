@@ -80,7 +80,7 @@ public static class SpecialGroupingWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        if (!MTTreeHelpers.DrawCollapsingSection("Special Grouping", true))
+        if (!MTTreeHelpers.DrawCollapsingSection("Special Grouping", false))
         {
             if (changed)
             {

@@ -49,7 +49,7 @@ public static class MergeManagementWidget
         ImGui.Spacing();
         ImGui.Spacing();
         
-        if (!MTTreeHelpers.DrawCollapsingSection("Source Merging", true))
+        if (!MTTreeHelpers.DrawCollapsingSection("Source Merging", false))
         {
             return false;
         }
