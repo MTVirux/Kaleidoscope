@@ -158,15 +158,17 @@ public partial class WindowContentContainer
                             // Tool context menu works without edit mode
                             _contextToolIndex = clickedTool;
                             _lastContextClickRel = mouse - contentOrigin;
-                            ImGui.SetNextWindowPos(mouse);
-                            ImGui.OpenPopup("tool_context_menu");
+                            // Defer popup opening by one frame to prevent z-order issues
+                            _pendingPopup = "tool_context_menu";
+                            _pendingPopupPos = mouse;
                         }
                         else if (editMode)
                         {
                             // Content context menu (add tools) only works in edit mode
                             _lastContextClickRel = mouse - contentOrigin;
-                            ImGui.SetNextWindowPos(mouse);
-                            ImGui.OpenPopup("content_context_menu");
+                            // Defer popup opening by one frame to prevent z-order issues
+                            _pendingPopup = "content_context_menu";
+                            _pendingPopupPos = mouse;
                         }
                     }
                 }
@@ -479,10 +481,10 @@ public partial class WindowContentContainer
             DrawUnsavedChangesDialog();
 
             for (var i = 0; i < _tools.Count; i++)
-            {
-                var te = _tools[i];
-                var t = te.Tool;
-                if (!t.Visible) continue;
+                {
+                    var te = _tools[i];
+                    var t = te.Tool;
+                    if (!t.Visible) continue;
                 // Provide absolute screen coords for the tool
                 ImGui.SetCursorScreenPos(t.Position + contentOrigin);
                 var id = $"tool_{i}_{t.Id}";
@@ -747,6 +749,14 @@ public partial class WindowContentContainer
                 }
 
                 ImGui.PopID();
+            }
+
+            // Open any pending popup after tools have been rendered
+            if (_pendingPopup != null)
+            {
+                ImGui.SetNextWindowPos(_pendingPopupPos);
+                ImGui.OpenPopup(_pendingPopup);
+                _pendingPopup = null;
             }
 
             // Update global interaction state by checking all tools

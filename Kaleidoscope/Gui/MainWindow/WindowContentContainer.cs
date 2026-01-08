@@ -19,6 +19,9 @@ public partial class WindowContentContainer
     private Vector2 _lastContextClickRel;
     // Index of the tool that was right-clicked to open the tool-specific context menu
     private int _contextToolIndex = -1;
+    // Pending popup to open next frame (prevents z-order issues by delaying one frame)
+    private string? _pendingPopup = null;
+    private Vector2 _pendingPopupPos = Vector2.Zero;
     // Index of the tool whose settings modal is currently open (-1 = none)
     private int _settingsToolIndex = -1;
     // Whether the settings modal is currently open (used as ref for ImGui modal)
