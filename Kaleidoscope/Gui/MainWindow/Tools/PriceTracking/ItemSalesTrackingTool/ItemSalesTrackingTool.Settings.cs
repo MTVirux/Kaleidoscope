@@ -67,21 +67,10 @@ public partial class ItemSalesTrackingTool
             return;
         }
 
-        if (_worldSelectionWidget == null)
-        {
-            _worldSelectionWidget = new WorldSelectionWidget(worldData, "ItemSalesTrackingScope");
-            _worldSelectionWidget.Width = 280f;
-        }
-
-        if (!_worldSelectionWidgetInitialized)
-        {
-            _worldSelectionWidget.InitializeFrom(
-                Settings.SelectedRegions,
-                Settings.SelectedDataCenters,
-                Settings.SelectedWorldIds);
-            _worldSelectionWidget.Mode = Settings.ScopeMode;
-            _worldSelectionWidgetInitialized = true;
-        }
+        EnsureWorldSelectionWidgetInitialized(worldData);
+        
+        // Use wider width for settings panel
+        _worldSelectionWidget!.Width = 280f;
 
         if (_worldSelectionWidget.Draw("Market Scope##SalesTrackingScope"))
         {
@@ -163,8 +152,10 @@ public partial class ItemSalesTrackingTool
         _worldSelectionWidgetInitialized = false;
         
         var selectedIds = _itemCombo.SelectedItemIds.ToList();
+        LogDebug($"ImportToolSettings: {selectedIds.Count} items selected after import");
         if (selectedIds.Count > 0)
         {
+            LogDebug($"ImportToolSettings: Triggering initial fetch for {selectedIds.Count} items");
             _ = FetchHistoryForItemsAsync(selectedIds);
         }
     }

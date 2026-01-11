@@ -11,8 +11,11 @@ public partial class ItemSalesTrackingTool
 {
     private void OnItemSelectionChanged(IReadOnlySet<uint> selectedIds)
     {
+        LogDebug($"OnItemSelectionChanged: {selectedIds.Count} items selected, {_loadedItemIds.Count} items currently loaded");
+        
         // Find newly selected items that need fetching
         var newItems = selectedIds.Except(_loadedItemIds).ToList();
+        LogDebug($"OnItemSelectionChanged: {newItems.Count} new items need fetching: [{string.Join(", ", newItems.Take(5))}{(newItems.Count > 5 ? "..." : "")}]");
 
         if (newItems.Count > 0)
         {
@@ -21,6 +24,10 @@ public partial class ItemSalesTrackingTool
 
         // Remove cached data for deselected items
         var removedItems = _loadedItemIds.Except(selectedIds).ToList();
+        if (removedItems.Count > 0)
+        {
+            LogDebug($"OnItemSelectionChanged: Removing {removedItems.Count} deselected items from cache");
+        }
         foreach (var itemId in removedItems)
         {
             _salesDataCache.Remove(itemId);
@@ -49,13 +56,17 @@ public partial class ItemSalesTrackingTool
         try
         {
             var scopes = GetQueryScopes();
+            LogDebug($"Query scopes resolved: [{string.Join(", ", scopes)}], ScopeMode={Settings.ScopeMode}");
+            
             if (scopes.Count == 0)
             {
                 _errorMessage = "Cannot determine query scope - check settings.";
+                LogDebug("FetchHistoryForItemsAsync: No scopes resolved, aborting fetch");
                 return;
             }
 
             var itemIdList = itemIds.ToList();
+            LogDebug($"FetchHistoryForItemsAsync: Fetching history for {itemIdList.Count} items: [{string.Join(", ", itemIdList.Take(10))}{(itemIdList.Count > 10 ? "..." : "")}]");
             
             // Batch items into chunks of 100 (Universalis API limit)
             const int batchSize = 100;
@@ -72,6 +83,10 @@ public partial class ItemSalesTrackingTool
 
             _lastFetchTime = DateTime.UtcNow;
             _seriesDataDirty = true;
+            
+            // Log summary of fetched data
+            var totalDataPoints = _salesDataCache.Values.Sum(v => v.Count);
+            LogDebug($"FetchHistoryForItemsAsync complete: {_salesDataCache.Count} items cached, {totalDataPoints} total data points");
         }
         catch (Exception ex)
         {
@@ -88,31 +103,68 @@ public partial class ItemSalesTrackingTool
     {
         // Initialize sales data accumulators for this batch
         var batchSalesData = batch.ToDictionary(id => id, _ => new List<(DateTime, float)>());
+        LogDebug($"FetchBatchAsync: Processing batch of {batch.Count} items across {scopes.Count} scopes");
 
         // Query each scope and combine results
         foreach (var scope in scopes)
         {
             try
             {
+                // Determine if this scope is a single world (no filtering needed since all results are from that world)
+                var isSingleWorldScope = IsSingleWorldScope(scope);
+                LogDebug($"FetchBatchAsync: Querying scope '{scope}' (isSingleWorld={isSingleWorldScope}) for {batch.Count} items with maxEntries={Settings.MaxHistoryEntries}");
+                
                 var historyBatch = await _universalisService.GetHistoryBatchAsync(scope, batch, Settings.MaxHistoryEntries);
-                if (historyBatch != null)
+                
+                if (historyBatch == null)
                 {
-                    foreach (var kvp in historyBatch)
+                    LogDebug($"FetchBatchAsync: API returned null for scope '{scope}'");
+                    continue;
+                }
+                
+                LogDebug($"FetchBatchAsync: Received data for {historyBatch.Count} items from scope '{scope}'");
+                
+                foreach (var kvp in historyBatch)
+                {
+                    var itemId = kvp.Key;
+                    var history = kvp.Value;
+                    
+                    if (history?.Entries == null)
                     {
-                        var itemId = kvp.Key;
-                        var history = kvp.Value;
-                        
-                        if (history?.Entries != null && history.Entries.Count > 0)
-                        {
-                            var filteredEntries = FilterEntriesByWorldScope(history.Entries);
-                            var salesData = filteredEntries
-                                .Select(e => (e.SaleDateTime, (float)e.PricePerUnit));
-                            
-                            if (batchSalesData.TryGetValue(itemId, out var existingData))
-                            {
-                                existingData.AddRange(salesData);
-                            }
-                        }
+                        LogDebug($"FetchBatchAsync: Item {itemId} has null Entries");
+                        continue;
+                    }
+                    
+                    if (history.Entries.Count == 0)
+                    {
+                        LogDebug($"FetchBatchAsync: Item {itemId} has 0 entries");
+                        continue;
+                    }
+                    
+                    LogDebug($"FetchBatchAsync: Item {itemId} has {history.Entries.Count} raw entries");
+                    
+                    // Skip world filtering if we queried a single world - all entries are already from that world
+                    // (Universalis doesn't include WorldId in responses when querying a single world)
+                    List<HistorySale> filteredEntries;
+                    if (isSingleWorldScope)
+                    {
+                        LogDebug($"FetchBatchAsync: Item {itemId} - skipping world filter (single world scope)");
+                        filteredEntries = history.Entries;
+                    }
+                    else
+                    {
+                        filteredEntries = FilterEntriesByWorldScope(history.Entries);
+                        LogDebug($"FetchBatchAsync: Item {itemId} has {filteredEntries.Count} entries after world filter (from {history.Entries.Count})");
+                    }
+                    
+                    var salesData = filteredEntries
+                        .Select(e => (e.SaleDateTime, (float)e.PricePerUnit));
+                    
+                    if (batchSalesData.TryGetValue(itemId, out var existingData))
+                    {
+                        var dataList = salesData.ToList();
+                        existingData.AddRange(dataList);
+                        LogDebug($"FetchBatchAsync: Added {dataList.Count} data points for item {itemId}, total now: {existingData.Count}");
                     }
                 }
             }
@@ -123,39 +175,109 @@ public partial class ItemSalesTrackingTool
         }
 
         // Process and cache results for this batch
+        LogDebug($"FetchBatchAsync: Caching results for {batchSalesData.Count} items");
         foreach (var kvp in batchSalesData)
         {
             var itemId = kvp.Key;
             var allSalesData = kvp.Value;
 
             // Sort by timestamp and deduplicate
-            _salesDataCache[itemId] = allSalesData
+            var deduplicatedData = allSalesData
                 .GroupBy(s => s.Item1)
                 .Select(g => g.First())
                 .OrderBy(s => s.Item1)
                 .ToList();
-
+            
+            _salesDataCache[itemId] = deduplicatedData;
             _loadedItemIds.Add(itemId);
+            
+            LogDebug($"FetchBatchAsync: Cached item {itemId}: {allSalesData.Count} raw -> {deduplicatedData.Count} deduplicated data points");
         }
     }
 
     private List<HistorySale> FilterEntriesByWorldScope(List<HistorySale> entries)
     {
+        LogDebug($"FilterEntriesByWorldScope: Input {entries.Count} entries, ScopeMode={Settings.ScopeMode}");
+        
         if (Settings.ScopeMode == WorldSelectionMode.Worlds && Settings.SelectedWorldIds.Count == 0)
+        {
+            LogDebug($"FilterEntriesByWorldScope: ScopeMode=Worlds but no worlds selected, returning all {entries.Count} entries");
             return entries;
+        }
 
         var effectiveWorldIds = GetEffectiveWorldIds();
+        LogDebug($"FilterEntriesByWorldScope: GetEffectiveWorldIds returned {effectiveWorldIds.Count} world IDs");
+        
         if (effectiveWorldIds.Count == 0)
+        {
+            LogDebug($"FilterEntriesByWorldScope: No effective world IDs, returning all {entries.Count} entries");
             return entries;
+        }
 
-        return entries.Where(e => e.WorldId.HasValue && effectiveWorldIds.Contains(e.WorldId.Value)).ToList();
+        LogDebug($"FilterEntriesByWorldScope: Filtering by {effectiveWorldIds.Count} world IDs: [{string.Join(", ", effectiveWorldIds.Take(10))}{(effectiveWorldIds.Count > 10 ? "..." : "")}]");
+        
+        // Log sample of entry world IDs to see what we're comparing against
+        var sampleEntryWorldIds = entries
+            .Where(e => e.WorldId.HasValue)
+            .Select(e => e.WorldId!.Value)
+            .Distinct()
+            .Take(20)
+            .ToList();
+        LogDebug($"FilterEntriesByWorldScope: Sample entry world IDs: [{string.Join(", ", sampleEntryWorldIds)}]");
+        
+        var entriesWithWorldId = entries.Where(e => e.WorldId.HasValue).ToList();
+        var entriesWithoutWorldId = entries.Count - entriesWithWorldId.Count;
+        if (entriesWithoutWorldId > 0)
+        {
+            LogDebug($"FilterEntriesByWorldScope: {entriesWithoutWorldId} entries have no WorldId and will be excluded");
+        }
+        
+        var filtered = entriesWithWorldId.Where(e => effectiveWorldIds.Contains(e.WorldId!.Value)).ToList();
+        LogDebug($"FilterEntriesByWorldScope: {entriesWithWorldId.Count} entries with WorldId -> {filtered.Count} matched filter");
+        
+        // If nothing matched, log which world IDs from entries didn't match
+        if (filtered.Count == 0 && entriesWithWorldId.Count > 0)
+        {
+            var unmatchedWorldIds = entriesWithWorldId
+                .Select(e => e.WorldId!.Value)
+                .Distinct()
+                .Where(wid => !effectiveWorldIds.Contains(wid))
+                .Take(10)
+                .ToList();
+            LogDebug($"FilterEntriesByWorldScope: WARNING - No matches! Entry world IDs not in filter: [{string.Join(", ", unmatchedWorldIds)}]");
+        }
+        
+        return filtered;
+    }
+
+    /// <summary>
+    /// Determines if the given scope is a single world (as opposed to a DC or region).
+    /// When querying a single world, Universalis returns entries without WorldId populated,
+    /// so we should skip world filtering for such queries.
+    /// </summary>
+    private bool IsSingleWorldScope(string scope)
+    {
+        var worldData = _priceTrackingService.WorldData;
+        if (worldData == null)
+            return false;
+        
+        // Check if the scope matches a known world name
+        var isWorld = worldData.Worlds.Any(w => 
+            string.Equals(w.Name, scope, StringComparison.OrdinalIgnoreCase));
+        
+        return isWorld;
     }
 
     private HashSet<int> GetEffectiveWorldIds()
     {
         if (_worldSelectionWidget != null)
-            return _worldSelectionWidget.GetEffectiveWorldIds();
+        {
+            var widgetResult = _worldSelectionWidget.GetEffectiveWorldIds();
+            LogDebug($"GetEffectiveWorldIds: Using widget, Mode={_worldSelectionWidget.Mode}, returned {widgetResult.Count} world IDs");
+            return widgetResult;
+        }
 
+        LogDebug($"GetEffectiveWorldIds: Widget not initialized, using Settings.ScopeMode={Settings.ScopeMode}");
         return Settings.ScopeMode switch
         {
             WorldSelectionMode.Worlds => Settings.SelectedWorldIds,
@@ -381,5 +503,44 @@ public partial class ItemSalesTrackingTool
         }
 
         _seriesDataDirty = true;
+    }
+
+    /// <summary>
+    /// Returns a human-readable description of the current query scope for tooltips.
+    /// </summary>
+    private string GetCurrentScopeDescription()
+    {
+        var scopes = GetQueryScopes();
+        if (scopes.Count == 0)
+            return "None (check settings)";
+
+        return Settings.ScopeMode switch
+        {
+            WorldSelectionMode.Regions when Settings.SelectedRegions.Count > 0 
+                => string.Join(", ", Settings.SelectedRegions),
+            WorldSelectionMode.DataCenters when Settings.SelectedDataCenters.Count > 0 
+                => string.Join(", ", Settings.SelectedDataCenters),
+            WorldSelectionMode.Worlds when Settings.SelectedWorldIds.Count > 0 
+                => FormatSelectedWorlds(),
+            _ => scopes.Count == 1 ? scopes[0] : string.Join(", ", scopes)
+        };
+    }
+
+    private string FormatSelectedWorlds()
+    {
+        var worldData = _priceTrackingService.WorldData;
+        if (worldData == null)
+            return $"{Settings.SelectedWorldIds.Count} worlds";
+
+        var worldNames = Settings.SelectedWorldIds
+            .Select(id => worldData.GetWorldName(id))
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Take(3)
+            .ToList();
+
+        if (Settings.SelectedWorldIds.Count > 3)
+            return string.Join(", ", worldNames) + $" +{Settings.SelectedWorldIds.Count - 3} more";
+
+        return string.Join(", ", worldNames);
     }
 }

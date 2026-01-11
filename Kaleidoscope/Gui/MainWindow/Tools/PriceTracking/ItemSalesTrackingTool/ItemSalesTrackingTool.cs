@@ -4,6 +4,7 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
+using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Common;
 using MTGui.Graph;
@@ -144,12 +145,54 @@ public partial class ItemSalesTrackingTool : ToolComponent
 
     private void DrawItemSelector()
     {
+        // Calculate widths based on available space
+        var availableWidth = ImGui.GetContentRegionAvail().X;
+        var style = ImGui.GetStyle();
+        
+        // Fixed width elements
+        var labelWidth = ImGui.CalcTextSize("Track Items:").X + style.ItemSpacing.X;
+        var buttonWidth = ImGui.CalcTextSize("↻").X + style.FramePadding.X * 2 + style.ItemSpacing.X;
+        var loadingWidth = _isLoading ? ImGui.CalcTextSize("Loading...").X + style.ItemSpacing.X : 0;
+        
+        // Reserve space for fixed elements and spacing between combos
+        var remainingWidth = availableWidth - labelWidth - buttonWidth - loadingWidth - style.ItemSpacing.X;
+        
+        // Split remaining width: 50% each for item combo and scope selector
+        var comboWidth = Math.Max(100f, (remainingWidth - style.ItemSpacing.X) * 0.5f);
+        
         ImGui.TextUnformatted("Track Items:");
         ImGui.SameLine();
 
-        if (_itemCombo.DrawMultiSelect(300))
+        if (_itemCombo.DrawMultiSelect(comboWidth))
         {
         }
+
+        var hasSelectedItems = _itemCombo.SelectedItemIds.Count > 0;
+        // World scope selector inline
+        ImGui.SameLine();
+        DrawInlineWorldSelector(comboWidth);
+
+        // Refresh button to manually fetch data from Universalis
+        ImGui.SameLine();
+
+        if (!hasSelectedItems)
+            ImGui.BeginDisabled();
+        
+        if (ImGui.SmallButton(_isLoading ? "..." : "↻"))
+        {
+            if (!_isLoading && hasSelectedItems)
+            {
+                _ = FetchAllHistoryAsync();
+            }
+        }
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        {
+            var scopeDescription = GetCurrentScopeDescription();
+            ImGui.SetTooltip($"Refresh sales data from Universalis\nScope: {scopeDescription}");
+        }
+        
+        if (!hasSelectedItems)
+            ImGui.EndDisabled();
 
         if (_isLoading)
         {
@@ -160,6 +203,53 @@ public partial class ItemSalesTrackingTool : ToolComponent
         if (!string.IsNullOrEmpty(_errorMessage))
         {
             ImGui.TextColored(new Vector4(1, 0.5f, 0.3f, 1), _errorMessage);
+        }
+    }
+
+    private void DrawInlineWorldSelector(float width)
+    {
+        var worldData = _priceTrackingService.WorldData;
+        if (worldData == null)
+        {
+            // Show placeholder with proper width while world data loads
+            ImGui.SetNextItemWidth(width);
+            ImGui.BeginDisabled();
+            if (ImGui.BeginCombo("##SalesTrackingScopePlaceholder", "Loading..."))
+            {
+                ImGui.EndCombo();
+            }
+            ImGui.EndDisabled();
+            return;
+        }
+
+        EnsureWorldSelectionWidgetInitialized(worldData);
+
+        // Use the calculated width for inline display
+        _worldSelectionWidget!.Width = width;
+        
+        if (_worldSelectionWidget.Draw("##SalesTrackingScopeInline"))
+        {
+            SyncWorldSelectionToSettings();
+            NotifyToolSettingsChanged();
+            _ = FetchAllHistoryAsync();
+        }
+    }
+
+    private void EnsureWorldSelectionWidgetInitialized(UniversalisWorldData worldData)
+    {
+        if (_worldSelectionWidget == null)
+        {
+            _worldSelectionWidget = new WorldSelectionWidget(worldData, "ItemSalesTrackingScope");
+        }
+
+        if (!_worldSelectionWidgetInitialized)
+        {
+            _worldSelectionWidget.InitializeFrom(
+                Settings.SelectedRegions,
+                Settings.SelectedDataCenters,
+                Settings.SelectedWorldIds);
+            _worldSelectionWidget.Mode = Settings.ScopeMode;
+            _worldSelectionWidgetInitialized = true;
         }
     }
 
@@ -200,6 +290,10 @@ public partial class ItemSalesTrackingTool : ToolComponent
 
     private void BuildSeriesData()
     {
+        var selectedCount = _itemCombo.SelectedItemIds.Count;
+        var cacheCount = _salesDataCache.Count;
+        LogDebug($"BuildSeriesData: Building series for {selectedCount} selected items, {cacheCount} items in cache");
+        
         var series = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         var colorIndex = 0;
 
@@ -213,8 +307,19 @@ public partial class ItemSalesTrackingTool : ToolComponent
 
         foreach (var itemId in _itemCombo.SelectedItemIds)
         {
-            if (!_salesDataCache.TryGetValue(itemId, out var salesData) || salesData.Count == 0)
+            if (!_salesDataCache.TryGetValue(itemId, out var salesData))
+            {
+                LogDebug($"BuildSeriesData: Item {itemId} not found in cache");
                 continue;
+            }
+            
+            if (salesData.Count == 0)
+            {
+                LogDebug($"BuildSeriesData: Item {itemId} has 0 data points in cache");
+                continue;
+            }
+            
+            LogDebug($"BuildSeriesData: Item {itemId} has {salesData.Count} data points in cache");
 
             var itemName = _itemDataService.GetItemName(itemId) ?? $"Item {itemId}";
             var color = GetEffectiveSeriesColor(itemId, colorIndex++);
@@ -240,11 +345,17 @@ public partial class ItemSalesTrackingTool : ToolComponent
                 // Only filter if we have a reference price
                 if (referencePrice > 0)
                 {
+                    var beforeCount = salesData.Count;
                     filteredData = salesData.Where(sale =>
                     {
                         var ratio = sale.Price / referencePrice;
                         return ratio >= minRatio && ratio <= maxRatio;
                     });
+                    // We'll log after ToList since filteredData is lazy
+                }
+                else
+                {
+                    LogDebug($"BuildSeriesData: Item {itemId} has no reference price for outlier filtering, skipping filter");
                 }
             }
 
@@ -253,14 +364,25 @@ public partial class ItemSalesTrackingTool : ToolComponent
                 .OrderBy(s => s.Timestamp)
                 .Select(s => (s.Timestamp, s.Price))
                 .ToList();
+            
+            if (filterOutliers && salesData.Count != samples.Count)
+            {
+                LogDebug($"BuildSeriesData: Item {itemId} outlier filter: {salesData.Count} -> {samples.Count} samples");
+            }
 
             if (samples.Count > 0)
             {
                 series.Add((itemName, samples, color));
+                LogDebug($"BuildSeriesData: Added series '{itemName}' with {samples.Count} samples");
+            }
+            else
+            {
+                LogDebug($"BuildSeriesData: Item {itemId} ('{itemName}') has 0 samples after processing, not adding to series");
             }
         }
 
         _cachedSeriesData = series;
+        LogDebug($"BuildSeriesData: Final series count: {series.Count}");
 
         // Update Y-axis bounds based on data
         if (series.Count > 0)
