@@ -740,44 +740,90 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>
     /// Refreshes the cached world/DC data from Universalis.
+    /// Falls back to static data if the API is unavailable.
     /// </summary>
     public async Task RefreshWorldDataAsync()
     {
         if (_disposed) return;
         
-        try
+        const int maxRetries = 3;
+        const int retryDelayMs = 2000;
+        
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Fetching world data from Universalis");
-
-            // Fetch worlds and data centers in parallel
-            var worldsTask = _universalisService.GetWorldsAsync();
-            var dataCentersTask = _universalisService.GetDataCentersAsync();
-            
-            await Task.WhenAll(worldsTask, dataCentersTask);
-            
-            var worlds = await worldsTask;
-            var dataCenters = await dataCentersTask;
-
-            if (worlds != null && dataCenters != null)
+            try
             {
-                _worldData = new UniversalisWorldData
-                {
-                    Worlds = worlds,
-                    DataCenters = dataCenters,
-                    LastUpdated = DateTime.UtcNow
-                };
-                _lastWorldDataFetch = DateTime.UtcNow;
+                LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching world data from Universalis (attempt {attempt}/{maxRetries})");
 
-                LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Loaded {worlds.Count} worlds, {dataCenters.Count} data centers");
+                // Fetch worlds and data centers in parallel with timeout
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                var worldsTask = _universalisService.GetWorldsAsync(cts.Token);
+                var dataCentersTask = _universalisService.GetDataCentersAsync(cts.Token);
                 
-                // Notify subscribers that world data is now available
-                OnWorldDataLoaded?.Invoke();
+                await Task.WhenAll(worldsTask, dataCentersTask);
+                
+                var worlds = await worldsTask;
+                var dataCenters = await dataCentersTask;
+
+                if (worlds != null && dataCenters != null && worlds.Count > 0 && dataCenters.Count > 0)
+                {
+                    _worldData = new UniversalisWorldData
+                    {
+                        Worlds = worlds,
+                        DataCenters = dataCenters,
+                        LastUpdated = DateTime.UtcNow
+                    };
+                    _lastWorldDataFetch = DateTime.UtcNow;
+
+                    LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Loaded {worlds.Count} worlds, {dataCenters.Count} data centers from API");
+                    
+                    // Notify subscribers that world data is now available
+                    OnWorldDataLoaded?.Invoke();
+                    return; // Success, exit retry loop
+                }
+                
+                LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] API returned empty data (attempt {attempt}/{maxRetries})");
+            }
+            catch (OperationCanceledException)
+            {
+                LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Timeout fetching world data (attempt {attempt}/{maxRetries})");
+            }
+            catch (Exception ex)
+            {
+                LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Failed to fetch world data (attempt {attempt}/{maxRetries}): {ex.Message}");
+            }
+            
+            // Wait before retrying (except on last attempt)
+            if (attempt < maxRetries)
+            {
+                await Task.Delay(retryDelayMs);
             }
         }
-        catch (Exception ex)
+        
+        // All retries failed - use fallback data
+        UseFallbackWorldData();
+    }
+    
+    /// <summary>
+    /// Uses static fallback world data when the Universalis API is unavailable.
+    /// </summary>
+    private void UseFallbackWorldData()
+    {
+        // Only use fallback if we don't already have valid data
+        if (_worldData != null && _worldData.Worlds.Count > 0)
         {
-            LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Failed to fetch world data: {ex.Message}");
+            LogService.Warning(LogCategory.PriceTracking, "[PriceTracking] API unavailable, keeping existing world data");
+            return;
         }
+        
+        LogService.Warning(LogCategory.PriceTracking, "[PriceTracking] Using fallback world data - API unavailable after all retries");
+        
+        _worldData = FallbackWorldData.CreateFallback();
+        
+        LogService.Info(LogCategory.PriceTracking, $"[PriceTracking] Loaded fallback data: {_worldData.Worlds.Count} worlds, {_worldData.DataCenters.Count} data centers");
+        
+        // Still notify subscribers so UI can render
+        OnWorldDataLoaded?.Invoke();
     }
 
     /// <summary>
