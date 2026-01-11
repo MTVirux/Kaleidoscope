@@ -390,14 +390,24 @@ public sealed class UniversalisService : IDisposable, IService
     {
         var itemIdList = itemIds.Take(100).ToList();
         if (itemIdList.Count == 0)
+        {
+            LogService.Debug(LogCategory.Universalis, "GetHistoryBatchAsync: Empty item list, returning empty result");
             return new Dictionary<uint, MarketHistory>();
+        }
+
+        LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Fetching history for {itemIdList.Count} items from '{worldOrDc}', entriesToReturn={entriesToReturn}");
 
         // Single item - use the simpler endpoint
         if (itemIdList.Count == 1)
         {
             var singleResult = await GetHistoryAsync(worldOrDc, itemIdList[0], entriesToReturn, cancellationToken);
             if (singleResult == null)
+            {
+                LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Single item {itemIdList[0]} returned null");
                 return null;
+            }
+            var entriesCount = singleResult.Entries?.Count ?? 0;
+            LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Single item {itemIdList[0]} returned {entriesCount} entries");
             return new Dictionary<uint, MarketHistory> { { itemIdList[0], singleResult } };
         }
 
@@ -406,8 +416,19 @@ public sealed class UniversalisService : IDisposable, IService
         var url = $"history/{Uri.EscapeDataString(worldOrDc)}/{itemIdsStr}{queryParams}";
         
         var response = await GetAsync<MultiItemMarketHistory>(url, cancellationToken);
-        if (response?.Items == null)
+        if (response == null)
+        {
+            LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: API returned null response for {itemIdList.Count} items");
             return null;
+        }
+        
+        if (response.Items == null)
+        {
+            LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: API response has null Items dictionary");
+            return null;
+        }
+        
+        LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: API returned {response.Items.Count} items in response");
 
         var result = new Dictionary<uint, MarketHistory>();
         foreach (var kvp in response.Items)
@@ -415,8 +436,16 @@ public sealed class UniversalisService : IDisposable, IService
             if (uint.TryParse(kvp.Key, out var itemId))
             {
                 result[itemId] = kvp.Value;
+                var entriesCount = kvp.Value?.Entries?.Count ?? 0;
+                LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Item {itemId} has {entriesCount} history entries");
+            }
+            else
+            {
+                LogService.Warning(LogCategory.Universalis, $"GetHistoryBatchAsync: Failed to parse item key '{kvp.Key}' as uint");
             }
         }
+        
+        LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Returning {result.Count} items with history data");
         return result;
     }
 
