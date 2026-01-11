@@ -131,7 +131,7 @@ public partial class WindowContentContainer
                 var isOverContent = mouse.X >= contentMin.X && mouse.X <= contentMax.X && mouse.Y >= contentMin.Y && mouse.Y <= contentMax.Y;
                 if (isOverContent && io.MouseClicked[1])
                     {
-                        // If the click is over an existing tool, open the tool-specific popup (works without edit mode)
+                        // If the click is over an existing tool's header or border, open the tool-specific popup (works without edit mode)
                         var clickedTool = -1;
                         try
                         {
@@ -141,10 +141,25 @@ public partial class WindowContentContainer
                                 if (!tt.Visible) continue;
                                 var tmin = tt.Position + contentOrigin;
                                 var tmax = tmin + tt.Size;
+                                
+                                // Check if mouse is within tool bounds
                                 if (mouse.X >= tmin.X && mouse.X <= tmax.X && mouse.Y >= tmin.Y && mouse.Y <= tmax.Y)
                                 {
-                                    clickedTool = ti;
-                                    break;
+                                    // Only show context menu if clicking on header or border
+                                    const float borderThickness = 4f; // thickness of border area to detect clicks
+                                    var titleHeight = MathF.Min(24f, tt.Size.Y);
+                                    
+                                    var isInHeader = tt.HeaderVisible && mouse.Y <= tmin.Y + titleHeight;
+                                    var isInBorder = mouse.X <= tmin.X + borderThickness || 
+                                                     mouse.X >= tmax.X - borderThickness ||
+                                                     mouse.Y <= tmin.Y + borderThickness ||
+                                                     mouse.Y >= tmax.Y - borderThickness;
+                                    
+                                    if (isInHeader || isInBorder)
+                                    {
+                                        clickedTool = ti;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -879,18 +894,26 @@ public partial class WindowContentContainer
                         }
                         
                         ImGui.Separator();
-                        var bg = t.BackgroundEnabled;
-                        if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
-                        var hdr = t.HeaderVisible;
-                        if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
-                        var outline = t.OutlineEnabled;
-                        if (ImGui.Checkbox("Show outline", ref outline)) t.OutlineEnabled = outline;
                         
-                        // Background color with right-click to reset
-                        var defaultBgColor = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
-                        var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithReset(
-                            "Background color", t.BackgroundColor, defaultBgColor, "Background color");
-                        if (colorChanged) t.BackgroundColor = newColor;
+                        if (ImGui.BeginMenu("Appearance"))
+                        {
+                            var bg = t.BackgroundEnabled;
+                            if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
+                            var hdr = t.HeaderVisible;
+                            if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
+                            var outline = t.OutlineEnabled;
+                            if (ImGui.Checkbox("Show outline", ref outline)) t.OutlineEnabled = outline;
+                            
+                            ImGui.Separator();
+                            
+                            // Background color with right-click to reset
+                            var defaultBgColor = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+                            var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithReset(
+                                "Background color", t.BackgroundColor, defaultBgColor, "Background color");
+                            if (colorChanged) t.BackgroundColor = newColor;
+                            
+                            ImGui.EndMenu();
+                        }
                         
                         ImGui.Separator();
 
