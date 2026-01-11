@@ -108,6 +108,9 @@ public sealed class MTCurrencyComboDropdown : IDisposable
             ShowFavoritesBulkAction = multiSelect,
             ShowInvertBulkAction = false,
             ShowAllOption = false,
+            EmptySelectionText = "0 currencies",
+            MultiSelectItemTypeSingular = "currency",
+            MultiSelectItemTypePlural = "currencies",
             DefaultGroupMode = MTComboGroupDisplayMode.Flat
         };
         

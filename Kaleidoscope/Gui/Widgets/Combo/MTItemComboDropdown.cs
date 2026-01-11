@@ -126,9 +126,11 @@ public sealed class MTItemComboDropdown : IDisposable
             ShowFavoritesBulkAction = true,
             ShowInvertBulkAction = false,
             ShowAllOption = false,
+            EmptySelectionText = "0 items",
+            MultiSelectItemTypeSingular = "item",
+            MultiSelectItemTypePlural = "items",
             ShowItemIds = true,
-            ItemDisplayFormat = "{0}  ({1})",
-            MaxDisplayedItems = 100
+            ItemDisplayFormat = "{0}  ({1})"
         };
         
         // Create widget
