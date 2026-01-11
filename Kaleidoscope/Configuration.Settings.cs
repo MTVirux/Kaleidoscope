@@ -620,7 +620,7 @@ public class DataToolSettings :
         MTLegendPosition.InsideTopLeft;
     
     /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
-    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
+    public MTGraphType GraphType { get; set; } = MTGraphType.Stairs;
     
     /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -635,7 +635,7 @@ public class DataToolSettings :
     public bool ShowCurrentPriceLine { get; set; } = true;
     
     /// <summary>Whether to show a value label at the latest point.</summary>
-    public bool ShowValueLabel { get; set; } = false;
+    public bool ShowValueLabel { get; set; } = true;
     
     /// <summary>X offset for the value label.</summary>
     public float ValueLabelOffsetX { get; set; } = 0f;

@@ -324,23 +324,39 @@ public partial class DataTool : ToolComponent
         
         ImGui.SameLine();
         
+        // Calculate available width for combos after the toggle button
+        var availableWidth = ImGui.GetContentRegionAvail().X;
+        var spacing = ImGui.GetStyle().ItemSpacing.X;
+        
+        // Determine number of combos to display
+        var comboCount = 0;
+        if (_characterCombo != null) comboCount++;
+        if (_itemCombo != null) comboCount++;
+        if (_currencyCombo != null) comboCount++;
+        
+        // Calculate width per combo (divide available width minus spacing)
+        var comboWidth = comboCount > 0 
+            ? (availableWidth - (spacing * (comboCount - 1))) / comboCount 
+            : availableWidth;
+        
         // Character filter combo
         if (_characterCombo != null)
         {
-            ImGui.SetNextItemWidth(160);
-            _characterCombo.Draw(160);
+            ImGui.SetNextItemWidth(comboWidth);
+            _characterCombo.Draw(comboWidth);
             ImGui.SameLine();
         }
         
         // Item/Currency combo dropdowns (shared for both table and graph views)
-        DrawItemCurrencyCombos();
+        DrawItemCurrencyCombos(comboWidth);
     }
     
     /// <summary>
     /// Draws the item and currency multi-select combo dropdowns.
     /// Syncs selection state between the combos and the current columns/series configuration.
     /// </summary>
-    private void DrawItemCurrencyCombos()
+    /// <param name="comboWidth">Width to use for each combo box</param>
+    private void DrawItemCurrencyCombos(float comboWidth)
     {
         // Multi-select item dropdown
         if (_itemCombo != null)
@@ -356,7 +372,7 @@ public partial class DataTool : ToolComponent
                 _itemCombo.SetMultiSelection(currentItemIds);
             }
             
-            _itemCombo.DrawMultiSelect(160);
+            _itemCombo.DrawMultiSelect(comboWidth);
             
             var newSelection = _itemCombo.GetMultiSelection();
             SyncItemColumns(newSelection);
@@ -378,10 +394,13 @@ public partial class DataTool : ToolComponent
                 _currencyCombo.SetMultiSelection(currentCurrencyTypes);
             }
             
-            _currencyCombo.DrawMultiSelect(160);
+            _currencyCombo.DrawMultiSelect(comboWidth);
             
             var newSelection = _currencyCombo.GetMultiSelection();
             SyncCurrencyColumns(newSelection);
+            
+            // Add small padding after currency combo
+            ImGui.Dummy(new Vector2(0, 4f));
         }
     }
     
