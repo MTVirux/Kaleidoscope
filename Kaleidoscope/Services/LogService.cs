@@ -396,7 +396,7 @@ public static class LogService
     {
         if (_config?.FileLoggingIncludeTimestamps == true)
         {
-            return $"{DateTime.Now:HH:mm:ss.fff} | {level} | {message}";
+            return $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {level} | {message}";
         }
         return $"{level} | {message}";
     }
@@ -680,7 +680,7 @@ public static class LogService
                     string line;
                     if (config?.FileLoggingIncludeTimestamps == true)
                     {
-                        line = $"{DateTime.Now:HH:mm:ss.fff} | {level} | {message}";
+                        line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {level} | {message}";
                     }
                     else
                     {
@@ -814,7 +814,7 @@ public static class LogService
                     string line;
                     if (config?.FileLoggingIncludeTimestamps == true)
                     {
-                        line = $"{DateTime.Now:HH:mm:ss.fff} | {level} | {message}";
+                        line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {level} | {message}";
                     }
                     else
                     {
