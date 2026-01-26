@@ -257,6 +257,61 @@ public partial class DataTool
     }
     
     /// <summary>
+    /// Rounds a DateTime to the minute (truncating seconds and below).
+    /// </summary>
+    private static DateTime RoundToMinute(DateTime dt)
+        => new(dt.Year, dt.Month, dt.Day, dt.Hour, dt.Minute, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Aggregates multiple data sources using forward-fill logic.
+    /// At each timestamp, the sum includes the last known value from each source,
+    /// ensuring proper aggregation even when sources are sampled at different times.
+    /// </summary>
+    /// <param name="points">Points tagged with a source identifier (e.g., column index or variable name).</param>
+    /// <returns>Aggregated samples with forward-filled sums at each unique timestamp.</returns>
+    private static List<(DateTime ts, float value)> AggregateWithForwardFill(
+        IEnumerable<(string source, DateTime ts, long value)> points)
+    {
+        // Round timestamps and group by source
+        // For each source at each rounded timestamp, take the latest value (not sum)
+        var bySource = points
+            .GroupBy(p => p.source)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .GroupBy(p => RoundToMinute(p.ts))
+                    .ToDictionary(tg => tg.Key, tg => tg.OrderByDescending(p => p.ts).First().value));
+
+        if (bySource.Count == 0)
+            return new List<(DateTime ts, float value)>();
+
+        // Collect all unique timestamps across all sources
+        var allTimestamps = bySource.Values
+            .SelectMany(d => d.Keys)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToList();
+
+        // Forward-fill: track last known value per source
+        var lastValues = bySource.Keys.ToDictionary(k => k, _ => 0L);
+        var result = new List<(DateTime ts, float value)>(allTimestamps.Count);
+
+        foreach (var ts in allTimestamps)
+        {
+            foreach (var source in bySource.Keys)
+            {
+                if (bySource[source].TryGetValue(ts, out var val))
+                    lastValues[source] = val;
+            }
+
+            var sum = lastValues.Values.Sum();
+            result.Add((ts, sum));
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Merges player and retainer data using forward-fill logic.
     /// This ensures that at any timestamp, we combine the latest known player value
     /// with the latest known retainer value, even if they weren't sampled at the same time.
@@ -346,8 +401,8 @@ public partial class DataTool
             if (memberColumns.Count == 0)
                 return null;
             
-            // Collect all points from all member columns (now with character ID)
-            var allPoints = new List<(ulong characterId, DateTime ts, long value)>();
+            // Collect all points from all member columns (now with character ID and source)
+            var allPoints = new List<(string source, ulong characterId, DateTime ts, long value)>();
             
             foreach (var column in memberColumns)
             {
@@ -370,10 +425,10 @@ public partial class DataTool
                         ? pts.Where(p => allowedCharacters.Contains(p.characterId))
                         : pts;
                     
-                    // Add points with character ID
+                    // Add points with character ID and source
                     foreach (var p in filteredPoints)
                     {
-                        allPoints.Add((p.characterId, p.timestamp, p.value));
+                        allPoints.Add((variableName, p.characterId, p.timestamp, p.value));
                     }
                 }
                 
@@ -391,7 +446,7 @@ public partial class DataTool
                         
                         foreach (var p in filteredRetainerPoints)
                         {
-                            allPoints.Add((p.characterId, p.timestamp, p.value));
+                            allPoints.Add((retainerVariableName, p.characterId, p.timestamp, p.value));
                         }
                     }
                 }
@@ -435,12 +490,10 @@ public partial class DataTool
                         seriesColor = baseColor ?? GetDefaultSeriesColor(charIndex);
                     }
                     
-                    // Group by timestamp within this character and sum values
-                    var samples = charGroup
-                        .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
-                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                        .OrderBy(p => p.ts)
-                        .ToList();
+                    // Use forward-fill aggregation to properly sum values from different columns
+                    // even when they were sampled at different times
+                    var taggedPoints = charGroup.Select(p => (p.source, p.ts, p.value));
+                    var samples = AggregateWithForwardFill(taggedPoints);
                     
                     if (samples.Count > 0)
                     {
@@ -451,13 +504,11 @@ public partial class DataTool
             }
             else if (groupingMode == TableGroupingMode.All)
             {
-                // Aggregate all into a single series
-                var groupedPoints = allPoints
-                    .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
-                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                    .OrderBy(p => p.ts)
-                    .ToList();
-                
+                // Aggregate all into a single series using forward-fill
+                // Tag each point by source+character to track distinct data sources
+                var taggedPoints = allPoints.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value));
+                var groupedPoints = AggregateWithForwardFill(taggedPoints);
+
                 if (groupedPoints.Count > 0)
                 {
                     result.Add((group.Name, groupedPoints, baseColor));
@@ -495,12 +546,10 @@ public partial class DataTool
                     // When there's only one merged group, show just the grouping name in the legend
                     var seriesName = isSingleItem ? locationName : $"{group.Name} ({locationName})";
                     
-                    // Aggregate points by timestamp within the group
-                    var aggregated = locationGroup
-                        .GroupBy(p => new DateTime(p.ts.Year, p.ts.Month, p.ts.Day, p.ts.Hour, p.ts.Minute, 0, DateTimeKind.Utc))
-                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                        .OrderBy(p => p.ts)
-                        .ToList();
+                    // Use forward-fill aggregation to properly sum values from different characters
+                    // even when they were sampled at different times
+                    var taggedPoints = locationGroup.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value));
+                    var aggregated = AggregateWithForwardFill(taggedPoints);
                     
                     if (aggregated.Count > 0)
                     {
