@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dalamud.Game.Inventory;
 using Dalamud.Game.Inventory.InventoryEventArgTypes;
 using Dalamud.Plugin.Services;
@@ -218,12 +219,16 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         }
     }
 
+    // Slow operation threshold in milliseconds for logging diagnostics
+    private const double SlowOperationThresholdMs = 50.0;
+    
     /// <summary>
     /// Checks enabled data types for value changes using direct InventoryManager reads.
-    /// Only reads values for types that are actually being tracked to minimize game memory access.
+    /// Uses GetCurrentValuesSnapshot() to batch expensive retainer lookups into a single pass.
     /// </summary>
     private void CheckForValueChanges()
     {
+        var sw = Stopwatch.StartNew();
         try
         {
             // Only check enabled types to avoid unnecessary game memory reads
@@ -233,26 +238,33 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 enabledTypes = new HashSet<TrackedDataType> { TrackedDataType.Gil };
             }
 
+            // Use snapshot method to fetch all values in one pass, caching expensive retainer lookups
+            var currentValues = _registry.GetCurrentValuesSnapshot(enabledTypes);
+            var snapshotMs = sw.Elapsed.TotalMilliseconds;
+            if (snapshotMs > SlowOperationThresholdMs)
+            {
+                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] GetCurrentValuesSnapshot took {snapshotMs:F1}ms (slow operation detected)");
+            }
             var changedValues = new Dictionary<TrackedDataType, long>();
 
-            foreach (var dataType in enabledTypes)
+            foreach (var kvp in currentValues)
             {
-                var currentValue = _registry.GetCurrentValue(dataType);
-                if (!currentValue.HasValue) continue;
+                var dataType = kvp.Key;
+                var currentValue = kvp.Value;
 
                 if (_lastKnownValues.TryGetValue(dataType, out var lastValue))
                 {
-                    if (currentValue.Value != lastValue)
+                    if (currentValue != lastValue)
                     {
-                        _lastKnownValues[dataType] = currentValue.Value;
-                        changedValues[dataType] = currentValue.Value;
+                        _lastKnownValues[dataType] = currentValue;
+                        changedValues[dataType] = currentValue;
                     }
                 }
                 else
                 {
                     // First time seeing this value, cache it but also treat as "change" for initial sampling
-                    _lastKnownValues[dataType] = currentValue.Value;
-                    changedValues[dataType] = currentValue.Value;
+                    _lastKnownValues[dataType] = currentValue;
+                    changedValues[dataType] = currentValue;
                 }
             }
 
@@ -283,6 +295,15 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
+        }
+        finally
+        {
+            sw.Stop();
+            var totalMs = sw.Elapsed.TotalMilliseconds;
+            if (totalMs > SlowOperationThresholdMs)
+            {
+                LogService.Warning(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges took {totalMs:F1}ms (threshold: {SlowOperationThresholdMs}ms)");
+            }
         }
     }
 
