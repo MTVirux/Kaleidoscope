@@ -470,6 +470,7 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// <summary>
     /// Gets the current value for a data type from game state.
     /// For applicable types (Gil, Ventures, Crystals), includes retainer inventory.
+    /// NOTE: For bulk value retrieval, prefer GetCurrentValuesSnapshot() to avoid redundant retainer lookups.
     /// </summary>
     public unsafe long? GetCurrentValue(TrackedDataType type)
     {
@@ -545,6 +546,183 @@ public sealed class TrackedDataRegistry : IRequiredService
             LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get value for {type}: {ex.Message}");
             return null;
         }
+    }
+    
+    /// <summary>
+    /// Cached retainer data for bulk value lookups within a single snapshot.
+    /// This avoids repeatedly calling expensive retainer iteration methods.
+    /// </summary>
+    private readonly struct RetainerDataCache
+    {
+        public readonly long RetainerGil;
+        public readonly long[] RetainerCrystals; // 18 elements
+        
+        public RetainerDataCache(long gil, long[] crystals)
+        {
+            RetainerGil = gil;
+            RetainerCrystals = crystals;
+        }
+    }
+    
+    /// <summary>
+    /// Gets current values for multiple data types in a single pass, caching expensive retainer lookups.
+    /// This is significantly more efficient than calling GetCurrentValue() in a loop when tracking
+    /// multiple types that require retainer data (Gil, Crystals, RetainerGil).
+    /// </summary>
+    /// <param name="types">The set of data types to retrieve values for.</param>
+    /// <returns>Dictionary of type to current value. Types that couldn't be read are omitted.</returns>
+    public unsafe Dictionary<TrackedDataType, long> GetCurrentValuesSnapshot(IEnumerable<TrackedDataType> types)
+    {
+        var results = new Dictionary<TrackedDataType, long>();
+        
+        try
+        {
+            var im = GameStateService.InventoryManagerInstance();
+            if (im == null) return results;
+            
+            // Pre-fetch expensive retainer data once for the entire snapshot
+            var cache = new RetainerDataCache(
+                GameStateService.GetAllRetainersGil(),
+                GameStateService.GetAllRetainersCrystals()
+            );
+            
+            foreach (var type in types)
+            {
+                var value = GetValueWithCache(im, type, cache);
+                if (value.HasValue)
+                {
+                    results[type] = value.Value;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] GetCurrentValuesSnapshot failed: {ex.Message}");
+        }
+        
+        return results;
+    }
+    
+    /// <summary>
+    /// Gets the value for a single type using pre-cached retainer data.
+    /// </summary>
+    private unsafe long? GetValueWithCache(FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* im, TrackedDataType type, RetainerDataCache cache)
+    {
+        try
+        {
+            return type switch
+            {
+                // Gil: player + all retainers (using cached retainer gil)
+                TrackedDataType.Gil => im->GetGil() + cache.RetainerGil,
+                
+                // Tomestones - player only (currency, not tradeable)
+                TrackedDataType.TomestonePoetics => im->GetTomestoneCount(28),
+                TrackedDataType.TomestoneCapped => im->GetTomestoneCount(44123),
+                TrackedDataType.TomestoneUncapped => im->GetTomestoneCount(43693),
+                
+                // Scrips - player only (currency, not tradeable)
+                TrackedDataType.WhiteCraftersScrip => im->GetInventoryItemCount(25199),
+                TrackedDataType.PurpleCraftersScrip => im->GetInventoryItemCount(33913),
+                TrackedDataType.OrangeCraftersScrip => im->GetInventoryItemCount(41784),
+                TrackedDataType.WhiteGatherersScrip => im->GetInventoryItemCount(25200),
+                TrackedDataType.PurpleGatherersScrip => im->GetInventoryItemCount(33914),
+                TrackedDataType.OrangeGatherersScrip => im->GetInventoryItemCount(41785),
+                TrackedDataType.SkybuildersScrip => im->GetInventoryItemCount(28063),
+                
+                // Grand Company Seals - player only (currency)
+                TrackedDataType.MaelstromSeals => im->GetCompanySeals(1),
+                TrackedDataType.TwinAdderSeals => im->GetCompanySeals(2),
+                TrackedDataType.ImmortalFlamesSeals => im->GetCompanySeals(3),
+                
+                // PvP - player only (currency)
+                TrackedDataType.WolfMarks => im->GetWolfMarks(),
+                TrackedDataType.TrophyCrystals => im->GetInventoryItemCount(36656),
+                
+                // Hunt - player only (currency)
+                TrackedDataType.AlliedSeals => im->GetAlliedSeals(),
+                TrackedDataType.CenturioSeals => im->GetInventoryItemCount(10307),
+                TrackedDataType.SackOfNuts => im->GetInventoryItemCount(26533),
+                
+                // Gold Saucer - player only (currency)
+                TrackedDataType.MGP => im->GetGoldSaucerCoin(),
+                
+                // Tribal - player only (currency)
+                TrackedDataType.BicolorGemstone => im->GetInventoryItemCount(26807),
+                
+                // Ventures: player + retainers (tradeable item)
+                TrackedDataType.Ventures => GetItemCountWithRetainers(im, 21072),
+                
+                // Crystals: player + retainers (using cached retainer crystals)
+                TrackedDataType.CrystalsTotal => GetTotalCrystalsWithCache(im, cache.RetainerCrystals),
+                TrackedDataType.FireCrystals => GetElementCrystalsWithCache(im, 0, cache.RetainerCrystals),
+                TrackedDataType.IceCrystals => GetElementCrystalsWithCache(im, 1, cache.RetainerCrystals),
+                TrackedDataType.WindCrystals => GetElementCrystalsWithCache(im, 2, cache.RetainerCrystals),
+                TrackedDataType.EarthCrystals => GetElementCrystalsWithCache(im, 3, cache.RetainerCrystals),
+                TrackedDataType.LightningCrystals => GetElementCrystalsWithCache(im, 4, cache.RetainerCrystals),
+                TrackedDataType.WaterCrystals => GetElementCrystalsWithCache(im, 5, cache.RetainerCrystals),
+                
+                // Inventory - player only
+                TrackedDataType.InventoryFreeSlots => im->GetEmptySlotsInBag(),
+                
+                // FC/Retainer - separate tracking for visibility (using cached retainer gil)
+                TrackedDataType.FreeCompanyGil => im->GetFreeCompanyGil(),
+                TrackedDataType.RetainerGil => cache.RetainerGil,
+                TrackedDataType.FreeCompanyCredits => GameStateService.GetFreeCompanyCredits(),
+                
+                _ => null
+            };
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] GetValueWithCache failed for {type}: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Gets total crystals across all types using pre-cached retainer crystal data.
+    /// </summary>
+    private static unsafe long GetTotalCrystalsWithCache(FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* im, long[] retainerCrystals)
+    {
+        long total = 0;
+        
+        // Crystal item IDs: Shards (2-7), Crystals (8-13), Clusters (14-19)
+        for (uint i = 2; i <= 19; i++)
+        {
+            try { total += im->GetInventoryItemCount(i); }
+            catch { /* ignore individual crystal read failures */ }
+        }
+        
+        // Add cached retainer crystals
+        for (int i = 0; i < 18; i++)
+        {
+            total += retainerCrystals[i];
+        }
+        
+        return total;
+    }
+    
+    /// <summary>
+    /// Gets crystals for a specific element using pre-cached retainer crystal data.
+    /// </summary>
+    private static unsafe long GetElementCrystalsWithCache(FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* im, int element, long[] retainerCrystals)
+    {
+        long total = 0;
+        
+        var shardId = (uint)(ConfigStatic.CrystalBaseItemId + element);
+        var crystalId = (uint)(ConfigStatic.CrystalBaseItemId + ConfigStatic.CrystalTierOffset + element);
+        var clusterId = (uint)(ConfigStatic.CrystalBaseItemId + 2 * ConfigStatic.CrystalTierOffset + element);
+        
+        try { total += im->GetInventoryItemCount(shardId); } catch { }
+        try { total += im->GetInventoryItemCount(crystalId); } catch { }
+        try { total += im->GetInventoryItemCount(clusterId); } catch { }
+        
+        // Add cached retainer crystals for this element
+        total += retainerCrystals[element];           // Shard
+        total += retainerCrystals[6 + element];       // Crystal
+        total += retainerCrystals[12 + element];      // Cluster
+        
+        return total;
     }
 
     /// <summary>
