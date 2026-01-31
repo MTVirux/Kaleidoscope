@@ -476,4 +476,126 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
+    /// <summary>
+    /// Saves multiple inventory cache entries to the database using batched INSERTs for efficiency.
+    /// Each entry's items are inserted in chunks of ~70 rows to stay within SQLite's parameter limits.
+    /// </summary>
+    /// <param name="entries">The inventory cache entries to save.</param>
+    public void SaveInventoryCachesBatched(List<Models.Inventory.InventoryCacheEntry> entries)
+    {
+        if (entries == null || entries.Count == 0) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                using var transaction = _connection.BeginTransaction();
+
+                try
+                {
+                    foreach (var entry in entries)
+                    {
+                        // Upsert the cache entry
+                        using var cacheCmd = _connection.CreateCommand();
+                        cacheCmd.Transaction = transaction;
+                        cacheCmd.CommandText = @"
+                            INSERT INTO inventory_cache (character_id, source_type, retainer_id, name, world, gil, updated_at)
+                            VALUES ($cid, $type, $rid, $name, $world, $gil, $time)
+                            ON CONFLICT(character_id, source_type, retainer_id) DO UPDATE SET
+                                name = excluded.name,
+                                world = excluded.world,
+                                gil = excluded.gil,
+                                updated_at = excluded.updated_at
+                            RETURNING id";
+                        cacheCmd.Parameters.AddWithValue("$cid", (long)entry.CharacterId);
+                        cacheCmd.Parameters.AddWithValue("$type", (int)entry.SourceType);
+                        cacheCmd.Parameters.AddWithValue("$rid", (long)entry.RetainerId);
+                        cacheCmd.Parameters.AddWithValue("$name", entry.Name ?? (object)DBNull.Value);
+                        cacheCmd.Parameters.AddWithValue("$world", entry.World ?? (object)DBNull.Value);
+                        cacheCmd.Parameters.AddWithValue("$gil", entry.Gil);
+                        cacheCmd.Parameters.AddWithValue("$time", entry.UpdatedAt.Ticks);
+
+                        var cacheId = (long)cacheCmd.ExecuteScalar()!;
+
+                        // Delete existing items for this cache
+                        using var deleteCmd = _connection.CreateCommand();
+                        deleteCmd.Transaction = transaction;
+                        deleteCmd.CommandText = "DELETE FROM inventory_items WHERE cache_id = $id";
+                        deleteCmd.Parameters.AddWithValue("$id", cacheId);
+                        deleteCmd.ExecuteNonQuery();
+
+                        // Insert new items in batches
+                        if (entry.Items.Count > 0)
+                        {
+                            SaveItemsBatched(cacheId, entry.Items, transaction);
+                        }
+                    }
+
+                    transaction.Commit();
+                    LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved {entries.Count} inventory caches batched");
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryCachesBatched failed: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Inserts inventory items using batched multi-row INSERT statements.
+    /// Chunks items into batches of ~70 to stay under SQLite's 999 parameter limit.
+    /// Each item has 10 parameters, so 70 items = 700 parameters.
+    /// </summary>
+    private void SaveItemsBatched(long cacheId, List<Models.Inventory.InventoryItemSnapshot> items, SqliteTransaction transaction)
+    {
+        const int columnsPerItem = 10;
+        const int maxParamsPerStatement = 700; // SQLite limit is 999, leave headroom
+        const int batchSize = maxParamsPerStatement / columnsPerItem; // 70 items per batch
+
+        for (int batchStart = 0; batchStart < items.Count; batchStart += batchSize)
+        {
+            var batchItems = items.Skip(batchStart).Take(batchSize).ToList();
+            
+            // Build multi-row INSERT statement
+            var sb = new StringBuilder();
+            sb.Append(@"INSERT INTO inventory_items 
+                (cache_id, item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id)
+                VALUES ");
+
+            var parameters = new List<SqliteParameter>();
+            for (int i = 0; i < batchItems.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append($"($cid{i}, $iid{i}, $qty{i}, $hq{i}, $col{i}, $slot{i}, $cont{i}, $sb{i}, $cond{i}, $glam{i})");
+                
+                var item = batchItems[i];
+                parameters.Add(new SqliteParameter($"$cid{i}", cacheId));
+                parameters.Add(new SqliteParameter($"$iid{i}", (long)item.ItemId));
+                parameters.Add(new SqliteParameter($"$qty{i}", item.Quantity));
+                parameters.Add(new SqliteParameter($"$hq{i}", item.IsHq ? 1 : 0));
+                parameters.Add(new SqliteParameter($"$col{i}", item.IsCollectable ? 1 : 0));
+                parameters.Add(new SqliteParameter($"$slot{i}", item.Slot));
+                parameters.Add(new SqliteParameter($"$cont{i}", (long)item.ContainerType));
+                parameters.Add(new SqliteParameter($"$sb{i}", item.SpiritbondOrCollectability));
+                parameters.Add(new SqliteParameter($"$cond{i}", item.Condition));
+                parameters.Add(new SqliteParameter($"$glam{i}", (long)item.GlamourId));
+            }
+
+            using var cmd = _connection!.CreateCommand();
+            cmd.Transaction = transaction;
+            cmd.CommandText = sb.ToString();
+            cmd.Parameters.AddRange(parameters.ToArray());
+            cmd.ExecuteNonQuery();
+        }
+    }
+
 }

@@ -46,11 +46,20 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private bool _pendingPlayerCache = false;
     private bool _pendingRetainerCache = false;
     private volatile bool _cachePopulating = false;
+    
+    // Track if we've saved character name this session (only need to save once per login)
+    private bool _characterNameSavedThisSession = false;
 
     // Debounce cache for item time series data (player, retainer totals, and per-retainer)
     // Key: (variableName, characterId), Value: (value, timestamp)
     // Data is flushed to DB on logout or plugin unload, not on each sample interval
     private readonly ConcurrentDictionary<(string VariableName, ulong CharacterId), (long Value, DateTime Timestamp)> _pendingSamples = new();
+
+    // Track dirty inventory cache entries that need DB persistence
+    // Key: (characterId, sourceType, retainerId)
+    // Flushed to DB on character change/logout or plugin dispose, not on each inventory change
+    private readonly HashSet<(ulong CharacterId, Models.Inventory.InventorySourceType SourceType, ulong RetainerId)> _dirtyInventoryCaches = new();
+    private readonly object _dirtyLock = new();
 
     public InventoryCacheService(
         IPluginLog log,
@@ -154,6 +163,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         _allCharactersCacheDirty = true;
         
+        // Reset character name saved flag so it gets saved on next login
+        _characterNameSavedThisSession = false;
+        
+        // Flush dirty inventory caches on logout (async - DB persistence happens on background thread)
+        FlushDirtyInventoryCaches("logout", runAsync: true);
+        
         // Flush pending item samples on logout
         FlushPendingSamples("logout");
         
@@ -237,6 +252,80 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
         }
     }
+    
+    /// <summary>
+    /// Marks an inventory cache entry as dirty (needs DB persistence).
+    /// </summary>
+    private void MarkDirty(ulong characterId, InventorySourceType sourceType, ulong retainerId)
+    {
+        lock (_dirtyLock)
+        {
+            _dirtyInventoryCaches.Add((characterId, sourceType, retainerId));
+        }
+    }
+    
+    /// <summary>
+    /// Flushes all dirty inventory cache entries to the database.
+    /// Called on logout/character change (async) or plugin dispose (sync).
+    /// </summary>
+    /// <param name="reason">The reason for flushing (for logging).</param>
+    /// <param name="runAsync">If true, runs the DB writes on a background thread.</param>
+    private void FlushDirtyInventoryCaches(string reason, bool runAsync = true)
+    {
+        List<(ulong CharacterId, InventorySourceType SourceType, ulong RetainerId)> dirtyKeys;
+        lock (_dirtyLock)
+        {
+            if (_dirtyInventoryCaches.Count == 0)
+                return;
+            
+            dirtyKeys = _dirtyInventoryCaches.ToList();
+            _dirtyInventoryCaches.Clear();
+        }
+        
+        // Gather the entries from memory cache
+        var entriesToSave = new List<InventoryCacheEntry>();
+        lock (_cacheLock)
+        {
+            foreach (var (characterId, sourceType, retainerId) in dirtyKeys)
+            {
+                if (_inventoryMemoryCache.TryGetValue(characterId, out var caches))
+                {
+                    var entry = caches.FirstOrDefault(c => c.SourceType == sourceType && c.RetainerId == retainerId);
+                    if (entry != null)
+                    {
+                        entriesToSave.Add(entry);
+                    }
+                }
+            }
+        }
+        
+        if (entriesToSave.Count == 0)
+            return;
+        
+        LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushing {entriesToSave.Count} dirty inventory caches ({reason})");
+        
+        void DoFlush()
+        {
+            try
+            {
+                _dbService.SaveInventoryCachesBatched(entriesToSave);
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushed {entriesToSave.Count} inventory caches to DB ({reason})");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Inventory, $"[InventoryCacheService] Failed to flush inventory caches: {ex.Message}");
+            }
+        }
+        
+        if (runAsync)
+        {
+            Task.Run(DoFlush);
+        }
+        else
+        {
+            DoFlush();
+        }
+    }
 
     private void OnFrameworkUpdate(IFramework framework)
     {
@@ -312,22 +401,28 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 ScanContainer(im, containerType, entry.Items);
             }
 
-            // Save to database
-            _dbService.SaveInventoryCache(entry);
             _lastPlayerCacheTime = now;
+            
+            // Update in-memory cache directly (memory-first pattern)
+            UpdateMemoryCache(characterId, entry);
+            
+            // Mark as dirty for later DB persistence (on logout/character change)
+            MarkDirty(characterId, entry.SourceType, entry.RetainerId);
             
             // Ensure character is in character_names table for discoverability in data tables
             // This is needed because character rows are populated from character_names, not inventory_cache
-            if (!string.IsNullOrEmpty(playerName))
+            // Only save once per session to avoid repeated DB writes
+            if (!_characterNameSavedThisSession && !string.IsNullOrEmpty(playerName))
             {
-                _dbService.SaveCharacterName(characterId, playerName);
+                _characterNameSavedThisSession = true;
+                // Queue to background thread to avoid blocking main thread
+                var cid = characterId;
+                var name = playerName;
+                Task.Run(() => _dbService.SaveCharacterName(cid, name));
             }
             
             // Sample tracked items to time-series for historical graphing
             SampleTrackedItems(characterId, entry.Items);
-            
-            // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
-            UpdateMemoryCache(characterId, entry);
 
             LogService.Debug(LogCategory.Inventory, playerName, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
@@ -379,12 +474,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 ScanContainer(im, containerType, entry.Items);
             }
 
-            // Save to database
-            _dbService.SaveInventoryCache(entry);
             _lastCachedRetainerId = retainerId;
             
-            // Update in-memory cache directly instead of invalidating (avoids expensive DB reload)
+            // Update in-memory cache directly (memory-first pattern)
             UpdateMemoryCache(characterId, entry);
+            
+            // Mark as dirty for later DB persistence (on logout/character change)
+            MarkDirty(characterId, entry.SourceType, entry.RetainerId);
             
             // Re-sample tracked items now that retainer data has been updated
             // Get player inventory cache from memory cache (not DB)
@@ -505,6 +601,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// Gets all cached inventories for a specific character.
     /// Uses in-memory cache for efficiency - offline characters' data is static.
     /// Returns a snapshot copy of the list to prevent concurrent modification issues.
+    /// Non-blocking: returns empty list on cache miss and populates async.
     /// </summary>
     public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
     {
@@ -517,15 +614,40 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             {
                 return cached.ToList(); // Return a copy to prevent concurrent modification
             }
-            
-            // Cache miss - load from database
-            var entries = _dbService.GetAllInventoryCaches(characterId);
-            
-            // Store in memory cache (this data is static for offline characters)
-            _inventoryMemoryCache[characterId] = entries;
-            
-            return entries.ToList(); // Return a copy
         }
+        
+        // Cache miss - trigger async population and return empty (non-blocking)
+        // This prevents freezing the main thread on DB reads
+        PopulateCharacterCacheAsync(characterId);
+        return new List<InventoryCacheEntry>();
+    }
+    
+    /// <summary>
+    /// Populates the cache for a specific character from the database on a background thread.
+    /// </summary>
+    private void PopulateCharacterCacheAsync(ulong characterId)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var entries = _dbService.GetAllInventoryCaches(characterId);
+                
+                lock (_cacheLock)
+                {
+                    // Only set if not already populated (could have been populated by another thread)
+                    if (!_inventoryMemoryCache.ContainsKey(characterId))
+                    {
+                        _inventoryMemoryCache[characterId] = entries;
+                        _allCharactersCacheDirty = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Failed to populate cache for character {characterId}: {ex.Message}");
+            }
+        });
     }
     
     /// <summary>
@@ -855,6 +977,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _clientState.Login -= OnLogin;
         _clientState.Logout -= OnLogout;
         
+        // Flush dirty inventory caches synchronously before disposing (ensure data is saved)
+        FlushDirtyInventoryCaches("dispose", runAsync: false);
+        
         // Flush pending item samples before disposing
         FlushPendingSamples("dispose");
         
@@ -862,6 +987,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _inventoryMemoryCache.Clear();
         _allCharactersCache = null;
         _pendingSamples.Clear();
+        
+        lock (_dirtyLock)
+        {
+            _dirtyInventoryCaches.Clear();
+        }
 
         LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Disposed");
     }
