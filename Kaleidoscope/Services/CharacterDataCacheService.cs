@@ -351,16 +351,21 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Sets a character's game name (automatically detected from the game).
-    /// Updates cache immediately and persists to DB.
+    /// Updates cache immediately and persists to DB only if the name has changed.
     /// </summary>
     public void SetCharacterName(ulong characterId, string name)
     {
         if (string.IsNullOrEmpty(name) || characterId == 0) return;
 
         var entry = _cache.GetOrAdd(characterId, _ => new CharacterCacheEntry { CharacterId = characterId });
+        
+        // Skip if name hasn't changed (avoid expensive DB write)
+        if (string.Equals(entry.GameName, name, StringComparison.Ordinal))
+            return;
+        
         entry.GameName = name;
 
-        // Persist to DB
+        // Persist to DB (only when name actually changed)
         _dbService?.SaveCharacterName(characterId, name);
 
         OnCharacterUpdated?.Invoke(characterId);
