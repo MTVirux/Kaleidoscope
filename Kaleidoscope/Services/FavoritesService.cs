@@ -26,7 +26,6 @@ public sealed class FavoritesService : IDisposable, IService
 
     public void Dispose()
     {
-        // No unmanaged resources
     }
 
     #region Generic Helpers
