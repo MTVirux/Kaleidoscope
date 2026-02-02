@@ -51,6 +51,7 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
     public void Dispose()
     {
         LogService.Shutdown();
+        GameStateService.Cleanup();
         _services?.Dispose();
         Log.Information("Kaleidoscope disposed.");
     }

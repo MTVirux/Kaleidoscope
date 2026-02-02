@@ -331,4 +331,13 @@ public static unsafe class GameStateService
     }
 
     #endregion
+
+    /// <summary>
+    /// Clears static service references during plugin unload.
+    /// </summary>
+    public static void Cleanup()
+    {
+        _playerState = null;
+        _objectTable = null;
+    }
 }
