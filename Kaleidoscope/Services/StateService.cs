@@ -11,7 +11,7 @@ namespace Kaleidoscope.Services;
 /// This service is the central source of truth for all UI state in the plugin.
 /// It follows the Glamourer/InventoryTools pattern of using event-based state changes.
 /// </remarks>
-public sealed class StateService : IStateService, IService
+public sealed class StateService : IStateService, IService, IDisposable
 {
     // Static accessor for legacy code that cannot use DI (e.g., static methods)
     // This should be used sparingly - prefer constructor injection
@@ -180,14 +180,12 @@ public sealed class StateService : IStateService, IService
     public void ToggleEditMode()
     {
         IsEditMode = !IsEditMode;
-        LogService.Debug(LogCategory.UI, $"Edit mode toggled to {IsEditMode}");
     }
 
     /// <inheritdoc />
     public void ToggleLocked()
     {
         IsLocked = !IsLocked;
-        LogService.Debug(LogCategory.UI, $"Locked toggled to {IsLocked}");
     }
 
     /// <inheritdoc />
@@ -212,5 +210,10 @@ public sealed class StateService : IStateService, IService
         if (!_isFullscreen) return;
         IsFullscreen = false;
         LogService.Debug(LogCategory.UI, "Exited fullscreen");
+    }
+
+    public void Dispose()
+    {
+        _instance = null;
     }
 }

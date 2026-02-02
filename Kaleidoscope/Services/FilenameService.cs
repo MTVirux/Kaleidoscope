@@ -10,7 +10,7 @@ namespace Kaleidoscope.Services;
 /// Follows the Glamourer pattern for centralized file path management.
 /// All paths are computed once at construction for consistency.
 /// </remarks>
-public sealed class FilenameService : IService
+public sealed class FilenameService : IService, IDisposable
 {
     /// <summary>
     /// Static accessor for components without DI access.
@@ -146,5 +146,10 @@ public sealed class FilenameService : IService
         sanitized = sanitized.Replace(' ', '_');
         
         return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
+    }
+
+    public void Dispose()
+    {
+        Instance = null;
     }
 }

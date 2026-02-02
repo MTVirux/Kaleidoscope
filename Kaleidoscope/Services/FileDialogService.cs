@@ -83,5 +83,6 @@ public sealed class FileDialogService : IService, IDisposable
     public void Dispose()
     {
         _manager.Reset();
+        Instance = null;
     }
 }
