@@ -60,6 +60,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     // Flushed to DB on character change/logout or plugin dispose, not on each inventory change
     private readonly HashSet<(ulong CharacterId, Models.Inventory.InventorySourceType SourceType, ulong RetainerId)> _dirtyInventoryCaches = new();
     private readonly object _dirtyLock = new();
+    
+    // Cached set of tracked item IDs to avoid repeated layout parsing
+    // Invalidated when layouts change
+    private HashSet<uint>? _cachedTrackedItems;
+    private int _lastLayoutHash;
 
     public InventoryCacheService(
         IPluginLog log,
@@ -750,59 +755,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             if (itemsWithTracking.Count == 0)
                 return;
 
-            // Get the list of tracked item IDs from all configured sources
-            var trackedItems = new HashSet<uint>();
-            
-            // Check ItemGraph for tracked items that also have historical tracking enabled
-            var graphItems = _configService.Config.ItemGraph?.Series?
-                .Where(s => !s.IsCurrency && itemsWithTracking.Contains(s.Id))
-                .Select(s => s.Id);
-            
-            if (graphItems != null)
-            {
-                foreach (var id in graphItems)
-                    trackedItems.Add(id);
-            }
-
-            // Also check ItemTable for tracked items that have historical tracking enabled
-            var tableItems = _configService.Config.ItemTable?.Columns?
-                .Where(c => !c.IsCurrency && itemsWithTracking.Contains(c.Id))
-                .Select(c => c.Id);
-            
-            if (tableItems != null)
-            {
-                foreach (var id in tableItems)
-                    trackedItems.Add(id);
-            }
-            
-            // Also check layout-stored DataTool instances for tracked items with historical tracking enabled
-            foreach (var layout in _configService.Config.Layouts)
-            {
-                foreach (var tool in layout.Tools)
-                {
-                    // Check if this is a DataTool with stored columns
-                    if (tool.ToolSettings.TryGetValue("Columns", out var columnsObj) && columnsObj is Newtonsoft.Json.Linq.JArray columnsArray)
-                    {
-                        foreach (var columnToken in columnsArray)
-                        {
-                            try
-                            {
-                                var isCurrency = columnToken["IsCurrency"]?.ToObject<bool>() ?? false;
-                                var id = columnToken["Id"]?.ToObject<uint>() ?? 0;
-                                
-                                if (!isCurrency && id > 0 && itemsWithTracking.Contains(id))
-                                {
-                                    trackedItems.Add(id);
-                                }
-                            }
-                            catch
-                            {
-                                // Skip malformed column entries
-                            }
-                        }
-                    }
-                }
-            }
+            // Get the list of tracked item IDs using cached lookup (avoids repeated layout parsing)
+            var trackedItems = GetTrackedItemsCached(itemsWithTracking);
             
             if (trackedItems.Count == 0)
                 return;
@@ -856,6 +810,95 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Failed to sample tracked items: {ex.Message}");
         }
+    }
+    
+    /// <summary>
+    /// Gets the set of tracked item IDs, using a cached version if available.
+    /// The cache is invalidated when layouts change (detected via hash).
+    /// </summary>
+    private HashSet<uint> GetTrackedItemsCached(HashSet<uint> itemsWithTracking)
+    {
+        // Compute a simple hash of layouts to detect changes
+        var layoutHash = ComputeLayoutHash();
+        
+        // Return cached result if layouts haven't changed
+        if (_cachedTrackedItems != null && _lastLayoutHash == layoutHash)
+            return _cachedTrackedItems;
+        
+        // Rebuild the tracked items set
+        var trackedItems = new HashSet<uint>();
+        
+        // Check ItemGraph for tracked items that also have historical tracking enabled
+        var graphItems = _configService.Config.ItemGraph?.Series?
+            .Where(s => !s.IsCurrency && itemsWithTracking.Contains(s.Id))
+            .Select(s => s.Id);
+        
+        if (graphItems != null)
+        {
+            foreach (var id in graphItems)
+                trackedItems.Add(id);
+        }
+
+        // Also check ItemTable for tracked items that have historical tracking enabled
+        var tableItems = _configService.Config.ItemTable?.Columns?
+            .Where(c => !c.IsCurrency && itemsWithTracking.Contains(c.Id))
+            .Select(c => c.Id);
+        
+        if (tableItems != null)
+        {
+            foreach (var id in tableItems)
+                trackedItems.Add(id);
+        }
+        
+        // Also check layout-stored DataTool instances for tracked items with historical tracking enabled
+        foreach (var layout in _configService.Config.Layouts)
+        {
+            foreach (var tool in layout.Tools)
+            {
+                // Check if this is a DataTool with stored columns
+                if (tool.ToolSettings.TryGetValue("Columns", out var columnsObj) && columnsObj is Newtonsoft.Json.Linq.JArray columnsArray)
+                {
+                    foreach (var columnToken in columnsArray)
+                    {
+                        try
+                        {
+                            var isCurrency = columnToken["IsCurrency"]?.ToObject<bool>() ?? false;
+                            var id = columnToken["Id"]?.ToObject<uint>() ?? 0;
+                            
+                            if (!isCurrency && id > 0 && itemsWithTracking.Contains(id))
+                            {
+                                trackedItems.Add(id);
+                            }
+                        }
+                        catch
+                        {
+                            // Skip malformed column entries
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Cache the result
+        _cachedTrackedItems = trackedItems;
+        _lastLayoutHash = layoutHash;
+        
+        return trackedItems;
+    }
+    
+    /// <summary>
+    /// Computes a simple hash of layout configuration to detect changes.
+    /// </summary>
+    private int ComputeLayoutHash()
+    {
+        var hash = 17;
+        hash = hash * 31 + _configService.Config.Layouts.Count;
+        foreach (var layout in _configService.Config.Layouts)
+        {
+            hash = hash * 31 + layout.Tools.Count;
+        }
+        hash = hash * 31 + _configService.Config.ItemsWithHistoricalTracking.Count;
+        return hash;
     }
 
     /// <summary>
