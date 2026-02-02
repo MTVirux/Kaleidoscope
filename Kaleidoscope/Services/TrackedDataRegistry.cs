@@ -581,10 +581,9 @@ public sealed class TrackedDataRegistry : IRequiredService
             if (im == null) return results;
             
             // Pre-fetch expensive retainer data once for the entire snapshot
-            var cache = new RetainerDataCache(
-                GameStateService.GetAllRetainersGil(),
-                GameStateService.GetAllRetainersCrystals()
-            );
+            var retainerGil = GameStateService.GetAllRetainersGil();
+            var retainerCrystals = GameStateService.GetAllRetainersCrystals();
+            var cache = new RetainerDataCache(retainerGil, retainerCrystals);
             
             foreach (var type in types)
             {
