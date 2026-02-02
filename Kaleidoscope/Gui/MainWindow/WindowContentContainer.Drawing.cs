@@ -939,7 +939,7 @@ public partial class WindowContentContainer
                             }
                         }
 
-                        ImGui.Separator();;
+                        ImGui.Separator();
                         if (ImGui.MenuItem("Remove component"))
                         {
                             try
