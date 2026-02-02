@@ -126,10 +126,13 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         _dbService = dbService;
         _characterDataCache = characterDataCache;
 
-        _priceUpdateQueue = Channel.CreateUnbounded<PriceUpdateWorkItem>(new UnboundedChannelOptions
+        // Use bounded channel to prevent unbounded memory growth during high WebSocket activity
+        // 10000 items handles bursts; DropOldest discards stale prices (acceptable for market data)
+        _priceUpdateQueue = Channel.CreateBounded<PriceUpdateWorkItem>(new BoundedChannelOptions(10000)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
         });
 
         _backgroundWorker = Task.Factory.StartNew(

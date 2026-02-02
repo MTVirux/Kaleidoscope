@@ -129,10 +129,13 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 
         _characterDataCache.Initialize(_dbService);
 
-        _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
+        // Use bounded channel to prevent unbounded memory growth under high load
+        // 1000 items is plenty for currency samples (infrequent writes)
+        _sampleQueue = Channel.CreateBounded<SampleWorkItem>(new BoundedChannelOptions(1000)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
         });
 
         _backgroundWorker = Task.Factory.StartNew(
