@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Dalamud.Game.Inventory;
 using Dalamud.Game.Inventory.InventoryEventArgTypes;
 using Dalamud.Plugin.Services;
@@ -176,6 +175,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         // Track retainer state changes for stabilization
         // Use IsRetainerActive() which properly checks if a retainer inventory is open
         var isRetainerActive = GameStateService.IsRetainerActive();
+        
         if (isRetainerActive != _wasRetainerActive)
         {
             _wasRetainerActive = isRetainerActive;
@@ -218,9 +218,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             CheckForValueChanges();
         }
     }
-
-    // Slow operation threshold in milliseconds for logging diagnostics
-    private const double SlowOperationThresholdMs = 50.0;
     
     /// <summary>
     /// Checks enabled data types for value changes using direct InventoryManager reads.
@@ -228,7 +225,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     private void CheckForValueChanges()
     {
-        var sw = Stopwatch.StartNew();
         try
         {
             // Only check enabled types to avoid unnecessary game memory reads
@@ -240,11 +236,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
             // Use snapshot method to fetch all values in one pass, caching expensive retainer lookups
             var currentValues = _registry.GetCurrentValuesSnapshot(enabledTypes);
-            var snapshotMs = sw.Elapsed.TotalMilliseconds;
-            if (snapshotMs > SlowOperationThresholdMs)
-            {
-                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] GetCurrentValuesSnapshot took {snapshotMs:F1}ms (slow operation detected)");
-            }
             var changedValues = new Dictionary<TrackedDataType, long>();
 
             foreach (var kvp in currentValues)
@@ -295,15 +286,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
-        }
-        finally
-        {
-            sw.Stop();
-            var totalMs = sw.Elapsed.TotalMilliseconds;
-            if (totalMs > SlowOperationThresholdMs)
-            {
-                LogService.Warning(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges took {totalMs:F1}ms (threshold: {SlowOperationThresholdMs}ms)");
-            }
         }
     }
 
