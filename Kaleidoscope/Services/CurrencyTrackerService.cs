@@ -237,7 +237,13 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             catch (Exception ex)
             {
                 characterName = GameStateService.LocalPlayerName;
-                LogService.Debug(LogCategory.CurrencyTracker, characterName, $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+                LogService.Debug(LogCategory.CurrencyTracker, characterName ?? "Unknown", $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+            }
+            
+            // Cache character name ONCE outside the loop
+            if (!string.IsNullOrEmpty(characterName))
+            {
+                _cacheService.SetCharacterName(cid, characterName);
             }
 
             // Queue all changed values for background database write
@@ -248,12 +254,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 
                 // Update cache immediately (main thread) for instant UI access
                 var isNewValue = _cacheService.AddPoint(variable, cid, value);
-                
-                // Cache character name if available
-                if (!string.IsNullOrEmpty(characterName))
-                {
-                    _cacheService.SetCharacterName(cid, characterName);
-                }
                 
                 // Queue DB write (background thread) for persistence
                 if (isNewValue)
@@ -266,7 +266,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         catch (Exception ex)
         {
             var charName = GameStateService.LocalPlayerName;
-            LogService.Debug(LogCategory.CurrencyTracker, charName, $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, charName ?? "Unknown", $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
 
