@@ -898,11 +898,11 @@ public partial class WindowContentContainer
                         if (ImGui.BeginMenu("Appearance"))
                         {
                             var bg = t.BackgroundEnabled;
-                            if (ImGui.Checkbox("Show background", ref bg)) t.BackgroundEnabled = bg;
+                            if (ImGui.Checkbox("Show background", ref bg)) { t.BackgroundEnabled = bg; MarkLayoutDirty(); }
                             var hdr = t.HeaderVisible;
-                            if (ImGui.Checkbox("Show header", ref hdr)) t.HeaderVisible = hdr;
+                            if (ImGui.Checkbox("Show header", ref hdr)) { t.HeaderVisible = hdr; MarkLayoutDirty(); }
                             var outline = t.OutlineEnabled;
-                            if (ImGui.Checkbox("Show outline", ref outline)) t.OutlineEnabled = outline;
+                            if (ImGui.Checkbox("Show outline", ref outline)) { t.OutlineEnabled = outline; MarkLayoutDirty(); }
                             
                             ImGui.Separator();
                             
@@ -910,7 +910,7 @@ public partial class WindowContentContainer
                             var defaultBgColor = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
                             var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithReset(
                                 "Background color", t.BackgroundColor, defaultBgColor, "Background color");
-                            if (colorChanged) t.BackgroundColor = newColor;
+                            if (colorChanged) { t.BackgroundColor = newColor; MarkLayoutDirty(); }
                             
                             ImGui.EndMenu();
                         }
