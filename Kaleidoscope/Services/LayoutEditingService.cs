@@ -43,6 +43,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     private readonly object _snapshotLock = new();
     private const int SnapshotDebounceMs = 1000; // Wait 1s before writing snapshot
     
+    // Debounced auto-save: avoids synchronous disk I/O on every MarkDirty call
+    private System.Timers.Timer? _autoSaveDebounceTimer;
+    private const int AutoSaveDebounceMs = 500;
+    
     // Phase 6: Tool lookup cache
     private Dictionary<string, ToolLayoutState>? _toolByNameCache;
     private bool _toolCacheValid;
@@ -88,6 +92,10 @@ public sealed class LayoutEditingService : IDisposable, IService
         _snapshotDebounceTimer.Elapsed += OnSnapshotDebounceElapsed;
         _snapshotDebounceTimer.AutoReset = false;
 
+        _autoSaveDebounceTimer = new System.Timers.Timer(AutoSaveDebounceMs);
+        _autoSaveDebounceTimer.Elapsed += OnAutoSaveDebounceElapsed;
+        _autoSaveDebounceTimer.AutoReset = false;
+
         TryRestoreDirtySnapshot();
         LogService.Debug(LogCategory.Layout, "LayoutEditingService initialized with debounced snapshot saves");
     }
@@ -101,6 +109,24 @@ public sealed class LayoutEditingService : IDisposable, IService
                 SaveDirtySnapshotInternal();
             }
         }
+    }
+
+    private void OnAutoSaveDebounceElapsed(object? sender, ElapsedEventArgs e)
+    {
+        if (_isDirty)
+        {
+            Save();
+            LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
+        }
+    }
+
+    /// <summary>
+    /// Schedules a debounced auto-save.
+    /// </summary>
+    private void ScheduleAutoSave()
+    {
+        _autoSaveDebounceTimer?.Stop();
+        _autoSaveDebounceTimer?.Start();
     }
 
     /// <summary>
@@ -136,14 +162,14 @@ public sealed class LayoutEditingService : IDisposable, IService
             _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
         }
 
-        // Auto-save if enabled
+        // Auto-save if enabled: use debounce to avoid disk I/O on every change
         if (_configService.Config.AutoSaveLayoutChanges)
         {
-            // Temporarily set dirty to allow Save() to work
             _isDirty = true;
-            Save();
             Interlocked.Increment(ref _dirtyMarkCount);
-            LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
+            InvalidateToolCache();
+            InvalidateGridCache();
+            ScheduleAutoSave();
             return;
         }
 
@@ -677,6 +703,11 @@ public sealed class LayoutEditingService : IDisposable, IService
         /// </summary>
         public void Dispose()
         {
+            // Stop auto-save timer
+            _autoSaveDebounceTimer?.Stop();
+            _autoSaveDebounceTimer?.Dispose();
+            _autoSaveDebounceTimer = null;
+            
             // Flush any pending snapshot
             lock (_snapshotLock)
             {
