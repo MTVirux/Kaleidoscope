@@ -944,6 +944,8 @@ public partial class WindowContentContainer
                         {
                             try
                             {
+                                var removedTool = _tools[_contextToolIndex].Tool;
+                                removedTool.Dispose();
                                 _tools.RemoveAt(_contextToolIndex);
                                 MarkLayoutDirty();
                             }
