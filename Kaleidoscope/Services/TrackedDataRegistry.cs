@@ -474,67 +474,11 @@ public sealed class TrackedDataRegistry : IRequiredService
             var im = GameStateService.InventoryManagerInstance();
             if (im == null) return null;
 
-            return type switch
-            {
-                // Gil: player + all retainers
-                TrackedDataType.Gil => im->GetGil() + GameStateService.GetAllRetainersGil(),
-                
-                // Tomestones - player only (currency, not tradeable)
-                TrackedDataType.TomestonePoetics => im->GetTomestoneCount(28),
-                TrackedDataType.TomestoneCapped => im->GetTomestoneCount(44123),
-                TrackedDataType.TomestoneUncapped => im->GetTomestoneCount(43693),
-                
-                // Scrips - player only (currency, not tradeable)
-                TrackedDataType.WhiteCraftersScrip => im->GetInventoryItemCount(25199),
-                TrackedDataType.PurpleCraftersScrip => im->GetInventoryItemCount(33913),
-                TrackedDataType.OrangeCraftersScrip => im->GetInventoryItemCount(41784),
-                TrackedDataType.WhiteGatherersScrip => im->GetInventoryItemCount(25200),
-                TrackedDataType.PurpleGatherersScrip => im->GetInventoryItemCount(33914),
-                TrackedDataType.OrangeGatherersScrip => im->GetInventoryItemCount(41785),
-                TrackedDataType.SkybuildersScrip => im->GetInventoryItemCount(28063),
-                
-                // Grand Company Seals - player only (currency)
-                TrackedDataType.MaelstromSeals => im->GetCompanySeals(1),
-                TrackedDataType.TwinAdderSeals => im->GetCompanySeals(2),
-                TrackedDataType.ImmortalFlamesSeals => im->GetCompanySeals(3),
-                
-                // PvP - player only (currency)
-                TrackedDataType.WolfMarks => im->GetWolfMarks(),
-                TrackedDataType.TrophyCrystals => im->GetInventoryItemCount(36656),
-                
-                // Hunt - player only (currency)
-                TrackedDataType.AlliedSeals => im->GetAlliedSeals(),
-                TrackedDataType.CenturioSeals => im->GetInventoryItemCount(10307),
-                TrackedDataType.SackOfNuts => im->GetInventoryItemCount(26533),
-                
-                // Gold Saucer - player only (currency)
-                TrackedDataType.MGP => im->GetGoldSaucerCoin(),
-                
-                // Tribal - player only (currency)
-                TrackedDataType.BicolorGemstone => im->GetInventoryItemCount(26807),
-                
-                // Ventures: player + retainers (tradeable item)
-                TrackedDataType.Ventures => GetItemCountWithRetainers(im, 21072),
-                
-                // Crystals: player + retainers
-                TrackedDataType.CrystalsTotal => GetTotalCrystalsWithRetainers(im),
-                TrackedDataType.FireCrystals => GetElementCrystalsWithRetainers(im, 0),
-                TrackedDataType.IceCrystals => GetElementCrystalsWithRetainers(im, 1),
-                TrackedDataType.WindCrystals => GetElementCrystalsWithRetainers(im, 2),
-                TrackedDataType.EarthCrystals => GetElementCrystalsWithRetainers(im, 3),
-                TrackedDataType.LightningCrystals => GetElementCrystalsWithRetainers(im, 4),
-                TrackedDataType.WaterCrystals => GetElementCrystalsWithRetainers(im, 5),
-                
-                // Inventory - player only
-                TrackedDataType.InventoryFreeSlots => im->GetEmptySlotsInBag(),
-                
-                // FC/Retainer - separate tracking for visibility
-                TrackedDataType.FreeCompanyGil => im->GetFreeCompanyGil(),
-                TrackedDataType.RetainerGil => GameStateService.GetAllRetainersGil(),
-                TrackedDataType.FreeCompanyCredits => GameStateService.GetFreeCompanyCredits(),
-                
-                _ => null
-            };
+            // Build a fresh cache and delegate to the shared implementation
+            var retainerGil = GameStateService.GetAllRetainersGil();
+            var retainerCrystals = GameStateService.GetAllRetainersCrystals();
+            var cache = new RetainerDataCache(retainerGil, retainerCrystals);
+            return GetValueWithCache(im, type, cache);
         }
         catch (Exception ex)
         {
@@ -735,58 +679,4 @@ public sealed class TrackedDataRegistry : IRequiredService
         return total;
     }
 
-    /// <summary>
-    /// Gets total crystals across all types (shards, crystals, clusters) including retainers.
-    /// </summary>
-    private static unsafe long GetTotalCrystalsWithRetainers(FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* im)
-    {
-        long total = 0;
-        
-        // Crystal item IDs: Shards (2-7), Crystals (8-13), Clusters (14-19)
-        // Fire=2,8,14  Ice=3,9,15  Wind=4,10,16  Earth=5,11,17  Lightning=6,12,18  Water=7,13,19
-        for (uint i = 2; i <= 19; i++)
-        {
-            try { total += im->GetInventoryItemCount(i); }
-            catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get crystal {i}: {ex.Message}"); }
-        }
-        
-        // Add all retainer crystals from ItemFinderModule cache (works without retainer window open)
-        var retainerCrystals = GameStateService.GetAllRetainersCrystals();
-        for (int i = 0; i < 18; i++)
-        {
-            total += retainerCrystals[i];
-        }
-        
-        return total;
-    }
-
-    /// <summary>
-    /// Gets crystals for a specific element (0=Fire, 1=Ice, 2=Wind, 3=Earth, 4=Lightning, 5=Water).
-    /// Includes player and active retainer crystals.
-    /// </summary>
-    private static unsafe long GetElementCrystalsWithRetainers(FFXIVClientStructs.FFXIV.Client.Game.InventoryManager* im, int element)
-    {
-        long total = 0;
-        
-        // Shard = base + element, Crystal = base + tier + element, Cluster = base + 2*tier + element
-        var shardId = (uint)(ConfigStatic.CrystalBaseItemId + element);
-        var crystalId = (uint)(ConfigStatic.CrystalBaseItemId + ConfigStatic.CrystalTierOffset + element);
-        var clusterId = (uint)(ConfigStatic.CrystalBaseItemId + 2 * ConfigStatic.CrystalTierOffset + element);
-        
-        try { total += im->GetInventoryItemCount(shardId); } 
-        catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get shard {shardId}: {ex.Message}"); }
-        try { total += im->GetInventoryItemCount(crystalId); } 
-        catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get crystal {crystalId}: {ex.Message}"); }
-        try { total += im->GetInventoryItemCount(clusterId); } 
-        catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Failed to get cluster {clusterId}: {ex.Message}"); }
-        
-        // Add all retainer crystals for this element from ItemFinderModule cache
-        // Array indices: Shards 0-5, Crystals 6-11, Clusters 12-17 (each offset by element index)
-        var retainerCrystals = GameStateService.GetAllRetainersCrystals();
-        total += retainerCrystals[element];           // Shard
-        total += retainerCrystals[6 + element];       // Crystal
-        total += retainerCrystals[12 + element];      // Cluster
-        
-        return total;
-    }
 }
