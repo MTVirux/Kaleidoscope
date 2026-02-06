@@ -96,15 +96,12 @@ public sealed class LoggingCategory
         {
             ImGui.Indent();
             
-            // Custom log directory
             DrawLogDirectoryInput(config);
             
-            // Show current log file path or split mode status
             DrawLogFileStatus(config);
             
             ImGui.Spacing();
             
-            // Split by category toggle
             var splitByCategory = config.FileLoggingSplitByCategory;
             if (ImGui.Checkbox("Split Logs by Category", ref splitByCategory))
             {
@@ -223,7 +220,6 @@ public sealed class LoggingCategory
                 }
             }
             
-            // Show file status
             ImGui.Spacing();
             if (LogService.IsFileLoggingActive)
             {
@@ -331,7 +327,6 @@ public sealed class LoggingCategory
 
         if (splitByCategory || splitByCharacter)
         {
-            // Show split mode status
             var logDir = FilenameService.Instance?.LogDirectory ?? "Not available";
             ImGui.TextDisabled($"Log directory: {logDir}");
             
@@ -351,7 +346,6 @@ public sealed class LoggingCategory
                 ImGui.TextDisabled("Example: logs/<character>/kaleidoscope.log");
             }
 
-            // Show active writers count
             var categoryCount = LogService.ActiveCategoryWriters;
             var characterCount = LogService.ActiveCharacterWriters;
             if (categoryCount > 0 || characterCount > 0)
@@ -361,7 +355,6 @@ public sealed class LoggingCategory
         }
         else
         {
-            // Show single file path
             var logPath = FilenameService.Instance?.LogFilePath ?? "Not available";
             ImGui.TextDisabled($"Log file: {logPath}");
         }

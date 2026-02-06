@@ -458,7 +458,6 @@ public sealed partial class KaleidoscopeDbService
 
                 try
                 {
-                    // First, get the item_id from the sale record we're about to delete
                     int? saleItemId = null;
                     using (var getItemCmd = _connection.CreateCommand())
                     {
@@ -478,7 +477,6 @@ public sealed partial class KaleidoscopeDbService
                         return false;
                     }
 
-                    // Delete the sale record
                     using var deleteCmd = _connection.CreateCommand();
                     deleteCmd.Transaction = transaction;
                     deleteCmd.CommandText = "DELETE FROM sale_records WHERE id = $id";
@@ -487,7 +485,6 @@ public sealed partial class KaleidoscopeDbService
 
                     if (rowsAffected > 0)
                     {
-                        // Get the new latest sale price for this item (after deletion)
                         int newPrice = 0;
                         using (var priceCmd = _connection.CreateCommand())
                         {
@@ -505,8 +502,6 @@ public sealed partial class KaleidoscopeDbService
                             }
                         }
 
-                        // Find all inventory_value_history records at or after the sale timestamp
-                        // that have contributions for this item
                         var historyToUpdate = new List<(long HistoryId, long OldQuantity, int OldPrice)>();
                         using (var findCmd = _connection.CreateCommand())
                         {
@@ -530,7 +525,6 @@ public sealed partial class KaleidoscopeDbService
                             }
                         }
 
-                        // Update each affected history record
                         if (historyToUpdate.Count > 0)
                         {
                             using var updateHistoryCmd = _connection.CreateCommand();
@@ -637,11 +631,9 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
                 var deleted = cmd.ExecuteNonQuery();
 
-                // Also clean inventory value history
                 cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
                 deleted += cmd.ExecuteNonQuery();
 
-                // Also clean old sale records
                 cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
                 deleted += cmd.ExecuteNonQuery();
 
@@ -706,19 +698,16 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Delete oldest records until we're under the limit
                 var totalDeleted = 0;
                 while (currentSize > maxSizeBytes)
                 {
                     using var cmd = _connection.CreateCommand();
                     
-                    // Delete oldest price history first
                     cmd.CommandText = @"
                         DELETE FROM price_history 
                         WHERE id IN (SELECT id FROM price_history ORDER BY timestamp ASC LIMIT 1000)";
                     var deleted = cmd.ExecuteNonQuery();
                     
-                    // Also delete oldest sale records
                     cmd.CommandText = @"
                         DELETE FROM sale_records 
                         WHERE id IN (SELECT id FROM sale_records ORDER BY timestamp ASC LIMIT 1000)";

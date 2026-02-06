@@ -14,7 +14,6 @@ public sealed class TrackedDataRegistry : IRequiredService
     private readonly IPluginLog _log;
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
     
-    // Cached lookups (built once after registration completes)
     private Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>? _byCategory;
     private Dictionary<uint, TrackedDataDefinition>? _byItemId;
     private List<TrackedDataType>? _allTypes;
@@ -37,7 +36,6 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// </summary>
     private void BuildCaches()
     {
-        // Cache by category
         _byCategory = new Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>();
         foreach (var def in _definitions.Values)
         {
@@ -49,7 +47,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             list.Add(def);
         }
         
-        // Cache by ItemId (for inventory value lookups)
         _byItemId = new Dictionary<uint, TrackedDataDefinition>();
         foreach (var def in _definitions.Values)
         {
@@ -59,10 +56,8 @@ public sealed class TrackedDataRegistry : IRequiredService
             }
         }
         
-        // Cache all types list
         _allTypes = _definitions.Keys.ToList();
         
-        // Cache enabled by default list
         _enabledByDefaultList = _definitions.Values.Where(d => d.EnabledByDefault).ToList();
         
         LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] Built caches: {_definitions.Count} definitions, {_byCategory.Count} categories, {_byItemId.Count} by ItemId");

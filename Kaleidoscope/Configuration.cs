@@ -167,7 +167,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoSaveLayoutChanges { get; set; } = false;
 
-    // GilTracker settings
     public bool GilTrackerHideCharacterSelector { get; set; } = false;
     public bool GilTrackerShowMultipleLines { get; set; } = false;
     public int GilTrackerTimeRangeValue { get; set; } = 7;
@@ -180,7 +179,6 @@ public class Configuration : IPluginConfiguration
     public float GilTrackerLegendWidth { get; set; } = 120f;
     public bool GilTrackerShowLegend { get; set; } = true;
 
-    // Universalis Integration settings
     /// <summary>
     /// The scope for Universalis market data queries (World, DataCenter, or Region).
     /// </summary>
@@ -201,7 +199,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public string UniversalisRegionOverride { get; set; } = string.Empty;
 
-    // Data Tracking settings
     /// <summary>
     /// Set of item IDs that have historical time-series tracking enabled.
     /// When an item is in this set, its quantities are sampled and stored for graphing over time.
@@ -251,10 +248,8 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public HashSet<ulong> FavoriteCharacters { get; set; } = new();
 
-    // CrystalTracker settings
     public CrystalTrackerSettings CrystalTracker { get; set; } = new();
 
-    // Price Tracking settings
     /// <summary>
     /// Settings for the Universalis price tracking feature.
     /// </summary>

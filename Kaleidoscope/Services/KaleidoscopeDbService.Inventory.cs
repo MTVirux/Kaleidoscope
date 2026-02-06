@@ -74,7 +74,6 @@ public sealed partial class KaleidoscopeDbService
 
                 try
                 {
-                    // Upsert the cache entry
                     using var cacheCmd = _connection.CreateCommand();
                     cacheCmd.Transaction = transaction;
                     cacheCmd.CommandText = @"
@@ -96,14 +95,12 @@ public sealed partial class KaleidoscopeDbService
 
                     var cacheId = (long)cacheCmd.ExecuteScalar()!;
 
-                    // Delete existing items for this cache
                     using var deleteCmd = _connection.CreateCommand();
                     deleteCmd.Transaction = transaction;
                     deleteCmd.CommandText = "DELETE FROM inventory_items WHERE cache_id = $id";
                     deleteCmd.Parameters.AddWithValue("$id", cacheId);
                     deleteCmd.ExecuteNonQuery();
 
-                    // Insert new items
                     if (entry.Items.Count > 0)
                     {
                         using var itemCmd = _connection.CreateCommand();
@@ -173,7 +170,6 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Get the cache entry
                 using var cacheCmd = _connection.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, name, world, gil, updated_at 
@@ -199,7 +195,6 @@ public sealed partial class KaleidoscopeDbService
                 };
                 reader.Close();
 
-                // Get the items
                 using var itemCmd = _connection.CreateCommand();
                 itemCmd.CommandText = @"
                     SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
@@ -248,7 +243,6 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Get all cache entries for this character
                 using var cacheCmd = _connection.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, source_type, retainer_id, name, world, gil, updated_at 
@@ -277,7 +271,6 @@ public sealed partial class KaleidoscopeDbService
                     }
                 }
 
-                // Get items for each cache entry
                 foreach (var (cacheId, entry) in cacheEntries)
                 {
                     using var itemCmd = _connection.CreateCommand();
@@ -330,7 +323,6 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Get all cache entries
                 using var cacheCmd = _connection.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, character_id, source_type, retainer_id, name, world, gil, updated_at 
@@ -357,7 +349,6 @@ public sealed partial class KaleidoscopeDbService
                     }
                 }
 
-                // Get items for each cache entry
                 foreach (var (cacheId, entry) in cacheEntries)
                 {
                     using var itemCmd = _connection.CreateCommand();
@@ -498,7 +489,6 @@ public sealed partial class KaleidoscopeDbService
                 {
                     foreach (var entry in entries)
                     {
-                        // Upsert the cache entry
                         using var cacheCmd = _connection.CreateCommand();
                         cacheCmd.Transaction = transaction;
                         cacheCmd.CommandText = @"
@@ -520,14 +510,12 @@ public sealed partial class KaleidoscopeDbService
 
                         var cacheId = (long)cacheCmd.ExecuteScalar()!;
 
-                        // Delete existing items for this cache
                         using var deleteCmd = _connection.CreateCommand();
                         deleteCmd.Transaction = transaction;
                         deleteCmd.CommandText = "DELETE FROM inventory_items WHERE cache_id = $id";
                         deleteCmd.Parameters.AddWithValue("$id", cacheId);
                         deleteCmd.ExecuteNonQuery();
 
-                        // Insert new items in batches
                         if (entry.Items.Count > 0)
                         {
                             SaveItemsBatched(cacheId, entry.Items, transaction);
@@ -565,7 +553,6 @@ public sealed partial class KaleidoscopeDbService
         {
             var batchItems = items.Skip(batchStart).Take(batchSize).ToList();
             
-            // Build multi-row INSERT statement
             var sb = new StringBuilder();
             sb.Append(@"INSERT INTO inventory_items 
                 (cache_id, item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id)

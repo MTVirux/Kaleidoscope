@@ -171,8 +171,6 @@ public class WebsocketFeedSettings
 /// </summary>
 public class InventoryValueSettings : IGraphWidgetSettings
 {
-    // === Tool-specific settings ===
-    
     /// <summary>Whether to show multiple lines per character.</summary>
     public bool ShowMultipleLines { get; set; } = true;
 
@@ -182,8 +180,6 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// <summary>Whether to include gil in the value calculation.</summary>
     public bool IncludeGil { get; set; } = true;
 
-    // === Hierarchical Price Match Settings ===
-    
     /// <summary>
     /// Default price match mode used when no specific override is set.
     /// </summary>
@@ -203,8 +199,6 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// Per-world price match mode overrides. Key is world ID.
     /// </summary>
     public Dictionary<int, PriceMatchMode> WorldPriceMatchModes { get; set; } = new();
-    
-    // === IGraphWidgetSettings implementation ===
     
     /// <summary>Mode for determining series colors in the graph.</summary>
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredCharacterColors;

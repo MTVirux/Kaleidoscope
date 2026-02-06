@@ -26,7 +26,6 @@ public sealed class QuickAccessBarWidget
     private readonly Func<bool>? _onExitEditModeWithDirtyCheck;
     private readonly Action<string>? _onLayoutChanged;
     
-    // FPS dropdown options
     private static readonly string[] FpsOptions = { "Custom", "240", "144", "90", "75", "60", "30", "Off" };
     private static readonly int[] FpsValues = { -1, 240, 144, 90, 75, 60, 30, 0 }; // -1 = custom, 0 = disabled
 
@@ -52,7 +51,6 @@ public sealed class QuickAccessBarWidget
     private const float AnimationDuration = 0.1f; // 0.1 second dropdown animation
     private const float TopOffset = 2f; // Reduced spacing from top
 
-    // Pin and animation state
     private bool _isPinned = false;
     private float _animationProgress = 0f;
     private DateTime _animationStartTime = DateTime.MinValue;
@@ -179,24 +177,20 @@ public sealed class QuickAccessBarWidget
         if (_animationProgress <= 0f)
             return false;
 
-        // Calculate bar dimensions
         var isDirty = _layoutEditingService.IsDirty;
         var buttonCount = isDirty ? 6 : 5; // Pin, Edit, Lock, Fullscreen, Settings, and optionally Save
         
-        // Count status indicators (only show if services are provided)
         var statusCount = 0;
         if (_currencyTrackerService != null) statusCount++;
         if (_webSocketService != null) statusCount++;
         if (_autoRetainerService != null) statusCount++;
         
-        // Get character name or titlescreen text
         var isLoggedIn = GameStateService.PlayerContentId != 0;
         var characterText = isLoggedIn 
             ? (GameStateService.LocalPlayerName ?? "Unknown") 
             : "In Titlescreen";
         var characterTextSize = ImGui.CalcTextSize(characterText);
         
-        // Get layout dropdown width if config service is available
         var hasLayoutDropdown = _configurationService != null;
         var layouts = _configurationService?.Config.Layouts ?? new List<ContentLayoutState>();
         var isFullscreen = _stateService.IsFullscreen;
@@ -209,7 +203,6 @@ public sealed class QuickAccessBarWidget
             : Vector2.Zero;
         var layoutDropdownWidth = hasLayoutDropdown && filteredLayouts.Count > 0 ? layoutTextSize.X + 30f : 0f; // Extra space for dropdown arrow
         
-        // Get FPS dropdown width if frame limiter service is available
         var hasFpsDropdown = _frameLimiterService != null;
         var currentFpsText = GetCurrentFpsDisplayText();
         var fpsTextSize = hasFpsDropdown ? ImGui.CalcTextSize(currentFpsText) : Vector2.Zero;
@@ -227,12 +220,10 @@ public sealed class QuickAccessBarWidget
         var statusSectionWidth = statusCount > 0 ? statusWidth + separatorSpace : 0f;
         var barWidth = buttonsWidth + layoutSectionWidth + fpsSectionWidth + characterSectionWidth + statusSectionWidth + (BarPadding * 2);
         
-        // Position at top center of the current window with reduced spacing
         var windowPos = ImGui.GetWindowPos();
         var windowSize = ImGui.GetWindowSize();
         var contentMin = ImGui.GetWindowContentRegionMin();
         
-        // Apply ease-out animation for dropdown effect
         var easeProgress = 1f - (float)Math.Pow(1f - _animationProgress, 2);
         var animationOffset = BarHeight * (1f - easeProgress);
         
@@ -240,22 +231,18 @@ public sealed class QuickAccessBarWidget
             windowPos.X + (windowSize.X - barWidth) / 2f, 
             windowPos.Y + contentMin.Y + TopOffset - animationOffset);
         
-        // Draw bar background using the window's draw list
         var dl = ImGui.GetWindowDrawList();
         var barMin = barPos;
         var barMax = barPos + new Vector2(barWidth, BarHeight);
         dl.AddRectFilled(barMin, barMax, BarBackgroundColor, 6f);
         dl.AddRect(barMin, barMax, 0xFF404040, 6f, ImDrawFlags.None, 1f);
 
-        // Button positions
         var buttonY = barPos.Y + (BarHeight - ButtonWidth) / 2f;
         var currentX = barPos.X + BarPadding;
 
-        // Pin Button
         DrawPinButton(dl, ref currentX, buttonY);
         currentX += ButtonSpacing;
 
-        // Edit Mode Button
         DrawIconButton(dl, ref currentX, buttonY, 
             _stateService.IsEditMode ? FontAwesomeIcon.Edit : FontAwesomeIcon.Edit,
             _stateService.IsEditMode ? "Exit Edit Mode" : "Enter Edit Mode",
@@ -284,7 +271,6 @@ public sealed class QuickAccessBarWidget
 
         currentX += ButtonSpacing;
 
-        // Lock Button
         DrawIconButton(dl, ref currentX, buttonY,
             _stateService.IsLocked ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen,
             _stateService.IsLocked ? "Unlock Window" : "Lock Window",
@@ -294,7 +280,6 @@ public sealed class QuickAccessBarWidget
 
         currentX += ButtonSpacing;
 
-        // Fullscreen Button
         DrawIconButton(dl, ref currentX, buttonY,
             _stateService.IsFullscreen ? FontAwesomeIcon.Compress : FontAwesomeIcon.Expand,
             _stateService.IsFullscreen ? "Exit Fullscreen" : "Enter Fullscreen",
@@ -304,7 +289,6 @@ public sealed class QuickAccessBarWidget
 
         currentX += ButtonSpacing;
 
-        // Settings Button
         DrawIconButton(dl, ref currentX, buttonY,
             FontAwesomeIcon.Cog,
             "Open Settings",
@@ -324,17 +308,13 @@ public sealed class QuickAccessBarWidget
                 () => _onSave?.Invoke());
         }
 
-        // Draw separator and character/status indicators
         currentX += SeparatorMargin;
         
-        // Draw vertical separator
         var separatorTop = barPos.Y + 6f;
         var separatorBottom = barPos.Y + BarHeight - 6f;
         
-        // Layout dropdown (if configuration service is available and layouts exist)
         if (hasLayoutDropdown && filteredLayouts.Count > 0)
         {
-            // Draw separator before layout dropdown
             dl.AddLine(
                 new Vector2(currentX, separatorTop),
                 new Vector2(currentX, separatorBottom),
@@ -364,10 +344,8 @@ public sealed class QuickAccessBarWidget
             currentX += layoutDropdownWidth + SeparatorMargin;
         }
         
-        // FPS dropdown (if frame limiter service is available)
         if (hasFpsDropdown)
         {
-            // Draw separator before FPS dropdown
             dl.AddLine(
                 new Vector2(currentX, separatorTop),
                 new Vector2(currentX, separatorBottom),
@@ -397,7 +375,6 @@ public sealed class QuickAccessBarWidget
             currentX += fpsDropdownWidth + SeparatorMargin;
         }
         
-        // Draw separator before character name
         dl.AddLine(
             new Vector2(currentX, separatorTop),
             new Vector2(currentX, separatorBottom),
@@ -405,16 +382,13 @@ public sealed class QuickAccessBarWidget
             SeparatorWidth);
         currentX += SeparatorWidth + SeparatorMargin;
         
-        // Draw character name or titlescreen text
         var textY = barPos.Y + (BarHeight - characterTextSize.Y) / 2f;
         var textColor = isLoggedIn ? 0xFF80FF80u : 0xFF80FF80u; // Light green for both states
         dl.AddText(new Vector2(currentX, textY), textColor, characterText);
         currentX += characterTextSize.X;
         
-        // Status indicators (if any services are provided)
         if (statusCount > 0)
         {
-            // Draw separator before status indicators
             currentX += SeparatorMargin;
             dl.AddLine(
                 new Vector2(currentX, separatorTop),
@@ -422,10 +396,8 @@ public sealed class QuickAccessBarWidget
                 SeparatorColor,
                 SeparatorWidth);
             currentX += SeparatorWidth + SeparatorMargin;
-            // Status indicator Y position (centered vertically)
             var statusY = barPos.Y + (BarHeight - StatusIndicatorSize) / 2f;
             
-            // Database status
             if (_currencyTrackerService != null)
             {
                 var hasDb = _currencyTrackerService.HasDb;
@@ -435,7 +407,6 @@ public sealed class QuickAccessBarWidget
                 currentX += StatusSpacing;
             }
             
-            // WebSocket status
             if (_webSocketService != null)
             {
                 var isWsConnected = _webSocketService.IsConnected;
@@ -446,7 +417,6 @@ public sealed class QuickAccessBarWidget
                     currentX += StatusSpacing;
             }
             
-            // AutoRetainer status
             if (_autoRetainerService != null)
             {
                 var isArAvailable = _autoRetainerService.IsAvailable;
@@ -464,13 +434,9 @@ public sealed class QuickAccessBarWidget
         var center = new Vector2(x + StatusIndicatorSize / 2f, y + StatusIndicatorSize / 2f);
         var radius = StatusIndicatorSize / 2f;
         
-        // Draw filled circle
         dl.AddCircleFilled(center, radius, color, 12);
-        
-        // Draw subtle border
         dl.AddCircle(center, radius, 0xFF606060, 12, 1f);
         
-        // Check for hover and show tooltip
         var mousePos = ImGui.GetMousePos();
         var minPos = new Vector2(x, y);
         var maxPos = new Vector2(x + StatusIndicatorSize, y + StatusIndicatorSize);
@@ -495,7 +461,6 @@ public sealed class QuickAccessBarWidget
         var isHovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
                         mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
 
-        // Determine button color
         uint bgColor;
         if (_isPinned)
             bgColor = ButtonActiveColor;
@@ -504,11 +469,9 @@ public sealed class QuickAccessBarWidget
         else
             bgColor = 0x00000000; // Transparent when not hovered
 
-        // Draw button background
         if (bgColor != 0)
             dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
 
-        // Draw pin icon using FontAwesome
         var icon = _isPinned ? FontAwesomeIcon.Thumbtack : FontAwesomeIcon.Thumbtack;
         var iconText = icon.ToIconString();
         ImGui.PushFont(UiBuilder.IconFont);
@@ -524,7 +487,6 @@ public sealed class QuickAccessBarWidget
             ImGui.PopFont();
         }
 
-        // Handle click
         if (isHovered)
         {
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
@@ -532,7 +494,6 @@ public sealed class QuickAccessBarWidget
                 _isPinned = !_isPinned;
             }
 
-            // Show tooltip
             ImGui.BeginTooltip();
             ImGui.TextUnformatted(_isPinned ? "Unpin (hide when CTRL+ALT released)" : "Pin (keep visible)");
             ImGui.EndTooltip();
@@ -549,7 +510,6 @@ public sealed class QuickAccessBarWidget
         var isHovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
                         mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
 
-        // Determine button color
         uint bgColor;
         if (isSaveButton)
             bgColor = isHovered ? SaveButtonHoverColor : SaveButtonColor;
@@ -560,11 +520,9 @@ public sealed class QuickAccessBarWidget
         else
             bgColor = 0x00000000; // Transparent when not hovered
 
-        // Draw button background
         if (bgColor != 0)
             dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
 
-        // Draw icon
         var iconText = icon.ToIconString();
         ImGui.PushFont(UiBuilder.IconFont);
         try
@@ -581,13 +539,11 @@ public sealed class QuickAccessBarWidget
             ImGui.PopFont();
         }
 
-        // Handle click
         if (isHovered)
         {
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 onClick();
 
-            // Show tooltip using invisible button for tooltip support
             ImGui.SetNextWindowPos(buttonMin);
             ImGui.BeginTooltip();
             ImGui.TextUnformatted(tooltip);

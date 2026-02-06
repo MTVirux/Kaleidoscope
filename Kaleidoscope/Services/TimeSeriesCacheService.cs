@@ -22,25 +22,20 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     private readonly ConfigurationService _configService;
     private readonly CharacterDataCacheService _characterDataCache;
 
-    // Main cache: (variable, characterId) -> cached time series
     private readonly ConcurrentDictionary<CacheKey, TimeSeriesCache> _cache = new();
 
-    // Available characters per variable
     private readonly ConcurrentDictionary<string, HashSet<ulong>> _availableCharacters = new();
     private readonly object _availableCharactersLock = new();
 
-    // Inventory value history cache
     private readonly object _inventoryValueCacheLock = new();
     private List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)>? _inventoryValueCache;
     private long _inventoryValueCacheRecordCount;
     private long? _inventoryValueCacheMaxTimestamp;
     private DateTime _inventoryValueCacheTime = DateTime.MinValue;
 
-    // Cache statistics for monitoring
     private long _cacheHits;
     private long _cacheMisses;
 
-    // Event for notifying subscribers when cache is updated
     public event Action<string, ulong>? OnCacheUpdated;
 
     /// <summary>
@@ -163,7 +158,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
         }
 
-        // Count as hit if we found any matching series, miss otherwise
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
@@ -175,7 +169,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllCachedPoints({variable})");
         }
 
-        // Sort by timestamp
         result.Sort((a, b) => a.Item2.CompareTo(b.Item2));
         return result;
     }
@@ -189,7 +182,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         var result = new List<(ulong, string, IReadOnlyList<(DateTime, long)>)>();
         var foundAny = false;
 
-        // First pass: collect all character IDs and their base names
         var characterNames = new Dictionary<ulong, string>();
         var characterPoints = new Dictionary<ulong, IReadOnlyList<(DateTime, long)>>();
         
@@ -211,14 +203,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
         }
 
-        // Second pass: detect name collisions and disambiguate
         var nameCounts = characterNames.Values.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
         
         foreach (var (characterId, baseName) in characterNames)
         {
             var displayName = baseName;
             
-            // If this name appears multiple times, append a short identifier
             if (nameCounts.Contains(baseName))
             {
                 // Append last 4 digits of character ID for disambiguation
@@ -228,7 +218,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             result.Add((characterId, displayName, characterPoints[characterId]));
         }
 
-        // Count as hit if we found any matching series, miss otherwise
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
@@ -503,16 +492,14 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
         var cache = _cache.GetOrAdd(key, _ => new TimeSeriesCache(CacheConfig.MaxPointsPerSeries));
 
-        // Check if value is different from last point
         var lastPoint = cache.GetLastPoint();
         if (lastPoint.HasValue && lastPoint.Value.value == value)
         {
-            return false; // No change, don't add duplicate
+            return false;
         }
 
         cache.AddPoint(ts, value);
 
-        // Track available characters
         lock (_availableCharactersLock)
         {
             if (!_availableCharacters.TryGetValue(variable, out var chars))
@@ -523,7 +510,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             chars.Add(characterId);
         }
 
-        // Notify subscribers
         OnCacheUpdated?.Invoke(variable, characterId);
 
         return true;
@@ -544,7 +530,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             cache.AddPoint(ts, val);
         }
 
-        // Track available characters
         lock (_availableCharactersLock)
         {
             if (!_availableCharacters.TryGetValue(variable, out var chars))
@@ -694,7 +679,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             cache.TrimBefore(cutoff);
         }
 
-        // Remove empty caches
         var emptyKeys = _cache.Where(kvp => kvp.Value.PointCount == 0).Select(kvp => kvp.Key).ToList();
         foreach (var key in emptyKeys)
         {
@@ -913,7 +897,6 @@ internal sealed class TimeSeriesCache
         {
             _points.Add((timestamp, value));
 
-            // Enforce max points limit
             if (_points.Count > _maxPoints)
             {
                 var removeCount = _points.Count - _maxPoints;

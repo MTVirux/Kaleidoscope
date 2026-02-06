@@ -36,20 +36,13 @@ public interface IGraphWidgetSettings : IMTGraphSettings
 /// </summary>
 public class GraphWidgetSettings : IGraphWidgetSettings
 {
-    // Color mode for series
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
-    
-    // Legend settings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
     public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
-    
-    // Graph type
     public MTGraphType GraphType { get; set; } = MTGraphType.Area;
-    
-    // Display settings
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;
     public bool ShowGridLines { get; set; } = true;
@@ -57,19 +50,13 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;
-    
-    // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
     public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
-    
-    // Time range settings
     public int TimeRangeValue { get; set; } = 7;
     public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
-    
-    // Number format settings
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
     /// <summary>

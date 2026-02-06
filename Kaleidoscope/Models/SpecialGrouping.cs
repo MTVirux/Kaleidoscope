@@ -57,8 +57,6 @@ public class SpecialGroupingSettings
         CrystalTier.Cluster
     };
     
-    // === AllGil Grouping Settings ===
-    
     /// <summary>
     /// Whether the AllGil special grouping filter is enabled.
     /// </summary>
@@ -69,8 +67,6 @@ public class SpecialGroupingSettings
     /// When enabled, FC Gil and Retainer Gil columns are hidden and their values are added to Gil.
     /// </summary>
     public bool MergeGilCurrencies { get; set; } = false;
-    
-    // === AllCrystals Grouping Settings ===
     
     /// <summary>
     /// Whether the AllCrystals special grouping filter is enabled.

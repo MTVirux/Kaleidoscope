@@ -133,14 +133,12 @@ public partial class WindowContentContainer
                         match.OutlineEnabled = entry.OutlineEnabled;
                         match.BackgroundColor = entry.BackgroundColor;
                         match.CustomTitle = entry.CustomTitle;
-                        // Apply grid coordinates
                         match.GridCol = entry.GridCol;
                         match.GridRow = entry.GridRow;
                         match.GridColSpan = entry.GridColSpan;
                         match.GridRowSpan = entry.GridRowSpan;
                         match.HasGridCoords = entry.HasGridCoords;
                         if (match.HasGridCoords) ClampGridCoords(match);
-                        // Apply tool-specific settings
                         if (entry.ToolSettings?.Count > 0)
                         {
                             match.ImportToolSettings(entry.ToolSettings);
@@ -170,7 +168,6 @@ public partial class WindowContentContainer
                                 created.HeaderVisible = entry.HeaderVisible;
                                 created.OutlineEnabled = entry.OutlineEnabled;
                                 created.BackgroundColor = entry.BackgroundColor;
-                                // Apply grid coordinates
                                 created.GridCol = entry.GridCol;
                                 created.GridRow = entry.GridRow;
                                 created.GridColSpan = entry.GridColSpan;
@@ -179,7 +176,6 @@ public partial class WindowContentContainer
                                 if (created.HasGridCoords) ClampGridCoords(created);
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
                                 created.CustomTitle = entry.CustomTitle;
-                                // Apply tool-specific settings
                                 if (entry.ToolSettings?.Count > 0)
                                 {
                                     created.ImportToolSettings(entry.ToolSettings);
@@ -216,7 +212,6 @@ public partial class WindowContentContainer
                                     cand.HeaderVisible = entry.HeaderVisible;
                                     cand.OutlineEnabled = entry.OutlineEnabled;
                                     cand.BackgroundColor = entry.BackgroundColor;
-                                    // Apply grid coordinates
                                     cand.GridCol = entry.GridCol;
                                     cand.GridRow = entry.GridRow;
                                     cand.GridColSpan = entry.GridColSpan;
@@ -225,7 +220,6 @@ public partial class WindowContentContainer
                                     if (cand.HasGridCoords) ClampGridCoords(cand);
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
                                     cand.CustomTitle = entry.CustomTitle;
-                                    // Apply tool-specific settings
                                     if (entry.ToolSettings?.Count > 0)
                                     {
                                         cand.ImportToolSettings(entry.ToolSettings);
@@ -297,7 +291,6 @@ public partial class WindowContentContainer
                                         inst.BackgroundEnabled = entry.BackgroundEnabled;
                                         inst.HeaderVisible = entry.HeaderVisible;
                                         inst.BackgroundColor = entry.BackgroundColor;
-                                        // Apply grid coordinates
                                         inst.GridCol = entry.GridCol;
                                         inst.GridRow = entry.GridRow;
                                         inst.GridColSpan = entry.GridColSpan;
@@ -306,7 +299,6 @@ public partial class WindowContentContainer
                                         if (inst.HasGridCoords) ClampGridCoords(inst);
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
                                         inst.CustomTitle = entry.CustomTitle;
-                                        // Apply tool-specific settings
                                         if (entry.ToolSettings?.Count > 0)
                                         {
                                             inst.ImportToolSettings(entry.ToolSettings);

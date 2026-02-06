@@ -30,14 +30,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly ConfigurationService _configService;
     
     // In-memory cache for inventory data - avoids repeated DB reads for offline characters
-    // Key: characterId, Value: list of inventory cache entries for that character
     private readonly ConcurrentDictionary<ulong, List<InventoryCacheEntry>> _inventoryMemoryCache = new();
     
-    // Track when the full "all characters" cache was last loaded
     private List<InventoryCacheEntry>? _allCharactersCache;
     private bool _allCharactersCacheDirty = true;
     
-    // Lock object for synchronizing cache updates between PopulateCacheAsync and UpdateMemoryCache
     private readonly object _cacheLock = new();
 
     private ulong _lastCachedRetainerId = 0;
@@ -47,22 +44,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private bool _pendingRetainerCache = false;
     private volatile bool _cachePopulating = false;
     
-    // Track if we've saved character name this session (only need to save once per login)
     private bool _characterNameSavedThisSession = false;
 
-    // Debounce cache for item time series data (player, retainer totals, and per-retainer)
-    // Key: (variableName, characterId), Value: (value, timestamp)
-    // Data is flushed to DB on logout or plugin unload, not on each sample interval
     private readonly ConcurrentDictionary<(string VariableName, ulong CharacterId), (long Value, DateTime Timestamp)> _pendingSamples = new();
 
-    // Track dirty inventory cache entries that need DB persistence
-    // Key: (characterId, sourceType, retainerId)
-    // Flushed to DB on character change/logout or plugin dispose, not on each inventory change
     private readonly HashSet<(ulong CharacterId, Models.Inventory.InventorySourceType SourceType, ulong RetainerId)> _dirtyInventoryCaches = new();
     private readonly object _dirtyLock = new();
     
-    // Cached set of tracked item IDs to avoid repeated layout parsing
-    // Invalidated when layouts change
     private HashSet<uint>? _cachedTrackedItems;
     private int _lastLayoutHash;
 
@@ -145,14 +133,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         var characterId = GameStateService.PlayerContentId;
         if (characterId != 0)
         {
-            // Set the current character context for file logging
             var characterName = GameStateService.LocalPlayerName;
             if (!string.IsNullOrEmpty(characterName))
             {
                 LogService.SetCurrentCharacter(characterName);
             }
             
-            // Schedule a cache update - this will scan and update the memory cache
             _pendingPlayerCache = true;
             LogService.Debug(LogCategory.Inventory, characterName, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
         }
@@ -163,21 +149,16 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     private void OnLogout(int type, int code)
     {
-        // Clear character context for file logging
         LogService.SetCurrentCharacter(null);
         
         _allCharactersCacheDirty = true;
         
-        // Reset character name saved flag so it gets saved on next login
         _characterNameSavedThisSession = false;
         
-        // Flush dirty inventory caches on logout (async - DB persistence happens on background thread)
         FlushDirtyInventoryCaches("logout", runAsync: true);
         
-        // Flush pending item samples on logout
         FlushPendingSamples("logout");
         
-        // Compact WAL file on logout to prevent it from growing too large
         try
         {
             var (success, bytesReclaimed) = _dbService.Checkpoint();
@@ -224,10 +205,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         lock (_cacheLock)
         {
-            // Update per-character cache
             var characterCaches = _inventoryMemoryCache.GetOrAdd(characterId, _ => new List<InventoryCacheEntry>());
             
-            // Find and replace existing entry for same source type + retainer ID, or add new
             var existingIndex = characterCaches.FindIndex(c => 
                 c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
             
@@ -240,7 +219,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 characterCaches.Add(entry);
             }
             
-            // Update all-characters cache if it exists
             if (_allCharactersCache != null)
             {
                 var allIndex = _allCharactersCache.FindIndex(c => 
@@ -287,7 +265,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             _dirtyInventoryCaches.Clear();
         }
         
-        // Gather the entries from memory cache
         var entriesToSave = new List<InventoryCacheEntry>();
         lock (_cacheLock)
         {
@@ -334,7 +311,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     private void OnFrameworkUpdate(IFramework framework)
     {
-        // Process pending cache operations on the main thread
         if (_pendingPlayerCache)
         {
             _pendingPlayerCache = false;
@@ -347,7 +323,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             CacheActiveRetainerInventory();
         }
 
-        // Periodically cache player inventory
         var now = DateTime.UtcNow;
         if (now - _lastPlayerCacheTime >= _playerCacheInterval && GameStateService.PlayerContentId != 0)
         {
@@ -369,8 +344,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     private void OnValuesChanged(IReadOnlyDictionary<Models.TrackedDataType, long> changes)
     {
-        // When inventory-related values change, schedule a player cache update
-        // The cache will be updated by CachePlayerInventory via UpdateMemoryCache
         _pendingPlayerCache = true;
     }
 
@@ -400,7 +373,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             var entry = InventoryCacheEntry.ForPlayer(characterId, playerName, world);
             entry.Gil = im->GetGil();
 
-            // Scan all player inventory containers
             foreach (var containerType in InventoryConstants.PlayerInventoryContainers)
             {
                 ScanContainer(im, containerType, entry.Items);
@@ -408,7 +380,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
             _lastPlayerCacheTime = now;
             
-            // Update in-memory cache directly (memory-first pattern)
             UpdateMemoryCache(characterId, entry);
             
             // Mark as dirty for later DB persistence (on logout/character change)
@@ -420,13 +391,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             if (!_characterNameSavedThisSession && !string.IsNullOrEmpty(playerName))
             {
                 _characterNameSavedThisSession = true;
-                // Queue to background thread to avoid blocking main thread
                 var cid = characterId;
                 var name = playerName;
                 Task.Run(() => _dbService.SaveCharacterName(cid, name));
             }
             
-            // Sample tracked items to time-series for historical graphing
             SampleTrackedItems(characterId, entry.Items);
 
             LogService.Debug(LogCategory.Inventory, playerName, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
@@ -453,7 +422,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             var retainerId = GameStateService.GetActiveRetainerId();
             if (retainerId == 0) return;
 
-            // Avoid recaching the same retainer repeatedly
             if (retainerId == _lastCachedRetainerId) return;
 
             var im = GameStateService.InventoryManagerInstance();
@@ -462,7 +430,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             var retainerName = GameStateService.GetActiveRetainerName();
             var entry = InventoryCacheEntry.ForRetainer(characterId, retainerId, retainerName);
 
-            // Get retainer gil from RetainerManager
             var rm = GameStateService.RetainerManagerInstance();
             if (rm != null && rm->IsReady)
             {
@@ -473,7 +440,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 }
             }
 
-            // Scan all retainer inventory containers
             foreach (var containerType in InventoryConstants.RetainerInventoryContainers)
             {
                 ScanContainer(im, containerType, entry.Items);
@@ -481,14 +447,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
             _lastCachedRetainerId = retainerId;
             
-            // Update in-memory cache directly (memory-first pattern)
             UpdateMemoryCache(characterId, entry);
             
             // Mark as dirty for later DB persistence (on logout/character change)
             MarkDirty(characterId, entry.SourceType, entry.RetainerId);
             
-            // Re-sample tracked items now that retainer data has been updated
-            // Get player inventory cache from memory cache (not DB)
             var characterCaches = _inventoryMemoryCache.TryGetValue(characterId, out var caches) ? caches : null;
             var playerCache = characterCaches?.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
             if (playerCache != null)
@@ -614,7 +577,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         lock (_cacheLock)
         {
-            // Check memory cache first
             if (_inventoryMemoryCache.TryGetValue(characterId, out var cached))
             {
                 return cached.ToList(); // Return a copy to prevent concurrent modification
@@ -681,7 +643,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         lock (_cacheLock)
         {
-            // If cache is valid, return a copy
             if (!_allCharactersCacheDirty && _allCharactersCache != null)
             {
                 return _allCharactersCache.ToList(); // Return a copy to prevent concurrent modification
@@ -818,17 +779,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     private HashSet<uint> GetTrackedItemsCached(HashSet<uint> itemsWithTracking)
     {
-        // Compute a simple hash of layouts to detect changes
         var layoutHash = ComputeLayoutHash();
         
-        // Return cached result if layouts haven't changed
         if (_cachedTrackedItems != null && _lastLayoutHash == layoutHash)
             return _cachedTrackedItems;
         
-        // Rebuild the tracked items set
         var trackedItems = new HashSet<uint>();
         
-        // Check ItemGraph for tracked items that also have historical tracking enabled
         var graphItems = _configService.Config.ItemGraph?.Series?
             .Where(s => !s.IsCurrency && itemsWithTracking.Contains(s.Id))
             .Select(s => s.Id);
@@ -839,7 +796,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 trackedItems.Add(id);
         }
 
-        // Also check ItemTable for tracked items that have historical tracking enabled
         var tableItems = _configService.Config.ItemTable?.Columns?
             .Where(c => !c.IsCurrency && itemsWithTracking.Contains(c.Id))
             .Select(c => c.Id);
@@ -850,12 +806,10 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 trackedItems.Add(id);
         }
         
-        // Also check layout-stored DataTool instances for tracked items with historical tracking enabled
         foreach (var layout in _configService.Config.Layouts)
         {
             foreach (var tool in layout.Tools)
             {
-                // Check if this is a DataTool with stored columns
                 if (tool.ToolSettings.TryGetValue("Columns", out var columnsObj) && columnsObj is Newtonsoft.Json.Linq.JArray columnsArray)
                 {
                     foreach (var columnToken in columnsArray)
@@ -879,7 +833,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
         }
         
-        // Cache the result
         _cachedTrackedItems = trackedItems;
         _lastLayoutHash = layoutHash;
         
@@ -919,10 +872,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         {
             if (_pendingSamples.TryRemove(key, out var sample))
             {
-                // Save to database
                 _dbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
                 
-                // Also update the in-memory cache so UI doesn't lose the data
                 cacheService.AddPoint(key.VariableName, key.CharacterId, sample.Value, sample.Timestamp);
                 
                 count++;
@@ -1026,7 +977,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         // Flush pending item samples before disposing
         FlushPendingSamples("dispose");
         
-        // Clear memory caches
         _inventoryMemoryCache.Clear();
         _allCharactersCache = null;
         _pendingSamples.Clear();

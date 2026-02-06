@@ -13,23 +13,18 @@ public sealed class MarketDataCacheService : IService, IDisposable
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     
-    // Main price cache: (itemId, worldId) -> cached price data
     private readonly ConcurrentDictionary<(int ItemId, int WorldId), MarketPriceCacheEntry> _priceCache = new();
     
-    // Recent sales cache: (itemId, worldId) -> recent sale prices for outlier detection
     private readonly ConcurrentDictionary<(int ItemId, int WorldId), RecentSalesCacheEntry> _recentSalesCache = new();
     
-    // Last sale price cache: (itemId, isHq) -> last known sale price (for spike detection)
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), int> _lastSalePriceCache = new();
     
-    // Statistics
     private long _cacheHits;
     private long _cacheMisses;
     private long _staleHits;
     private long _evictions;
     private DateTime? _lastEvictionTime;
     
-    // Configuration
     private const int DefaultTtlMinutes = 15;
     private const int DefaultStalenessThresholdMinutes = 60;
     private const int MaxCacheEntries = 50000; // Prevent unbounded growth
@@ -152,7 +147,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         
         _priceCache[key] = entry;
         
-        // Update last sale price cache for spike detection
         if (lastSaleNq > 0)
         {
             _lastSalePriceCache[(itemId, false)] = lastSaleNq;
@@ -162,7 +156,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
             _lastSalePriceCache[(itemId, true)] = lastSaleHq;
         }
         
-        // Check if we need to evict old entries
         if (_priceCache.Count > MaxCacheEntries)
         {
             EvictOldestEntries(MaxCacheEntries / 10); // Evict 10%
@@ -178,7 +171,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         
         if (_priceCache.TryGetValue(key, out var existing))
         {
-            // Merge with existing - keep lower prices
             var newNq = minPriceNq.HasValue && minPriceNq.Value > 0
                 ? (existing.MinPriceNq > 0 ? Math.Min(existing.MinPriceNq, minPriceNq.Value) : minPriceNq.Value)
                 : existing.MinPriceNq;
@@ -193,7 +185,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
         else
         {
-            // Create new entry
             SetPrice(itemId, worldId, 
                 minPriceNq ?? 0, minPriceHq ?? 0, 
                 source: PriceSource.WebSocket);
@@ -224,7 +215,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
         else
         {
-            // Create new entry with sale prices
             SetPrice(itemId, worldId, 0, 0, 
                 lastSaleNq ?? 0, lastSaleHq ?? 0, 
                 source: PriceSource.WebSocket);

@@ -21,11 +21,9 @@ public sealed partial class KaleidoscopeDbService
 
         try
         {
-            // Get WAL size before checkpoint
             if (File.Exists(walPath))
                 walSizeBefore = new FileInfo(walPath).Length;
 
-            // Close the read connection to allow full checkpoint
             lock (_readLock)
             {
                 _readConnection?.Close();
@@ -33,7 +31,6 @@ public sealed partial class KaleidoscopeDbService
                 _readConnection = null;
             }
 
-            // Perform TRUNCATE checkpoint - this merges WAL and resets it to zero bytes
             lock (_writeLock)
             {
                 using var cmd = _connection.CreateCommand();
@@ -41,10 +38,8 @@ public sealed partial class KaleidoscopeDbService
                 cmd.ExecuteNonQuery();
             }
 
-            // Reopen the read connection
             EnsureReadConnection();
 
-            // Get WAL size after checkpoint to calculate reclaimed space
             long walSizeAfter = 0;
             if (File.Exists(walPath))
                 walSizeAfter = new FileInfo(walPath).Length;
@@ -78,17 +73,14 @@ public sealed partial class KaleidoscopeDbService
 
         try
         {
-            // First checkpoint to merge WAL
             var (checkpointSuccess, walReclaimed) = Checkpoint();
             if (!checkpointSuccess)
                 return (false, 0);
 
-            // Get database size before VACUUM
             long sizeBefore = 0;
             if (File.Exists(_dbPath))
                 sizeBefore = new FileInfo(_dbPath).Length;
 
-            // Perform VACUUM - this rewrites the entire database
             lock (_writeLock)
             {
                 using var cmd = _connection.CreateCommand();
@@ -96,7 +88,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.ExecuteNonQuery();
             }
 
-            // Get size after VACUUM
             long sizeAfter = 0;
             if (File.Exists(_dbPath))
                 sizeAfter = new FileInfo(_dbPath).Length;

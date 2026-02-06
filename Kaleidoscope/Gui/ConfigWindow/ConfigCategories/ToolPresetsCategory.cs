@@ -115,7 +115,6 @@ public sealed class ToolPresetsCategory
             }
         }
 
-        // Handle deletion
         if (presetToDelete != null)
         {
             var toRemove = presets.FirstOrDefault(p => p.Id == presetToDelete);
@@ -209,7 +208,6 @@ public sealed class ToolPresetsCategory
                 ImGui.EndPopup();
             }
             
-            // Show creation date on hover
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip($"Created: {preset.CreatedAt:g}\nModified: {preset.ModifiedAt:g}");

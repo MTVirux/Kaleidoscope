@@ -24,7 +24,6 @@ public partial class WindowContentContainer
             var contentOrigin = contentMin;
             var availRegion = contentMax - contentMin;
 
-            // Get effective grid dimensions from layout settings
             var effectiveCols = GetEffectiveColumns(availRegion);
             var effectiveRows = GetEffectiveRows(availRegion);
             
@@ -39,7 +38,6 @@ public partial class WindowContentContainer
             {
                 try
                 {
-                    // Update all tools to new positions based on their grid coordinates
                     foreach (var te in _tools)
                     {
                         var t = te.Tool;
@@ -86,8 +84,6 @@ public partial class WindowContentContainer
                     // major (cell) lines color (slightly stronger)
                     var majorColor = ImGui.GetColorU32(new System.Numerics.Vector4(1f, 1f, 1f, 0.08f));
 
-                    // Draw grid lines for each column and row
-                    // Major lines at cell boundaries, minor lines at subdivision boundaries
                     var subW = cellW / subdivisions;
                     var subH = cellH / subdivisions;
 
@@ -142,7 +138,6 @@ public partial class WindowContentContainer
                                 var tmin = tt.Position + contentOrigin;
                                 var tmax = tmin + tt.Size;
                                 
-                                // Check if mouse is within tool bounds
                                 if (mouse.X >= tmin.X && mouse.X <= tmax.X && mouse.Y >= tmin.Y && mouse.Y <= tmax.Y)
                                 {
                                     // Only show context menu if clicking on header or border
@@ -195,7 +190,6 @@ public partial class WindowContentContainer
                     {
                         if (ImGui.BeginMenu("Add tool"))
                         {
-                            // Build a tree of categories from registrations
                             MenuNode rootNode = new MenuNode();
 
                             foreach (var reg in _toolRegistry)
@@ -218,7 +212,6 @@ public partial class WindowContentContainer
                             // recursive draw
                             void DrawNode(MenuNode node)
                             {
-                                // Draw items at this node first
                                 foreach (var reg in node.Items)
                                 {
                                     if (ImGui.MenuItem(reg.Label))
@@ -263,7 +256,6 @@ public partial class WindowContentContainer
                                     }
                                 }
 
-                                // Draw child menus
                                 foreach (var kv in node.Children)
                                 {
                                     var name = kv.Key;
@@ -282,7 +274,6 @@ public partial class WindowContentContainer
                         }
                         ImGui.Separator();
                         
-                        // Show current layout name and dirty indicator
                         var layoutName = GetCurrentLayoutName?.Invoke() ?? "Default";
                         var isDirty = GetIsDirty?.Invoke() ?? false;
                         var displayName = isDirty ? $"{layoutName} *" : layoutName;
@@ -393,7 +384,6 @@ public partial class WindowContentContainer
                     ImGui.EndPopup();
                 }
                 
-                // Layout modals (edit mode only)
                 if (editMode)
                 {
                     // Save layout modal - open popup if flag is set but popup is not yet open
@@ -454,7 +444,6 @@ public partial class WindowContentContainer
                                 {
                                     try
                                     {
-                                        // Create an empty layout for the new name
                                         OnSaveLayout?.Invoke(_newLayoutNameBuffer, new List<ToolLayoutState>());
                                     }
                                     catch (Exception ex)

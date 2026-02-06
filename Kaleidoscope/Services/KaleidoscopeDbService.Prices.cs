@@ -366,7 +366,6 @@ public sealed partial class KaleidoscopeDbService
         var itemIdList = itemIds.ToList();
         if (itemIdList.Count == 0) return staleItems;
 
-        // Start with all items as potentially stale
         foreach (var id in itemIdList)
             staleItems.Add(id);
 
@@ -392,7 +391,6 @@ public sealed partial class KaleidoscopeDbService
                 while (reader.Read())
                 {
                     var itemId = reader.GetInt32(0);
-                    // Remove from stale set - this item has fresh data
                     staleItems.Remove(itemId);
                 }
             }
@@ -427,7 +425,6 @@ public sealed partial class KaleidoscopeDbService
                 
                 try
                 {
-                    // Insert the main history record
                     using var cmd = _connection.CreateCommand();
                     cmd.Transaction = transaction;
                     cmd.CommandText = @"
@@ -441,7 +438,6 @@ public sealed partial class KaleidoscopeDbService
                     cmd.Parameters.AddWithValue("$item", itemValue);
                     var historyId = (long)cmd.ExecuteScalar()!;
 
-                    // Insert per-item contributions if provided
                     if (itemContributions != null && itemContributions.Count > 0)
                     {
                         using var itemCmd = _connection.CreateCommand();
@@ -468,7 +464,6 @@ public sealed partial class KaleidoscopeDbService
 
                     transaction.Commit();
                     
-                    // Invalidate cached stats so next read will refresh from DB
                     InvalidateInventoryValueStatsCache();
                 }
                 catch
@@ -745,7 +740,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.CommandText = "DELETE FROM price_history";
                 cmd.ExecuteNonQuery();
 
-                // Delete inventory_value_items first (child table), then inventory_value_history
                 cmd.CommandText = "DELETE FROM inventory_value_items";
                 cmd.ExecuteNonQuery();
 

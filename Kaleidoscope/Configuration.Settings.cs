@@ -11,15 +11,12 @@ namespace Kaleidoscope;
 /// </summary>
 public sealed class CrystalTrackerSettings
 {
-    // Grouping
     public CrystalGrouping Grouping { get; set; } = CrystalGrouping.ByElement;
 
-    // Tier filters (which tiers to include)
     public bool IncludeShards { get; set; } = true;
     public bool IncludeCrystals { get; set; } = true;
     public bool IncludeClusters { get; set; } = true;
 
-    // Element filters (which elements to include)
     public bool IncludeFire { get; set; } = true;
     public bool IncludeIce { get; set; } = true;
     public bool IncludeWind { get; set; } = true;
@@ -27,10 +24,8 @@ public sealed class CrystalTrackerSettings
     public bool IncludeLightning { get; set; } = true;
     public bool IncludeWater { get; set; } = true;
 
-    // Source filters
     public bool IncludeRetainers { get; set; } = true;
 
-    // Display settings
     public int TimeRangeValue { get; set; } = 7;
     public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -43,7 +38,6 @@ public sealed class CrystalTrackerSettings
     public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
     public MTGraphType GraphType { get; set; } = MTGraphType.Area;
     
-    // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
     public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
@@ -292,8 +286,6 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// </summary>
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    // === IGraphWidgetSettings implementation ===
-    
     /// <summary>Mode for determining series colors in the graph.</summary>
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
@@ -357,8 +349,6 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// <summary>Unit for time range.</summary>
     public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
     
-    // === Character filtering settings (aligned with ItemTableSettings) ===
-    
     /// <summary>
     /// Whether to use multi-select character filtering (show only selected characters).
     /// When false, shows all characters.
@@ -393,14 +383,10 @@ public sealed class DataToolSettings :
     IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {
-    // === View Mode ===
-    
     /// <summary>
     /// Current view mode (Table or Graph).
     /// </summary>
     public DataToolViewMode ViewMode { get; set; } = DataToolViewMode.Table;
-    
-    // === Shared Settings (used by both views) ===
     
     /// <summary>
     /// List of column/series configurations for items/currencies to display.
@@ -428,7 +414,6 @@ public sealed class DataToolSettings :
     /// </summary>
     public NumberFormatConfig GraphNumberFormat { get; set; } = new();
     
-    // Explicit interface implementations for NumberFormat
     NumberFormatConfig IItemTableWidgetSettings.NumberFormat
     {
         get => TableNumberFormat;
@@ -461,8 +446,6 @@ public sealed class DataToolSettings :
     /// Special grouping settings (AllCrystals element/tier filtering, AllGil merging).
     /// </summary>
     public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
-    
-    // === Table-Specific Settings ===
     
     /// <summary>
     /// Whether to show a total row at the bottom summing all characters.
@@ -597,8 +580,6 @@ public sealed class DataToolSettings :
     /// Whether to hide rows where all column values are zero.
     /// </summary>
     public bool HideZeroRows { get; set; } = false;
-    
-    // === Graph-Specific Settings (IGraphWidgetSettings implementation) ===
     
     /// <summary>Mode for determining series colors in the graph.</summary>
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;

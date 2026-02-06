@@ -100,7 +100,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
     {
         var key = (itemId, isHq);
         
-        // Check cache first
         if (_globalSaleCache.TryGetValue(key, out var entry) && !entry.IsExpired(TtlSeconds))
         {
             Interlocked.Increment(ref _cacheHits);
@@ -109,16 +108,13 @@ public sealed class SalePriceCacheService : IService, IDisposable
         
         Interlocked.Increment(ref _cacheMisses);
         
-        // Fetch from DB
         if (_dbService == null) return 0;
         
         Interlocked.Increment(ref _dbFetches);
         var price = _dbService.GetMostRecentSalePrice(itemId, isHq);
         
-        // Update cache
         _globalSaleCache[key] = new SalePriceCacheEntry(price);
         
-        // Evict if needed
         if (_globalSaleCache.Count > MaxCacheEntries)
         {
             EvictOldestEntries(_globalSaleCache, MaxCacheEntries / 10);
@@ -153,7 +149,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
     {
         var key = (itemId, worldId, isHq);
         
-        // Check cache first
         if (_worldSaleCache.TryGetValue(key, out var entry) && !entry.IsExpired(TtlSeconds))
         {
             Interlocked.Increment(ref _cacheHits);
@@ -162,16 +157,13 @@ public sealed class SalePriceCacheService : IService, IDisposable
         
         Interlocked.Increment(ref _cacheMisses);
         
-        // Fetch from DB
         if (_dbService == null) return 0;
         
         Interlocked.Increment(ref _dbFetches);
         var price = _dbService.GetMostRecentSalePriceForWorld(itemId, worldId, isHq);
         
-        // Update cache
         _worldSaleCache[key] = new SalePriceCacheEntry(price);
         
-        // Evict if needed
         if (_worldSaleCache.Count > MaxCacheEntries)
         {
             EvictOldestEntries(_worldSaleCache, MaxCacheEntries / 10);
@@ -213,7 +205,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         var itemIdList = itemIds.ToList();
         var missingItems = new List<int>();
         
-        // Check cache first for each item
         foreach (var itemId in itemIdList)
         {
             if (_batchSaleCache.TryGetValue(itemId, out var entry) && !entry.IsExpired(TtlSeconds))
@@ -228,7 +219,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
             }
         }
         
-        // Fetch missing items from DB
         if (missingItems.Count > 0 && _dbService != null)
         {
             Interlocked.Increment(ref _dbFetches);
@@ -240,7 +230,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
                 _batchSaleCache[itemId] = new BatchSalePriceCacheEntry(prices.LastSaleNq, prices.LastSaleHq);
             }
             
-            // Also cache items that weren't found (with 0 prices) to avoid repeated DB lookups
             foreach (var itemId in missingItems)
             {
                 if (!dbPrices.ContainsKey(itemId))
@@ -250,7 +239,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
             }
         }
         
-        // Evict if needed
         if (_batchSaleCache.Count > MaxCacheEntries)
         {
             EvictOldestBatchEntries(MaxCacheEntries / 10);
@@ -266,7 +254,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
     {
         if (_batchSaleCache.TryGetValue(itemId, out var existing))
         {
-            // Merge with existing
             var nq = lastSaleNq ?? existing.LastSaleNq;
             var hq = lastSaleHq ?? existing.LastSaleHq;
             _batchSaleCache[itemId] = new BatchSalePriceCacheEntry(nq, hq);
@@ -297,14 +284,11 @@ public sealed class SalePriceCacheService : IService, IDisposable
     /// </summary>
     public void InvalidateItem(int itemId)
     {
-        // Remove from global cache
         _globalSaleCache.TryRemove((itemId, false), out _);
         _globalSaleCache.TryRemove((itemId, true), out _);
         
-        // Remove from batch cache
         _batchSaleCache.TryRemove(itemId, out _);
         
-        // Remove from world cache - need to iterate
         var worldKeysToRemove = _worldSaleCache.Keys.Where(k => k.ItemId == itemId).ToList();
         foreach (var key in worldKeysToRemove)
         {

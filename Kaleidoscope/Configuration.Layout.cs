@@ -119,14 +119,12 @@ public sealed class UserToolPreset
 /// </summary>
 public sealed class UIColors
 {
-    // Window backgrounds
     /// <summary>Default background color for the main window.</summary>
     public Vector4 MainWindowBackground { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
     
     /// <summary>Default background color for fullscreen mode.</summary>
     public Vector4 FullscreenBackground { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
     
-    // Tool defaults
     /// <summary>Default background color for new tools.</summary>
     public Vector4 ToolBackground { get; set; } = new(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
     
@@ -136,7 +134,6 @@ public sealed class UIColors
     /// <summary>Default border/outline color for tools in edit mode.</summary>
     public Vector4 ToolBorder { get; set; } = new(0.43f, 0.43f, 0.5f, 0.5f);
     
-    // Table colors
     /// <summary>Default color for table header rows.</summary>
     public Vector4 TableHeader { get; set; } = new(0.26f, 0.26f, 0.28f, 1f);
     
@@ -149,7 +146,6 @@ public sealed class UIColors
     /// <summary>Default color for table total rows.</summary>
     public Vector4 TableTotalRow { get; set; } = new(0.3f, 0.3f, 0.3f, 0.5f);
     
-    // Text colors
     /// <summary>Default primary text color.</summary>
     public Vector4 TextPrimary { get; set; } = new(1f, 1f, 1f, 1f);
     
@@ -159,7 +155,6 @@ public sealed class UIColors
     /// <summary>Default disabled text color.</summary>
     public Vector4 TextDisabled { get; set; } = new(0.5f, 0.5f, 0.5f, 1f);
     
-    // Accent colors
     /// <summary>Primary accent color for highlights and selections.</summary>
     public Vector4 AccentPrimary { get; set; } = new(0.26f, 0.59f, 0.98f, 1f);
     
@@ -172,14 +167,12 @@ public sealed class UIColors
     /// <summary>Error/negative color (e.g., for price decreases).</summary>
     public Vector4 AccentError { get; set; } = new(0.9f, 0.2f, 0.2f, 1f);
     
-    // Quick access bar colors
     /// <summary>Background color for the quick access bar.</summary>
     public Vector4 QuickAccessBarBackground { get; set; } = new(0.1f, 0.1f, 0.1f, 0.87f);
     
     /// <summary>Separator color in the quick access bar.</summary>
     public Vector4 QuickAccessBarSeparator { get; set; } = new(0.31f, 0.31f, 0.31f, 1f);
     
-    // Graph colors
     /// <summary>Default graph line/fill color when no specific color is assigned.</summary>
     public Vector4 GraphDefault { get; set; } = new(0.4f, 0.6f, 0.9f, 1f);
     

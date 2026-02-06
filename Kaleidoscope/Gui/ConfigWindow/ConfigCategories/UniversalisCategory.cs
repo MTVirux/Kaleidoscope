@@ -94,7 +94,6 @@ public sealed class UniversalisCategory
             ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.6f, 0.6f, 1f), "Disconnected");
         }
 
-        // Show additional status info
         if (_priceTrackingService != null && _priceTrackingService.IsInitialized)
         {
             var worldData = _priceTrackingService.WorldData;
@@ -419,7 +418,6 @@ public sealed class UniversalisCategory
 
         ImGui.Spacing();
 
-        // Show warning if no channels are selected
         if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
         {
             ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.3f, 1f), "Warning: No channels selected - no real-time data will be received!");
@@ -461,7 +459,6 @@ public sealed class UniversalisCategory
             return;
         }
 
-        // Create widget if needed
         if (_worldSelectionWidget == null)
         {
             _worldSelectionWidget = new WorldSelectionWidget(worldData, "PriceTrackingScope");
@@ -476,7 +473,6 @@ public sealed class UniversalisCategory
                 settings.SelectedDataCenters,
                 settings.SelectedWorldIds);
 
-            // Set the mode based on current scope mode
             _worldSelectionWidget.Mode = settings.ScopeMode switch
             {
                 PriceTrackingScopeMode.ByRegion => WorldSelectionMode.Regions,
@@ -488,7 +484,6 @@ public sealed class UniversalisCategory
             _worldSelectionWidgetInitialized = true;
         }
 
-        // Draw the widget
         if (_worldSelectionWidget.Draw("Track Markets##WorldSelection"))
         {
             // Sync widget selections back to settings
@@ -504,7 +499,6 @@ public sealed class UniversalisCategory
             foreach (var w in _worldSelectionWidget.SelectedWorldIds)
                 settings.SelectedWorldIds.Add(w);
 
-            // Update scope mode based on widget mode
             settings.ScopeMode = _worldSelectionWidget.Mode switch
             {
                 WorldSelectionMode.Regions => PriceTrackingScopeMode.ByRegion,
@@ -516,7 +510,6 @@ public sealed class UniversalisCategory
             _configService.Save();
         }
 
-        // Show warning if nothing selected
         var hasSelection = _worldSelectionWidget.Mode switch
         {
             WorldSelectionMode.Regions => _worldSelectionWidget.SelectedRegions.Count > 0,
@@ -547,7 +540,6 @@ public sealed class UniversalisCategory
 
         var valueSettings = _configService.Config.InventoryValue;
 
-        // Create widget if needed
         if (_priceMatchTreeWidget == null)
         {
             _priceMatchTreeWidget = new PriceMatchTreeWidget(worldData, "ValuePriceMatch");
@@ -558,7 +550,6 @@ public sealed class UniversalisCategory
         // Ensure settings reference is up to date
         _priceMatchTreeWidget.Settings = valueSettings;
 
-        // Draw the tree widget
         _priceMatchTreeWidget.Draw();
     }
 
