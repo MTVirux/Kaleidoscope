@@ -7,6 +7,17 @@ namespace Kaleidoscope.Gui.MainWindow;
 
 public partial class WindowContentContainer
 {
+        /// <summary>
+        /// Clamps grid coordinates to valid ranges: position >= 0, span >= minimum.
+        /// </summary>
+        private static void ClampGridCoords(ToolComponent tool)
+        {
+            const float minSpan = 0.5f;
+            tool.GridCol = MathF.Max(0f, tool.GridCol);
+            tool.GridRow = MathF.Max(0f, tool.GridRow);
+            tool.GridColSpan = MathF.Max(minSpan, tool.GridColSpan);
+            tool.GridRowSpan = MathF.Max(minSpan, tool.GridRowSpan);
+        }
 
         public List<ToolLayoutState> ExportLayout()
         {
@@ -128,6 +139,7 @@ public partial class WindowContentContainer
                         match.GridColSpan = entry.GridColSpan;
                         match.GridRowSpan = entry.GridRowSpan;
                         match.HasGridCoords = entry.HasGridCoords;
+                        if (match.HasGridCoords) ClampGridCoords(match);
                         // Apply tool-specific settings
                         if (entry.ToolSettings?.Count > 0)
                         {
@@ -164,6 +176,7 @@ public partial class WindowContentContainer
                                 created.GridColSpan = entry.GridColSpan;
                                 created.GridRowSpan = entry.GridRowSpan;
                                 created.HasGridCoords = entry.HasGridCoords;
+                                if (created.HasGridCoords) ClampGridCoords(created);
                                 if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
                                 created.CustomTitle = entry.CustomTitle;
                                 // Apply tool-specific settings
@@ -209,6 +222,7 @@ public partial class WindowContentContainer
                                     cand.GridColSpan = entry.GridColSpan;
                                     cand.GridRowSpan = entry.GridRowSpan;
                                     cand.HasGridCoords = entry.HasGridCoords;
+                                    if (cand.HasGridCoords) ClampGridCoords(cand);
                                     if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
                                     cand.CustomTitle = entry.CustomTitle;
                                     // Apply tool-specific settings
@@ -289,6 +303,7 @@ public partial class WindowContentContainer
                                         inst.GridColSpan = entry.GridColSpan;
                                         inst.GridRowSpan = entry.GridRowSpan;
                                         inst.HasGridCoords = entry.HasGridCoords;
+                                        if (inst.HasGridCoords) ClampGridCoords(inst);
                                         if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
                                         inst.CustomTitle = entry.CustomTitle;
                                         // Apply tool-specific settings
