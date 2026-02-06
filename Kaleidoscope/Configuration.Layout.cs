@@ -5,7 +5,7 @@ namespace Kaleidoscope;
 /// <summary>
 /// Persisted state for a content layout (windowed or fullscreen).
 /// </summary>
-public class ContentLayoutState
+public sealed class ContentLayoutState
 {
     public string Name { get; set; } = string.Empty;
     public LayoutType Type { get; set; } = LayoutType.Windowed;
@@ -28,7 +28,7 @@ public class ContentLayoutState
 /// <summary>
 /// Grid position and span for a content component.
 /// </summary>
-public class ContentComponentState
+public sealed class ContentComponentState
 {
     public int Col { get; set; }
     public int Row { get; set; }
@@ -39,7 +39,7 @@ public class ContentComponentState
 /// <summary>
 /// Persisted state for a tool within a layout.
 /// </summary>
-public class ToolLayoutState
+public sealed class ToolLayoutState
 {
     public string Id { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
@@ -75,7 +75,7 @@ public class ToolLayoutState
 /// <summary>
 /// User-created tool preset for saving and loading tool configurations.
 /// </summary>
-public class UserToolPreset
+public sealed class UserToolPreset
 {
     /// <summary>
     /// Unique identifier for this preset.
@@ -117,7 +117,7 @@ public class UserToolPreset
 /// Default UI color settings for customization.
 /// These colors serve as defaults that can be overridden at the tool/widget level.
 /// </summary>
-public class UIColors
+public sealed class UIColors
 {
     // Window backgrounds
     /// <summary>Default background color for the main window.</summary>

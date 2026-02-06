@@ -9,7 +9,7 @@ namespace Kaleidoscope;
 /// <summary>
 /// Settings for the unified Crystal Tracker tool.
 /// </summary>
-public class CrystalTrackerSettings
+public sealed class CrystalTrackerSettings
 {
     // Grouping
     public CrystalGrouping Grouping { get; set; } = CrystalGrouping.ByElement;
@@ -85,7 +85,7 @@ public class CrystalTrackerSettings
 /// Settings for the Item Table tool.
 /// Implements IItemTableWidgetSettings for automatic widget binding.
 /// </summary>
-public class ItemTableSettings : IItemTableWidgetSettings
+public sealed class ItemTableSettings : IItemTableWidgetSettings
 {
     /// <summary>
     /// List of column configurations for items/currencies to display.
@@ -265,7 +265,7 @@ public class ItemTableSettings : IItemTableWidgetSettings
 /// Settings for the Item Graph tool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
-public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
+public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
 {
     /// <summary>
     /// List of series configurations for items/currencies to display as graph lines.
@@ -389,7 +389,7 @@ public class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
 /// Unified settings for the Data Tool, combining table and graph functionality.
 /// Implements both IItemTableWidgetSettings and IGraphWidgetSettings for widget binding.
 /// </summary>
-public class DataToolSettings : 
+public sealed class DataToolSettings : 
     IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {

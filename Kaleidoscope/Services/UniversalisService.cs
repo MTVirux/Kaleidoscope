@@ -25,7 +25,6 @@ public sealed class UniversalisService : IDisposable, IService
     private readonly IObjectTable _objectTable;
     private readonly ConfigurationService _configService;
     private readonly JsonSerializerOptions _jsonOptions;
-    private readonly SemaphoreSlim _rateLimitSemaphore = new(MaxRequestsPerSecond, MaxRequestsPerSecond);
     private readonly Queue<DateTime> _requestTimestamps = new();
     private readonly object _rateLimitLock = new();
 
@@ -664,9 +663,6 @@ public sealed class UniversalisService : IDisposable, IService
     public void Dispose()
     {
         _disposed = true;
-        
-        try { _rateLimitSemaphore.Dispose(); }
-        catch (Exception) { /* Ignore disposal errors */ }
         
         try { _cacheLock.Dispose(); }
         catch (Exception) { /* Ignore disposal errors */ }
