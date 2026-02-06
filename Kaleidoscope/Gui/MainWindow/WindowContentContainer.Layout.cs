@@ -223,6 +223,11 @@ public partial class WindowContentContainer
                                     createdAny = true;
                                     break;
                                 }
+                                else
+                                {
+                                    // Type didn't match — dispose the probed instance to avoid resource leaks
+                                    cand.Dispose();
+                                }
                             }
                             catch (Exception ex)
                             {
