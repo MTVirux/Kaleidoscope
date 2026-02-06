@@ -563,32 +563,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     /// <returns>File path if successful, null otherwise.</returns>
     public string? ExportPointsInRangeToCsv(TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
     {
-        var dbPath = _filenames.DatabasePath;
-        if (string.IsNullOrEmpty(dbPath)) return null;
-
-        try
-        {
-            var variableName = dataType.ToString();
-            var csvContent = _dbService.ExportPointsInRangeToCsv(variableName, characterId, start, end);
-            if (string.IsNullOrEmpty(csvContent)) return null;
-
-            var dir = Path.GetDirectoryName(dbPath) ?? "";
-            var suffix = characterId.HasValue && characterId.Value != 0
-                ? $"-{characterId.Value}"
-                : "-all";
-            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
-            var fileName = $"{variableName.ToLower()}{suffix}-{dateRange}-backup.csv";
-            var filePath = Path.Combine(dir, fileName);
-
-            File.WriteAllText(filePath, csvContent);
-            LogService.Info(LogCategory.CurrencyTracker, $"Exported {dataType} range data to {filePath}");
-            return filePath;
-        }
-        catch (Exception ex)
-        {
-            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {dataType} range CSV: {ex.Message}");
-            return null;
-        }
+        return ExportPointsInRangeByVariableToCsv(dataType.ToString(), characterId, start, end);
     }
 
     /// <summary>
