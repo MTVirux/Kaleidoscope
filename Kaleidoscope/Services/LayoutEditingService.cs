@@ -30,10 +30,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     private readonly ConfigurationService _configService;
     private readonly FilenameService _filenameService;
 
-    private bool _isDirty;
+    private volatile bool _isDirty;
     private List<ToolLayoutState>? _workingLayout;
     private LayoutGridSettings? _workingGridSettings;
-    private string _currentLayoutName = string.Empty;
+    private volatile string _currentLayoutName = string.Empty;
     private LayoutType _currentLayoutType = LayoutType.Windowed;
     private PendingLayoutAction? _pendingAction;
     private bool _showUnsavedChangesDialog;
@@ -130,16 +130,19 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
     {
-        _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
-        _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+        lock (_snapshotLock)
+        {
+            _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
+            _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+        }
 
         // Auto-save if enabled
         if (_configService.Config.AutoSaveLayoutChanges)
         {
             // Temporarily set dirty to allow Save() to work
-            var wasDirty = _isDirty;
             _isDirty = true;
             Save();
+            Interlocked.Increment(ref _dirtyMarkCount);
             LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
             return;
         }
@@ -162,8 +165,11 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void UpdateWorkingLayout(List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
     {
-        _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
-        _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
+        lock (_snapshotLock)
+        {
+            _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
+            _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
+        }
         InvalidateToolCache();
         InvalidateGridCache();
 
@@ -402,12 +408,16 @@ public sealed class LayoutEditingService : IDisposable, IService
         {
             try
             {
+                // Clone the working layout so we serialize a stable copy, not the live reference
+                // that could be mutated by the main thread concurrently.
+                var toolsCopy = _workingLayout != null ? CloneToolList(_workingLayout) : null;
+                var gridCopy = _workingGridSettings?.Clone();
                 var snapshot = new DirtySnapshot
                 {
                     LayoutName = _currentLayoutName,
                     LayoutType = _currentLayoutType,
-                    Tools = _workingLayout,
-                    GridSettings = _workingGridSettings
+                    Tools = toolsCopy,
+                    GridSettings = gridCopy
                 };
                 
                 var json = JsonConvert.SerializeObject(snapshot, Formatting.Indented);
