@@ -8,6 +8,33 @@ namespace Kaleidoscope.Gui.MainWindow;
 public partial class WindowContentContainer
 {
         /// <summary>
+        /// Applies layout state properties from a <see cref="ToolLayoutState"/> to a <see cref="ToolComponent"/>.
+        /// Optionally sets the tool's Id and Title from the entry.
+        /// </summary>
+        private static void ApplyLayoutState(ToolComponent tool, ToolLayoutState entry, bool setId = false, bool setTitle = false)
+        {
+            if (setId && !string.IsNullOrWhiteSpace(entry.Id))
+                tool.Id = entry.Id;
+            tool.Position = entry.Position;
+            tool.Size = entry.Size;
+            tool.Visible = entry.Visible;
+            tool.BackgroundEnabled = entry.BackgroundEnabled;
+            tool.HeaderVisible = entry.HeaderVisible;
+            tool.OutlineEnabled = entry.OutlineEnabled;
+            tool.BackgroundColor = entry.BackgroundColor;
+            tool.CustomTitle = entry.CustomTitle;
+            tool.GridCol = entry.GridCol;
+            tool.GridRow = entry.GridRow;
+            tool.GridColSpan = entry.GridColSpan;
+            tool.GridRowSpan = entry.GridRowSpan;
+            tool.HasGridCoords = entry.HasGridCoords;
+            if (tool.HasGridCoords) ClampGridCoords(tool);
+            if (setTitle && !string.IsNullOrWhiteSpace(entry.Title))
+                tool.Title = entry.Title;
+            if (entry.ToolSettings?.Count > 0)
+                tool.ImportToolSettings(entry.ToolSettings);
+        }
+        /// <summary>
         /// Clamps grid coordinates to valid ranges: position >= 0, span >= minimum.
         /// </summary>
         private static void ClampGridCoords(ToolComponent tool)
@@ -125,24 +152,7 @@ public partial class WindowContentContainer
                         {
                             match.Id = entry.Id;
                         }
-                        match.Position = entry.Position;
-                        match.Size = entry.Size;
-                        match.Visible = entry.Visible;
-                        match.BackgroundEnabled = entry.BackgroundEnabled;
-                        match.HeaderVisible = entry.HeaderVisible;
-                        match.OutlineEnabled = entry.OutlineEnabled;
-                        match.BackgroundColor = entry.BackgroundColor;
-                        match.CustomTitle = entry.CustomTitle;
-                        match.GridCol = entry.GridCol;
-                        match.GridRow = entry.GridRow;
-                        match.GridColSpan = entry.GridColSpan;
-                        match.GridRowSpan = entry.GridRowSpan;
-                        match.HasGridCoords = entry.HasGridCoords;
-                        if (match.HasGridCoords) ClampGridCoords(match);
-                        if (entry.ToolSettings?.Count > 0)
-                        {
-                            match.ImportToolSettings(entry.ToolSettings);
-                        }
+                        ApplyLayoutState(match, entry);
                         if (matchIdx >= 0) matchedIndices.Add(matchIdx);
                         LogService.Debug(LogCategory.UI, $"ApplyLayout: matched existing tool for entry '{entry.Id}' (type={entry.Type}, title={entry.Title})");
                         continue;
@@ -161,25 +171,7 @@ public partial class WindowContentContainer
                             if (created != null)
                             {
                                 created.Id = reg.Id;
-                                created.Position = entry.Position;
-                                created.Size = entry.Size;
-                                created.Visible = entry.Visible;
-                                created.BackgroundEnabled = entry.BackgroundEnabled;
-                                created.HeaderVisible = entry.HeaderVisible;
-                                created.OutlineEnabled = entry.OutlineEnabled;
-                                created.BackgroundColor = entry.BackgroundColor;
-                                created.GridCol = entry.GridCol;
-                                created.GridRow = entry.GridRow;
-                                created.GridColSpan = entry.GridColSpan;
-                                created.GridRowSpan = entry.GridRowSpan;
-                                created.HasGridCoords = entry.HasGridCoords;
-                                if (created.HasGridCoords) ClampGridCoords(created);
-                                if (!string.IsNullOrWhiteSpace(entry.Title)) created.Title = entry.Title;
-                                created.CustomTitle = entry.CustomTitle;
-                                if (entry.ToolSettings?.Count > 0)
-                                {
-                                    created.ImportToolSettings(entry.ToolSettings);
-                                }
+                                ApplyLayoutState(created, entry, setTitle: true);
                                 AddToolInstance(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
                                 matchedIndices.Add(_tools.Count - 1);
@@ -205,25 +197,7 @@ public partial class WindowContentContainer
                                 if (cand.GetType().FullName == entry.Type)
                                 {
                                     cand.Id = candReg.Id;
-                                    cand.Position = entry.Position;
-                                    cand.Size = entry.Size;
-                                    cand.Visible = entry.Visible;
-                                    cand.BackgroundEnabled = entry.BackgroundEnabled;
-                                    cand.HeaderVisible = entry.HeaderVisible;
-                                    cand.OutlineEnabled = entry.OutlineEnabled;
-                                    cand.BackgroundColor = entry.BackgroundColor;
-                                    cand.GridCol = entry.GridCol;
-                                    cand.GridRow = entry.GridRow;
-                                    cand.GridColSpan = entry.GridColSpan;
-                                    cand.GridRowSpan = entry.GridRowSpan;
-                                    cand.HasGridCoords = entry.HasGridCoords;
-                                    if (cand.HasGridCoords) ClampGridCoords(cand);
-                                    if (!string.IsNullOrWhiteSpace(entry.Title)) cand.Title = entry.Title;
-                                    cand.CustomTitle = entry.CustomTitle;
-                                    if (entry.ToolSettings?.Count > 0)
-                                    {
-                                        cand.ImportToolSettings(entry.ToolSettings);
-                                    }
+                                    ApplyLayoutState(cand, entry, setTitle: true);
                                     AddToolInstance(cand);
                                     // Mark newly added tool as matched so it won't be reused for another entry
                                     matchedIndices.Add(_tools.Count - 1);
@@ -284,25 +258,7 @@ public partial class WindowContentContainer
                                     var inst = Activator.CreateInstance(found) as ToolComponent;
                                     if (inst != null)
                                     {
-                                        inst.Id = entry.Id;
-                                        inst.Position = entry.Position;
-                                        inst.Size = entry.Size;
-                                        inst.Visible = entry.Visible;
-                                        inst.BackgroundEnabled = entry.BackgroundEnabled;
-                                        inst.HeaderVisible = entry.HeaderVisible;
-                                        inst.BackgroundColor = entry.BackgroundColor;
-                                        inst.GridCol = entry.GridCol;
-                                        inst.GridRow = entry.GridRow;
-                                        inst.GridColSpan = entry.GridColSpan;
-                                        inst.GridRowSpan = entry.GridRowSpan;
-                                        inst.HasGridCoords = entry.HasGridCoords;
-                                        if (inst.HasGridCoords) ClampGridCoords(inst);
-                                        if (!string.IsNullOrWhiteSpace(entry.Title)) inst.Title = entry.Title;
-                                        inst.CustomTitle = entry.CustomTitle;
-                                        if (entry.ToolSettings?.Count > 0)
-                                        {
-                                            inst.ImportToolSettings(entry.ToolSettings);
-                                        }
+                                        ApplyLayoutState(inst, entry, setId: true, setTitle: true);
                                         AddToolInstance(inst);
                                         // Mark newly added tool as matched so it won't be reused for another entry
                                         matchedIndices.Add(_tools.Count - 1);
