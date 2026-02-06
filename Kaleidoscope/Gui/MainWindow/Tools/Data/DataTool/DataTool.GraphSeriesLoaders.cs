@@ -517,22 +517,7 @@ public partial class DataTool
             else
             {
                 // Group by World, DataCenter, or Region
-                var worldData = _priceTrackingService?.WorldData;
-                var characterWorlds = GetCharacterWorldsMap();
-                
-                // Build character -> group name mapping
-                var characterGroups = new Dictionary<ulong, string>();
-                foreach (var (charId, worldName) in characterWorlds)
-                {
-                    string groupName = groupingMode switch
-                    {
-                        TableGroupingMode.World => worldName,
-                        TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
-                        TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
-                        _ => "Unknown"
-                    };
-                    characterGroups[charId] = groupName;
-                }
+                var characterGroups = BuildCharacterLocationMap(groupingMode);
                 
                 // Group points by their location group
                 var byGroup = allPoints
@@ -582,23 +567,7 @@ public partial class DataTool
     {
         var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
         
-        // Get world data and character info from AutoRetainer
-        var worldData = _priceTrackingService?.WorldData;
-        var characterWorlds = GetCharacterWorldsMap();
-        
-        // Build character -> group name mapping
-        var characterGroups = new Dictionary<ulong, string>();
-        foreach (var (charId, worldName) in characterWorlds)
-        {
-            string groupName = groupingMode switch
-            {
-                TableGroupingMode.World => worldName,
-                TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
-                TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
-                _ => "Unknown"
-            };
-            characterGroups[charId] = groupName;
-        }
+        var characterGroups = BuildCharacterLocationMap(groupingMode);
         
         // Group points by their location group
         var byGroup = points
@@ -730,21 +699,7 @@ public partial class DataTool
             else
             {
                 // Group by World, DataCenter, or Region
-                var worldData = _priceTrackingService?.WorldData;
-                var characterWorlds = GetCharacterWorldsMap();
-                
-                var characterGroups = new Dictionary<ulong, string>();
-                foreach (var (charId, worldName) in characterWorlds)
-                {
-                    string groupName = groupingMode switch
-                    {
-                        TableGroupingMode.World => worldName,
-                        TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
-                        TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
-                        _ => "Unknown"
-                    };
-                    characterGroups[charId] = groupName;
-                }
+                var characterGroups = BuildCharacterLocationMap(groupingMode);
                 
                 var byGroup = points
                     .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
@@ -861,6 +816,29 @@ public partial class DataTool
             }
         }
         return characterWorlds;
+    }
+    
+    /// <summary>
+    /// Builds a mapping of character ID to location group name (World, DataCenter, or Region).
+    /// </summary>
+    private Dictionary<ulong, string> BuildCharacterLocationMap(TableGroupingMode groupingMode)
+    {
+        var worldData = _priceTrackingService?.WorldData;
+        var characterWorlds = GetCharacterWorldsMap();
+        
+        var characterGroups = new Dictionary<ulong, string>();
+        foreach (var (charId, worldName) in characterWorlds)
+        {
+            string groupName = groupingMode switch
+            {
+                TableGroupingMode.World => worldName,
+                TableGroupingMode.DataCenter => worldData?.GetDataCenterForWorld(worldName)?.Name ?? "Unknown DC",
+                TableGroupingMode.Region => worldData?.GetRegionForWorld(worldName) ?? "Unknown Region",
+                _ => "Unknown"
+            };
+            characterGroups[charId] = groupName;
+        }
+        return characterGroups;
     }
     
     private string GetSeriesDisplayName(ItemColumnConfig config)
