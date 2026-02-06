@@ -21,7 +21,13 @@ public static class ConfigStatic
     public const int DefaultTrackingIntervalMs = 1000;
     public const int MinTrackingIntervalMs = 1000;
 
-    // Retainer data stabilization
+    // Inventory data stabilization
+    /// <summary>
+    /// Delay in milliseconds to wait after player inventory changes before reading values.
+    /// This allows multiple rapid changes (e.g., trades, purchases) to batch together.
+    /// </summary>
+    public const int PlayerInventoryStabilizationDelayMs = 500;
+    
     /// <summary>
     /// Delay in milliseconds to wait after retainer state changes before reading inventory values.
     /// This allows the game client to fully load retainer data from the server.
