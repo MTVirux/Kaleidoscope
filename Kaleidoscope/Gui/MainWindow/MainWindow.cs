@@ -689,6 +689,19 @@ public sealed class MainWindow : Window, IService, IDisposable
     {
         if (_isFullscreenMode) return;
         
+        if (!_layoutEditingService.TryPerformDestructiveAction("enter fullscreen mode", () =>
+        {
+            EnterFullscreenModeInternal();
+        }))
+        {
+            // Dialog will be shown, action deferred
+        }
+    }
+
+    private void EnterFullscreenModeInternal()
+    {
+        if (_isFullscreenMode) return;
+        
         // Save current windowed position/size for restoration later
         try
         {
@@ -715,6 +728,19 @@ public sealed class MainWindow : Window, IService, IDisposable
     /// Loads the active windowed layout.
     /// </summary>
     public void ExitFullscreenMode()
+    {
+        if (!_isFullscreenMode) return;
+        
+        if (!_layoutEditingService.TryPerformDestructiveAction("exit fullscreen mode", () =>
+        {
+            ExitFullscreenModeInternal();
+        }))
+        {
+            // Dialog will be shown, action deferred
+        }
+    }
+
+    private void ExitFullscreenModeInternal()
     {
         if (!_isFullscreenMode) return;
         
