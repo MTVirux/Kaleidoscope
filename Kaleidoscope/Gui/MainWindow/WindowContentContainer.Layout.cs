@@ -120,6 +120,7 @@ public partial class WindowContentContainer
                         match.BackgroundEnabled = entry.BackgroundEnabled;
                         match.HeaderVisible = entry.HeaderVisible;
                         match.OutlineEnabled = entry.OutlineEnabled;
+                        match.BackgroundColor = entry.BackgroundColor;
                         match.CustomTitle = entry.CustomTitle;
                         // Apply grid coordinates
                         match.GridCol = entry.GridCol;
