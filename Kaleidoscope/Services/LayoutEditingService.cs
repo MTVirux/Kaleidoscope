@@ -274,6 +274,10 @@ public sealed class LayoutEditingService : IDisposable, IService
         /// If dirty, blocks the action and shows the unsaved changes dialog.
         /// Returns true if the action proceeded immediately (not dirty).
         /// </summary>
+        /// <remarks>
+        /// If a pending action already exists (re-entrant call), the previous
+        /// pending action's cancel callback is invoked before being replaced.
+        /// </remarks>
         public bool TryPerformDestructiveAction(string description, Action continueAction, Action? cancelAction = null)
         {
             if (!_isDirty)
@@ -281,6 +285,13 @@ public sealed class LayoutEditingService : IDisposable, IService
                 // Not dirty, invoke action immediately and return true
                 continueAction();
                 return true;
+            }
+            
+            // Cancel any previously pending action before replacing it
+            if (_pendingAction != null)
+            {
+                LogService.Debug(LogCategory.Layout, $"LayoutEditingService: Cancelling previous pending action '{_pendingAction.Description}' due to new action '{description}'");
+                _pendingAction.CancelAction?.Invoke();
             }
             
             // Block the action and show dialog
