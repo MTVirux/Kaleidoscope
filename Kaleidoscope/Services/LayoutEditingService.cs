@@ -230,27 +230,31 @@ public sealed class LayoutEditingService : IDisposable, IService
 
             // Update active layout name
             if (_currentLayoutType == LayoutType.Windowed)
-                _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
-                else
-                    _configService.Config.ActiveFullscreenLayoutName = _currentLayoutName;
-                
-                _configService.Save();
-                _configService.SaveLayouts();
-                
-                _isDirty = false;
-                ClearDirtySnapshot();
-                
-                Interlocked.Increment(ref _saveCount);
-                _lastSaveTime = DateTime.UtcNow;
-                
-                LogService.Info(LogCategory.Layout, $"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
-                OnDirtyStateChanged?.Invoke(false);
-            }
-            catch (Exception ex)
             {
-                LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to save layout: {ex.Message}");
+                _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
             }
+            else
+            {
+                _configService.Config.ActiveFullscreenLayoutName = _currentLayoutName;
+            }
+                
+            _configService.Save();
+            _configService.SaveLayouts();
+            
+            _isDirty = false;
+            ClearDirtySnapshot();
+            
+            Interlocked.Increment(ref _saveCount);
+            _lastSaveTime = DateTime.UtcNow;
+            
+            LogService.Info(LogCategory.Layout, $"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
+            OnDirtyStateChanged?.Invoke(false);
         }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to save layout: {ex.Message}");
+        }
+    }
         
         /// <summary>
         /// Discards unsaved changes and reverts to the persisted layout.
