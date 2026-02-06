@@ -36,6 +36,11 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private DateTime _lastValueCheck = DateTime.MinValue;
     private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(ConfigStatic.ValueCheckIntervalMs);
 
+    // Player inventory state tracking - waits for data to stabilize after inventory changes
+    private DateTime _playerInventoryChangeTime = DateTime.MinValue;
+    private readonly TimeSpan _playerInventoryStabilizationDelay = TimeSpan.FromMilliseconds(ConfigStatic.PlayerInventoryStabilizationDelayMs);
+    private bool _isPlayerInventoryStabilizing = false;
+
     // Retainer state tracking - waits for data to stabilize after opening a retainer
     private bool _wasRetainerActive = false;
     private DateTime _retainerOpenedTime = DateTime.MinValue;
@@ -52,6 +57,11 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// Event fired when crystals specifically change (for crystal tracking).
     /// </summary>
     public event Action? OnCrystalsChanged;
+
+    /// <summary>
+    /// Event fired when player inventory data has stabilized (data is ready to read).
+    /// </summary>
+    public event Action? OnPlayerInventoryReady;
 
     /// <summary>
     /// Event fired when a retainer's inventory has stabilized (data is ready to read).
@@ -87,6 +97,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         // Dalamud's inventory change event fired
         // This covers player inventory, armory, crystals, retainer inventories, etc.
         var hasCrystalChange = false;
+        var hasPlayerInventoryChange = false;
 
         try
         {
@@ -108,12 +119,32 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             {
                 hasCrystalChange = true;
                 _pendingInventoryUpdate = true;
+                
+                // Player crystals trigger player inventory stabilization
+                if (containerType == GameInventoryType.Crystals)
+                {
+                    hasPlayerInventoryChange = true;
+                }
             }
             // Regular inventory (player or retainer)
             else if (IsTrackedContainerType(containerType))
             {
                 _pendingInventoryUpdate = true;
+                
+                // Check if this is a player inventory container (not retainer)
+                if (IsPlayerInventoryContainer(containerType))
+                {
+                    hasPlayerInventoryChange = true;
+                }
             }
+        }
+
+        // Start player inventory stabilization if player inventory changed
+        if (hasPlayerInventoryChange && !_isRetainerStabilizing)
+        {
+            _playerInventoryChangeTime = DateTime.UtcNow;
+            _isPlayerInventoryStabilizing = true;
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Player inventory changed, waiting {ConfigStatic.PlayerInventoryStabilizationDelayMs}ms for data stabilization");
         }
 
         if (hasCrystalChange)
@@ -149,6 +180,24 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             GameInventoryType.RetainerPage7 => true,
 
             // Key items (contains things like Ventures)
+            GameInventoryType.KeyItems => true,
+
+            _ => false
+        };
+    }
+
+    private bool IsPlayerInventoryContainer(GameInventoryType type)
+    {
+        return type switch
+        {
+            // Player crystals
+            GameInventoryType.Crystals => true,
+
+            // Main player inventory
+            GameInventoryType.Inventory1 or GameInventoryType.Inventory2 or
+            GameInventoryType.Inventory3 or GameInventoryType.Inventory4 => true,
+
+            // Key items
             GameInventoryType.KeyItems => true,
 
             _ => false
@@ -206,8 +255,18 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
         }
 
-        // Skip value checks while retainer data is stabilizing
-        if (_isRetainerStabilizing)
+        // Handle player inventory stabilization
+        if (_isPlayerInventoryStabilizing && now - _playerInventoryChangeTime >= _playerInventoryStabilizationDelay)
+        {
+            _isPlayerInventoryStabilizing = false;
+            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Player inventory data stabilized, resuming value checks");
+            ClearValueCache();
+            try { OnPlayerInventoryReady?.Invoke(); }
+            catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnPlayerInventoryReady callback error: {ex.Message}"); }
+        }
+
+        // Skip value checks while retainer or player inventory data is stabilizing
+        if (_isRetainerStabilizing || _isPlayerInventoryStabilizing)
         {
             return;
         }
