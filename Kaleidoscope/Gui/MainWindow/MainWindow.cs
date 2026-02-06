@@ -667,16 +667,51 @@ public sealed class MainWindow : Window, IService, IDisposable
 
     /// <summary>
     /// Restores window position/size after exiting fullscreen mode.
+    /// Validates the restored position is within the current viewport to handle
+    /// monitor changes that occurred while in fullscreen.
     /// </summary>
     public void ExitFullscreen()
     {
-        ImGui.SetNextWindowPos(_savedPos);
-        ImGui.SetNextWindowSize(_savedSize);
+        var restoredPos = _savedPos;
+        var restoredSize = _savedSize;
+        
+        // Validate the restored position is within the current viewport.
+        // Monitors may have been disconnected or resolution may have changed
+        // while in fullscreen, leaving the saved position off-screen.
+        try
+        {
+            var viewport = ImGui.GetMainViewport();
+            var vpMin = viewport.Pos;
+            var vpMax = new Vector2(viewport.Pos.X + viewport.Size.X, viewport.Pos.Y + viewport.Size.Y);
+            
+            // Clamp size to not exceed viewport
+            restoredSize = new Vector2(
+                MathF.Min(restoredSize.X, viewport.Size.X),
+                MathF.Min(restoredSize.Y, viewport.Size.Y));
+            
+            // Ensure at least part of the window is visible (top-left corner within viewport)
+            if (restoredPos.X + restoredSize.X < vpMin.X + 50 || restoredPos.X > vpMax.X - 50 ||
+                restoredPos.Y + restoredSize.Y < vpMin.Y + 50 || restoredPos.Y > vpMax.Y - 50)
+            {
+                // Window would be mostly off-screen — reset to center
+                restoredPos = new Vector2(
+                    vpMin.X + (viewport.Size.X - restoredSize.X) * 0.5f,
+                    vpMin.Y + (viewport.Size.Y - restoredSize.Y) * 0.5f);
+                _log.Debug("ExitFullscreen: saved position was off-screen, centering window");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"ExitFullscreen: viewport bounds check failed: {ex.Message}");
+        }
+        
+        ImGui.SetNextWindowPos(restoredPos);
+        ImGui.SetNextWindowSize(restoredSize);
         
         if (_stateService.IsLocked)
         {
-            Config.MainWindowPos = _savedPos;
-            Config.MainWindowSize = _savedSize;
+            Config.MainWindowPos = restoredPos;
+            Config.MainWindowSize = restoredSize;
             _configService.MarkDirty();
         }
     }
