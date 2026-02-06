@@ -462,6 +462,18 @@ public sealed class LayoutEditingService : IDisposable, IService
                 
                 if (snapshot != null && !string.IsNullOrWhiteSpace(snapshot.LayoutName))
                 {
+                    // Verify the snapshot's layout still exists in the configuration.
+                    // If it was deleted between sessions, discard the snapshot to avoid
+                    // restoring state for a non-existent layout.
+                    var layouts = _configService.Config.Layouts ?? new List<ContentLayoutState>();
+                    var layoutExists = layouts.Any(x => x.Name == snapshot.LayoutName && x.Type == snapshot.LayoutType);
+                    if (!layoutExists)
+                    {
+                        LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Snapshot references deleted layout '{snapshot.LayoutName}', discarding");
+                        ClearDirtySnapshot();
+                        return;
+                    }
+                    
                     _currentLayoutName = snapshot.LayoutName;
                     _currentLayoutType = snapshot.LayoutType;
                     _workingLayout = snapshot.Tools;
