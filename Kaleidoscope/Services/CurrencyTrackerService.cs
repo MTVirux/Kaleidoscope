@@ -301,7 +301,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug(LogCategory.CurrencyTracker, workItem.CharacterName, $"[CurrencyTrackerService] Background write error: {ex.Message}");
+                        LogService.Debug(LogCategory.CurrencyTracker, workItem.CharacterName ?? string.Empty, $"[CurrencyTrackerService] Background write error: {ex.Message}");
                     }
                 }
             }

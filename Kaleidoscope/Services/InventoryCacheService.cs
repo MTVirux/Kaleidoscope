@@ -140,7 +140,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             }
             
             _pendingPlayerCache = true;
-            LogService.Debug(LogCategory.Inventory, characterName, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
+            LogService.Debug(LogCategory.Inventory, characterName ?? string.Empty, $"[InventoryCacheService] Character logged in, scheduled cache update for {characterId}");
         }
     }
     
@@ -398,7 +398,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             
             SampleTrackedItems(characterId, entry.Items);
 
-            LogService.Debug(LogCategory.Inventory, playerName, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
+            LogService.Debug(LogCategory.Inventory, playerName ?? string.Empty, $"[InventoryCacheService] Cached player inventory: {entry.Items.Count} items, {entry.Gil:N0} gil");
         }
         catch (Exception ex)
         {

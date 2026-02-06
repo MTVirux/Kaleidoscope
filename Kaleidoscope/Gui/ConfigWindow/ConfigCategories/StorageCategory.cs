@@ -152,9 +152,9 @@ public sealed class StorageCategory : IDisposable
         return _cleanupDataMode switch
         {
             CleanupDataMode.Currencies when _cleanupCurrencyCombo?.SelectedType != default
-                => _cleanupCurrencyCombo.SelectedType.ToString(),
+                => _cleanupCurrencyCombo!.SelectedType.ToString(),
             CleanupDataMode.Items when _cleanupItemCombo?.SelectedItemId > 0
-                => InventoryCacheService.GetItemVariableName(_cleanupItemCombo.SelectedItemId),
+                => InventoryCacheService.GetItemVariableName(_cleanupItemCombo!.SelectedItemId),
             _ => null
         };
     }
@@ -170,11 +170,11 @@ public sealed class StorageCategory : IDisposable
         switch (_cleanupDataMode)
         {
             case CleanupDataMode.Currencies when _cleanupCurrencyCombo?.SelectedType != default:
-                result.Add(_cleanupCurrencyCombo.SelectedType.ToString());
+                result.Add(_cleanupCurrencyCombo!.SelectedType.ToString());
                 break;
                 
             case CleanupDataMode.Items when _cleanupItemCombo?.SelectedItemId > 0:
-                var itemId = _cleanupItemCombo.SelectedItemId;
+                var itemId = _cleanupItemCombo!.SelectedItemId;
                 result.Add(InventoryCacheService.GetItemVariableName(itemId));
                 result.Add(InventoryCacheService.GetRetainerItemVariableName(itemId));
                 break;
@@ -191,9 +191,9 @@ public sealed class StorageCategory : IDisposable
         return _cleanupDataMode switch
         {
             CleanupDataMode.Currencies when _cleanupCurrencyCombo?.SelectedType != default
-                => _cleanupCurrencyCombo.SelectedType.ToString(),
+                => _cleanupCurrencyCombo!.SelectedType.ToString(),
             CleanupDataMode.Items when _cleanupItemCombo?.SelectedItemId > 0
-                => _cleanupItemCombo.SelectedItem?.Name ?? $"Item {_cleanupItemCombo.SelectedItemId}",
+                => _cleanupItemCombo!.SelectedItem?.Name ?? $"Item {_cleanupItemCombo.SelectedItemId}",
             _ => "None"
         };
     }

@@ -434,7 +434,7 @@ public sealed class UniversalisService : IDisposable, IService
         {
             if (uint.TryParse(kvp.Key, out var itemId))
             {
-                result[itemId] = kvp.Value;
+                result[itemId] = kvp.Value!;
                 var entriesCount = kvp.Value?.Entries?.Count ?? 0;
                 LogService.Debug(LogCategory.Universalis, $"GetHistoryBatchAsync: Item {itemId} has {entriesCount} history entries");
             }
