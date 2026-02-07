@@ -7,6 +7,37 @@ public sealed partial class KaleidoscopeDbService
 {
 
     /// <summary>
+    /// Performs a non-blocking WAL checkpoint using PASSIVE mode.
+    /// Does not block readers or writers — only checkpoints pages that are not in use.
+    /// Suitable for periodic maintenance during normal operation.
+    /// Use Checkpoint() (TRUNCATE mode) only during Dispose for a full checkpoint.
+    /// </summary>
+    /// <returns>True if the checkpoint was executed successfully.</returns>
+    public bool CheckpointPassive()
+    {
+        if (_connection == null || string.IsNullOrEmpty(_dbPath))
+            return false;
+
+        try
+        {
+            lock (_writeLock)
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "PRAGMA wal_checkpoint(PASSIVE)";
+                cmd.ExecuteNonQuery();
+            }
+
+            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Passive WAL checkpoint complete");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Passive WAL checkpoint failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Performs a WAL checkpoint to merge the WAL file back into the main database.
     /// This temporarily closes the read connection to allow a full checkpoint.
     /// Acquires both locks (write → read) to prevent concurrent readers from seeing a null read connection.

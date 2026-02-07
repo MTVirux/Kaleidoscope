@@ -170,14 +170,14 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         FlushPendingSamples("logout");
         
-        // Run WAL checkpoint on background thread to avoid blocking the framework thread
+        // Run passive WAL checkpoint on background thread to avoid blocking the framework thread.
+        // Uses PASSIVE mode (non-blocking) since readers may still be active during logout.
         Task.Run(() =>
         {
             try
             {
-                var (success, bytesReclaimed) = _dbService.Checkpoint();
-                if (success && bytesReclaimed > 0)
-                    LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
+                _dbService.CheckpointPassive();
+                LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Passive WAL checkpoint on logout completed");
             }
             catch (Exception ex)
             {
