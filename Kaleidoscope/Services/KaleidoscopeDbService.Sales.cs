@@ -109,14 +109,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int GetMostRecentSalePrice(int itemId, bool isHq)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT price_per_unit
                     FROM sale_records
@@ -143,14 +143,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int GetMostRecentSalePriceForWorld(int itemId, int worldId, bool isHq)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT price_per_unit
                     FROM sale_records
@@ -188,10 +188,10 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
@@ -201,7 +201,7 @@ public sealed partial class KaleidoscopeDbService
                 var includedList = includedWorldIds?.ToList() ?? new List<int>();
                 var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
 
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 
                 var sql = new System.Text.StringBuilder();
                 sql.Append(@"
@@ -276,14 +276,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<(int, int), (List<int>, List<int>)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 
                 // Use window function to get the N most recent sales per item/world/hq combination
                 var sql = $@"
@@ -349,16 +349,16 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(long, int, int, int, bool, int, DateTime, string?)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
                 var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
 
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var sql = new System.Text.StringBuilder();
                 sql.Append("SELECT id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name FROM sale_records WHERE item_id = $iid");
                 cmd.Parameters.AddWithValue("$iid", itemId);
@@ -592,14 +592,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int GetSaleRecordCount()
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT COUNT(*) FROM sale_records";
                 var result = cmd.ExecuteScalar();
                 return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
@@ -657,14 +657,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long GetPriceDataSize()
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT 
                         (SELECT COUNT(*) FROM item_prices) * 50 +

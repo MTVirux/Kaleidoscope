@@ -13,14 +13,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<ulong>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT DISTINCT character_id FROM series WHERE variable = $v ORDER BY character_id";
                 cmd.Parameters.AddWithValue("$v", variable);
 
@@ -49,14 +49,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<string>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT DISTINCT variable FROM series WHERE variable LIKE $prefix ORDER BY variable";
                 cmd.Parameters.AddWithValue("$prefix", prefix + "%");
 
@@ -289,14 +289,14 @@ public sealed partial class KaleidoscopeDbService
         // Refresh cache
         var newCache = new Dictionary<ulong, (string?, string?, uint?)>();
         
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return newCache;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return newCache;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT character_id, name, display_name, time_series_color FROM character_names";
 
                 using var reader = cmd.ExecuteReader();

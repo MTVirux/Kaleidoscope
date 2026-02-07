@@ -26,14 +26,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long GetRetainerItemCount(ulong characterId, uint itemId)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT COALESCE(SUM(ii.quantity), 0)
                     FROM inventory_items ii
@@ -163,14 +163,14 @@ public sealed partial class KaleidoscopeDbService
         Models.Inventory.InventorySourceType sourceType, 
         ulong retainerId = 0)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cacheCmd = _connection.CreateCommand();
+                using var cacheCmd = conn.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, name, world, gil, updated_at 
                     FROM inventory_cache 
@@ -195,7 +195,7 @@ public sealed partial class KaleidoscopeDbService
                 };
                 reader.Close();
 
-                using var itemCmd = _connection.CreateCommand();
+                using var itemCmd = conn.CreateCommand();
                 itemCmd.CommandText = @"
                     SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
                     FROM inventory_items
@@ -236,14 +236,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<Models.Inventory.InventoryCacheEntry>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cacheCmd = _connection.CreateCommand();
+                using var cacheCmd = conn.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, source_type, retainer_id, name, world, gil, updated_at 
                     FROM inventory_cache 
@@ -273,7 +273,7 @@ public sealed partial class KaleidoscopeDbService
 
                 foreach (var (cacheId, entry) in cacheEntries)
                 {
-                    using var itemCmd = _connection.CreateCommand();
+                    using var itemCmd = conn.CreateCommand();
                     itemCmd.CommandText = @"
                         SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
                         FROM inventory_items
@@ -316,14 +316,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<Models.Inventory.InventoryCacheEntry>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cacheCmd = _connection.CreateCommand();
+                using var cacheCmd = conn.CreateCommand();
                 cacheCmd.CommandText = @"
                     SELECT id, character_id, source_type, retainer_id, name, world, gil, updated_at 
                     FROM inventory_cache 
@@ -351,7 +351,7 @@ public sealed partial class KaleidoscopeDbService
 
                 foreach (var (cacheId, entry) in cacheEntries)
                 {
-                    using var itemCmd = _connection.CreateCommand();
+                    using var itemCmd = conn.CreateCommand();
                     itemCmd.CommandText = @"
                         SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
                         FROM inventory_items
@@ -422,14 +422,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<uint, long>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var sql = @"
                     SELECT ii.item_id, SUM(ii.quantity) as total
                     FROM inventory_items ii

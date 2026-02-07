@@ -13,14 +13,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var sb = new StringBuilder();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return sb.ToString();
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return sb.ToString();
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
 
                 if (characterId == null || characterId == 0)
                 {

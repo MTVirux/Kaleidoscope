@@ -56,13 +56,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long? GetLastValue(long seriesId)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
                 cmd.Parameters.AddWithValue("$s", seriesId);
                 var result = cmd.ExecuteScalar();
@@ -85,14 +86,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long? GetLastValueForCharacter(string variable, ulong characterId)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"SELECT p.value FROM points p 
                     JOIN series s ON p.series_id = s.id 
                     WHERE s.variable = $v AND s.character_id = $c 
@@ -256,14 +257,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(DateTime, long)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var limitClause = limit.HasValue ? $" LIMIT {limit.Value}" : "";
                 cmd.CommandText = $@"SELECT p.timestamp, p.value FROM points p
                     JOIN series s ON p.series_id = s.id
@@ -616,14 +617,14 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>Tuple of (earliest timestamp, latest timestamp), or null if no data</returns>
     public (DateTime earliest, DateTime latest)? GetDataTimeRange(string variablePrefix)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT MIN(p.timestamp), MAX(p.timestamp)
                     FROM points p

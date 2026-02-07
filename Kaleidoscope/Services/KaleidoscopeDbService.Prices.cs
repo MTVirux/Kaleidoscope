@@ -154,14 +154,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public (int MinPriceNq, int MinPriceHq, int AvgPriceNq, int AvgPriceHq, float SaleVelocity, DateTime LastUpdated)? GetItemPrice(int itemId, int worldId)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, sale_velocity, last_updated
                     FROM item_prices
@@ -196,14 +196,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int? GetMinPrice(int itemId, bool preferHq = false)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return null;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 if (preferHq)
                 {
                     cmd.CommandText = @"
@@ -369,16 +369,16 @@ public sealed partial class KaleidoscopeDbService
         foreach (var id in itemIdList)
             staleItems.Add(id);
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return staleItems;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return staleItems;
 
             try
             {
                 var thresholdTicks = (DateTime.UtcNow - staleThreshold).Ticks;
 
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = $@"
                     SELECT item_id
                     FROM item_prices
@@ -486,14 +486,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(DateTime, long, long, long)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var sql = @"
                     SELECT timestamp, total_value, gil_value, item_value
                     FROM inventory_value_history
@@ -536,14 +536,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(ulong, DateTime, long, long, long)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var sql = @"
                     SELECT character_id, timestamp, total_value, gil_value, item_value
                     FROM inventory_value_history";
@@ -586,14 +586,14 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(DateTime, long, long, long)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var sql = @"
                     SELECT timestamp, SUM(total_value), SUM(gil_value), SUM(item_value)
                     FROM inventory_value_history";
@@ -689,14 +689,14 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStats(ulong? characterId = null)
     {
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return (0, null);
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return (0, null);
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 var whereClause = characterId.HasValue ? " WHERE character_id = $cid" : "";
                 cmd.CommandText = $"SELECT COUNT(*), MAX(timestamp) FROM inventory_value_history{whereClause}";
                 
