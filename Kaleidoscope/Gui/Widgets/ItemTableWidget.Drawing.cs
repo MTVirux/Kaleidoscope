@@ -14,6 +14,55 @@ public partial class ItemTableWidget
 {
     
     /// <summary>
+    /// Handles SHIFT+click/drag range selection for columns or rows.
+    /// Returns the updated selection state for the current index.
+    /// </summary>
+    /// <param name="currentIdx">The current column/row display index being processed.</param>
+    /// <param name="selectedIndices">The set of currently selected display indices.</param>
+    /// <param name="isSelecting">Whether a drag selection is in progress.</param>
+    /// <param name="selectionStart">The display index where the current drag started.</param>
+    /// <returns>True if the current index is selected after processing.</returns>
+    private static bool HandleShiftSelection(
+        int currentIdx,
+        HashSet<int> selectedIndices,
+        ref bool isSelecting,
+        ref int selectionStart)
+    {
+        var cellMin = ImGui.GetCursorScreenPos();
+        var cellMax = new Vector2(cellMin.X + ImGui.GetContentRegionAvail().X, cellMin.Y + ImGui.GetTextLineHeightWithSpacing());
+        var isHovered = ImGui.IsMouseHoveringRect(cellMin, cellMax);
+        
+        // Start selection on click
+        if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            isSelecting = true;
+            selectionStart = currentIdx;
+            selectedIndices.Clear();
+            selectedIndices.Add(currentIdx);
+        }
+        
+        // Extend selection while dragging
+        if (isSelecting && ImGui.IsMouseDown(ImGuiMouseButton.Left) && isHovered)
+        {
+            var min = Math.Min(selectionStart, currentIdx);
+            var max = Math.Max(selectionStart, currentIdx);
+            selectedIndices.Clear();
+            for (int i = min; i <= max; i++)
+            {
+                selectedIndices.Add(i);
+            }
+        }
+        
+        // End selection on mouse release
+        if (isSelecting && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+        {
+            isSelecting = false;
+        }
+        
+        return selectedIndices.Contains(currentIdx);
+    }
+    
+    /// <summary>
     /// Draws the item table.
     /// </summary>
     /// <param name="data">The prepared table data to display.</param>
@@ -185,50 +234,16 @@ public partial class ItemTableWidget
                 var displayCol = displayColumns[dispIdx];
                 
                 // Handle header selection with SHIFT+click/drag
-                // Check if this display column is selected
                 var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
-                if (isShiftHeld && !isPopupOpen) // Allow selecting both merged and non-merged columns
+                if (isShiftHeld && !isPopupOpen)
                 {
-                    // Get the header bounds for hover/click detection
-                    var cellMin = ImGui.GetCursorScreenPos();
-                    var cellMax = new Vector2(cellMin.X + ImGui.GetContentRegionAvail().X, cellMin.Y + ImGui.GetTextLineHeightWithSpacing());
-                    var isHovered = ImGui.IsMouseHoveringRect(cellMin, cellMax);
-                    
-                    // Start selection on click
-                    if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                    {
-                        _isSelectingColumns = true;
-                        _selectionStartDisplayColumn = dispIdx;
-                        _selectedDisplayColumnIndices.Clear();
-                        _selectedDisplayColumnIndices.Add(dispIdx);
-                    }
-                    
-                    // Extend selection while dragging
-                    if (_isSelectingColumns && ImGui.IsMouseDown(ImGuiMouseButton.Left) && isHovered)
-                    {
-                        var minCol = Math.Min(_selectionStartDisplayColumn, dispIdx);
-                        var maxCol = Math.Max(_selectionStartDisplayColumn, dispIdx);
-                        _selectedDisplayColumnIndices.Clear();
-                        for (int col = minCol; col <= maxCol; col++)
-                        {
-                            _selectedDisplayColumnIndices.Add(col);
-                        }
-                    }
-                    
-                    // End selection on mouse release
-                    if (_isSelectingColumns && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-                    {
-                        _isSelectingColumns = false;
-                    }
-                    
-                    isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
+                    isColumnSelected = HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
                 }
                 
                 // Apply highlight background for selected headers
                 if (isColumnSelected)
                 {
-                    var highlightColor = new Vector4(0.8f, 0.8f, 0.2f, 0.5f);
-                    ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(highlightColor));
+                    ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(UiColors.SelectionHighlight));
                 }
                 
                 DrawAlignedHeaderCell(
@@ -376,7 +391,7 @@ public partial class ItemTableWidget
             }
             
             // Handle sorting
-            var sortedRows = GetSortedRows(rows, columns, settings);
+            var sortedRows = GetSortedRows(rows, columns, displayColumns, hideCharColumn, settings);
             var numberFormat = settings.NumberFormat;
             
             // Filter out hidden characters
@@ -421,8 +436,7 @@ public partial class ItemTableWidget
                 var isEven = rowIndex % 2 == 0;
                 if (isRowSelected)
                 {
-                    var highlightColor = new Vector4(0.8f, 0.8f, 0.2f, 0.5f);
-                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(highlightColor));
+                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(UiColors.SelectionHighlight));
                 }
                 else if (isEven && settings.EvenRowColor.HasValue)
                 {
@@ -442,41 +456,9 @@ public partial class ItemTableWidget
                     ImGui.PushID((int)primaryCid);
                     
                     // Handle row selection with SHIFT+click/drag on character column
-                    // Allow selecting both merged and non-merged rows
                     if (isShiftHeld && !isPopupOpen)
                     {
-                        var cellMin = ImGui.GetCursorScreenPos();
-                        var cellMax = new Vector2(cellMin.X + ImGui.GetContentRegionAvail().X, cellMin.Y + ImGui.GetTextLineHeightWithSpacing());
-                        var isHovered = ImGui.IsMouseHoveringRect(cellMin, cellMax);
-                        
-                        // Start selection on click
-                        if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                        {
-                            _isSelectingRows = true;
-                            _selectionStartDisplayRow = dispRowIdx;
-                            _selectedDisplayRowIndices.Clear();
-                            _selectedDisplayRowIndices.Add(dispRowIdx);
-                        }
-                        
-                        // Extend selection while dragging
-                        if (_isSelectingRows && ImGui.IsMouseDown(ImGuiMouseButton.Left) && isHovered)
-                        {
-                            var minIdx = Math.Min(_selectionStartDisplayRow, dispRowIdx);
-                            var maxIdx = Math.Max(_selectionStartDisplayRow, dispRowIdx);
-                            _selectedDisplayRowIndices.Clear();
-                            for (int idx = minIdx; idx <= maxIdx; idx++)
-                            {
-                                _selectedDisplayRowIndices.Add(idx);
-                            }
-                        }
-                        
-                        // End selection on mouse release
-                        if (_isSelectingRows && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-                        {
-                            _isSelectingRows = false;
-                        }
-                        
-                        isRowSelected = _selectedDisplayRowIndices.Contains(dispRowIdx);
+                        isRowSelected = HandleShiftSelection(dispRowIdx, _selectedDisplayRowIndices, ref _isSelectingRows, ref _selectionStartDisplayRow);
                     }
                     
                     // Determine text color - use preferred character colors if enabled
@@ -574,52 +556,16 @@ public partial class ItemTableWidget
                         : GetDisplayValue(displayCol, dispRow, columns);
                     
                     // Handle column selection with SHIFT+click/drag
-                    // Check if this display column is selected
                     var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
-                    if (isShiftHeld && !isPopupOpen) // Allow selecting both merged and non-merged columns
+                    if (isShiftHeld && !isPopupOpen)
                     {
-                        // Get the column bounds for hover/click detection
-                        var cellMin = ImGui.GetCursorScreenPos();
-                        var cellMax = new Vector2(cellMin.X + ImGui.GetContentRegionAvail().X, cellMin.Y + ImGui.GetTextLineHeightWithSpacing());
-                        var isHovered = ImGui.IsMouseHoveringRect(cellMin, cellMax);
-                        
-                        // Start selection on click
-                        if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                        {
-                            _isSelectingColumns = true;
-                            _selectionStartDisplayColumn = dispIdx;
-                            _selectedDisplayColumnIndices.Clear();
-                            _selectedDisplayColumnIndices.Add(dispIdx);
-                        }
-                        
-                        // Extend selection while dragging
-                        if (_isSelectingColumns && ImGui.IsMouseDown(ImGuiMouseButton.Left) && isHovered)
-                        {
-                            var minCol = Math.Min(_selectionStartDisplayColumn, dispIdx);
-                            var maxCol = Math.Max(_selectionStartDisplayColumn, dispIdx);
-                            _selectedDisplayColumnIndices.Clear();
-                            for (int col = minCol; col <= maxCol; col++)
-                            {
-                                _selectedDisplayColumnIndices.Add(col);
-                            }
-                        }
-                        
-                        // End selection on mouse release
-                        if (_isSelectingColumns && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-                        {
-                            _isSelectingColumns = false;
-                        }
-                        
-                        // Update selection status after potential changes
-                        isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
+                        isColumnSelected = HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
                     }
                     
                     // Apply inverted background color for selected columns
                     if (isColumnSelected)
                     {
-                        // Use inverted/highlight color for selected cell background
-                        var highlightColor = new Vector4(0.8f, 0.8f, 0.2f, 0.5f); // Yellow-ish highlight
-                        ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(highlightColor));
+                        ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(UiColors.SelectionHighlight));
                     }
                     
                     // Determine text color - use preferred item colors if enabled, then invert if selected
@@ -660,8 +606,7 @@ public partial class ItemTableWidget
                             ImGui.TableNextRow();
                             
                             // Slightly darker background for sub-rows
-                            var subRowBgColor = new Vector4(0.15f, 0.15f, 0.2f, 0.5f);
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(subRowBgColor));
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(UiColors.SubRowBackground));
                             
                             if (!hideCharColumn)
                             {
@@ -725,8 +670,7 @@ public partial class ItemTableWidget
                     var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
                     if (isColumnSelected)
                     {
-                        var highlightColor = new Vector4(0.8f, 0.8f, 0.2f, 0.5f);
-                        ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(highlightColor));
+                        ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(UiColors.SelectionHighlight));
                     }
                     
                     // Use preferred item colors for total row as well

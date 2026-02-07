@@ -63,6 +63,8 @@ public partial class ItemTableWidget
     private List<ItemTableCharacterRow> GetSortedRows(
         IReadOnlyList<ItemTableCharacterRow> rows,
         IReadOnlyList<ItemColumnConfig> columns,
+        IReadOnlyList<DisplayColumn> displayColumns,
+        bool hideCharColumn,
         IItemTableWidgetSettings settings)
     {
         if (!settings.Sortable)
@@ -88,9 +90,14 @@ public partial class ItemTableWidget
         var sortColumnIndex = settings.SortColumnIndex;
         var sortAscending = settings.SortAscending;
         
+        // When the character column is hidden, ImGui column 0 is the first data column.
+        // When visible, ImGui column 0 is the character column and data columns start at 1.
+        var isCharacterSort = hideCharColumn ? false : sortColumnIndex == 0;
+        var displayColIdx = hideCharColumn ? sortColumnIndex : sortColumnIndex - 1;
+        
         // Sort the rows
         IEnumerable<ItemTableCharacterRow> sorted;
-        if (sortColumnIndex == 0)
+        if (isCharacterSort)
         {
             // Sort by character name column - preserve the order from caller (already sorted by config)
             // If descending, reverse the pre-sorted order to maintain AR/alphabetical order in reverse
@@ -98,13 +105,13 @@ public partial class ItemTableWidget
                 ? rows // Preserve order from caller (already sorted by CharacterSortHelper)
                 : rows.Reverse(); // Reverse the configured order (could be AR order, alphabetical, etc.)
         }
-        else if (sortColumnIndex > 0 && sortColumnIndex <= columns.Count)
+        else if (displayColIdx >= 0 && displayColIdx < displayColumns.Count)
         {
-            // Sort by data column
-            var column = columns[sortColumnIndex - 1];
+            // Sort by display column (may be a single column or a merged group)
+            var displayCol = displayColumns[displayColIdx];
             sorted = sortAscending
-                ? rows.OrderBy(r => r.ItemCounts.TryGetValue(column.Id, out var c) ? c : 0)
-                : rows.OrderByDescending(r => r.ItemCounts.TryGetValue(column.Id, out var c) ? c : 0);
+                ? rows.OrderBy(r => GetDisplayColumnValue(displayCol, r, columns))
+                : rows.OrderByDescending(r => GetDisplayColumnValue(displayCol, r, columns));
         }
         else
         {
