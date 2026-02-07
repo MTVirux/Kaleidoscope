@@ -221,64 +221,17 @@ public sealed class CurrenciesCategory
     {
         ImGui.PushID((int)dataType);
         
-        var hasColor = config.ItemColors.TryGetValue(dataType, out var colorUint);
-        Vector4 colorValue;
+        config.ItemColors.TryGetValue(dataType, out var colorUint);
         
-        if (_editingColorType == dataType)
-        {
-            colorValue = _colorEditBuffer;
-        }
-        else if (hasColor)
-        {
-            colorValue = ColorUtils.UintToVector4(colorUint);
-        }
-        else
-        {
-            colorValue = new Vector4(0.5f, 0.5f, 0.5f, 1f);
-        }
-        
-        if (!hasColor && _editingColorType != dataType)
-        {
-            // Draw placeholder color button
-            if (ImGui.ColorButton("##colorPreview", new Vector4(0.3f, 0.3f, 0.3f, 0.5f),
-                ImGuiColorEditFlags.NoTooltip, new Vector2(20, 20)))
-            {
-                // Start editing with a default color
-                _editingColorType = dataType;
-                _colorEditBuffer = new Vector4(1f, 1f, 1f, 1f);
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.BeginTooltip();
-                ImGui.TextUnformatted("Click to set a custom color");
-                ImGui.EndTooltip();
-            }
-            ImGui.SameLine();
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Auto");
-        }
-        else
-        {
-            // Color picker for set colors or when actively editing
-            if (ImGui.ColorEdit4("##color", ref colorValue,
-                ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
-            {
-                _colorEditBuffer = colorValue;
-            }
-            
-            // Track when we start editing (for already-set colors)
-            if (ImGui.IsItemActivated() && hasColor)
-            {
-                _editingColorType = dataType;
-                _colorEditBuffer = colorValue;
-            }
-            
-            // Save when the user finishes editing
-            if (ImGui.IsItemDeactivatedAfterEdit())
-            {
-                SaveItemColor(dataType, ColorUtils.Vector4ToUint(_colorEditBuffer));
-                _editingColorType = null;
-            }
-        }
+        ImGuiHelpers.InlineColorEditor(
+            dataType,
+            ref _editingColorType,
+            ref _colorEditBuffer,
+            config.ItemColors.ContainsKey(dataType) ? colorUint : null,
+            ImGuiHelpers.DefaultColor,
+            newColor => SaveItemColor(dataType, newColor),
+            () => SaveItemColor(dataType, null),
+            drawClearButton: false);
         
         ImGui.PopID();
     }
@@ -287,22 +240,12 @@ public sealed class CurrenciesCategory
     {
         var hasColor = config.ItemColors.ContainsKey(dataType);
         
-        if (hasColor || _editingColorType == dataType)
-        {
-            ImGui.PushID((int)dataType);
-            if (ImGui.SmallButton("X"))
-            {
-                SaveItemColor(dataType, null);
-                _editingColorType = null;
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.BeginTooltip();
-                ImGui.TextUnformatted("Clear custom color");
-                ImGui.EndTooltip();
-            }
-            ImGui.PopID();
-        }
+        ImGui.PushID((int)dataType);
+        ImGuiHelpers.InlineColorClearButton(
+            hasColor,
+            ref _editingColorType,
+            () => SaveItemColor(dataType, null));
+        ImGui.PopID();
     }
 
     private void SaveItemColor(TrackedDataType dataType, uint? color)

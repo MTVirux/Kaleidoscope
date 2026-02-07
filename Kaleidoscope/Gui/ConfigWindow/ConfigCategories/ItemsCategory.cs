@@ -589,42 +589,14 @@ public sealed class ItemsCategory
     {
         ImGui.PushID((int)itemId);
         
-        var hasColor = config.GameItemColors.TryGetValue(itemId, out var colorUint);
-        Vector4 colorValue;
+        config.GameItemColors.TryGetValue(itemId, out var colorUint);
         
-        if (_editingColorItemId == itemId)
-        {
-            colorValue = _colorEditBuffer;
-        }
-        else if (hasColor)
-        {
-            colorValue = ColorUtils.UintToVector4(colorUint);
-        }
-        else
-        {
-            colorValue = new Vector4(1f, 1f, 1f, 1f);
-        }
-        
-        // Color picker
-        if (ImGui.ColorEdit4("##color", ref colorValue,
-            ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
-        {
-            _colorEditBuffer = colorValue;
-        }
-        
-        // Track when we start editing
-        if (ImGui.IsItemActivated())
-        {
-            _editingColorItemId = itemId;
-            _colorEditBuffer = colorValue;
-        }
-        
-        // Save when the user finishes editing
-        if (ImGui.IsItemDeactivatedAfterEdit())
-        {
-            SaveGameItemColor(itemId, ColorUtils.Vector4ToUint(_colorEditBuffer));
-            _editingColorItemId = null;
-        }
+        ImGuiHelpers.InlineColorEditorAlwaysVisible(
+            itemId,
+            ref _editingColorItemId,
+            ref _colorEditBuffer,
+            colorUint,
+            newColor => SaveGameItemColor(itemId, newColor));
         
         ImGui.PopID();
     }
@@ -632,17 +604,11 @@ public sealed class ItemsCategory
     private void DrawActionsCell(uint itemId, Configuration config)
     {
         ImGui.PushID((int)itemId);
-        if (ImGui.SmallButton("X"))
-        {
-            SaveGameItemColor(itemId, null);
-            _editingColorItemId = null;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.TextUnformatted("Remove item");
-            ImGui.EndTooltip();
-        }
+        ImGuiHelpers.InlineColorClearButton(
+            config.GameItemColors.ContainsKey(itemId),
+            ref _editingColorItemId,
+            () => SaveGameItemColor(itemId, null),
+            "Remove item");
         ImGui.PopID();
     }
 

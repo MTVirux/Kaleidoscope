@@ -21,7 +21,7 @@ public sealed class CharactersCategory
     private bool _needsRefresh = true;
     private List<(ulong cid, string? gameName, string? displayName, uint? timeSeriesColor)> _characters = new();
     
-    private ulong _editingColorCid = 0;
+    private ulong? _editingColorCid = null;
     private Vector4 _colorEditBuffer = Vector4.One;
 
     public CharactersCategory(CurrencyTrackerService currencyTrackerService, TimeSeriesCacheService cacheService, ConfigurationService configService, AutoRetainerIpcService autoRetainerService)
@@ -134,75 +134,14 @@ public sealed class CharactersCategory
                 
                 ImGui.PushID((int)cid);
                 
-                Vector4 colorValue;
-                var hasColor = timeSeriesColor.HasValue;
-                
-                if (_editingColorCid == cid)
-                {
-                    colorValue = _colorEditBuffer;
-                }
-                else if (timeSeriesColor.HasValue)
-                {
-                    colorValue = ColorUtils.UintToVector4(timeSeriesColor.Value);
-                }
-                else
-                {
-                    colorValue = new Vector4(0.5f, 0.5f, 0.5f, 1f);
-                }
-                
-                if (!hasColor && _editingColorCid != cid)
-                {
-                    if (ImGui.ColorButton("##colorPreview", new Vector4(0.3f, 0.3f, 0.3f, 0.5f), 
-                        ImGuiColorEditFlags.NoTooltip, new Vector2(20, 20)))
-                    {
-                        _editingColorCid = cid;
-                        _colorEditBuffer = new Vector4(1f, 1f, 1f, 1f);
-                    }
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.BeginTooltip();
-                        ImGui.TextUnformatted("Click to set a custom color");
-                        ImGui.EndTooltip();
-                    }
-                    ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Auto");
-                }
-                else
-                {
-                    if (ImGui.ColorEdit4("##color", ref colorValue, 
-                        ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
-                    {
-                        _colorEditBuffer = colorValue;
-                    }
-                    
-                    if (ImGui.IsItemActivated() && hasColor)
-                    {
-                        _editingColorCid = cid;
-                        _colorEditBuffer = colorValue;
-                    }
-                    
-                    if (ImGui.IsItemDeactivatedAfterEdit())
-                    {
-                        SaveTimeSeriesColor(cid, ColorUtils.Vector4ToUint(_colorEditBuffer));
-                        _editingColorCid = 0;
-                    }
-                    
-                    if (hasColor || _editingColorCid == cid)
-                    {
-                        ImGui.SameLine();
-                        if (ImGui.SmallButton("X"))
-                        {
-                            SaveTimeSeriesColor(cid, null);
-                            _editingColorCid = 0;
-                        }
-                        if (ImGui.IsItemHovered())
-                        {
-                            ImGui.BeginTooltip();
-                            ImGui.TextUnformatted("Clear custom color");
-                            ImGui.EndTooltip();
-                        }
-                    }
-                }
+                ImGuiHelpers.InlineColorEditor(
+                    cid,
+                    ref _editingColorCid,
+                    ref _colorEditBuffer,
+                    timeSeriesColor,
+                    ImGuiHelpers.DefaultColor,
+                    newColor => SaveTimeSeriesColor(cid, newColor),
+                    () => SaveTimeSeriesColor(cid, null));
                 
                 ImGui.PopID();
 

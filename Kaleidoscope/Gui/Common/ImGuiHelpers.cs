@@ -1,4 +1,5 @@
 using System.Numerics;
+using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Common;
@@ -158,6 +159,223 @@ public static class ImGuiHelpers
         
         return (changed, result);
     }
+    
+    #region Inline Color Editor
+    
+    /// <summary>
+    /// Placeholder color shown when no custom color is set and the user hasn't clicked to edit.
+    /// </summary>
+    private static readonly Vector4 PlaceholderButtonColor = new(0.3f, 0.3f, 0.3f, 0.5f);
+    
+    /// <summary>
+    /// Default initial color assigned when the user clicks the "Auto" placeholder to start editing.
+    /// </summary>
+    private static readonly Vector4 DefaultNewEditColor = new(1f, 1f, 1f, 1f);
+    
+    /// <summary>
+    /// Draws an inline color editor with "Auto" placeholder and optional clear button.
+    /// When no color is set and the user is not actively editing, a dimmed placeholder button
+    /// labeled "Auto" is shown. Clicking it enters edit mode. Once a color is set or the user
+    /// is editing, a full <c>ColorEdit4</c> picker is displayed. The clear button resets the
+    /// color and exits edit mode.
+    /// </summary>
+    /// <typeparam name="TId">Type of the entity identifier (must be a value type).</typeparam>
+    /// <param name="entityId">The identifier of the entity being edited.</param>
+    /// <param name="editingId">
+    /// Ref to the currently-editing entity state field. Set to <paramref name="entityId"/>
+    /// when the user enters edit mode, and reset to <c>default</c> when editing completes.
+    /// </param>
+    /// <param name="colorEditBuffer">
+    /// Ref to the shared <see cref="Vector4"/> buffer used while editing. Updated each frame
+    /// as the user drags the color picker.
+    /// </param>
+    /// <param name="currentColorUint">The current uint color value, or <c>null</c> if unset ("Auto").</param>
+    /// <param name="defaultDisplayColor">
+    /// The <see cref="Vector4"/> color to display in the picker when no custom color is set
+    /// (before the user starts editing).
+    /// </param>
+    /// <param name="onColorChanged">Callback invoked with the new uint color when the user finishes editing.</param>
+    /// <param name="onColorCleared">Callback invoked when the user clicks the clear button.</param>
+    /// <param name="drawClearButton">
+    /// Whether to draw the "X" clear button inline. Set to <c>false</c> if the clear button
+    /// is rendered in a separate column.
+    /// </param>
+    /// <returns><c>true</c> if the color was changed or cleared during this frame.</returns>
+    public static bool InlineColorEditor<TId>(
+        TId entityId,
+        ref TId? editingId,
+        ref Vector4 colorEditBuffer,
+        uint? currentColorUint,
+        Vector4 defaultDisplayColor,
+        Action<uint> onColorChanged,
+        Action onColorCleared,
+        bool drawClearButton = true) where TId : struct
+    {
+        var isEditing = editingId.HasValue && EqualityComparer<TId>.Default.Equals(editingId.Value, entityId);
+        var hasColor = currentColorUint.HasValue;
+        var changed = false;
+
+        // Resolve the display color
+        Vector4 colorValue;
+        if (isEditing)
+            colorValue = colorEditBuffer;
+        else if (hasColor)
+            colorValue = ColorUtils.UintToVector4(currentColorUint!.Value);
+        else
+            colorValue = defaultDisplayColor;
+
+        if (!hasColor && !isEditing)
+        {
+            // No color set and not editing — show placeholder "Auto" button
+            if (ImGui.ColorButton("##colorPreview", PlaceholderButtonColor,
+                ImGuiColorEditFlags.NoTooltip, new Vector2(20, 20)))
+            {
+                editingId = entityId;
+                colorEditBuffer = DefaultNewEditColor;
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.BeginTooltip();
+                ImGui.TextUnformatted("Click to set a custom color");
+                ImGui.EndTooltip();
+            }
+            ImGui.SameLine();
+            ImGui.TextColored(DefaultColor, "Auto");
+        }
+        else
+        {
+            // Active color picker
+            if (ImGui.ColorEdit4("##color", ref colorValue,
+                ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
+            {
+                colorEditBuffer = colorValue;
+            }
+
+            // Track when we start editing an already-set color
+            if (ImGui.IsItemActivated() && hasColor)
+            {
+                editingId = entityId;
+                colorEditBuffer = colorValue;
+            }
+
+            // Save when the user finishes editing
+            if (ImGui.IsItemDeactivatedAfterEdit())
+            {
+                onColorChanged(ColorUtils.Vector4ToUint(colorEditBuffer));
+                editingId = null;
+                changed = true;
+            }
+
+            // Inline clear button
+            if (drawClearButton && (hasColor || isEditing))
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("X"))
+                {
+                    onColorCleared();
+                    editingId = null;
+                    changed = true;
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.BeginTooltip();
+                    ImGui.TextUnformatted("Clear custom color");
+                    ImGui.EndTooltip();
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Draws an inline color editor that always shows the <c>ColorEdit4</c> picker (no "Auto" placeholder).
+    /// Use this variant for entities that always have a color value.
+    /// </summary>
+    /// <typeparam name="TId">Type of the entity identifier (must be a value type).</typeparam>
+    /// <param name="entityId">The identifier of the entity being edited.</param>
+    /// <param name="editingId">
+    /// Ref to the currently-editing entity state field. Nullable; set to <paramref name="entityId"/>
+    /// when the user activates the picker.
+    /// </param>
+    /// <param name="colorEditBuffer">
+    /// Ref to the shared <see cref="Vector4"/> buffer used while editing.
+    /// </param>
+    /// <param name="currentColorUint">The current uint color value.</param>
+    /// <param name="onColorChanged">Callback invoked with the new uint color when the user finishes editing.</param>
+    /// <returns><c>true</c> if the color was changed during this frame.</returns>
+    public static bool InlineColorEditorAlwaysVisible<TId>(
+        TId entityId,
+        ref TId? editingId,
+        ref Vector4 colorEditBuffer,
+        uint currentColorUint,
+        Action<uint> onColorChanged) where TId : struct
+    {
+        var isEditing = editingId.HasValue && EqualityComparer<TId>.Default.Equals(editingId.Value, entityId);
+        var changed = false;
+
+        var colorValue = isEditing
+            ? colorEditBuffer
+            : ColorUtils.UintToVector4(currentColorUint);
+
+        if (ImGui.ColorEdit4("##color", ref colorValue,
+            ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
+        {
+            colorEditBuffer = colorValue;
+        }
+
+        if (ImGui.IsItemActivated())
+        {
+            editingId = entityId;
+            colorEditBuffer = colorValue;
+        }
+
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            onColorChanged(ColorUtils.Vector4ToUint(colorEditBuffer));
+            editingId = null;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Draws a clear/remove button for an inline color editor. Use alongside
+    /// <see cref="InlineColorEditor{TId}"/> when <c>drawClearButton</c> is <c>false</c>,
+    /// or with <see cref="InlineColorEditorAlwaysVisible{TId}"/> which never draws one.
+    /// </summary>
+    /// <typeparam name="TId">Type of the entity identifier.</typeparam>
+    /// <param name="hasColor">Whether the entity currently has a color set.</param>
+    /// <param name="editingId">Ref to the currently-editing entity state field.</param>
+    /// <param name="onColorCleared">Callback invoked when the button is clicked.</param>
+    /// <param name="tooltip">Tooltip text for the button. Defaults to "Clear custom color".</param>
+    /// <returns><c>true</c> if the color was cleared during this frame.</returns>
+    public static bool InlineColorClearButton<TId>(
+        bool hasColor,
+        ref TId? editingId,
+        Action onColorCleared,
+        string tooltip = "Clear custom color") where TId : struct
+    {
+        if (!hasColor && !editingId.HasValue)
+            return false;
+
+        if (ImGui.SmallButton("X"))
+        {
+            onColorCleared();
+            editingId = null;
+            return true;
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.BeginTooltip();
+            ImGui.TextUnformatted(tooltip);
+            ImGui.EndTooltip();
+        }
+        return false;
+    }
+    
+    #endregion
     
     #region Styled Buttons
     
