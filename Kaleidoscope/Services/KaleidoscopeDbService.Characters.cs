@@ -215,41 +215,7 @@ public sealed partial class KaleidoscopeDbService
         return null;
     }
 
-    /// <summary>
-    /// Gets the game name for a character (the name automatically detected from the game).
-    /// </summary>
-    public string? GetCharacterGameName(ulong characterId)
-    {
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var names))
-            return names.GameName;
-        
-        return null;
-    }
 
-    /// <summary>
-    /// Gets the custom display name for a character (null if not set).
-    /// </summary>
-    public string? GetCharacterDisplayName(ulong characterId)
-    {
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var names))
-            return names.DisplayName;
-        
-        return null;
-    }
-
-    /// <summary>
-    /// Gets both the game name and display name for a character.
-    /// </summary>
-    public (string? GameName, string? DisplayName) GetCharacterNames(ulong characterId)
-    {
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var names))
-            return (names.GameName, names.DisplayName);
-        
-        return (null, null);
-    }
 
     /// <summary>
     /// Gets the time series color for a character (null if not set).
@@ -263,18 +229,6 @@ public sealed partial class KaleidoscopeDbService
         return null;
     }
 
-    /// <summary>
-    /// Gets all character data (game name, display name, and time series color).
-    /// </summary>
-    public (string? GameName, string? DisplayName, uint? TimeSeriesColor) GetCharacterData(ulong characterId)
-    {
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var data))
-            return data;
-        
-        return (null, null, null);
-    }
-    
     /// <summary>
     /// Gets or refreshes the character name cache.
     /// </summary>

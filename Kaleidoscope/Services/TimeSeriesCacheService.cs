@@ -264,22 +264,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Gets a character's game name from cache.
-    /// </summary>
-    public string? GetCharacterGameName(ulong characterId)
-    {
-        return _characterDataCache.GetCharacterGameName(characterId);
-    }
-
-    /// <summary>
-    /// Gets a character's custom display name from cache.
-    /// </summary>
-    public string? GetCharacterDisplayName(ulong characterId)
-    {
-        return _characterDataCache.GetCharacterDisplayName(characterId);
-    }
-
-    /// <summary>
     /// Gets a character's time series color from cache.
     /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)

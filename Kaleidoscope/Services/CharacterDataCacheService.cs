@@ -128,36 +128,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Gets the game name for a character (automatically detected from the game).
-    /// </summary>
-    public string? GetCharacterGameName(ulong characterId)
-    {
-        if (_cache.TryGetValue(characterId, out var entry))
-        {
-            Interlocked.Increment(ref _cacheHits);
-            return entry.GameName;
-        }
-
-        Interlocked.Increment(ref _cacheMisses);
-        return null;
-    }
-
-    /// <summary>
-    /// Gets the custom display name for a character (null if not set).
-    /// </summary>
-    public string? GetCharacterDisplayName(ulong characterId)
-    {
-        if (_cache.TryGetValue(characterId, out var entry))
-        {
-            Interlocked.Increment(ref _cacheHits);
-            return entry.DisplayName;
-        }
-
-        Interlocked.Increment(ref _cacheMisses);
-        return null;
-    }
-
-    /// <summary>
     /// Gets the time series color for a character (null if not set).
     /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
@@ -170,36 +140,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 
         Interlocked.Increment(ref _cacheMisses);
         return null;
-    }
-
-    /// <summary>
-    /// Gets both game name and display name for a character.
-    /// </summary>
-    public (string? GameName, string? DisplayName) GetCharacterNames(ulong characterId)
-    {
-        if (_cache.TryGetValue(characterId, out var entry))
-        {
-            Interlocked.Increment(ref _cacheHits);
-            return (entry.GameName, entry.DisplayName);
-        }
-
-        Interlocked.Increment(ref _cacheMisses);
-        return (null, null);
-    }
-
-    /// <summary>
-    /// Gets all character data (game name, display name, and time series color).
-    /// </summary>
-    public (string? GameName, string? DisplayName, uint? TimeSeriesColor) GetCharacterData(ulong characterId)
-    {
-        if (_cache.TryGetValue(characterId, out var entry))
-        {
-            Interlocked.Increment(ref _cacheHits);
-            return (entry.GameName, entry.DisplayName, entry.TimeSeriesColor);
-        }
-
-        Interlocked.Increment(ref _cacheMisses);
-        return (null, null, null);
     }
 
     /// <summary>
