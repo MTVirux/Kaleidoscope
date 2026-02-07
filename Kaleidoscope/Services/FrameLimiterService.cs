@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
@@ -231,9 +230,9 @@ public sealed class FrameLimiterService : IDisposable, IService
     }
     
     /// <summary>
-    /// Performs the actual frame limiting using sleep and spin-wait.
+    /// Performs the actual frame limiting using sleep and cooperative spin-wait.
+    /// Uses SpinWait to yield CPU time to the OS scheduler instead of burning a full core.
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoOptimization)]
     private void PerformFrameLimiting()
     {
         var delayMs = (int)(TargetFrametimeMs - _frameTimer.ElapsedMilliseconds);
@@ -244,12 +243,12 @@ public sealed class FrameLimiterService : IDisposable, IService
             Thread.Sleep(delayMs - 1);
         }
         
-        // Spin-wait for precise timing
+        // Cooperative spin-wait for precise timing — yields to OS scheduler 
+        // instead of burning a full CPU core with an empty busy loop
+        var sw = new SpinWait();
         while (_frameTimer.ElapsedTicks < PreciseFrametimeTicks)
         {
-            // Empty loop for precise timing
-            // Using a delegate prevents the JIT from optimizing this away
-            ((Action)(() => { }))();
+            sw.SpinOnce();
         }
     }
     
