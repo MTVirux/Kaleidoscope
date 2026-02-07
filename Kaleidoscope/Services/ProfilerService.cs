@@ -15,11 +15,11 @@ public sealed class ProfilerService : IDisposable, IService
     private readonly object _lock = new();
     
     /// <summary>
-    /// Thread-local context for the current tool being profiled.
+    /// Async-local context for the current tool being profiled.
     /// Allows nested widgets to add child scopes without explicit service passing.
+    /// Uses AsyncLocal instead of ThreadStatic so context flows across await continuations.
     /// </summary>
-    [ThreadStatic]
-    private static ProfilerContext? _currentContext;
+    private static readonly AsyncLocal<ProfilerContext?> _currentContext = new();
     
     /// <summary>
     /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
@@ -50,9 +50,9 @@ public sealed class ProfilerService : IDisposable, IService
     }
     
     /// <summary>
-    /// Gets the current profiler context for this thread, if any.
+    /// Gets the current profiler context for this thread/async flow, if any.
     /// </summary>
-    public static ProfilerContext? CurrentContext => _currentContext;
+    public static ProfilerContext? CurrentContext => _currentContext.Value;
 
     /// <summary>
     /// Ring buffer size for recent samples (used for rolling stats and percentiles).
@@ -463,7 +463,7 @@ public sealed class ProfilerService : IDisposable, IService
             if (!_toolStats.TryGetValue(toolId, out var parentStats))
             {
                 // Get tool name from current context if available
-                var toolName = _currentContext?.ToolName ?? toolId;
+                var toolName = _currentContext.Value?.ToolName ?? toolId;
                 parentStats = new ProfileStats { Name = toolName };
                 _toolStats[toolId] = parentStats;
             }
@@ -481,7 +481,7 @@ public sealed class ProfilerService : IDisposable, IService
     /// <returns>A disposable scope that records the elapsed time.</returns>
     public static ChildProfileScope BeginStaticChildScope(string scopeName)
     {
-        var context = _currentContext;
+        var context = _currentContext.Value;
         if (context == null)
         {
             return new ChildProfileScope(null, null, null, null, null);
@@ -556,18 +556,18 @@ public sealed class ProfilerService : IDisposable, IService
             _toolName = toolName;
             _stopwatch = Stopwatch.StartNew();
             
-            // Set up thread-local context for Tool scopes
-            _previousContext = _currentContext;
+            // Set up async-local context for Tool scopes
+            _previousContext = _currentContext.Value;
             if (targetType == ProfileTargetType.Tool && service.IsEnabled)
             {
-                _currentContext = new ProfilerContext(service, toolId, toolName);
+                _currentContext.Value = new ProfilerContext(service, toolId, toolName);
             }
         }
 
         public void Dispose()
         {
             // Restore previous context
-            _currentContext = _previousContext;
+            _currentContext.Value = _previousContext;
             
             _stopwatch.Stop();
             var elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;

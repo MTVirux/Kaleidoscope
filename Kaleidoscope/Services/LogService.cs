@@ -35,9 +35,10 @@ public static class LogService
     // Character-specific file writers (keyed by sanitized character name)
     private static readonly ConcurrentDictionary<string, CharacterLogWriter> _characterWriters = new();
 
-    // Thread-local current character context for per-character logging
-    [ThreadStatic]
-    private static string? _currentCharacterName;
+    // Async-local current character context for per-character logging.
+    // AsyncLocal flows across await continuations, unlike ThreadStatic which is lost
+    // when async code resumes on a different thread pool thread.
+    private static readonly AsyncLocal<string?> _currentCharacterContext = new();
 
     /// <summary>
     /// Gets whether the log service has been initialized.
@@ -89,13 +90,13 @@ public static class LogService
     /// <param name="characterName">The character name, or null to clear context.</param>
     public static void SetCurrentCharacter(string? characterName)
     {
-        _currentCharacterName = characterName;
+        _currentCharacterContext.Value = characterName;
     }
 
     /// <summary>
     /// Gets the current character name for logging context.
     /// </summary>
-    public static string? CurrentCharacterName => _currentCharacterName;
+    public static string? CurrentCharacterName => _currentCharacterContext.Value;
 
     /// <summary>
     /// Updates file logging state based on current configuration.
@@ -281,7 +282,7 @@ public static class LogService
                 var splitByCharacter = _config.FileLoggingSplitByCharacter;
 
                 // Use provided character name or fall back to current context
-                var charName = characterName ?? _currentCharacterName;
+                var charName = characterName ?? _currentCharacterContext.Value;
 
                 if (splitByCategory && splitByCharacter && category != LogCategory.None && !string.IsNullOrEmpty(charName))
                 {
