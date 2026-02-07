@@ -36,8 +36,15 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
     private long _cacheHits;
     private long _cacheMisses;
+    private long _version;
 
     public event Action<string, ulong>? OnCacheUpdated;
+
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
+    /// </summary>
+    public long Version => Volatile.Read(ref _version);
 
     /// <summary>
     /// Gets the cache configuration.
@@ -477,6 +484,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
 
         cache.AddPoint(ts, value);
+        Interlocked.Increment(ref _version);
 
         lock (_availableCharactersLock)
         {
@@ -507,6 +515,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         {
             cache.AddPoint(ts, val);
         }
+        Interlocked.Increment(ref _version);
 
         lock (_availableCharactersLock)
         {
@@ -584,7 +593,8 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public void Invalidate(string variable, ulong characterId)
     {
         var key = new CacheKey(variable, characterId);
-        _cache.TryRemove(key, out _);
+        if (_cache.TryRemove(key, out _))
+            Interlocked.Increment(ref _version);
     }
 
     /// <summary>
@@ -593,15 +603,19 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public void InvalidateVariable(string variable)
     {
         var keysToRemove = _cache.Keys.Where(k => k.Variable == variable).ToList();
+        var removed = false;
         foreach (var key in keysToRemove)
         {
-            _cache.TryRemove(key, out _);
+            removed |= _cache.TryRemove(key, out _);
         }
 
         lock (_availableCharactersLock)
         {
             _availableCharacters.TryRemove(variable, out _);
         }
+
+        if (removed)
+            Interlocked.Increment(ref _version);
     }
 
     /// <summary>
@@ -616,6 +630,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
         _cacheHits = 0;
         _cacheMisses = 0;
+        Interlocked.Increment(ref _version);
     }
 
     /// <summary>
@@ -624,9 +639,10 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public void RemoveCharacter(ulong characterId)
     {
         var keysToRemove = _cache.Keys.Where(k => k.CharacterId == characterId).ToList();
+        var removed = false;
         foreach (var key in keysToRemove)
         {
-            _cache.TryRemove(key, out _);
+            removed |= _cache.TryRemove(key, out _);
         }
 
         _characterDataCache.RemoveCharacter(characterId);
@@ -638,6 +654,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 chars.Remove(characterId);
             }
         }
+
+        if (removed)
+            Interlocked.Increment(ref _version);
     }
 
     #endregion
@@ -770,6 +789,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _inventoryValueCacheRecordCount = 0;
             _inventoryValueCacheMaxTimestamp = null;
         }
+        Interlocked.Increment(ref _version);
         
         // Fire event to notify UI that data has changed
         OnInventoryValueCacheInvalidated?.Invoke();

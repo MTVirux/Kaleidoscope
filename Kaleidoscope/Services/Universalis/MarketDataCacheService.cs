@@ -23,6 +23,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     private long _cacheMisses;
     private long _staleHits;
     private long _evictions;
+    private long _version;
     private DateTime? _lastEvictionTime;
     
     private const int DefaultTtlMinutes = 15;
@@ -37,6 +38,12 @@ public sealed class MarketDataCacheService : IService, IDisposable
     }
     
     #region Public Properties - Statistics
+    
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
+    /// </summary>
+    public long Version => Volatile.Read(ref _version);
     
     /// <summary>Number of cache hits (fresh data returned).</summary>
     public long CacheHits => Interlocked.Read(ref _cacheHits);
@@ -160,6 +167,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         {
             EvictOldestEntries(MaxCacheEntries / 10); // Evict 10%
         }
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -207,6 +215,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
                     StalenessThresholdMinutes = existing.StalenessThresholdMinutes
                 };
             });
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -249,6 +258,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
                 TtlMinutes = existing.TtlMinutes,
                 StalenessThresholdMinutes = existing.StalenessThresholdMinutes
             });
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -335,6 +345,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     public void ClearPriceCache()
     {
         _priceCache.Clear();
+        Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Price cache cleared");
     }
     
@@ -377,6 +388,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     public void SetRecentSales(int itemId, int worldId, RecentSalesCacheEntry entry)
     {
         _recentSalesCache[(itemId, worldId)] = entry;
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -433,6 +445,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     {
         _recentSalesCache.Clear();
         _lastSalePriceCache.Clear();
+        Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Recent sales cache cleared");
     }
     

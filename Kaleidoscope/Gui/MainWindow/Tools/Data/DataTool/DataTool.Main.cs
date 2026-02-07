@@ -68,6 +68,11 @@ public partial class DataTool : ToolComponent
     private bool _cachedIncludeRetainers;
     private TableGroupingMode _cachedGroupingMode;
     
+    // Version counters for cache change detection (replaces blind timer polling)
+    private long _lastTimeSeriesVersion;
+    private long _lastCharacterVersion;
+    private long _lastInventoryVersion;
+    
     // Retainer names cache (refreshed periodically)
     private Dictionary<ulong, string>? _cachedRetainerNames;
     private DateTime _lastRetainerNamesCacheRefresh = DateTime.MinValue;
@@ -489,6 +494,28 @@ public partial class DataTool : ToolComponent
         _instanceSettings.AutoScrollNowPosition = nowPosition;
         NotifyToolSettingsChanged();
         _graphCacheIsDirty = true;
+    }
+    
+    /// <summary>
+    /// Checks if any upstream cache has changed since we last refreshed.
+    /// Uses version counters for O(1) change detection instead of blind timer polling.
+    /// </summary>
+    private bool HasCacheVersionChanged()
+    {
+        var tsVersion = CacheService.Version;
+        var charVersion = CharacterDataCache.Version;
+        var invVersion = _inventoryCacheService?.Version ?? 0;
+        
+        if (tsVersion != _lastTimeSeriesVersion || 
+            charVersion != _lastCharacterVersion || 
+            invVersion != _lastInventoryVersion)
+        {
+            _lastTimeSeriesVersion = tsVersion;
+            _lastCharacterVersion = charVersion;
+            _lastInventoryVersion = invVersion;
+            return true;
+        }
+        return false;
     }
     
     public override void Dispose()

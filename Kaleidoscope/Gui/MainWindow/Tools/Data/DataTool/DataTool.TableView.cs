@@ -15,10 +15,10 @@ public partial class DataTool
     {
         using (ProfilerService.BeginStaticChildScope("TableView"))
         {
-            // Auto-refresh every 2s
-            var shouldAutoRefresh = (DateTime.UtcNow - _lastTableRefresh).TotalSeconds > 2.0;
+            // Check cache versions — only refresh when data actually changed or settings triggered it
+            var cacheChanged = HasCacheVersionChanged();
             
-            if (_pendingTableRefresh || shouldAutoRefresh)
+            if (_pendingTableRefresh || cacheChanged)
             {
                 using (ProfilerService.BeginStaticChildScope("RefreshTableData"))
                 {

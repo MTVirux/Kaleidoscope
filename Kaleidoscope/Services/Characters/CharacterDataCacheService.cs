@@ -32,9 +32,16 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     // Cache statistics for monitoring
     private long _cacheHits;
     private long _cacheMisses;
+    private long _version;
 
     /// <summary>Event fired when character data is updated.</summary>
     public event Action<ulong>? OnCharacterUpdated;
+
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
+    /// </summary>
+    public long Version => Volatile.Read(ref _version);
 
     /// <summary>Gets cache hit count for diagnostics.</summary>
     public long CacheHits => _cacheHits;
@@ -100,6 +107,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         _cache.Clear();
         PopulateFromDatabase();
+        Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Refreshed cache with {_cache.Count} characters");
     }
 
@@ -291,6 +299,8 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 
         if (!updated) return;
 
+        Interlocked.Increment(ref _version);
+
         // Persist to DB (only when name actually changed)
         _dbService?.SaveCharacterName(characterId, name);
 
@@ -310,6 +320,8 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
             _ => new CharacterCacheEntry(characterId, DisplayName: displayName),
             (_, existing) => existing with { DisplayName = displayName });
 
+        Interlocked.Increment(ref _version);
+
         // Persist to DB
         _dbService?.SaveCharacterDisplayName(characterId, displayName);
 
@@ -328,6 +340,8 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
             characterId,
             _ => new CharacterCacheEntry(characterId, TimeSeriesColor: color),
             (_, existing) => existing with { TimeSeriesColor = color });
+
+        Interlocked.Increment(ref _version);
 
         // Persist to DB
         _dbService?.SaveCharacterTimeSeriesColor(characterId, color);
@@ -349,7 +363,8 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         }
         else if (!_cache.ContainsKey(characterId))
         {
-            _cache.TryAdd(characterId, new CharacterCacheEntry(characterId));
+            if (_cache.TryAdd(characterId, new CharacterCacheEntry(characterId)))
+                Interlocked.Increment(ref _version);
         }
     }
 
@@ -359,7 +374,8 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     /// </summary>
     public void RemoveCharacter(ulong characterId)
     {
-        _cache.TryRemove(characterId, out _);
+        if (_cache.TryRemove(characterId, out _))
+            Interlocked.Increment(ref _version);
     }
 
     /// <summary>
@@ -370,6 +386,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         _cache.Clear();
         _cacheHits = 0;
         _cacheMisses = 0;
+        Interlocked.Increment(ref _version);
     }
 
     #endregion
@@ -396,6 +413,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
                     TimeSeriesColor = color ?? existing.TimeSeriesColor
                 });
         }
+        Interlocked.Increment(ref _version);
     }
 
     /// <summary>
@@ -412,6 +430,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
                 _ => new CharacterCacheEntry(cid, GameName: name),
                 (_, existing) => existing with { GameName = name });
         }
+        Interlocked.Increment(ref _version);
     }
 
     #endregion

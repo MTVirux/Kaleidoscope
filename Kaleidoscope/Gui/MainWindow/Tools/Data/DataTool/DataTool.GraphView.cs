@@ -69,7 +69,8 @@ public partial class DataTool
         if (_cachedGroupingMode != settings.GroupingMode) return true;
         if (_cachedNameFormat != _configService.Config.CharacterNameFormat) return true;
         
-        return (DateTime.UtcNow - _lastGraphRefresh).TotalSeconds > 5.0;
+        // Use version counters for data change detection instead of blind 5s polling
+        return HasCacheVersionChanged();
     }
     
     private void RefreshGraphData()

@@ -35,8 +35,15 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     
     private List<InventoryCacheEntry>? _allCharactersCache;
     private bool _allCharactersCacheDirty = true;
+    private long _version;
     
     private readonly object _cacheLock = new();
+
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
+    /// </summary>
+    public long Version => Volatile.Read(ref _version);
 
     private ulong _lastCachedRetainerId = 0;
     private DateTime _lastPlayerCacheTime = DateTime.MinValue;
@@ -153,6 +160,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         LogService.SetCurrentCharacter(null);
         
         _allCharactersCacheDirty = true;
+        Interlocked.Increment(ref _version);
         
         _characterNameSavedThisSession = false;
         
@@ -187,6 +195,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             _inventoryMemoryCache.TryRemove(characterId, out _);
             _allCharactersCacheDirty = true;
         }
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -200,6 +209,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             _allCharactersCache = null;
             _allCharactersCacheDirty = true;
         }
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -239,6 +249,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 }
             }
         }
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -615,6 +626,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     {
                         _inventoryMemoryCache[characterId] = entries;
                         _allCharactersCacheDirty = true;
+                        Interlocked.Increment(ref _version);
                     }
                 }
             }
