@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
@@ -339,7 +340,7 @@ public sealed class StorageCategory : IDisposable
             // Estimate current memory usage based on actual tracked data
             var currentMemEstimate = (stats.TotalPoints * bytesPerPoint) + (stats.SeriesCount * seriesOverhead);
             ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
-                $"Estimated current usage: ~{FormatBytes(currentMemEstimate)}");
+                $"Estimated current usage: ~{FormatUtils.FormatByteSize(currentMemEstimate)}");
         }
 
         // Show tracked items count
@@ -351,7 +352,7 @@ public sealed class StorageCategory : IDisposable
             ImGui.TextColored(new System.Numerics.Vector4(0.5f, 1.0f, 0.5f, 1f),
                 $"Items with tracking enabled: {trackedItemsCount}");
             ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
-                $"Max memory if all filled: ~{FormatBytes(estimatedMemForTracked)} per character");
+                $"Max memory if all filled: ~{FormatUtils.FormatByteSize(estimatedMemForTracked)} per character");
         }
         else
         {
@@ -381,9 +382,9 @@ public sealed class StorageCategory : IDisposable
 
         ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.6f, 0.6f, 1f),
             $"If ALL ~{estimatedMarketableItems:N0} items tracked per character:");
-        ImGui.BulletText($"1 character:   ~{FormatBytes(memFor1Char)}");
-        ImGui.BulletText($"5 characters:  ~{FormatBytes(memFor5Chars)}");
-        ImGui.BulletText($"10 characters: ~{FormatBytes(memFor10Chars)}");
+        ImGui.BulletText($"1 character:   ~{FormatUtils.FormatByteSize(memFor1Char)}");
+        ImGui.BulletText($"5 characters:  ~{FormatUtils.FormatByteSize(memFor5Chars)}");
+        ImGui.BulletText($"10 characters: ~{FormatUtils.FormatByteSize(memFor10Chars)}");
         ImGui.TextColored(new System.Numerics.Vector4(0.5f, 0.5f, 0.5f, 1f),
             "(Actual usage is much lower - only tracked items use memory)");
 
@@ -508,7 +509,7 @@ public sealed class StorageCategory : IDisposable
         const int bytesPerEntry = 150;
         var estimatedBytes = (long)settings.MaxEntries * bytesPerEntry;
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
-            $"Estimated buffer size: ~{FormatBytes(estimatedBytes)}");
+            $"Estimated buffer size: ~{FormatUtils.FormatByteSize(estimatedBytes)}");
 
         ImGui.Unindent();
     }
@@ -751,7 +752,7 @@ public sealed class StorageCategory : IDisposable
         ImGui.TextUnformatted($"Points to Delete: {_deleteStats.count:N0}");
         ImGui.SameLine();
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1.0f),
-            $"(~{FormatBytes(_deleteStats.estimatedBytes)} storage)");
+            $"(~{FormatUtils.FormatByteSize(_deleteStats.estimatedBytes)} storage)");
 
         if (_deleteStats.count == 0)
         {
@@ -837,7 +838,7 @@ public sealed class StorageCategory : IDisposable
             var estimatedCsvBytes = _deleteStats.count * 50L;
             ImGui.Indent();
             ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.8f, 0.4f, 1.0f),
-                $"⚠ Backup will create a ~{FormatBytes(estimatedCsvBytes)} CSV file");
+                $"⚠ Backup will create a ~{FormatUtils.FormatByteSize(estimatedCsvBytes)} CSV file");
             ImGui.Unindent();
         }
         DrawHelpMarker("Export the data to a CSV file before deleting. The backup will be saved in the plugin's data folder.");
@@ -905,7 +906,7 @@ public sealed class StorageCategory : IDisposable
             ImGui.Spacing();
             ImGui.TextWrapped($"Date range: {_startDatePicker?.SelectedDateTime:yyyy-MM-dd HH:mm} to {_endDatePicker?.SelectedDateTime:yyyy-MM-dd HH:mm}");
             ImGui.Spacing();
-            ImGui.TextWrapped($"This will free approximately {FormatBytes(_deleteStats.estimatedBytes)} of storage.");
+            ImGui.TextWrapped($"This will free approximately {FormatUtils.FormatByteSize(_deleteStats.estimatedBytes)} of storage.");
 
             if (_backupBeforeDelete)
             {
@@ -1045,15 +1046,4 @@ public sealed class StorageCategory : IDisposable
     }
 
     #endregion
-
-    private static string FormatBytes(long bytes)
-    {
-        if (bytes < 1024)
-            return $"{bytes} B";
-        if (bytes < 1024 * 1024)
-            return $"{bytes / 1024.0:F1} KB";
-        if (bytes < 1024 * 1024 * 1024)
-            return $"{bytes / (1024.0 * 1024.0):F1} MB";
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
-    }
 }

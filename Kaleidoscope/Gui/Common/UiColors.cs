@@ -39,32 +39,6 @@ public static class UiColors
     /// <summary>Category label color (dim gray) - ABGR format.</summary>
     public const uint CategoryColor = 0xFF808080;
     
-    // === Helper Methods for ABGR/Vector4 Conversion ===
-    
-    /// <summary>
-    /// Converts ABGR uint to Vector4 (RGBA float format for ImGui.ColorEdit).
-    /// </summary>
-    public static Vector4 ToVector4(uint abgr)
-    {
-        var r = (abgr & 0xFF) / 255f;
-        var g = ((abgr >> 8) & 0xFF) / 255f;
-        var b = ((abgr >> 16) & 0xFF) / 255f;
-        var a = ((abgr >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-    
-    /// <summary>
-    /// Converts Vector4 (RGBA float) to ABGR uint format.
-    /// </summary>
-    public static uint FromVector4(Vector4 rgba)
-    {
-        var r = (uint)(rgba.X * 255) & 0xFF;
-        var g = (uint)(rgba.Y * 255) & 0xFF;
-        var b = (uint)(rgba.Z * 255) & 0xFF;
-        var a = (uint)(rgba.W * 255) & 0xFF;
-        return r | (g << 8) | (b << 16) | (a << 24);
-    }
-
     // Status colors (Vector4 format for ImGui styling)
     /// <summary>Connected/Success status - green.</summary>
     public static readonly Vector4 Connected = new(0.2f, 0.8f, 0.2f, 1f);
