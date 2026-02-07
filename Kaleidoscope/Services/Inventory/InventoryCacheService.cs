@@ -30,8 +30,10 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly IClientState _clientState;
     private readonly ConfigurationService _configService;
     
-    // In-memory cache for inventory data - avoids repeated DB reads for offline characters
-    private readonly ConcurrentDictionary<ulong, List<InventoryCacheEntry>> _inventoryMemoryCache = new();
+    // In-memory cache for inventory data - avoids repeated DB reads for offline characters.
+    // Uses plain Dictionary (not ConcurrentDictionary) because all access is synchronized
+    // via _cacheLock for compound check-then-set atomicity.
+    private readonly Dictionary<ulong, List<InventoryCacheEntry>> _inventoryMemoryCache = new();
     
     private List<InventoryCacheEntry>? _allCharactersCache;
     private bool _allCharactersCacheDirty = true;
@@ -192,7 +194,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         lock (_cacheLock)
         {
-            _inventoryMemoryCache.TryRemove(characterId, out _);
+            _inventoryMemoryCache.Remove(characterId);
             _allCharactersCacheDirty = true;
         }
         Interlocked.Increment(ref _version);
@@ -220,7 +222,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     {
         lock (_cacheLock)
         {
-            var characterCaches = _inventoryMemoryCache.GetOrAdd(characterId, _ => new List<InventoryCacheEntry>());
+            if (!_inventoryMemoryCache.TryGetValue(characterId, out var characterCaches))
+            {
+                characterCaches = new List<InventoryCacheEntry>();
+                _inventoryMemoryCache[characterId] = characterCaches;
+            }
             
             var existingIndex = characterCaches.FindIndex(c => 
                 c.SourceType == entry.SourceType && c.RetainerId == entry.RetainerId);
@@ -468,7 +474,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             // Mark as dirty for later DB persistence (on logout/character change)
             MarkDirty(characterId, entry.SourceType, entry.RetainerId);
             
-            var characterCaches = _inventoryMemoryCache.TryGetValue(characterId, out var caches) ? caches : null;
+            List<InventoryCacheEntry>? characterCaches;
+            lock (_cacheLock)
+            {
+                _inventoryMemoryCache.TryGetValue(characterId, out characterCaches);
+            }
             var playerCache = characterCaches?.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
             if (playerCache != null)
             {
@@ -964,9 +974,15 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     public InventoryCacheStatistics GetCacheStatistics()
     {
-        var characterCount = _inventoryMemoryCache.Count;
-        var entryCount = _inventoryMemoryCache.Values.Sum(list => list.Count);
-        var itemCount = _inventoryMemoryCache.Values.Sum(list => list.Sum(e => e.Items.Count));
+        int characterCount;
+        int entryCount;
+        int itemCount;
+        lock (_cacheLock)
+        {
+            characterCount = _inventoryMemoryCache.Count;
+            entryCount = _inventoryMemoryCache.Values.Sum(list => list.Count);
+            itemCount = _inventoryMemoryCache.Values.Sum(list => list.Sum(e => e.Items.Count));
+        }
         var allCharactersCacheCount = _allCharactersCache?.Count ?? 0;
         var pendingSamplesCount = _pendingSamples.Count;
         
@@ -1004,8 +1020,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         // Flush pending item samples before disposing
         FlushPendingSamples("dispose");
         
-        _inventoryMemoryCache.Clear();
-        _allCharactersCache = null;
+        lock (_cacheLock)
+        {
+            _inventoryMemoryCache.Clear();
+            _allCharactersCache = null;
+        }
         _pendingSamples.Clear();
         
         lock (_dirtyLock)
