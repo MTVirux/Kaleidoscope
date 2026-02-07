@@ -203,11 +203,6 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public bool IncludeRetainers { get; set; } = true;
     
     /// <summary>
-    /// Whether to show separate lines for each character instead of aggregating.
-    /// </summary>
-    public bool ShowPerCharacter { get; set; } = false;
-    
-    /// <summary>
     /// Whether to show the action buttons row (Add Item, Add Currency, Refresh).
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
