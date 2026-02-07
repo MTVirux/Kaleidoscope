@@ -247,17 +247,17 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
                 var itemIdList = itemIds.ToList();
                 if (itemIdList.Count == 0) return result;
 
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 
                 if (worldId.HasValue)
                 {
@@ -305,17 +305,17 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int MinPrice, int WorldId, DateTime LastUpdated)>();
 
-        lock (_writeLock)
+        lock (_readLock)
         {
-            EnsureConnection();
-            if (_connection == null) return result;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
                 var itemIdList = itemIds.ToList();
                 if (itemIdList.Count == 0) return result;
 
-                using var cmd = _connection.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 
                 // For each item, find the world with the lowest non-zero NQ price (or HQ if no NQ)
                 // Using a subquery to get the row with the minimum price per item
