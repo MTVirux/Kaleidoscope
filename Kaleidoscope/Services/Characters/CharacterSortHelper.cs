@@ -23,7 +23,47 @@ public static class CharacterSortHelper
         if (characters == null || characters.Count <= 1) return;
 
         var sortOrder = configService?.Config.CharacterSortOrder ?? CharacterSortOrder.Alphabetical;
-        ApplySortOrderInternal(characters, sortOrder, autoRetainerService, getName);
+
+        switch (sortOrder)
+        {
+            case CharacterSortOrder.Alphabetical:
+                characters.Sort((a, b) =>
+                    string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase));
+                break;
+
+            case CharacterSortOrder.ReverseAlphabetical:
+                characters.Sort((a, b) =>
+                    string.Compare(getName(b), getName(a), StringComparison.OrdinalIgnoreCase));
+                break;
+
+            case CharacterSortOrder.AutoRetainer:
+                var orderLookup = BuildAutoRetainerOrderLookup(autoRetainerService);
+                if (orderLookup != null)
+                {
+                    characters.Sort((a, b) =>
+                    {
+                        var hasA = orderLookup.TryGetValue(a, out var orderA);
+                        var hasB = orderLookup.TryGetValue(b, out var orderB);
+
+                        if (hasA && hasB)
+                            return orderA.CompareTo(orderB);
+                        if (hasA)
+                            return -1;
+                        if (hasB)
+                            return 1;
+
+                        // Both not in AR, sort alphabetically
+                        return string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase);
+                    });
+                }
+                else
+                {
+                    // Fall back to alphabetical
+                    characters.Sort((a, b) =>
+                        string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase));
+                }
+                break;
+        }
     }
 
     /// <summary>
@@ -65,21 +105,33 @@ public static class CharacterSortHelper
         };
     }
 
+    /// <summary>
+    /// Builds an order lookup dictionary from AutoRetainer's registered character list.
+    /// Returns null if AutoRetainer data is unavailable or empty.
+    /// </summary>
+    private static Dictionary<ulong, int>? BuildAutoRetainerOrderLookup(AutoRetainerService? autoRetainerService)
+    {
+        var arOrder = autoRetainerService?.GetRegisteredCharacterIds();
+        if (arOrder == null || arOrder.Count == 0)
+            return null;
+
+        var lookup = new Dictionary<ulong, int>(arOrder.Count);
+        for (var i = 0; i < arOrder.Count; i++)
+        {
+            lookup[arOrder[i]] = i;
+        }
+        return lookup;
+    }
+
     private static IEnumerable<T> SortByAutoRetainerOrder<T>(
         List<T> items,
         AutoRetainerService? autoRetainerService,
         Func<T, ulong> getCharacterId,
         Func<T, string> getName)
     {
-        var arOrder = autoRetainerService?.GetRegisteredCharacterIds();
-        if (arOrder != null && arOrder.Count > 0)
+        var orderLookup = BuildAutoRetainerOrderLookup(autoRetainerService);
+        if (orderLookup != null)
         {
-            var orderLookup = new Dictionary<ulong, int>();
-            for (var i = 0; i < arOrder.Count; i++)
-            {
-                orderLookup[arOrder[i]] = i;
-            }
-
             return items.OrderBy(x =>
             {
                 var cid = getCharacterId(x);
@@ -97,59 +149,5 @@ public static class CharacterSortHelper
 
         // Fall back to alphabetical
         return items.OrderBy(x => getName(x), StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static void ApplySortOrderInternal(
-        List<ulong> characters,
-        CharacterSortOrder sortOrder,
-        AutoRetainerService? autoRetainerService,
-        Func<ulong, string> getName)
-    {
-        switch (sortOrder)
-        {
-            case CharacterSortOrder.Alphabetical:
-                characters.Sort((a, b) =>
-                    string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase));
-                break;
-
-            case CharacterSortOrder.ReverseAlphabetical:
-                characters.Sort((a, b) =>
-                    string.Compare(getName(b), getName(a), StringComparison.OrdinalIgnoreCase));
-                break;
-
-            case CharacterSortOrder.AutoRetainer:
-                var arOrder = autoRetainerService?.GetRegisteredCharacterIds();
-                if (arOrder != null && arOrder.Count > 0)
-                {
-                    var orderLookup = new Dictionary<ulong, int>();
-                    for (var i = 0; i < arOrder.Count; i++)
-                    {
-                        orderLookup[arOrder[i]] = i;
-                    }
-
-                    characters.Sort((a, b) =>
-                    {
-                        var hasA = orderLookup.TryGetValue(a, out var orderA);
-                        var hasB = orderLookup.TryGetValue(b, out var orderB);
-
-                        if (hasA && hasB)
-                            return orderA.CompareTo(orderB);
-                        if (hasA)
-                            return -1;
-                        if (hasB)
-                            return 1;
-
-                        // Both not in AR, sort alphabetically
-                        return string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase);
-                    });
-                }
-                else
-                {
-                    // Fall back to alphabetical
-                    characters.Sort((a, b) =>
-                        string.Compare(getName(a), getName(b), StringComparison.OrdinalIgnoreCase));
-                }
-                break;
-        }
     }
 }
