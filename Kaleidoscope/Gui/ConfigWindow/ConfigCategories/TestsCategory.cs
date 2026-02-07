@@ -35,6 +35,11 @@ public sealed class TestsCategory
     private bool _universalisTested = false;
     private bool _webSocketTested = false;
     
+    // Service test state
+    private bool _cacheServiceTested = false;
+    private bool _registryTested = false;
+    private bool _configServiceTested = false;
+    
     // Cache architecture test state
     private bool _cacheInitTested = false;
     private bool _cacheReadsTested = false;
@@ -243,25 +248,34 @@ public sealed class TestsCategory
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Cache Service"))
             {
+                _cacheServiceTested = true;
                 RunSingleTest("Cache Service", TestCacheService);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_cacheServiceTested, "Cache Service");
 
             // Registry Test
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Tracked Data Registry"))
             {
+                _registryTested = true;
                 RunSingleTest("Tracked Data Registry", TestRegistry);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_registryTested, "Tracked Data Registry");
 
             // Config Service Test
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Config Service"))
             {
+                _configServiceTested = true;
                 RunSingleTest("Config Service", TestConfigService);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_configServiceTested, "Config Service");
 
             ImGui.Unindent();
         }
@@ -770,6 +784,10 @@ public sealed class TestsCategory
         _arIpcTested = true;
         _universalisTested = true;
         _webSocketTested = true;
+        // Service tests
+        _cacheServiceTested = true;
+        _registryTested = true;
+        _configServiceTested = true;
         // Cache architecture tests
         _cacheInitTested = true;
         _cacheReadsTested = true;
