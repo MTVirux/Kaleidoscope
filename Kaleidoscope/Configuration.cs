@@ -218,7 +218,6 @@ public class Configuration : IPluginConfiguration
         TrackedDataType.OrangeGatherersScrip,
         TrackedDataType.SackOfNuts,
         TrackedDataType.Ventures
-        // Individual crystals are now handled by CrystalTracker tool
     };
 
     /// <summary>
@@ -247,8 +246,6 @@ public class Configuration : IPluginConfiguration
     /// Favorite character IDs for quick access in character selectors.
     /// </summary>
     public HashSet<ulong> FavoriteCharacters { get; set; } = new();
-
-    public CrystalTrackerSettings CrystalTracker { get; set; } = new();
 
     /// <summary>
     /// Settings for the Universalis price tracking feature.

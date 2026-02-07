@@ -74,25 +74,6 @@ public enum CrystalTier
 }
 
 /// <summary>
-/// How to group crystal data in the display.
-/// </summary>
-public enum CrystalGrouping
-{
-    /// <summary>Show total crystals as a single value.</summary>
-    None = 0,
-    /// <summary>Show separate lines/values per character.</summary>
-    ByCharacter = 1,
-    /// <summary>Show separate lines/values per element (Fire, Ice, etc.).</summary>
-    ByElement = 2,
-    /// <summary>Show separate lines/values per element per character.</summary>
-    ByCharacterAndElement = 3,
-    /// <summary>Show separate lines/values per tier (Shard, Crystal, Cluster).</summary>
-    ByTier = 4,
-    /// <summary>Show separate lines/values per tier per character.</summary>
-    ByCharacterAndTier = 5
-}
-
-/// <summary>
 /// View mode for the unified Data Tool.
 /// </summary>
 public enum DataToolViewMode
