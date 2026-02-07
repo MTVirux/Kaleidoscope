@@ -101,13 +101,39 @@ public partial class ItemSalesTrackingTool
     {
         return new Dictionary<string, object?>
         {
+            // Tool-specific
             ["SelectedItemIds"] = _itemCombo.SelectedItemIds.ToList(),
             ["MaxHistoryEntries"] = Settings.MaxHistoryEntries,
             ["FilterOutliers"] = Settings.FilterOutliers,
             ["ScopeMode"] = (int)Settings.ScopeMode,
             ["SelectedRegions"] = Settings.SelectedRegions.ToList(),
             ["SelectedDataCenters"] = Settings.SelectedDataCenters.ToList(),
-            ["SelectedWorldIds"] = Settings.SelectedWorldIds.ToList()
+            ["SelectedWorldIds"] = Settings.SelectedWorldIds.ToList(),
+            
+            // Graph settings
+            ["ColorMode"] = (int)Settings.ColorMode,
+            ["LegendWidth"] = Settings.LegendWidth,
+            ["LegendHeightPercent"] = Settings.LegendHeightPercent,
+            ["ShowLegend"] = Settings.ShowLegend,
+            ["LegendCollapsed"] = Settings.LegendCollapsed,
+            ["LegendPosition"] = (int)Settings.LegendPosition,
+            ["GraphType"] = (int)Settings.GraphType,
+            ["ShowXAxisTimestamps"] = Settings.ShowXAxisTimestamps,
+            ["ShowCrosshair"] = Settings.ShowCrosshair,
+            ["ShowGridLines"] = Settings.ShowGridLines,
+            ["ShowCurrentPriceLine"] = Settings.ShowCurrentPriceLine,
+            ["ShowValueLabel"] = Settings.ShowValueLabel,
+            ["ValueLabelOffsetX"] = Settings.ValueLabelOffsetX,
+            ["ValueLabelOffsetY"] = Settings.ValueLabelOffsetY,
+            ["AutoScrollEnabled"] = Settings.AutoScrollEnabled,
+            ["AutoScrollTimeValue"] = Settings.AutoScrollTimeValue,
+            ["AutoScrollTimeUnit"] = (int)Settings.AutoScrollTimeUnit,
+            ["AutoScrollNowPosition"] = Settings.AutoScrollNowPosition,
+            ["ShowControlsDrawer"] = Settings.ShowControlsDrawer,
+            ["TimeRangeValue"] = Settings.TimeRangeValue,
+            ["TimeRangeUnit"] = (int)Settings.TimeRangeUnit,
+            ["NumberFormatStyle"] = (int)Settings.NumberFormat.Style,
+            ["NumberFormatDecimalPlaces"] = Settings.NumberFormat.DecimalPlaces
         };
     }
 
@@ -150,6 +176,35 @@ public partial class ItemSalesTrackingTool
         }
 
         _worldSelectionWidgetInitialized = false;
+        
+        // Graph settings
+        Settings.ColorMode = (GraphColorMode)GetSetting(settings, "ColorMode", (int)Settings.ColorMode);
+        Settings.LegendWidth = GetSetting(settings, "LegendWidth", Settings.LegendWidth);
+        Settings.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", Settings.LegendHeightPercent);
+        Settings.ShowLegend = GetSetting(settings, "ShowLegend", Settings.ShowLegend);
+        Settings.LegendCollapsed = GetSetting(settings, "LegendCollapsed", Settings.LegendCollapsed);
+        Settings.LegendPosition = (MTLegendPosition)GetSetting(settings, "LegendPosition", (int)Settings.LegendPosition);
+        Settings.GraphType = (MTGraphType)GetSetting(settings, "GraphType", (int)Settings.GraphType);
+        Settings.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", Settings.ShowXAxisTimestamps);
+        Settings.ShowCrosshair = GetSetting(settings, "ShowCrosshair", Settings.ShowCrosshair);
+        Settings.ShowGridLines = GetSetting(settings, "ShowGridLines", Settings.ShowGridLines);
+        Settings.ShowCurrentPriceLine = GetSetting(settings, "ShowCurrentPriceLine", Settings.ShowCurrentPriceLine);
+        Settings.ShowValueLabel = GetSetting(settings, "ShowValueLabel", Settings.ShowValueLabel);
+        Settings.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", Settings.ValueLabelOffsetX);
+        Settings.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", Settings.ValueLabelOffsetY);
+        Settings.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", Settings.AutoScrollEnabled);
+        Settings.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", Settings.AutoScrollTimeValue);
+        Settings.AutoScrollTimeUnit = (MTTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)Settings.AutoScrollTimeUnit);
+        Settings.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", Settings.AutoScrollNowPosition);
+        Settings.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", Settings.ShowControlsDrawer);
+        Settings.TimeRangeValue = GetSetting(settings, "TimeRangeValue", Settings.TimeRangeValue);
+        Settings.TimeRangeUnit = (MTTimeUnit)GetSetting(settings, "TimeRangeUnit", (int)Settings.TimeRangeUnit);
+        
+        if (settings.ContainsKey("NumberFormatStyle"))
+        {
+            Settings.NumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)Settings.NumberFormat.Style);
+            Settings.NumberFormat.DecimalPlaces = GetSetting(settings, "NumberFormatDecimalPlaces", Settings.NumberFormat.DecimalPlaces);
+        }
         
         var selectedIds = _itemCombo.SelectedItemIds.ToList();
         LogDebug($"ImportToolSettings: {selectedIds.Count} items selected after import");

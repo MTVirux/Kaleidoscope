@@ -314,6 +314,7 @@ public partial class DataTool
             ["Columns"] = columns,
             ["IncludeRetainers"] = settings.IncludeRetainers,
             ["ShowActionButtons"] = settings.ShowActionButtons,
+            ["HideZeroRows"] = settings.HideZeroRows,
             ["TableNumberFormatStyle"] = (int)settings.TableNumberFormat.Style,
             ["TableNumberFormatDecimalPlaces"] = settings.TableNumberFormat.DecimalPlaces,
             ["GraphNumberFormatStyle"] = (int)settings.GraphNumberFormat.Style,
@@ -393,6 +394,7 @@ public partial class DataTool
         // Shared settings
         target.IncludeRetainers = GetSetting(settings, "IncludeRetainers", target.IncludeRetainers);
         target.ShowActionButtons = GetSetting(settings, "ShowActionButtons", target.ShowActionButtons);
+        target.HideZeroRows = GetSetting(settings, "HideZeroRows", target.HideZeroRows);
         
         // Table number format
         if (settings.ContainsKey("TableNumberFormatStyle"))
@@ -467,6 +469,7 @@ public partial class DataTool
         target.HideCharacterColumnInAllMode = GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
         target.TextColorMode = (TableTextColorMode)GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
         target.ShowRetainerBreakdown = GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
+        target.ShowRetainerBreakdownInGraph = GetSetting(settings, "ShowRetainerBreakdownInGraph", target.ShowRetainerBreakdownInGraph);
         
         // Import merged column groups
         if (settings.TryGetValue("MergedColumnGroups", out var mergedColGroupsObj) && mergedColGroupsObj != null)
