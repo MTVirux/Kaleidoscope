@@ -26,23 +26,11 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly FilenameService _filenameService;
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
-    private readonly TrackedDataRegistry _trackedDataRegistry;
-    private readonly InventoryChangeService _inventoryChangeService;
-    private readonly UniversalisWebSocketService _webSocketService;
-    private readonly PriceTrackingService _priceTrackingService;
-    private readonly ItemDataService _itemDataService;
-    private readonly IDataManager _dataManager;
-    private readonly InventoryCacheService _inventoryCacheService;
     private readonly ProfilerService _profilerService;
-    private readonly AutoRetainerService _autoRetainerIpc;
-    private readonly ITextureProvider _textureProvider;
-    private readonly FavoritesService _favoritesService;
-    private readonly CharacterDataService _characterDataService;
-    private readonly SalePriceCacheService _salePriceCacheService;
     private readonly FrameLimiterService _frameLimiterService;
+    private readonly ToolCreationContext _toolContext;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -136,23 +124,17 @@ public sealed class MainWindow : Window, IService, IDisposable
         _log = log;
         _configService = configService;
         _currencyTrackerService = currencyTrackerService;
-        _filenameService = filenameService;
         _stateService = stateService;
         _layoutEditingService = layoutEditingService;
-        _trackedDataRegistry = trackedDataRegistry;
-        _inventoryChangeService = inventoryChangeService;
-        _webSocketService = webSocketService;
-        _priceTrackingService = priceTrackingService;
-        _itemDataService = itemDataService;
-        _dataManager = dataManager;
-        _inventoryCacheService = inventoryCacheService;
         _profilerService = profilerService;
-        _autoRetainerIpc = autoRetainerIpc;
-        _textureProvider = textureProvider;
-        _favoritesService = favoritesService;
-        _characterDataService = characterDataService;
-        _salePriceCacheService = salePriceCacheService;
         _frameLimiterService = frameLimiterService;
+        
+        // Bundle tool-related services into a single context for tool creation
+        _toolContext = new ToolCreationContext(
+            filenameService, currencyTrackerService, configService, characterDataService,
+            inventoryChangeService, trackedDataRegistry, webSocketService,
+            priceTrackingService, itemDataService, dataManager,
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
@@ -369,7 +351,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             return _layoutEditingService.WorkingGridSettings?.ToolInternalPaddingPx ?? -1;
         };
 
-        WindowToolRegistrar.RegisterTools(_contentContainer, _filenameService, _currencyTrackerService, _configService, _characterDataService, _inventoryChangeService, _trackedDataRegistry, _webSocketService, _priceTrackingService, _itemDataService, _dataManager, _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService, _salePriceCacheService);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _toolContext);
 
         ApplyInitialLayout();
 
@@ -380,12 +362,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var ctx = new ToolCreationContext(
-                    _filenameService, _currencyTrackerService, _configService, _characterDataService,
-                    _inventoryChangeService, _trackedDataRegistry, _webSocketService,
-                    _priceTrackingService, _itemDataService, _dataManager,
-                    _inventoryCacheService, _autoRetainerIpc, _textureProvider, _favoritesService, _salePriceCacheService);
-                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), ctx);
+                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), _toolContext);
                 if (gettingStarted != null) _contentContainer?.AddToolInstanceWithoutDirty(gettingStarted);
             }
         }
@@ -618,8 +595,8 @@ public sealed class MainWindow : Window, IService, IDisposable
             _layoutEditingService,
             _configService,
             _currencyTrackerService,
-            _webSocketService,
-            _autoRetainerIpc,
+            _toolContext.WebSocketService,
+            _toolContext.AutoRetainerIpc,
             _frameLimiterService,
             onFullscreenToggle: () =>
             {
