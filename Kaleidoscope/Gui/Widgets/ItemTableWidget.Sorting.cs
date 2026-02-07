@@ -12,6 +12,53 @@ namespace Kaleidoscope.Gui.Widgets;
 
 public partial class ItemTableWidget
 {
+    /// <summary>
+    /// Merges values from a source dictionary into a target dictionary using additive semantics.
+    /// If a key already exists in target, its value is summed with the source value.
+    /// </summary>
+    private static void MergeDictionaryAdditive<TKey>(Dictionary<TKey, long> target, IReadOnlyDictionary<TKey, long> source) where TKey : notnull
+    {
+        foreach (var kvp in source)
+        {
+            if (target.TryGetValue(kvp.Key, out var existing))
+                target[kvp.Key] = existing + kvp.Value;
+            else
+                target[kvp.Key] = kvp.Value;
+        }
+    }
+    
+    /// <summary>
+    /// Aggregates PlayerItemCounts and RetainerBreakdown from multiple source rows into the target row.
+    /// </summary>
+    private static void AggregateRowData(ItemTableCharacterRow target, IEnumerable<ItemTableCharacterRow> sourceRows)
+    {
+        var aggregatedPlayerCounts = new Dictionary<uint, long>();
+        var aggregatedRetainerBreakdown = new Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>();
+        
+        foreach (var sourceRow in sourceRows)
+        {
+            if (sourceRow.PlayerItemCounts != null)
+                MergeDictionaryAdditive(aggregatedPlayerCounts, sourceRow.PlayerItemCounts);
+            
+            if (sourceRow.RetainerBreakdown != null)
+            {
+                foreach (var (retainerKey, counts) in sourceRow.RetainerBreakdown)
+                {
+                    if (!aggregatedRetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
+                    {
+                        retainerCounts = new Dictionary<uint, long>();
+                        aggregatedRetainerBreakdown[retainerKey] = retainerCounts;
+                    }
+                    MergeDictionaryAdditive(retainerCounts, counts);
+                }
+            }
+        }
+        
+        if (aggregatedPlayerCounts.Count > 0)
+            target.PlayerItemCounts = aggregatedPlayerCounts;
+        if (aggregatedRetainerBreakdown.Count > 0)
+            target.RetainerBreakdown = aggregatedRetainerBreakdown;
+    }
     
     private List<ItemTableCharacterRow> GetSortedRows(
         IReadOnlyList<ItemTableCharacterRow> rows,
@@ -100,49 +147,8 @@ public partial class ItemTableWidget
                 aggregateRow.ItemCounts[column.Id] = sum;
             }
             
-            // Aggregate PlayerItemCounts from all source rows
-            var aggregatedPlayerCounts = new Dictionary<uint, long>();
-            foreach (var sourceRow in rows)
-            {
-                if (sourceRow.PlayerItemCounts != null)
-                {
-                    foreach (var kvp in sourceRow.PlayerItemCounts)
-                    {
-                        if (aggregatedPlayerCounts.TryGetValue(kvp.Key, out var existing))
-                            aggregatedPlayerCounts[kvp.Key] = existing + kvp.Value;
-                        else
-                            aggregatedPlayerCounts[kvp.Key] = kvp.Value;
-                    }
-                }
-            }
-            if (aggregatedPlayerCounts.Count > 0)
-                aggregateRow.PlayerItemCounts = aggregatedPlayerCounts;
-            
-            // Aggregate RetainerBreakdown from all source rows
-            var aggregatedRetainerBreakdown = new Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>();
-            foreach (var sourceRow in rows)
-            {
-                if (sourceRow.RetainerBreakdown != null)
-                {
-                    foreach (var (retainerKey, counts) in sourceRow.RetainerBreakdown)
-                    {
-                        if (!aggregatedRetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
-                        {
-                            retainerCounts = new Dictionary<uint, long>();
-                            aggregatedRetainerBreakdown[retainerKey] = retainerCounts;
-                        }
-                        foreach (var kvp in counts)
-                        {
-                            if (retainerCounts.TryGetValue(kvp.Key, out var existing))
-                                retainerCounts[kvp.Key] = existing + kvp.Value;
-                            else
-                                retainerCounts[kvp.Key] = kvp.Value;
-                        }
-                    }
-                }
-            }
-            if (aggregatedRetainerBreakdown.Count > 0)
-                aggregateRow.RetainerBreakdown = aggregatedRetainerBreakdown;
+            // Aggregate PlayerItemCounts and RetainerBreakdown from all source rows
+            AggregateRowData(aggregateRow, rows);
             
             return new List<ItemTableCharacterRow> { aggregateRow };
         }
@@ -178,49 +184,8 @@ public partial class ItemTableWidget
                 aggregateRow.ItemCounts[column.Id] = sum;
             }
             
-            // Aggregate PlayerItemCounts from all source rows in this group
-            var aggregatedPlayerCounts = new Dictionary<uint, long>();
-            foreach (var sourceRow in group)
-            {
-                if (sourceRow.PlayerItemCounts != null)
-                {
-                    foreach (var kvp in sourceRow.PlayerItemCounts)
-                    {
-                        if (aggregatedPlayerCounts.TryGetValue(kvp.Key, out var existing))
-                            aggregatedPlayerCounts[kvp.Key] = existing + kvp.Value;
-                        else
-                            aggregatedPlayerCounts[kvp.Key] = kvp.Value;
-                    }
-                }
-            }
-            if (aggregatedPlayerCounts.Count > 0)
-                aggregateRow.PlayerItemCounts = aggregatedPlayerCounts;
-            
-            // Aggregate RetainerBreakdown from all source rows in this group
-            var aggregatedRetainerBreakdown = new Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>();
-            foreach (var sourceRow in group)
-            {
-                if (sourceRow.RetainerBreakdown != null)
-                {
-                    foreach (var (retainerKey, counts) in sourceRow.RetainerBreakdown)
-                    {
-                        if (!aggregatedRetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
-                        {
-                            retainerCounts = new Dictionary<uint, long>();
-                            aggregatedRetainerBreakdown[retainerKey] = retainerCounts;
-                        }
-                        foreach (var kvp in counts)
-                        {
-                            if (retainerCounts.TryGetValue(kvp.Key, out var existing))
-                                retainerCounts[kvp.Key] = existing + kvp.Value;
-                            else
-                                retainerCounts[kvp.Key] = kvp.Value;
-                        }
-                    }
-                }
-            }
-            if (aggregatedRetainerBreakdown.Count > 0)
-                aggregateRow.RetainerBreakdown = aggregatedRetainerBreakdown;
+            // Aggregate PlayerItemCounts and RetainerBreakdown from all source rows in this group
+            AggregateRowData(aggregateRow, group);
             
             result.Add(aggregateRow);
         }

@@ -194,15 +194,7 @@ public partial class ItemTableWidget
                         {
                             var sourceRow = rows.FirstOrDefault(r => r.CharacterId == cid);
                             if (sourceRow != null)
-                            {
-                                foreach (var kvp in sourceRow.ItemCounts)
-                                {
-                                    if (aggregatedCounts.TryGetValue(kvp.Key, out var existing))
-                                        aggregatedCounts[kvp.Key] = existing + kvp.Value;
-                                    else
-                                        aggregatedCounts[kvp.Key] = kvp.Value;
-                                }
-                            }
+                                MergeDictionaryAdditive(aggregatedCounts, sourceRow.ItemCounts);
                         }
                         
                         displayRows.Add(new DisplayRow
@@ -269,15 +261,7 @@ public partial class ItemTableWidget
                         {
                             var sourceRow = rows.FirstOrDefault(r => r.Name == key);
                             if (sourceRow != null)
-                            {
-                                foreach (var kvp in sourceRow.ItemCounts)
-                                {
-                                    if (aggregatedCounts.TryGetValue(kvp.Key, out var existing))
-                                        aggregatedCounts[kvp.Key] = existing + kvp.Value;
-                                    else
-                                        aggregatedCounts[kvp.Key] = kvp.Value;
-                                }
-                            }
+                                MergeDictionaryAdditive(aggregatedCounts, sourceRow.ItemCounts);
                         }
                         
                         displayRows.Add(new DisplayRow
