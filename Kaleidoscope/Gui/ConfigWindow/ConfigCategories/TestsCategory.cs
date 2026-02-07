@@ -22,6 +22,7 @@ public sealed class TestsCategory
     private readonly MarketDataCacheService _marketDataCacheService;
 
     // Test results storage
+    private readonly object _testResultsLock = new();
     private readonly List<TestResult> _testResults = new();
     private bool _isRunningTests = false;
     private string _currentTestName = "";
@@ -94,7 +95,7 @@ public sealed class TestsCategory
         // Run all tests button
         if (ImGui.Button("Run All Tests") && !_isRunningTests)
         {
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
             RunAllTestsAsync();
         }
 
@@ -102,7 +103,7 @@ public sealed class TestsCategory
 
         if (ImGui.Button("Clear Results"))
         {
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
             _dbConnectionTested = false;
             _dbReadWriteTested = false;
             _arIpcTested = false;
@@ -577,23 +578,25 @@ public sealed class TestsCategory
 
     private void DrawTestResults()
     {
-        if (_testResults.Count == 0) return;
+        List<TestResult> resultsSnapshot;
+        lock (_testResultsLock)
+        {
+            if (_testResults.Count == 0) return;
+            resultsSnapshot = _testResults.ToList();
+        }
 
         ImGui.Separator();
         ImGui.TextUnformatted("Test Results");
         ImGui.Separator();
 
         // Summary
-        var passed = _testResults.Count(r => r.Passed);
-        var failed = _testResults.Count(r => !r.Passed);
+        var passed = resultsSnapshot.Count(r => r.Passed);
+        var failed = resultsSnapshot.Count(r => !r.Passed);
         var summaryColor = failed == 0 
             ? new System.Numerics.Vector4(0.5f, 1f, 0.5f, 1f) 
             : new System.Numerics.Vector4(1f, 0.5f, 0.5f, 1f);
         ImGui.TextColored(summaryColor, $"Passed: {passed} | Failed: {failed}");
         ImGui.Spacing();
-
-        // Take a snapshot to avoid concurrent modification during iteration
-        var resultsSnapshot = _testResults.ToList();
 
         // Individual results in scrollable area
         var availHeight = Math.Min(200f, resultsSnapshot.Count * 25f + 10f);
@@ -631,7 +634,8 @@ public sealed class TestsCategory
             return;
         }
 
-        var result = _testResults.LastOrDefault(r => r.Name.Contains(testName));
+        TestResult? result;
+        lock (_testResultsLock) { result = _testResults.LastOrDefault(r => r.Name.Contains(testName)); }
         if (result == null)
         {
             ImGui.TextColored(new System.Numerics.Vector4(0.5f, 0.5f, 0.5f, 1f), "Not run");
@@ -678,7 +682,7 @@ public sealed class TestsCategory
             try
             {
                 var result = test();
-                _testResults.Add(result);
+                lock (_testResultsLock) { _testResults.Add(result); }
                 
                 // Update specific test status flags
                 if (name.Contains("DB Connection")) _dbConnectionTested = true;
@@ -689,7 +693,7 @@ public sealed class TestsCategory
             }
             catch (Exception ex)
             {
-                _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message));
+                lock (_testResultsLock) { _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message)); }
             }
             finally
             {
@@ -704,7 +708,7 @@ public sealed class TestsCategory
         try
         {
             _isRunningTests = true;
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
 
             var tests = new List<(string Name, Func<TestResult> Test)>
         {
@@ -749,11 +753,11 @@ public sealed class TestsCategory
             try
             {
                 var result = await Task.Run(test);
-                _testResults.Add(result);
+                lock (_testResultsLock) { _testResults.Add(result); }
             }
             catch (Exception ex)
             {
-                _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message));
+                lock (_testResultsLock) { _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message)); }
             }
 
             // Small delay between tests
@@ -793,7 +797,7 @@ public sealed class TestsCategory
         catch (Exception ex)
         {
             LogService.Error(LogCategory.UI, $"RunAllTestsAsync failed: {ex.Message}");
-            _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message));
+            lock (_testResultsLock) { _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message)); }
         }
         finally
         {
