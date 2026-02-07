@@ -9,11 +9,6 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public sealed class FileDialogService : IService, IDisposable
 {
-    /// <summary>
-    /// Static accessor for components without DI access.
-    /// </summary>
-    public static FileDialogService? Instance { get; private set; }
-
     private readonly FileDialogManager _manager;
 
     public FileDialogService()
@@ -22,7 +17,6 @@ public sealed class FileDialogService : IService, IDisposable
         {
             AddedWindowFlags = Dalamud.Bindings.ImGui.ImGuiWindowFlags.NoCollapse | Dalamud.Bindings.ImGui.ImGuiWindowFlags.NoDocking,
         };
-        Instance = this;
     }
 
     /// <summary>
@@ -83,6 +77,5 @@ public sealed class FileDialogService : IService, IDisposable
     public void Dispose()
     {
         _manager.Reset();
-        Instance = null;
     }
 }

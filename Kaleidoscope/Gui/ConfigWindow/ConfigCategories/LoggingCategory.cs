@@ -14,6 +14,8 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 public sealed class LoggingCategory
 {
     private readonly ConfigurationService _configService;
+    private readonly FilenameService _filenameService;
+    private readonly FileDialogService _fileDialogService;
     
     private static readonly Vector4 HeaderColor = new(1f, 0.8f, 0.2f, 1f);
     private static readonly Vector4 EnabledColor = new(0.4f, 1f, 0.4f, 1f);
@@ -39,9 +41,11 @@ public sealed class LoggingCategory
         (LogCategory.Config, "Configuration", "Settings loading and saving"),
     };
 
-    public LoggingCategory(ConfigurationService configService)
+    public LoggingCategory(ConfigurationService configService, FilenameService filenameService, FileDialogService fileDialogService)
     {
         _configService = configService;
+        _filenameService = filenameService;
+        _fileDialogService = fileDialogService;
     }
 
     public void Draw()
@@ -163,7 +167,7 @@ public sealed class LoggingCategory
             {
                 try
                 {
-                    var path = FilenameService.Instance?.LogFilePath;
+                    var path = _filenameService.LogFilePath;
                     if (path != null && File.Exists(path))
                     {
                         Process.Start(new ProcessStartInfo
@@ -185,8 +189,8 @@ public sealed class LoggingCategory
             {
                 try
                 {
-                    var logPath2 = FilenameService.Instance?.LogFilePath;
-                    var folder = logPath2 != null ? Path.GetDirectoryName(logPath2) : FilenameService.Instance?.ConfigDirectory;
+                    var logPath2 = _filenameService.LogFilePath;
+                    var folder = Path.GetDirectoryName(logPath2);
                     if (folder != null && Directory.Exists(folder))
                     {
                         Process.Start(new ProcessStartInfo
@@ -239,7 +243,7 @@ public sealed class LoggingCategory
         ImGui.TextUnformatted("Log Directory:");
         
         var customDir = config.FileLoggingDirectory;
-        var defaultDir = FilenameService.Instance?.ConfigDirectory ?? "";
+        var defaultDir = _filenameService.ConfigDirectory;
         var displayDir = string.IsNullOrWhiteSpace(customDir) ? "" : customDir;
         var placeholder = $"Default: {defaultDir}";
         
@@ -275,7 +279,7 @@ public sealed class LoggingCategory
                 ? customDir 
                 : defaultDir;
             
-            FileDialogService.Instance?.OpenFolderPicker("Select Log Directory", (success, selectedPath) =>
+            _fileDialogService.OpenFolderPicker("Select Log Directory", (success, selectedPath) =>
             {
                 if (success && !string.IsNullOrWhiteSpace(selectedPath))
                 {
@@ -327,7 +331,7 @@ public sealed class LoggingCategory
 
         if (splitByCategory || splitByCharacter)
         {
-            var logDir = FilenameService.Instance?.LogDirectory ?? "Not available";
+            var logDir = _filenameService.LogDirectory;
             ImGui.TextDisabled($"Log directory: {logDir}");
             
             if (splitByCategory && splitByCharacter)
@@ -355,7 +359,7 @@ public sealed class LoggingCategory
         }
         else
         {
-            var logPath = FilenameService.Instance?.LogFilePath ?? "Not available";
+            var logPath = _filenameService.LogFilePath;
             ImGui.TextDisabled($"Log file: {logPath}");
         }
     }
@@ -511,10 +515,10 @@ public sealed class LoggingCategory
             LogService.UpdateFileLogging();
 
             var deletedCount = 0;
-            var logDir = FilenameService.Instance?.LogDirectory;
+            var logDir = _filenameService.LogDirectory;
 
             // Delete main log file
-            var mainPath = FilenameService.Instance?.LogFilePath;
+            var mainPath = _filenameService.LogFilePath;
             if (mainPath != null && File.Exists(mainPath))
             {
                 File.Delete(mainPath);

@@ -105,7 +105,9 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         MarketDataCacheService marketDataCacheService,
         FrameLimiterService frameLimiterService,
         IUiBuilder uiBuilder,
-        MessageService messageService)
+        MessageService messageService,
+        FilenameService filenameService,
+        FileDialogService fileDialogService)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -177,7 +179,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             _priceTrackingService);
         _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
-        _loggingCategory = new LoggingCategory(_configService);
+        _loggingCategory = new LoggingCategory(_configService, filenameService, fileDialogService);
         _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
