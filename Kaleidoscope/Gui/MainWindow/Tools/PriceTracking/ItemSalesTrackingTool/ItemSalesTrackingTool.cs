@@ -78,7 +78,10 @@ public partial class ItemSalesTrackingTool : ToolComponent
         _currencyTrackerService = currencyTrackerService;
         _salePriceCacheService = salePriceCacheService;
 
-        _instanceSettings = new ItemSalesTrackingSettings();
+        _instanceSettings = new ItemSalesTrackingSettings
+        {
+            NumberFormat = configService.Config.DefaultGraphNumberFormat.Clone()
+        };
 
         _itemCombo = new MTItemComboDropdown(
             textureProvider,
@@ -106,7 +109,8 @@ public partial class ItemSalesTrackingTool : ToolComponent
             AutoScrollEnabled = true,
             AutoScrollTimeValue = 24,
             AutoScrollTimeUnit = MTTimeUnit.Hours,
-            SimulateRealTimeUpdates = false
+            SimulateRealTimeUpdates = false,
+            Style = configService.Config.GraphStyle
         };
         _graphWidget = new MTGraphWidget(graphConfig);
         

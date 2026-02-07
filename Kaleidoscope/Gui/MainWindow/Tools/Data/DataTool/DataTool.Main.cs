@@ -115,8 +115,16 @@ public partial class DataTool : ToolComponent
         _favoritesService = favoritesService;
         _textureProvider = textureProvider;
         
-        // Initialize instance-specific settings
-        _instanceSettings = new DataToolSettings();
+        // Initialize instance-specific settings with global defaults
+        var uiColors = configService.Config.UIColors;
+        _instanceSettings = new DataToolSettings
+        {
+            TableNumberFormat = configService.Config.DefaultTableNumberFormat.Clone(),
+            GraphNumberFormat = configService.Config.DefaultGraphNumberFormat.Clone(),
+            HeaderColor = uiColors.TableHeader,
+            EvenRowColor = uiColors.TableRowEven,
+            OddRowColor = uiColors.TableRowOdd
+        };
         
         Size = new Vector2(500, 300);
         UpdateTitle();
@@ -126,7 +134,8 @@ public partial class DataTool : ToolComponent
             new ItemTableWidget.TableConfig
             {
                 TableId = "DataToolTable",
-                NoDataText = "No data yet. Add items or currencies to track."
+                NoDataText = "No data yet. Add items or currencies to track.",
+                TotalRowColor = uiColors.TableTotalRow
             },
             itemDataService,
             trackedDataRegistry,
@@ -139,13 +148,14 @@ public partial class DataTool : ToolComponent
             () => NotifyToolSettingsChanged(),
             "Table Settings");
         
-        // Create the graph widget
+        // Create the graph widget (inherit global graph style from config)
         _graphWidget = new MTGraphWidget(new MTGraphConfig
         {
             PlotId = "DataToolGraph",
             MinValue = 0f,
             MaxValue = 100_000_000f,
-            NoDataText = "No historical data available."
+            NoDataText = "No historical data available.",
+            Style = configService.Config.GraphStyle
         });
         
         // Bind graph widget to settings
