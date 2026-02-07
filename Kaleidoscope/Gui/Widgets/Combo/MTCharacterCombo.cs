@@ -285,7 +285,7 @@ public sealed class MTCharacterCombo : IDisposable
                     world = arWorld;
                 }
                 
-                var displayName = TimeSeriesCacheService.FormatName(baseName, nameFormat) ?? baseName;
+                var displayName = Kaleidoscope.Libs.CharacterNameFormatter.FormatName(baseName, nameFormat) ?? baseName;
                 
                 string? dcName = null;
                 string? regionName = null;

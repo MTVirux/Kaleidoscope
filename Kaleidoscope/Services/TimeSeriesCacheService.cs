@@ -292,13 +292,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return _characterDataCache.GetDisambiguatedNames(characterIds);
     }
 
-    /// <summary>
-    /// Formats a name according to the specified format.
-    /// Delegates to CharacterDataCacheService.FormatName.
-    /// </summary>
-    public static string? FormatName(string? fullName, CharacterNameFormat format)
-        => CharacterDataCacheService.FormatName(fullName, format);
-
     #region Cache-First Batch Read Operations (Phase 3)
 
     /// <summary>

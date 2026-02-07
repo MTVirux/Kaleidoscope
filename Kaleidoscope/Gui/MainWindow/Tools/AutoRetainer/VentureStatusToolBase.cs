@@ -133,7 +133,7 @@ public abstract class VentureStatusToolBase : ToolComponent
     protected string GetFormattedCharacterName(AutoRetainerCharacterData character)
     {
         var format = ConfigService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
-        return TimeSeriesCacheService.FormatName(character.Name, format) ?? character.Name;
+        return Kaleidoscope.Libs.CharacterNameFormatter.FormatName(character.Name, format) ?? character.Name;
     }
 
     public override void RenderToolContent()

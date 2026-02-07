@@ -26,7 +26,7 @@ public partial class DataTool
         // Try runtime lookup for currently-loaded characters (formats it)
         var runtimeName = GameStateService.GetCharacterName(characterId);
         if (!string.IsNullOrEmpty(runtimeName))
-            return TimeSeriesCacheService.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
+            return Kaleidoscope.Libs.CharacterNameFormatter.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
 
         // Fallback to ID
         return $"Character {characterId}";

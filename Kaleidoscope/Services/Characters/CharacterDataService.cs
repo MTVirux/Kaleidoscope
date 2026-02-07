@@ -170,7 +170,7 @@ public sealed class CharacterDataService : IDisposable, IService
             return $"Character {characterId}";
 
         var nameFormat = _configService.Config.CharacterNameFormat;
-        return TimeSeriesCacheService.FormatName(character.Name, nameFormat) ?? character.Name;
+        return Libs.CharacterNameFormatter.FormatName(character.Name, nameFormat) ?? character.Name;
     }
 
     /// <summary>
@@ -271,7 +271,7 @@ public sealed class CharacterDataService : IDisposable, IService
                 }
 
                 // Apply name format
-                displayName = TimeSeriesCacheService.FormatName(displayName, nameFormat) ?? displayName;
+                displayName = Libs.CharacterNameFormatter.FormatName(displayName, nameFormat) ?? displayName;
 
                 // Get DC and Region from world data
                 string? dcName = null;

@@ -266,25 +266,10 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Formats a name according to the specified format.
+    /// Delegates to <see cref="CharacterNameFormatter.FormatName"/>.
     /// </summary>
     public static string? FormatName(string? fullName, CharacterNameFormat format)
-    {
-        if (string.IsNullOrWhiteSpace(fullName))
-            return fullName;
-
-        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-            return fullName;
-
-        return format switch
-        {
-            CharacterNameFormat.FullName => fullName,
-            CharacterNameFormat.FirstNameOnly => parts[0],
-            CharacterNameFormat.LastNameOnly => parts.Length > 1 ? parts[^1] : parts[0],
-            CharacterNameFormat.Initials => string.Join(".", parts.Select(p => p.Length > 0 ? p[0].ToString().ToUpperInvariant() : "")) + ".",
-            _ => fullName
-        };
-    }
+        => Libs.CharacterNameFormatter.FormatName(fullName, format);
 
     #endregion
 
