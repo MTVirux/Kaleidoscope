@@ -280,7 +280,6 @@ public sealed class SqlQueryCategory
                         ImGuiTableFlags.Resizable |
                         ImGuiTableFlags.ScrollX |
                         ImGuiTableFlags.ScrollY |
-                        ImGuiTableFlags.Sortable |
                         ImGuiTableFlags.Hideable;
 
         // Calculate available height for the table
