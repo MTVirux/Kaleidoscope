@@ -23,6 +23,20 @@ public sealed class ContentLayoutState
     /// A value of 0 means no padding. Default is 4.
     /// </summary>
     public int ToolInternalPaddingPx { get; set; } = 4;
+
+    /// <summary>
+    /// Saved windowed-mode window position for this layout.
+    /// When exiting fullscreen, the window restores to this position.
+    /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
+    /// </summary>
+    public Vector2? WindowedPos { get; set; }
+
+    /// <summary>
+    /// Saved windowed-mode window size for this layout.
+    /// When exiting fullscreen, the window restores to this size.
+    /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
+    /// </summary>
+    public Vector2? WindowedSize { get; set; }
 }
 
 /// <summary>
