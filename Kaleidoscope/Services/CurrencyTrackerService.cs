@@ -188,7 +188,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 if (cid == 0 || string.IsNullOrEmpty(name)) continue;
                 
                 // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
-                _dbService.SaveCharacterName(cid, name);
+                _characterDataCache.SetCharacterName(cid, name);
                 
                 var seriesId = _dbService.GetOrCreateSeries("Gil", cid);
                 if (seriesId.HasValue)
@@ -299,7 +299,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         if (inserted && !string.IsNullOrEmpty(workItem.CharacterName) 
                             && GameStateService.ValidateCharacterName(workItem.CharacterName))
                         {
-                            _dbService.SaveCharacterName(workItem.CharacterId, workItem.CharacterName);
+                            _characterDataCache.SetCharacterName(workItem.CharacterId, workItem.CharacterName);
                         }
                     }
                     catch (Exception ex)

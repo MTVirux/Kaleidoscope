@@ -115,8 +115,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Parameters.AddWithValue("$col", existingColor.HasValue ? (object)existingColor.Value : DBNull.Value);
                 cmd.ExecuteNonQuery();
                 
-                // Invalidate cache so next lookup gets fresh data
-                InvalidateCharacterNameCache();
                 return true;
             }
             catch (Exception ex)
@@ -152,8 +150,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Parameters.AddWithValue("$d", string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName);
                 cmd.ExecuteNonQuery();
                 
-                // Invalidate cache so next lookup gets fresh data
-                InvalidateCharacterNameCache();
                 return true;
             }
             catch (Exception ex)
@@ -189,8 +185,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Parameters.AddWithValue("$col", color.HasValue ? (object)(long)color.Value : DBNull.Value);
                 cmd.ExecuteNonQuery();
                 
-                // Invalidate cache so next lookup gets fresh data
-                InvalidateCharacterNameCache();
                 return true;
             }
             catch (Exception ex)
@@ -203,50 +197,156 @@ public sealed partial class KaleidoscopeDbService
 
     /// <summary>
     /// Gets the display name for a character (custom display_name if set, otherwise game name).
-    /// Uses cached data if available to avoid repeated DB queries.
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
     /// </summary>
     public string? GetCharacterName(ulong characterId)
     {
-        // Try cache first
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var names))
-            return names.DisplayName ?? names.GameName;
-        
-        return null;
-    }
-
-
-
-    /// <summary>
-    /// Gets the time series color for a character (null if not set).
-    /// </summary>
-    public uint? GetCharacterTimeSeriesColor(ulong characterId)
-    {
-        var cache = GetCharacterNameCache();
-        if (cache.TryGetValue(characterId, out var names))
-            return names.TimeSeriesColor;
-        
-        return null;
-    }
-
-    /// <summary>
-    /// Gets or refreshes the character name cache.
-    /// </summary>
-    private Dictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)> GetCharacterNameCache()
-    {
-        var now = DateTime.UtcNow;
-        if (_characterNameCache != null && (now - _characterNameCacheTime).TotalSeconds < CharacterNameCacheExpirySeconds)
-        {
-            return _characterNameCache;
-        }
-        
-        // Refresh cache
-        var newCache = new Dictionary<ulong, (string?, string?, uint?)>();
-        
         lock (_readLock)
         {
             var conn = _readConnection ?? _connection;
-            if (conn == null) return newCache;
+            if (conn == null) return null;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT name, display_name FROM character_names WHERE character_id = $c";
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    var gameName = reader.IsDBNull(0) ? null : reader.GetString(0);
+                    var displayName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    return displayName ?? gameName;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterName failed: {ex.Message}");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the time series color for a character (null if not set).
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
+    /// </summary>
+    public uint? GetCharacterTimeSeriesColor(ulong characterId)
+    {
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT time_series_color FROM character_names WHERE character_id = $c";
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
+
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read() && !reader.IsDBNull(0))
+                {
+                    return (uint)reader.GetInt64(0);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterTimeSeriesColor failed: {ex.Message}");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all stored character name mappings (returns display_name if set, otherwise game name).
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
+    /// </summary>
+    public List<(ulong characterId, string? name)> GetAllCharacterNames()
+    {
+        var result = new List<(ulong, string?)>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var cid = reader.GetInt64(0);
+                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    if (cid != 0)
+                        result.Add(((ulong)cid, displayName ?? gameName));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNames failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all stored character name mappings with both game and display names.
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
+    /// </summary>
+    public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
+    {
+        var result = new List<(ulong, string?, string?)>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var cid = reader.GetInt64(0);
+                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    if (cid != 0)
+                        result.Add(((ulong)cid, gameName, displayName));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNamesExtended failed: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets all stored character data including time series colors.
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
+    /// </summary>
+    public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
+    {
+        var result = new List<(ulong, string?, string?, uint?)>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
 
             try
             {
@@ -261,91 +361,52 @@ public sealed partial class KaleidoscopeDbService
                     var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
                     uint? timeSeriesColor = reader.IsDBNull(3) ? null : (uint)reader.GetInt64(3);
                     if (cid != 0)
-                        newCache[(ulong)cid] = (gameName, displayName, timeSeriesColor);
+                        result.Add(((ulong)cid, gameName, displayName, timeSeriesColor));
                 }
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterNameCache failed: {ex.Message}");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterDataExtended failed: {ex.Message}");
             }
         }
-        
-        _characterNameCache = newCache;
-        _characterNameCacheTime = now;
-        return newCache;
-    }
-    
-    /// <summary>
-    /// Invalidates the character name cache.
-    /// Call this after saving or updating character names.
-    /// </summary>
-    public void InvalidateCharacterNameCache()
-    {
-        _characterNameCache = null;
-        _characterNameCacheTime = DateTime.MinValue;
-    }
 
-    /// <summary>
-    /// Gets all stored character name mappings (returns display_name if set, otherwise game name).
-    /// Uses cached data to avoid repeated DB queries.
-    /// </summary>
-    public List<(ulong characterId, string? name)> GetAllCharacterNames()
-    {
-        var cache = GetCharacterNameCache();
-        var result = new List<(ulong, string?)>(cache.Count);
-        
-        foreach (var kvp in cache)
-        {
-            // Return display_name if set, otherwise game name
-            result.Add((kvp.Key, kvp.Value.DisplayName ?? kvp.Value.GameName));
-        }
-        
         return result;
     }
 
-    /// <summary>
-    /// Gets all stored character name mappings with both game and display names.
-    /// </summary>
-    public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
-    {
-        var cache = GetCharacterNameCache();
-        var result = new List<(ulong, string?, string?)>(cache.Count);
-        
-        foreach (var kvp in cache)
-        {
-            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName));
-        }
-        
-        return result;
-    }
-
-    /// <summary>
-    /// Gets all stored character data including time series colors.
-    /// </summary>
-    public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
-    {
-        var cache = GetCharacterNameCache();
-        var result = new List<(ulong, string?, string?, uint?)>(cache.Count);
-        
-        foreach (var kvp in cache)
-        {
-            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName, kvp.Value.TimeSeriesColor));
-        }
-        
-        return result;
-    }
-    
     /// <summary>
     /// Gets all stored character name mappings as a dictionary (display_name if set, otherwise game name).
+    /// Queries the database directly. Prefer using CharacterDataCacheService for cached lookups.
     /// </summary>
     public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
     {
-        var cache = GetCharacterNameCache();
-        var result = new Dictionary<ulong, string?>(cache.Count);
-        foreach (var kvp in cache)
+        var result = new Dictionary<ulong, string?>();
+
+        lock (_readLock)
         {
-            result[kvp.Key] = kvp.Value.DisplayName ?? kvp.Value.GameName;
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var cid = reader.GetInt64(0);
+                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    if (cid != 0)
+                        result[(ulong)cid] = displayName ?? gameName;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNamesDict failed: {ex.Message}");
+            }
         }
+
         return result;
     }
 

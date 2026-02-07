@@ -394,7 +394,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 _characterNameSavedThisSession = true;
                 var cid = characterId;
                 var name = playerName;
-                Task.Run(() => _dbService.SaveCharacterName(cid, name));
+                Task.Run(() => _cacheService.SetCharacterName(cid, name));
             }
             
             SampleTrackedItems(characterId, entry.Items);

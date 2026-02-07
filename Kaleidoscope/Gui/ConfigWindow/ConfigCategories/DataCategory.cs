@@ -161,7 +161,7 @@ public sealed class DataCategory
                         if (cid == 0 || string.IsNullOrEmpty(name)) continue;
                         
                         // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
-                        _currencyTrackerService.DbService?.SaveCharacterName(cid, name);
+                        _currencyTrackerService.CharacterDataCache.SetCharacterName(cid, name);
                         
                         // Create a series if it doesn't exist
                         var seriesId = _currencyTrackerService.DbService?.GetOrCreateSeries("Gil", cid);

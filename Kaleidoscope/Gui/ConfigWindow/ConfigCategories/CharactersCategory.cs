@@ -271,9 +271,7 @@ public sealed class CharactersCategory
             var trimmed = displayName?.Trim();
             if (string.IsNullOrEmpty(trimmed)) trimmed = null;
 
-            _currencyTrackerService.DbService?.SaveCharacterDisplayName(cid, trimmed);
             _cacheService.SetCharacterDisplayName(cid, trimmed);
-            _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved display name for {cid}: {trimmed ?? "(cleared)"}");
         }
@@ -293,9 +291,7 @@ public sealed class CharactersCategory
     {
         try
         {
-            _currencyTrackerService.DbService?.SaveCharacterTimeSeriesColor(cid, color);
             _cacheService.SetCharacterTimeSeriesColor(cid, color);
-            _currencyTrackerService.DbService?.InvalidateCharacterNameCache();
             
             LogService.Debug(LogCategory.Character, $"[CharactersCategory] Saved time series color for {cid}: {color?.ToString("X8") ?? "(cleared)"}");
         }

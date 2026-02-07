@@ -22,10 +22,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     private SqliteConnection? _connection;
     private SqliteConnection? _readConnection;
     
-    private Dictionary<ulong, (string? GameName, string? DisplayName, uint? TimeSeriesColor)>? _characterNameCache;
-    private DateTime _characterNameCacheTime = DateTime.MinValue;
-    private const double CharacterNameCacheExpirySeconds = 30.0;
-    
     private readonly object _inventoryValueStatsLock = new();
     private long _cachedInventoryValueRecordCount;
     private long? _cachedInventoryValueMaxTimestamp;
