@@ -32,6 +32,24 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     public string? DbPath => _dbPath;
 
     /// <summary>
+    /// Generates parameterized IN clause placeholders ($p0, $p1, ...) and adds corresponding parameters to the command.
+    /// Returns the placeholder string for use in SQL (e.g., "$p0, $p1, $p2").
+    /// This enables SQLite prepared statement caching and follows parameterization best practices.
+    /// </summary>
+    private static string AddParameterizedInClause(SqliteCommand cmd, IList<int> values, string prefix = "$p")
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (i > 0) sb.Append(", ");
+            var paramName = $"{prefix}{i}";
+            sb.Append(paramName);
+            cmd.Parameters.AddWithValue(paramName, values[i]);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Creates a new database service using configured settings.
     /// </summary>
     /// <param name="filenames">Service providing file paths.</param>

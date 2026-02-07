@@ -259,12 +259,14 @@ public sealed partial class KaleidoscopeDbService
 
                 using var cmd = conn.CreateCommand();
                 
+                var inClause = AddParameterizedInClause(cmd, itemIdList);
+                
                 if (worldId.HasValue)
                 {
                     cmd.CommandText = $@"
                         SELECT item_id, last_sale_nq, last_sale_hq
                         FROM item_prices
-                        WHERE item_id IN ({string.Join(",", itemIdList)}) AND world_id = $wid";
+                        WHERE item_id IN ({inClause}) AND world_id = $wid";
                     cmd.Parameters.AddWithValue("$wid", worldId.Value);
                 }
                 else
@@ -275,7 +277,7 @@ public sealed partial class KaleidoscopeDbService
                                MAX(CASE WHEN last_sale_nq > 0 THEN last_sale_nq END) as sale_nq,
                                MAX(CASE WHEN last_sale_hq > 0 THEN last_sale_hq END) as sale_hq
                         FROM item_prices
-                        WHERE item_id IN ({string.Join(",", itemIdList)})
+                        WHERE item_id IN ({inClause})
                         GROUP BY item_id";
                 }
 
@@ -317,6 +319,8 @@ public sealed partial class KaleidoscopeDbService
 
                 using var cmd = conn.CreateCommand();
                 
+                var inClause = AddParameterizedInClause(cmd, itemIdList);
+                
                 // For each item, find the world with the lowest non-zero NQ price (or HQ if no NQ)
                 // Using a subquery to get the row with the minimum price per item
                 cmd.CommandText = $@"
@@ -330,7 +334,7 @@ public sealed partial class KaleidoscopeDbService
                                    ORDER BY CASE WHEN min_price_nq > 0 THEN min_price_nq ELSE min_price_hq END ASC
                                ) as rn
                         FROM item_prices
-                        WHERE item_id IN ({string.Join(",", itemIdList)})
+                        WHERE item_id IN ({inClause})
                           AND (min_price_nq > 0 OR min_price_hq > 0)
                     )
                     SELECT item_id, effective_price, world_id, last_updated
@@ -379,10 +383,11 @@ public sealed partial class KaleidoscopeDbService
                 var thresholdTicks = (DateTime.UtcNow - staleThreshold).Ticks;
 
                 using var cmd = conn.CreateCommand();
+                var inClause = AddParameterizedInClause(cmd, itemIdList);
                 cmd.CommandText = $@"
                     SELECT item_id
                     FROM item_prices
-                    WHERE item_id IN ({string.Join(",", itemIdList)})
+                    WHERE item_id IN ({inClause})
                       AND last_updated > $threshold
                       AND (last_sale_nq > 0 OR last_sale_hq > 0)";
                 cmd.Parameters.AddWithValue("$threshold", thresholdTicks);
