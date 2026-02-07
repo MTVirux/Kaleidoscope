@@ -621,9 +621,11 @@ public static class LogService
     #region Helper Classes
 
     /// <summary>
-    /// Manages a log file for a specific category.
+    /// Base class for rotating file log writers. Handles file creation, size-based rotation,
+    /// timestamped line formatting, and thread-safe writes.
+    /// CategoryLogWriter and CharacterLogWriter are thin wrappers with identity metadata.
     /// </summary>
-    private sealed class CategoryLogWriter
+    private class RotatingLogWriter
     {
         private StreamWriter? _writer;
         private readonly object _writerLock = new();
@@ -631,11 +633,8 @@ public static class LogService
         private readonly int _maxSizeMB;
         private long _currentSize;
 
-        public LogCategory Category { get; }
-
-        public CategoryLogWriter(LogCategory category, string filePath, int maxSizeMB)
+        public RotatingLogWriter(string filePath, int maxSizeMB)
         {
-            Category = category;
             _filePath = filePath;
             _maxSizeMB = maxSizeMB;
             Initialize();
@@ -688,7 +687,7 @@ public static class LogService
                         line = $"{level} | {message}";
                     }
 
-                    _writer.WriteLine(line);
+                    _writer?.WriteLine(line);
                     _currentSize += line.Length + Environment.NewLine.Length;
                 }
                 catch (Exception)
@@ -755,136 +754,30 @@ public static class LogService
     }
 
     /// <summary>
+    /// Manages a log file for a specific category.
+    /// </summary>
+    private sealed class CategoryLogWriter : RotatingLogWriter
+    {
+        public LogCategory Category { get; }
+
+        public CategoryLogWriter(LogCategory category, string filePath, int maxSizeMB)
+            : base(filePath, maxSizeMB)
+        {
+            Category = category;
+        }
+    }
+
+    /// <summary>
     /// Manages a log file for a specific character.
     /// </summary>
-    private sealed class CharacterLogWriter
+    private sealed class CharacterLogWriter : RotatingLogWriter
     {
-        private StreamWriter? _writer;
-        private readonly object _writerLock = new();
-        private readonly string _filePath;
-        private readonly int _maxSizeMB;
-        private long _currentSize;
-
         public string CharacterName { get; }
 
         public CharacterLogWriter(string characterName, string filePath, int maxSizeMB)
+            : base(filePath, maxSizeMB)
         {
             CharacterName = characterName;
-            _filePath = filePath;
-            _maxSizeMB = maxSizeMB;
-            Initialize();
-        }
-
-        private void Initialize()
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(_filePath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                if (File.Exists(_filePath))
-                {
-                    _currentSize = new FileInfo(_filePath).Length;
-                }
-
-                _writer = new StreamWriter(_filePath, append: true) { AutoFlush = true };
-            }
-            catch (Exception)
-            {
-                _writer = null;
-            }
-        }
-
-        public void WriteLine(string level, string message, Configuration? config)
-        {
-            lock (_writerLock)
-            {
-                if (_writer == null) return;
-
-                try
-                {
-                    var maxBytes = _maxSizeMB * 1024 * 1024;
-                    if (_currentSize > maxBytes)
-                    {
-                        Rotate();
-                    }
-
-                    string line;
-                    if (config?.FileLoggingIncludeTimestamps == true)
-                    {
-                        line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {level} | {message}";
-                    }
-                    else
-                    {
-                        line = $"{level} | {message}";
-                    }
-
-                    _writer.WriteLine(line);
-                    _currentSize += line.Length + Environment.NewLine.Length;
-                }
-                catch (Exception)
-                {
-                    // Ignore write errors
-                }
-            }
-        }
-
-        private void Rotate()
-        {
-            try
-            {
-                _writer?.Flush();
-                _writer?.Close();
-                _writer?.Dispose();
-                _writer = null;
-
-                var baseName = Path.GetFileNameWithoutExtension(_filePath);
-                var dir = Path.GetDirectoryName(_filePath) ?? "";
-                var rotatedPath = Path.Combine(dir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}.log");
-                
-                if (File.Exists(_filePath))
-                {
-                    File.Move(_filePath, rotatedPath);
-                }
-
-                _writer = new StreamWriter(_filePath, append: false) { AutoFlush = true };
-                _currentSize = 0;
-            }
-            catch (Exception)
-            {
-                try
-                {
-                    _writer = new StreamWriter(_filePath, append: true) { AutoFlush = true };
-                }
-                catch (Exception)
-                {
-                    _writer = null;
-                }
-            }
-        }
-
-        public void Close()
-        {
-            lock (_writerLock)
-            {
-                try
-                {
-                    _writer?.Flush();
-                    _writer?.Close();
-                    _writer?.Dispose();
-                }
-                catch (Exception)
-                {
-                    // Ignore
-                }
-                finally
-                {
-                    _writer = null;
-                }
-            }
         }
     }
 
