@@ -695,21 +695,13 @@ public class ItemDetailsPopup
 
         try
         {
-            var itemId = _currentItemId;
-            var currencyService = _currencyTrackerService;
-
-            if (currencyService == null || itemId == 0)
+            if (_currencyTrackerService == null || _currentItemId == 0)
             {
                 _localSalesLoaded = true;
-                _localSalesLoading = false;
                 return;
             }
 
-            var sales = await Task.Run(() => 
-                currencyService.DbService.GetSaleRecords((int)itemId, limit: 100)
-            ).ConfigureAwait(false);
-
-            _localSales = sales;
+            await Task.Run(LoadLocalSales).ConfigureAwait(false);
             _localSalesLoaded = true;
         }
         catch (Exception ex)
@@ -980,160 +972,13 @@ public class ItemDetailsPopup
 
         try
         {
-            var itemId = _currentItemId;
-            var inventoryCacheService = _inventoryCacheService;
-            var currencyService = _currencyTrackerService;
-            var characterDataService = _characterDataService;
-
-            if (inventoryCacheService == null || itemId == 0)
+            if (_inventoryCacheService == null || _currentItemId == 0)
             {
                 _inventoryLoaded = true;
-                _inventoryLoading = false;
                 return;
             }
 
-            // Capture the cache service reference for the background thread
-            var salePriceCacheService = _salePriceCacheService;
-
-            // Offload the data processing to a background thread
-            var result = await Task.Run(() =>
-            {
-                var rows = new List<ItemInventoryRow>();
-                long unitPrice = 0;
-                int totalQuantity = 0;
-                long totalValue = 0;
-
-                // Get all inventories across all characters
-                var allInventories = inventoryCacheService.GetAllInventories();
-
-                // Get the current price for this item using cache
-                if (salePriceCacheService != null)
-                {
-                    var prices = salePriceCacheService.GetLatestSalePrices(
-                        new[] { (int)itemId },
-                        includedWorldIds: null);
-                    if (prices.TryGetValue((int)itemId, out var price))
-                    {
-                        unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
-                    }
-                }
-
-                // Group by character, then by player/retainer
-                var characterGroups = allInventories
-                    .GroupBy(i => i.CharacterId)
-                    .OrderBy(g => g.First().Name ?? string.Empty);
-
-                foreach (var charGroup in characterGroups)
-                {
-                    var characterId = charGroup.Key;
-                    var characterName = string.Empty;
-                    var worldName = string.Empty;
-
-                    // Get character display name
-                    if (characterDataService != null)
-                    {
-                        var charInfo = characterDataService.GetCharacter(characterId);
-                        if (charInfo != null)
-                        {
-                            characterName = charInfo.Name;
-                            worldName = charInfo.WorldName ?? string.Empty;
-                        }
-                    }
-
-                    // Fallback to inventory cache name
-                    if (string.IsNullOrEmpty(characterName))
-                    {
-                        var playerCache = charGroup.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
-                        characterName = playerCache?.Name ?? $"Character {characterId}";
-                        worldName = playerCache?.World ?? string.Empty;
-                    }
-
-                    // Calculate player inventory quantity
-                    var playerInventories = charGroup.Where(c => c.SourceType == InventorySourceType.Player);
-                    var playerQuantity = playerInventories
-                        .SelectMany(c => c.Items)
-                        .Where(i => i.ItemId == itemId)
-                        .Sum(i => i.Quantity);
-
-                    // Calculate retainer quantities
-                    var retainerData = charGroup
-                        .Where(c => c.SourceType == InventorySourceType.Retainer)
-                        .Select(r => new
-                        {
-                            RetainerId = r.RetainerId,
-                            RetainerName = r.Name,
-                            Quantity = r.Items.Where(i => i.ItemId == itemId).Sum(i => i.Quantity)
-                        })
-                        .Where(r => r.Quantity > 0)
-                        .OrderBy(r => r.RetainerName)
-                        .ToList();
-
-                    // Skip this character if they have no items
-                    var totalCharQuantity = playerQuantity + retainerData.Sum(r => r.Quantity);
-                    if (totalCharQuantity == 0)
-                        continue;
-
-                    // Add character row (showing player inventory only)
-                    if (playerQuantity > 0)
-                    {
-                        var playerValue = unitPrice * playerQuantity;
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = false,
-                            Quantity = playerQuantity,
-                            UnitPrice = unitPrice,
-                            TotalValue = playerValue
-                        });
-                        totalQuantity += playerQuantity;
-                        totalValue += playerValue;
-                    }
-                    else
-                    {
-                        // Add a character header row with 0 quantity if they only have retainer items
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = false,
-                            Quantity = 0,
-                            UnitPrice = 0,
-                            TotalValue = 0
-                        });
-                    }
-
-                    // Add retainer rows
-                    foreach (var retainer in retainerData)
-                    {
-                        var retainerValue = unitPrice * retainer.Quantity;
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = true,
-                            RetainerId = retainer.RetainerId,
-                            RetainerName = retainer.RetainerName,
-                            Quantity = retainer.Quantity,
-                            UnitPrice = unitPrice,
-                            TotalValue = retainerValue
-                        });
-                        totalQuantity += retainer.Quantity;
-                        totalValue += retainerValue;
-                    }
-                }
-
-                return (rows, unitPrice, totalQuantity, totalValue);
-            }).ConfigureAwait(false);
-
-            _inventoryRows = result.rows;
-            _inventoryUnitPrice = result.unitPrice;
-            _inventoryTotalQuantity = result.totalQuantity;
-            _inventoryTotalValue = result.totalValue;
-            _inventoryLoaded = true;
+            await Task.Run(LoadInventoryData).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
