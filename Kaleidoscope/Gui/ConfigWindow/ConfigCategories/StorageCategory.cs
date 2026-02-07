@@ -52,6 +52,7 @@ public sealed class StorageCategory : IDisposable
     private bool _vacuumAfterDelete;
     private bool _deleteConfirmationOpen;
     private (int count, long estimatedBytes) _deleteStats;
+    private (DateTime? earliest, DateTime? latest) _cachedDataRange;
     private string? _lastBackupPath;
     private int _lastDeletedCount;
     private bool _showDeleteResult;
@@ -645,39 +646,20 @@ public sealed class StorageCategory : IDisposable
         ImGui.TextUnformatted("Date Range");
         DrawHelpMarker("Select the start and end date/time for the data to delete. Only points within this range will be affected.");
 
-        // Try to get combined data range for all selected variables (player + retainer)
-        var variableNames = GetSelectedVariableNames();
-        if (variableNames.Count > 0)
+        // Show cached data range (refreshed via RefreshPreview, not every frame)
+        if (_cachedDataRange.earliest.HasValue && _cachedDataRange.latest.HasValue)
         {
-            DateTime? earliest = null;
-            DateTime? latest = null;
+            ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1.0f),
+                $"Available data: {_cachedDataRange.earliest.Value:yyyy-MM-dd HH:mm} to {_cachedDataRange.latest.Value:yyyy-MM-dd HH:mm}");
             
-            foreach (var varName in variableNames)
+            ImGui.SameLine();
+            var earliestCopy = _cachedDataRange.earliest.Value;
+            var latestCopy = _cachedDataRange.latest.Value;
+            if (ImGui.SmallButton("Use Full Range##UseFullRange"))
             {
-                var dataRange = _currencyTrackerService.DbService.GetDataTimeRange(varName);
-                if (dataRange.HasValue)
-                {
-                    if (!earliest.HasValue || dataRange.Value.earliest < earliest.Value)
-                        earliest = dataRange.Value.earliest;
-                    if (!latest.HasValue || dataRange.Value.latest > latest.Value)
-                        latest = dataRange.Value.latest;
-                }
-            }
-            
-            if (earliest.HasValue && latest.HasValue)
-            {
-                ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1.0f),
-                    $"Available data: {earliest.Value:yyyy-MM-dd HH:mm} to {latest.Value:yyyy-MM-dd HH:mm}");
-                
-                ImGui.SameLine();
-                var earliestCopy = earliest.Value;
-                var latestCopy = latest.Value;
-                if (ImGui.SmallButton("Use Full Range##UseFullRange"))
-                {
-                    _startDatePicker?.Select(earliestCopy);
-                    _endDatePicker?.Select(latestCopy);
-                    RefreshPreview();
-                }
+                _startDatePicker?.Select(earliestCopy);
+                _endDatePicker?.Select(latestCopy);
+                RefreshPreview();
             }
         }
 
@@ -736,21 +718,7 @@ public sealed class StorageCategory : IDisposable
             return;
         }
 
-        // Update stats - aggregate across all variables (player + retainer)
-        var characterId = _cleanupCharacterCombo?.IsAllSelected == true ? (ulong?)null : _cleanupCharacterCombo?.SelectedCharacterId;
-        var start = _startDatePicker?.SelectedDateTime ?? DateTime.MinValue;
-        var end = _endDatePicker?.SelectedDateTime ?? DateTime.MaxValue;
-        
-        int totalCount = 0;
-        long totalBytes = 0;
-        foreach (var varName in variableNames)
-        {
-            var stats = _currencyTrackerService.CountPointsInRangeByVariable(varName, characterId, start, end);
-            totalCount += stats.count;
-            totalBytes += stats.estimatedBytes;
-        }
-        _deleteStats = (totalCount, totalBytes);
-
+        // Stats are cached and refreshed via RefreshPreview(), not queried every frame
         ImGui.TextUnformatted($"Points to Delete: {_deleteStats.count:N0}");
         ImGui.SameLine();
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1.0f),
@@ -968,12 +936,41 @@ public sealed class StorageCategory : IDisposable
         {
             _previewPoints.Clear();
             _previewCurrentPage = 0;
+            _deleteStats = (0, 0);
+            _cachedDataRange = (null, null);
             return;
         }
 
         var characterId = _cleanupCharacterCombo?.IsAllSelected == true ? (ulong?)null : _cleanupCharacterCombo?.SelectedCharacterId;
         var start = _startDatePicker?.SelectedDateTime ?? DateTime.MinValue;
         var end = _endDatePicker?.SelectedDateTime ?? DateTime.MaxValue;
+
+        // Refresh cached data range
+        DateTime? earliest = null;
+        DateTime? latest = null;
+        foreach (var varName in variableNames)
+        {
+            var dataRange = _currencyTrackerService.DbService.GetDataTimeRange(varName);
+            if (dataRange.HasValue)
+            {
+                if (!earliest.HasValue || dataRange.Value.earliest < earliest.Value)
+                    earliest = dataRange.Value.earliest;
+                if (!latest.HasValue || dataRange.Value.latest > latest.Value)
+                    latest = dataRange.Value.latest;
+            }
+        }
+        _cachedDataRange = (earliest, latest);
+
+        // Refresh cached delete stats
+        int totalCount = 0;
+        long totalBytes = 0;
+        foreach (var varName in variableNames)
+        {
+            var stats = _currencyTrackerService.CountPointsInRangeByVariable(varName, characterId, start, end);
+            totalCount += stats.count;
+            totalBytes += stats.estimatedBytes;
+        }
+        _deleteStats = (totalCount, totalBytes);
 
         // Combine points from all variables (player + retainer)
         _previewPoints.Clear();
