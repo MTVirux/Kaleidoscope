@@ -203,35 +203,33 @@ public sealed partial class KaleidoscopeDbService
 
                 using var cmd = conn.CreateCommand();
                 
+                var itemInClause = AddParameterizedInClause(cmd, itemIdList, "$item");
+                
                 var sql = new System.Text.StringBuilder();
-                sql.Append(@"
+                sql.Append($@"
                     WITH latest_sales AS (
                         SELECT item_id, is_hq, price_per_unit,
                                ROW_NUMBER() OVER (PARTITION BY item_id, is_hq ORDER BY timestamp DESC) as rn
                         FROM sale_records
-                        WHERE item_id IN (");
-                sql.Append(string.Join(",", itemIdList));
-                sql.Append(")");
+                        WHERE item_id IN ({itemInClause})");
 
                 // Inclusion filter takes precedence over exclusion
                 if (includedList.Count > 0)
                 {
-                    sql.Append(" AND world_id IN (");
-                    sql.Append(string.Join(",", includedList));
-                    sql.Append(")");
+                    var worldInClause = AddParameterizedInClause(cmd, includedList, "$wld");
+                    sql.Append($" AND world_id IN ({worldInClause})");
                 }
                 else if (excludedList.Count > 0)
                 {
-                    sql.Append(" AND world_id NOT IN (");
-                    sql.Append(string.Join(",", excludedList));
-                    sql.Append(")");
+                    var worldExClause = AddParameterizedInClause(cmd, excludedList, "$wex");
+                    sql.Append($" AND world_id NOT IN ({worldExClause})");
                 }
 
                 if (maxAge.HasValue)
                 {
                     var cutoffTicks = (DateTime.UtcNow - maxAge.Value).Ticks;
-                    sql.Append(" AND timestamp >= ");
-                    sql.Append(cutoffTicks);
+                    sql.Append(" AND timestamp >= $cutoff");
+                    cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
                 }
 
                 sql.Append(@"
@@ -286,27 +284,30 @@ public sealed partial class KaleidoscopeDbService
                 using var cmd = conn.CreateCommand();
                 
                 // Use window function to get the N most recent sales per item/world/hq combination
-                var sql = $@"
+                var sql = new System.Text.StringBuilder();
+                sql.Append(@"
                     WITH ranked_sales AS (
                         SELECT item_id, world_id, is_hq, price_per_unit,
                                ROW_NUMBER() OVER (PARTITION BY item_id, world_id, is_hq ORDER BY timestamp DESC) as rn
                         FROM sale_records
-                        WHERE 1=1";
+                        WHERE 1=1");
                 
                 if (maxAge.HasValue)
                 {
                     var cutoffTicks = (DateTime.UtcNow - maxAge.Value).Ticks;
-                    sql += $" AND timestamp >= {cutoffTicks}";
+                    sql.Append(" AND timestamp >= $cutoff");
+                    cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
                 }
                 
-                sql += $@"
+                sql.Append(@"
                     )
                     SELECT item_id, world_id, is_hq, price_per_unit
                     FROM ranked_sales
-                    WHERE rn <= {maxSalesPerType}
-                    ORDER BY item_id, world_id, is_hq, rn";
+                    WHERE rn <= $maxSales
+                    ORDER BY item_id, world_id, is_hq, rn");
                 
-                cmd.CommandText = sql;
+                cmd.Parameters.AddWithValue("$maxSales", maxSalesPerType);
+                cmd.CommandText = sql.ToString();
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -365,9 +366,8 @@ public sealed partial class KaleidoscopeDbService
 
                 if (excludedList.Count > 0)
                 {
-                    sql.Append(" AND world_id NOT IN (");
-                    sql.Append(string.Join(",", excludedList));
-                    sql.Append(")");
+                    var worldExClause = AddParameterizedInClause(cmd, excludedList, "$wex");
+                    sql.Append($" AND world_id NOT IN ({worldExClause})");
                 }
 
                 if (since.HasValue)

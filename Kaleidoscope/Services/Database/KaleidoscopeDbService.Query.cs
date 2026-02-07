@@ -61,10 +61,44 @@ public sealed partial class KaleidoscopeDbService
 
         // Determine if this is a SELECT query (read) or a modification query (write)
         var trimmedSql = sql.TrimStart();
-        var isSelectQuery = trimmedSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) ||
+        
+        // For CTEs (WITH clauses), check the final statement after the CTE definition
+        // to determine if it's a read or write operation
+        bool isSelectQuery;
+        if (trimmedSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+        {
+            // Find the final statement after the last closing paren of the CTE
+            // Look for INSERT/UPDATE/DELETE/REPLACE after the CTE body
+            var upperSql = trimmedSql.ToUpperInvariant();
+            // Search for write keywords that appear outside the CTE definition
+            // A CTE body ends before the final SELECT/INSERT/UPDATE/DELETE
+            var hasWriteKeyword = false;
+            var parenDepth = 0;
+            for (int i = 4; i < upperSql.Length - 5; i++) // Start after "WITH"
+            {
+                if (upperSql[i] == '(') parenDepth++;
+                else if (upperSql[i] == ')') { parenDepth--; if (parenDepth < 0) parenDepth = 0; }
+                
+                // Only check keywords at paren depth 0 (outside CTE bodies)
+                if (parenDepth == 0 && (i == 4 || char.IsWhiteSpace(upperSql[i - 1]) || upperSql[i - 1] == ')'))
+                {
+                    var remaining = upperSql.AsSpan(i);
+                    if (remaining.StartsWith("INSERT") || remaining.StartsWith("UPDATE") || 
+                        remaining.StartsWith("DELETE") || remaining.StartsWith("REPLACE"))
+                    {
+                        hasWriteKeyword = true;
+                        break;
+                    }
+                }
+            }
+            isSelectQuery = !hasWriteKeyword;
+        }
+        else
+        {
+            isSelectQuery = trimmedSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) ||
                            trimmedSql.StartsWith("PRAGMA", StringComparison.OrdinalIgnoreCase) ||
-                           trimmedSql.StartsWith("EXPLAIN", StringComparison.OrdinalIgnoreCase) ||
-                           trimmedSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase); // CTEs
+                           trimmedSql.StartsWith("EXPLAIN", StringComparison.OrdinalIgnoreCase);
+        }
 
         try
         {
@@ -227,6 +261,12 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
+                // Sanitize table name — only allow alphanumeric and underscores to prevent injection
+                if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                {
+                    return columns;
+                }
+                
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"PRAGMA table_info({tableName})";
                 using var reader = cmd.ExecuteReader();

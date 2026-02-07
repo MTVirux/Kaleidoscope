@@ -16,7 +16,18 @@ namespace Kaleidoscope.Services.Database;
 /// </remarks>
 public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredService
 {
+    /// <summary>
+    /// Lock for write operations on the write connection.
+    /// LOCK ORDERING INVARIANT: Always acquire _writeLock BEFORE _readLock.
+    /// Never acquire _readLock while holding _writeLock, and never acquire _writeLock while holding _readLock.
+    /// Nested lock acquisition between these two locks is forbidden to prevent deadlocks.
+    /// </summary>
     private readonly object _writeLock = new();
+    
+    /// <summary>
+    /// Lock for read operations on the read connection.
+    /// See _writeLock documentation for lock ordering invariant.
+    /// </summary>
     private readonly object _readLock = new();
     private readonly string? _dbPath;
     private SqliteConnection? _connection;
@@ -47,6 +58,79 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
             cmd.Parameters.AddWithValue(paramName, values[i]);
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generates parameterized IN clause placeholders for long values.
+    /// </summary>
+    private static string AddParameterizedInClause(SqliteCommand cmd, IList<long> values, string prefix = "$p")
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (i > 0) sb.Append(", ");
+            var paramName = $"{prefix}{i}";
+            sb.Append(paramName);
+            cmd.Parameters.AddWithValue(paramName, values[i]);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Executes an action within a database transaction, automatically handling commit/rollback.
+    /// Caller must already hold _writeLock and ensure _connection is not null.
+    /// </summary>
+    /// <param name="action">Action to execute within the transaction. Receives the transaction object.</param>
+    /// <returns>True if the transaction committed successfully, false otherwise.</returns>
+    private bool RunInTransaction(Action<SqliteTransaction> action)
+    {
+        if (_connection == null) return false;
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            action(transaction);
+            transaction.Commit();
+            return true;
+        }
+        catch
+        {
+            try { transaction.Rollback(); }
+            catch (Exception rollbackEx)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Transaction rollback failed: {rollbackEx.Message}");
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Executes a function within a database transaction, returning a result.
+    /// Caller must already hold _writeLock and ensure _connection is not null.
+    /// </summary>
+    /// <typeparam name="T">Return type.</typeparam>
+    /// <param name="func">Function to execute within the transaction. Receives the transaction object.</param>
+    /// <returns>The result of the function.</returns>
+    private T RunInTransaction<T>(Func<SqliteTransaction, T> func)
+    {
+        if (_connection == null) throw new InvalidOperationException("Database connection is not available.");
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            var result = func(transaction);
+            transaction.Commit();
+            return result;
+        }
+        catch
+        {
+            try { transaction.Rollback(); }
+            catch (Exception rollbackEx)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Transaction rollback failed: {rollbackEx.Message}");
+            }
+            throw;
+        }
     }
 
     /// <summary>

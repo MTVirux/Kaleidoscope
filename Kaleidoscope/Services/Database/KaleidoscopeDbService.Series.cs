@@ -336,11 +336,18 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                var limitClause = limit.HasValue ? $" LIMIT {limit.Value}" : "";
-                cmd.CommandText = $@"SELECT p.timestamp, p.value FROM points p
+                var sql = @"SELECT p.timestamp, p.value FROM points p
                     JOIN series s ON p.series_id = s.id
                     WHERE s.variable = $v AND s.character_id = $c
-                    ORDER BY p.timestamp ASC{limitClause}";
+                    ORDER BY p.timestamp ASC";
+                
+                if (limit.HasValue)
+                {
+                    sql += " LIMIT $lim";
+                    cmd.Parameters.AddWithValue("$lim", limit.Value);
+                }
+                
+                cmd.CommandText = sql;
                 cmd.Parameters.AddWithValue("$v", variable);
                 cmd.Parameters.AddWithValue("$c", (long)characterId);
 
