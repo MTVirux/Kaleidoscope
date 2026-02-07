@@ -38,6 +38,7 @@ public sealed class CharacterDataService : IDisposable, IService
     private readonly FavoritesService _favoritesService;
 
     private List<CharacterInfo>? _cachedCharacters;
+    private List<CharacterInfo>? _cachedSortedByFavorites;
     private Dictionary<ulong, CharacterInfo>? _cachedCharacterDict;
     private DateTime _lastRefresh = DateTime.MinValue;
     private bool _needsRefresh = true;
@@ -83,6 +84,7 @@ public sealed class CharacterDataService : IDisposable, IService
     public void MarkDirty()
     {
         _needsRefresh = true;
+        _cachedSortedByFavorites = null;
     }
 
     /// <summary>
@@ -100,25 +102,35 @@ public sealed class CharacterDataService : IDisposable, IService
         if (_cachedCharacters == null)
             return Array.Empty<CharacterInfo>();
 
-        var result = new List<CharacterInfo>();
+        // Use pre-sorted list when sorting by favorites (avoids re-sorting every frame)
+        var characters = sortByFavorites
+            ? (_cachedSortedByFavorites ??= BuildFavoritesSortedList())
+            : _cachedCharacters;
 
-        if (includeAllCharactersOption)
-        {
-            result.Add(new CharacterInfo(0, "All Characters"));
-        }
+        if (!includeAllCharactersOption)
+            return characters;
 
-        var characters = _cachedCharacters;
-        if (sortByFavorites)
-        {
-            var favorites = _favoritesService.FavoriteCharacters;
-            characters = characters
-                .OrderByDescending(c => favorites.Contains(c.Id))
-                .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
+        // Prepend "All Characters" only when requested
+        var result = new List<CharacterInfo>(characters.Count + 1);
+        result.Add(new CharacterInfo(0, "All Characters"));
         result.AddRange(characters);
         return result;
+    }
+
+    /// <summary>
+    /// Builds a favorites-sorted snapshot of the cached characters.
+    /// Invalidated when the cache is refreshed or favorites change.
+    /// </summary>
+    private List<CharacterInfo> BuildFavoritesSortedList()
+    {
+        if (_cachedCharacters == null)
+            return new List<CharacterInfo>();
+
+        var favorites = _favoritesService.FavoriteCharacters;
+        return _cachedCharacters
+            .OrderByDescending(c => favorites.Contains(c.Id))
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>
@@ -291,6 +303,7 @@ public sealed class CharacterDataService : IDisposable, IService
             characters.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
 
             _cachedCharacters = characters;
+            _cachedSortedByFavorites = null;
             _cachedCharacterDict = characterDict;
             _lastRefresh = DateTime.UtcNow;
             _needsRefresh = false;
