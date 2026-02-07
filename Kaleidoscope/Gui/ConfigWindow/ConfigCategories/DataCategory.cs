@@ -101,7 +101,7 @@ public sealed class DataCategory
                 try
                 {
                     _currencyTrackerService.ClearAllData();
-                    LogService.Info(LogCategory.UI, "Cleared all GilTracker data");
+                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data");
                 }
                 catch (Exception ex)
                 {
@@ -119,7 +119,7 @@ public sealed class DataCategory
 
         if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
+            ImGui.TextUnformatted("This will remove data for characters that do not have a stored name association. Proceed?");
             if (ImGui.Button("Yes"))
             {
                 try
@@ -143,7 +143,7 @@ public sealed class DataCategory
 
         if (ImGui.BeginPopupModal("config_import_autoretainer_confirm", ref _importAutoRetainerOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted("This will import all characters from AutoRetainer into the GilTracker database.");
+            ImGui.TextUnformatted("This will import all characters from AutoRetainer into the Kaleidoscope database.");
             ImGui.TextUnformatted("AutoRetainer data takes priority: character names and gil amounts will be updated");
             ImGui.TextUnformatted("if they differ from our current data.");
             ImGui.Separator();

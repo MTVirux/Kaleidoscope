@@ -10,12 +10,12 @@ public static class ConfigStatic
     public static readonly Vector2 DefaultWindowSize = new(800, 600);
     public static readonly Vector2 MinimumWindowSize = new(250, 180);
 
-    // GilTracker defaults
-    public const int GilTrackerMaxSamples = 200;
-    public const float GilTrackerStartingValue = 100000f;
-    public const float GilTrackerMaxGil = 999_999_999f;
-    public static readonly Vector2 GilTrackerToolSize = new(360, 220);
-    public static readonly Vector2 GilTrackerPointsPopupSize = new(700, 300);
+    // Currency tracker defaults
+    public const int CurrencyTrackerMaxSamples = 200;
+    public const float CurrencyTrackerStartingValue = 100000f;
+    public const float CurrencyTrackerMaxGil = 999_999_999f;
+    public static readonly Vector2 CurrencyTrackerToolSize = new(360, 220);
+    public static readonly Vector2 CurrencyTrackerPointsPopupSize = new(700, 300);
 
     // Currency tracking defaults
     public const int DefaultTrackingIntervalMs = 1000;

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Dalamud.Configuration;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
@@ -167,17 +168,28 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoSaveLayoutChanges { get; set; } = false;
 
-    public bool GilTrackerHideCharacterSelector { get; set; } = false;
-    public bool GilTrackerShowMultipleLines { get; set; } = false;
-    public int GilTrackerTimeRangeValue { get; set; } = 7;
-    public MTTimeUnit GilTrackerTimeRangeUnit { get; set; } = MTTimeUnit.All;
-    public bool GilTrackerShowEndGap { get; set; } = false;
-    public float GilTrackerEndGapPercent { get; set; } = 5f;
-    public bool GilTrackerShowValueLabel { get; set; } = false;
-    public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
-    public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
-    public float GilTrackerLegendWidth { get; set; } = 120f;
-    public bool GilTrackerShowLegend { get; set; } = true;
+    [JsonPropertyName("GilTrackerHideCharacterSelector")]
+    public bool HideCharacterSelector { get; set; } = false;
+    [JsonPropertyName("GilTrackerShowMultipleLines")]
+    public bool ShowMultipleLines { get; set; } = false;
+    [JsonPropertyName("GilTrackerTimeRangeValue")]
+    public int TimeRangeValue { get; set; } = 7;
+    [JsonPropertyName("GilTrackerTimeRangeUnit")]
+    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.All;
+    [JsonPropertyName("GilTrackerShowEndGap")]
+    public bool ShowEndGap { get; set; } = false;
+    [JsonPropertyName("GilTrackerEndGapPercent")]
+    public float EndGapPercent { get; set; } = 5f;
+    [JsonPropertyName("GilTrackerShowValueLabel")]
+    public bool ShowValueLabel { get; set; } = false;
+    [JsonPropertyName("GilTrackerValueLabelOffsetX")]
+    public float ValueLabelOffsetX { get; set; } = 0f;
+    [JsonPropertyName("GilTrackerValueLabelOffsetY")]
+    public float ValueLabelOffsetY { get; set; } = 0f;
+    [JsonPropertyName("GilTrackerLegendWidth")]
+    public float LegendWidth { get; set; } = 120f;
+    [JsonPropertyName("GilTrackerShowLegend")]
+    public bool ShowLegend { get; set; } = true;
 
     /// <summary>
     /// The scope for Universalis market data queries (World, DataCenter, or Region).
