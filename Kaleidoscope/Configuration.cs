@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using Dalamud.Configuration;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
@@ -167,29 +166,6 @@ public class Configuration : IPluginConfiguration
     /// When enabled, layout changes are automatically saved without requiring manual save.
     /// </summary>
     public bool AutoSaveLayoutChanges { get; set; } = false;
-
-    [JsonPropertyName("GilTrackerHideCharacterSelector")]
-    public bool HideCharacterSelector { get; set; } = false;
-    [JsonPropertyName("GilTrackerShowMultipleLines")]
-    public bool ShowMultipleLines { get; set; } = false;
-    [JsonPropertyName("GilTrackerTimeRangeValue")]
-    public int TimeRangeValue { get; set; } = 7;
-    [JsonPropertyName("GilTrackerTimeRangeUnit")]
-    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.All;
-    [JsonPropertyName("GilTrackerShowEndGap")]
-    public bool ShowEndGap { get; set; } = false;
-    [JsonPropertyName("GilTrackerEndGapPercent")]
-    public float EndGapPercent { get; set; } = 5f;
-    [JsonPropertyName("GilTrackerShowValueLabel")]
-    public bool ShowValueLabel { get; set; } = false;
-    [JsonPropertyName("GilTrackerValueLabelOffsetX")]
-    public float ValueLabelOffsetX { get; set; } = 0f;
-    [JsonPropertyName("GilTrackerValueLabelOffsetY")]
-    public float ValueLabelOffsetY { get; set; } = 0f;
-    [JsonPropertyName("GilTrackerLegendWidth")]
-    public float LegendWidth { get; set; } = 120f;
-    [JsonPropertyName("GilTrackerShowLegend")]
-    public bool ShowLegend { get; set; } = true;
 
     /// <summary>
     /// The scope for Universalis market data queries (World, DataCenter, or Region).
