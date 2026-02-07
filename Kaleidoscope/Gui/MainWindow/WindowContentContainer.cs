@@ -275,6 +275,12 @@ public partial class WindowContentContainer
         }
 
         /// <summary>
+        /// Optional configuration service for reading UI color defaults.
+        /// Set after construction by the MainWindow.
+        /// </summary>
+        public ConfigurationService? ConfigService { get; set; }
+
+        /// <summary>
         /// Optional callback to get the current tool internal padding from an external source.
         /// If set and returns a non-negative value, it overrides the _currentGridSettings value.
         /// This allows real-time updates from the config window.

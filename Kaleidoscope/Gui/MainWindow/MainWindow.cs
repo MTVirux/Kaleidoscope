@@ -343,7 +343,10 @@ public sealed class MainWindow : Window, IService, IDisposable
         _contentContainer = new WindowContentContainer(
             () => Config.ContentGridCellWidthPercent,
             () => Config.ContentGridCellHeightPercent,
-            () => Config.GridSubdivisions);
+            () => Config.GridSubdivisions)
+        {
+            ConfigService = _configService
+        };
 
         // Wire up external padding source for real-time config window updates
         _contentContainer.GetExternalToolInternalPadding = () =>

@@ -896,7 +896,8 @@ public partial class WindowContentContainer
                             ImGui.Separator();
                             
                             // Background color with right-click to reset
-                            var defaultBgColor = new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
+                            var defaultBgColor = ConfigService?.Config.UIColors.ToolBackground 
+                                ?? new Vector4(211f / 255f, 58f / 255f, 58f / 255f, 0.5f);
                             var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithReset(
                                 "Background color", t.BackgroundColor, defaultBgColor, "Background color");
                             if (colorChanged) { t.BackgroundColor = newColor; MarkLayoutDirty(); }
