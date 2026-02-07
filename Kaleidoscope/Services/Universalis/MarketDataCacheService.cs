@@ -15,6 +15,11 @@ public sealed class MarketDataCacheService : IService, IDisposable
     
     private readonly ConcurrentDictionary<(int ItemId, int WorldId), MarketPriceCacheEntry> _priceCache = new();
     
+    // Secondary indexes for O(1) lookups instead of O(N) full-cache scans
+    private readonly ConcurrentDictionary<int, HashSet<int>> _itemToWorlds = new(); // itemId → set of worldIds
+    private readonly ConcurrentDictionary<int, HashSet<int>> _worldToItems = new(); // worldId → set of itemIds
+    private readonly object _indexLock = new(); // Protects compound index updates
+    
     private readonly ConcurrentDictionary<(int ItemId, int WorldId), RecentSalesCacheEntry> _recentSalesCache = new();
     
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), int> _lastSalePriceCache = new();
@@ -36,6 +41,56 @@ public sealed class MarketDataCacheService : IService, IDisposable
         _configService = configService;
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Service initialized");
     }
+    
+    #region Secondary Index Helpers
+    
+    /// <summary>
+    /// Adds an (itemId, worldId) pair to both secondary indexes.
+    /// </summary>
+    private void AddToIndexes(int itemId, int worldId)
+    {
+        lock (_indexLock)
+        {
+            if (!_itemToWorlds.TryGetValue(itemId, out var worlds))
+            {
+                worlds = new HashSet<int>();
+                _itemToWorlds[itemId] = worlds;
+            }
+            worlds.Add(worldId);
+            
+            if (!_worldToItems.TryGetValue(worldId, out var items))
+            {
+                items = new HashSet<int>();
+                _worldToItems[worldId] = items;
+            }
+            items.Add(itemId);
+        }
+    }
+    
+    /// <summary>
+    /// Removes an (itemId, worldId) pair from both secondary indexes.
+    /// </summary>
+    private void RemoveFromIndexes(int itemId, int worldId)
+    {
+        lock (_indexLock)
+        {
+            if (_itemToWorlds.TryGetValue(itemId, out var worlds))
+            {
+                worlds.Remove(worldId);
+                if (worlds.Count == 0)
+                    _itemToWorlds.TryRemove(itemId, out _);
+            }
+            
+            if (_worldToItems.TryGetValue(worldId, out var items))
+            {
+                items.Remove(itemId);
+                if (items.Count == 0)
+                    _worldToItems.TryRemove(worldId, out _);
+            }
+        }
+    }
+    
+    #endregion
     
     #region Public Properties - Statistics
     
@@ -153,6 +208,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         };
         
         _priceCache[key] = entry;
+        AddToIndexes(itemId, worldId);
         
         if (lastSaleNq > 0)
         {
@@ -263,15 +319,23 @@ public sealed class MarketDataCacheService : IService, IDisposable
     
     /// <summary>
     /// Gets all cached prices for a specific item across all worlds.
+    /// Uses secondary index for O(1) lookup instead of scanning the entire cache.
     /// </summary>
     public IReadOnlyDictionary<int, MarketPriceCacheEntry> GetPricesForItem(int itemId)
     {
         var result = new Dictionary<int, MarketPriceCacheEntry>();
-        foreach (var kvp in _priceCache)
+        HashSet<int>? worlds;
+        lock (_indexLock)
         {
-            if (kvp.Key.ItemId == itemId)
+            if (!_itemToWorlds.TryGetValue(itemId, out worlds))
+                return result;
+            worlds = new HashSet<int>(worlds); // snapshot under lock
+        }
+        foreach (var worldId in worlds)
+        {
+            if (_priceCache.TryGetValue((itemId, worldId), out var entry))
             {
-                result[kvp.Key.WorldId] = kvp.Value;
+                result[worldId] = entry;
             }
         }
         return result;
@@ -279,15 +343,23 @@ public sealed class MarketDataCacheService : IService, IDisposable
     
     /// <summary>
     /// Gets all cached prices for a specific world.
+    /// Uses secondary index for O(1) lookup instead of scanning the entire cache.
     /// </summary>
     public IReadOnlyDictionary<int, MarketPriceCacheEntry> GetPricesForWorld(int worldId)
     {
         var result = new Dictionary<int, MarketPriceCacheEntry>();
-        foreach (var kvp in _priceCache)
+        HashSet<int>? items;
+        lock (_indexLock)
         {
-            if (kvp.Key.WorldId == worldId)
+            if (!_worldToItems.TryGetValue(worldId, out items))
+                return result;
+            items = new HashSet<int>(items); // snapshot under lock
+        }
+        foreach (var itemId in items)
+        {
+            if (_priceCache.TryGetValue((itemId, worldId), out var entry))
             {
-                result[kvp.Key.ItemId] = kvp.Value;
+                result[itemId] = entry;
             }
         }
         return result;
@@ -336,7 +408,12 @@ public sealed class MarketDataCacheService : IService, IDisposable
     /// </summary>
     public bool RemovePrice(int itemId, int worldId)
     {
-        return _priceCache.TryRemove((itemId, worldId), out _);
+        var removed = _priceCache.TryRemove((itemId, worldId), out _);
+        if (removed)
+        {
+            RemoveFromIndexes(itemId, worldId);
+        }
+        return removed;
     }
     
     /// <summary>
@@ -345,6 +422,11 @@ public sealed class MarketDataCacheService : IService, IDisposable
     public void ClearPriceCache()
     {
         _priceCache.Clear();
+        lock (_indexLock)
+        {
+            _itemToWorlds.Clear();
+            _worldToItems.Clear();
+        }
         Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Price cache cleared");
     }
@@ -361,6 +443,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         {
             if (_priceCache.TryRemove(key, out _))
             {
+                RemoveFromIndexes(key.ItemId, key.WorldId);
                 Interlocked.Increment(ref _evictions);
             }
         }
@@ -477,6 +560,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         {
             if (_priceCache.TryRemove(key, out _))
             {
+                RemoveFromIndexes(key.ItemId, key.WorldId);
                 count++;
                 Interlocked.Increment(ref _evictions);
             }
@@ -525,6 +609,11 @@ public sealed class MarketDataCacheService : IService, IDisposable
         _priceCache.Clear();
         _recentSalesCache.Clear();
         _lastSalePriceCache.Clear();
+        lock (_indexLock)
+        {
+            _itemToWorlds.Clear();
+            _worldToItems.Clear();
+        }
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Disposed");
     }
 }
