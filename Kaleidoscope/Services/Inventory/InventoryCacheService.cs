@@ -472,6 +472,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// Scans all known retainers from RetainerManager cache.
     /// This only updates retainer metadata (names, gil), not inventory items.
     /// Inventory items are only updated when a retainer is actually opened.
+    /// Uses in-memory cache + MarkDirty for deferred DB persistence (no synchronous DB I/O).
     /// </summary>
     public unsafe void CacheRetainerMetadata()
     {
@@ -483,6 +484,9 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             var rm = GameStateService.RetainerManagerInstance();
             if (rm == null || !rm->IsReady) return;
 
+            // Read existing entries from in-memory cache (not DB)
+            var existingCaches = GetInventoriesForCharacter(characterId);
+
             var retainerCount = rm->GetRetainerCount();
             for (uint i = 0; i < retainerCount; i++)
             {
@@ -492,11 +496,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                 var retainerId = retainer->RetainerId;
                 if (retainerId == 0) continue;
 
-                // Check if we already have a cache for this retainer
-                var existing = _dbService.GetInventoryCache(
-                    characterId, 
-                    InventorySourceType.Retainer, 
-                    retainerId);
+                var existing = existingCaches.FirstOrDefault(c =>
+                    c.SourceType == InventorySourceType.Retainer && c.RetainerId == retainerId);
 
                 if (existing != null)
                 {
@@ -506,7 +507,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                         existing.Gil = retainer->Gil;
                         existing.Name = retainer->NameString;
                         existing.UpdatedAt = DateTime.UtcNow;
-                        _dbService.SaveInventoryCache(existing);
+                        UpdateMemoryCache(characterId, existing);
+                        MarkDirty(characterId, InventorySourceType.Retainer, retainerId);
                     }
                 }
                 else
@@ -514,7 +516,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
                     // Create a placeholder entry (inventory items will be filled when retainer is opened)
                     var entry = InventoryCacheEntry.ForRetainer(characterId, retainerId, retainer->NameString);
                     entry.Gil = retainer->Gil;
-                    _dbService.SaveInventoryCache(entry);
+                    UpdateMemoryCache(characterId, entry);
+                    MarkDirty(characterId, InventorySourceType.Retainer, retainerId);
                     LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Created placeholder for retainer '{retainer->NameString}'");
                 }
             }
