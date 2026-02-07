@@ -174,48 +174,6 @@ public class MTGraphWidget : ISettingsProvider
     }
 
     /// <summary>
-    /// Updates display options from external configuration.
-    /// </summary>
-    public void UpdateDisplayOptions(
-        bool showValueLabel, 
-        float valueLabelOffsetX = 0f, 
-        float valueLabelOffsetY = 0f, 
-        float legendWidth = 140f, 
-        bool showLegend = true, 
-        MTGraphType graphType = MTGraphType.Area, 
-        bool showXAxisTimestamps = true,
-        bool showCrosshair = true,
-        bool showGridLines = true,
-        bool showCurrentPriceLine = true,
-        MTLegendPosition legendPosition = MTLegendPosition.InsideTopLeft,
-        float legendHeightPercent = 25f,
-        bool autoScrollEnabled = false,
-        int autoScrollTimeValue = 1,
-        MTTimeUnit autoScrollTimeUnit = MTTimeUnit.Hours,
-        float autoScrollNowPosition = 75f,
-        bool showControlsDrawer = true)
-    {
-        var config = _graph.Config;
-        config.ShowValueLabel = showValueLabel;
-        config.ValueLabelOffsetX = valueLabelOffsetX;
-        config.ValueLabelOffsetY = valueLabelOffsetY;
-        config.LegendWidth = legendWidth;
-        config.ShowLegend = showLegend;
-        config.GraphType = graphType;
-        config.ShowXAxisTimestamps = showXAxisTimestamps;
-        config.ShowCrosshair = showCrosshair;
-        config.ShowGridLines = showGridLines;
-        config.ShowCurrentPriceLine = showCurrentPriceLine;
-        config.LegendPosition = legendPosition;
-        config.LegendHeightPercent = legendHeightPercent;
-        config.AutoScrollEnabled = autoScrollEnabled;
-        config.AutoScrollTimeValue = autoScrollTimeValue;
-        config.AutoScrollTimeUnit = autoScrollTimeUnit;
-        config.AutoScrollNowPosition = autoScrollNowPosition;
-        config.ShowControlsDrawer = showControlsDrawer;
-    }
-
-    /// <summary>
     /// Sets the hidden series from an external collection.
     /// </summary>
     public void SetHiddenSeries(IEnumerable<string>? seriesNames)
@@ -372,7 +330,9 @@ public class MTGraphWidget : ISettingsProvider
         
         var changed = false;
         var settings = _boundSettings;
-        var config = _graph.Config;
+        
+        // Settings are written to the bound IGraphWidgetSettings only.
+        // SyncFromBoundSettings() copies them to MTGraphConfig before each render frame.
         
         // Color mode setting
         var colorMode = (int)settings.ColorMode;
@@ -402,7 +362,6 @@ public class MTGraphWidget : ISettingsProvider
         // Number format setting
         if (NumberFormatSettingsUI.Draw($"graph_{GetHashCode()}", settings.NumberFormat, "Number Format"))
         {
-            config.NumberFormat = settings.NumberFormat;
             changed = true;
         }
         ShowSettingsTooltip("How numbers are formatted in the graph (axis labels, tooltips, etc.).");
@@ -416,7 +375,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show legend", ref showLegend))
             {
                 settings.ShowLegend = showLegend;
-                config.ShowLegend = showLegend;
                 changed = true;
             }
             ShowSettingsTooltip("Shows a legend panel with series names and values.");
@@ -427,7 +385,6 @@ public class MTGraphWidget : ISettingsProvider
                 if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                 {
                     settings.LegendPosition = (MTLegendPosition)legendPosition;
-                    config.LegendPosition = settings.LegendPosition;
                     changed = true;
                 }
                 ShowSettingsTooltip("Where to display the legend: outside the graph or inside at a corner.");
@@ -438,7 +395,6 @@ public class MTGraphWidget : ISettingsProvider
                     if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
                     {
                         settings.LegendWidth = legendWidth;
-                        config.LegendWidth = legendWidth;
                         changed = true;
                     }
                     ShowSettingsTooltip("Width of the scrollable legend panel.");
@@ -449,7 +405,6 @@ public class MTGraphWidget : ISettingsProvider
                     if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
                     {
                         settings.LegendHeightPercent = legendHeight;
-                        config.LegendHeightPercent = legendHeight;
                         changed = true;
                     }
                     ShowSettingsTooltip("Maximum height of the inside legend as a percentage of the graph height.");
@@ -464,7 +419,6 @@ public class MTGraphWidget : ISettingsProvider
         if (ImGui.Checkbox("Show current value label", ref showValueLabel))
         {
             settings.ShowValueLabel = showValueLabel;
-            config.ShowValueLabel = showValueLabel;
             changed = true;
         }
         ShowSettingsTooltip("Shows the current value as a small label near the latest data point.");
@@ -475,7 +429,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.SliderFloat("Label X offset", ref labelOffsetX, -100f, 100f, "%.0f"))
             {
                 settings.ValueLabelOffsetX = labelOffsetX;
-                config.ValueLabelOffsetX = labelOffsetX;
                 changed = true;
             }
             ShowSettingsTooltip("Horizontal offset for the value label. Negative = left, positive = right.");
@@ -484,7 +437,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.SliderFloat("Label Y offset", ref labelOffsetY, -50f, 50f, "%.0f"))
             {
                 settings.ValueLabelOffsetY = labelOffsetY;
-                config.ValueLabelOffsetY = labelOffsetY;
                 changed = true;
             }
             ShowSettingsTooltip("Vertical offset for the value label. Negative = up, positive = down.");
@@ -498,7 +450,6 @@ public class MTGraphWidget : ISettingsProvider
             if (GraphTypeSelectorWidget.Draw("Graph type", ref graphType))
             {
                 settings.GraphType = graphType;
-                config.GraphType = graphType;
                 changed = true;
             }
             ShowSettingsTooltip("The visual style for the graph (Area, Line, Stairs, Bars).");
@@ -508,7 +459,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show X-axis timestamps", ref showXAxisTimestamps))
             {
                 settings.ShowXAxisTimestamps = showXAxisTimestamps;
-                config.ShowXAxisTimestamps = showXAxisTimestamps;
                 changed = true;
             }
             ShowSettingsTooltip("Shows time labels on the X-axis.");
@@ -518,7 +468,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show crosshair", ref showCrosshair))
             {
                 settings.ShowCrosshair = showCrosshair;
-                config.ShowCrosshair = showCrosshair;
                 changed = true;
             }
             ShowSettingsTooltip("Shows crosshair lines when hovering over the graph.");
@@ -528,7 +477,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show grid lines", ref showGridLines))
             {
                 settings.ShowGridLines = showGridLines;
-                config.ShowGridLines = showGridLines;
                 changed = true;
             }
             ShowSettingsTooltip("Shows horizontal grid lines for easier value reading.");
@@ -538,7 +486,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show current price line", ref showCurrentPriceLine))
             {
                 settings.ShowCurrentPriceLine = showCurrentPriceLine;
-                config.ShowCurrentPriceLine = showCurrentPriceLine;
                 changed = true;
             }
             ShowSettingsTooltip("Shows a horizontal line at the current (latest) value.");
@@ -553,7 +500,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Enable auto-scroll", ref autoScrollEnabled))
             {
                 settings.AutoScrollEnabled = autoScrollEnabled;
-                config.AutoScrollEnabled = autoScrollEnabled;
                 changed = true;
             }
             ShowSettingsTooltip("When enabled, the graph automatically scrolls to show the most recent data.");
@@ -566,7 +512,6 @@ public class MTGraphWidget : ISettingsProvider
                 {
                     timeValue = Math.Max(1, timeValue);
                     settings.AutoScrollTimeValue = timeValue;
-                    config.AutoScrollTimeValue = timeValue;
                     changed = true;
                 }
                 
@@ -575,7 +520,6 @@ public class MTGraphWidget : ISettingsProvider
                 if (ImGui.Combo("Time window unit", ref timeUnit, AutoScrollTimeUnitNames, AutoScrollTimeUnitNames.Length))
                 {
                     settings.AutoScrollTimeUnit = (MTTimeUnit)timeUnit;
-                    config.AutoScrollTimeUnit = settings.AutoScrollTimeUnit;
                     changed = true;
                 }
                 
@@ -584,7 +528,6 @@ public class MTGraphWidget : ISettingsProvider
                 if (ImGui.SliderFloat("'Now' position", ref nowPosition, 0f, 100f, "%.0f %%"))
                 {
                     settings.AutoScrollNowPosition = nowPosition;
-                    config.AutoScrollNowPosition = nowPosition;
                     changed = true;
                 }
                 ShowSettingsTooltip("Position of 'now' on the X-axis. 0% = left edge, 100% = right edge.");
@@ -594,7 +537,6 @@ public class MTGraphWidget : ISettingsProvider
             if (ImGui.Checkbox("Show controls drawer", ref showControlsDrawer))
             {
                 settings.ShowControlsDrawer = showControlsDrawer;
-                config.ShowControlsDrawer = showControlsDrawer;
                 changed = true;
             }
             ShowSettingsTooltip("Shows a collapsible controls panel in the bottom-left corner of the graph.");
