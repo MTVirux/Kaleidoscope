@@ -223,10 +223,8 @@ public partial class DataTool
             else if (groupingMode == TableGroupingMode.All)
             {
                 var aggregated = points
-                    .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day, 
-                        p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                    .OrderBy(p => p.ts)
+                    .OrderBy(p => p.timestamp)
+                    .Select(p => (ts: p.timestamp, value: (float)p.value))
                     .ToList();
                 
                 if (aggregated.Count > 0)
@@ -257,10 +255,10 @@ public partial class DataTool
     }
     
     /// <summary>
-    /// Rounds a DateTime to the minute (truncating seconds and below).
+    /// Normalizes a DateTime to UTC kind without rounding.
     /// </summary>
-    private static DateTime RoundToMinute(DateTime dt)
-        => new(dt.Year, dt.Month, dt.Day, dt.Hour, dt.Minute, 0, DateTimeKind.Utc);
+    private static DateTime NormalizeTimestamp(DateTime dt)
+        => DateTime.SpecifyKind(dt, DateTimeKind.Utc);
 
     /// <summary>
     /// Aggregates multiple data sources using forward-fill logic.
@@ -272,14 +270,13 @@ public partial class DataTool
     private static List<(DateTime ts, float value)> AggregateWithForwardFill(
         IEnumerable<(string source, DateTime ts, long value)> points)
     {
-        // Round timestamps and group by source
-        // For each source at each rounded timestamp, take the latest value (not sum)
+        // Group by source, keeping the latest value at each timestamp
         var bySource = points
             .GroupBy(p => p.source)
             .ToDictionary(
                 g => g.Key,
                 g => g
-                    .GroupBy(p => RoundToMinute(p.ts))
+                    .GroupBy(p => NormalizeTimestamp(p.ts))
                     .ToDictionary(tg => tg.Key, tg => tg.OrderByDescending(p => p.ts).First().value));
 
         if (bySource.Count == 0)
@@ -339,25 +336,21 @@ public partial class DataTool
             var playerPts = playerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
             var retPts = retainerByChar.GetValueOrDefault(charId) ?? new List<(ulong, DateTime, long)>();
             
-            // Collect all unique timestamps (rounded to minute)
+            // Collect all unique timestamps
             var allTimestamps = playerPts
-                .Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                .Union(retPts.Select(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc)))
+                .Select(p => p.timestamp)
+                .Union(retPts.Select(p => p.timestamp))
                 .OrderBy(t => t)
                 .Distinct()
                 .ToList();
             
-            // Build lookup for player and retainer values by rounded timestamp
+            // Build lookup for player and retainer values by timestamp
             var playerLookup = playerPts
-                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .GroupBy(p => p.timestamp)
                 .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
             
             var retainerLookup = retPts
-                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
+                .GroupBy(p => p.timestamp)
                 .ToDictionary(g => g.Key, g => g.Sum(p => p.value));
             
             // Forward-fill: carry forward the last known value for each series
@@ -585,10 +578,8 @@ public partial class DataTool
             
             // Aggregate points by timestamp within the group
             var aggregated = group
-                .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                    p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                .OrderBy(p => p.ts)
+                .OrderBy(p => p.timestamp)
+                .Select(p => (ts: p.timestamp, value: (float)p.value))
                 .ToList();
             
             if (aggregated.Count > 0)
@@ -684,10 +675,8 @@ public partial class DataTool
             else if (groupingMode == TableGroupingMode.All)
             {
                 var aggregated = points
-                    .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                        p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                    .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                    .OrderBy(p => p.ts)
+                    .OrderBy(p => p.timestamp)
+                    .Select(p => (ts: p.timestamp, value: (float)p.value))
                     .ToList();
                 
                 if (aggregated.Count > 0)
@@ -711,10 +700,8 @@ public partial class DataTool
                     var seriesName = $"{defaultName} ({groupName} - {retainerName})";
                     
                     var aggregated = group
-                        .GroupBy(p => new DateTime(p.timestamp.Year, p.timestamp.Month, p.timestamp.Day,
-                            p.timestamp.Hour, p.timestamp.Minute, 0, DateTimeKind.Utc))
-                        .Select(g => (ts: g.Key, value: (float)g.Sum(p => p.value)))
-                        .OrderBy(p => p.ts)
+                        .OrderBy(p => p.timestamp)
+                        .Select(p => (ts: p.timestamp, value: (float)p.value))
                         .ToList();
                     
                     if (aggregated.Count > 0)
