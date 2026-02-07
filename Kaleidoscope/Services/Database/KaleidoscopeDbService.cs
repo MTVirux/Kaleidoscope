@@ -387,7 +387,13 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     }
 
     /// <summary>
+    /// Current schema version. Increment this whenever a new migration is added.
+    /// </summary>
+    private const int CurrentSchemaVersion = 5; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color
+
+    /// <summary>
     /// Runs database migrations for schema updates.
+    /// Uses a schema_version table to skip already-applied migrations on startup.
     /// </summary>
     private void RunMigrations()
     {
@@ -395,17 +401,47 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
         try
         {
-            // Migration: Add last_sale_nq and last_sale_hq columns to item_prices table
-            MigrateAddLastSaleColumns();
-            
-            // Migration: Add inventory_value_items table for per-item value tracking
-            MigrateAddInventoryValueItemsTable();
-            
-            // Migration: Add display_name column to character_names table
-            MigrateAddDisplayNameColumn();
-            
-            // Migration: Add time_series_color column to character_names table
-            MigrateAddTimeSeriesColorColumn();
+            // Ensure schema_version table exists
+            using (var createCmd = _connection.CreateCommand())
+            {
+                createCmd.CommandText = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
+                createCmd.ExecuteNonQuery();
+            }
+
+            // Read current version
+            int currentVersion = 0;
+            using (var readCmd = _connection.CreateCommand())
+            {
+                readCmd.CommandText = "SELECT version FROM schema_version LIMIT 1";
+                var result = readCmd.ExecuteScalar();
+                if (result != null && result != DBNull.Value)
+                    currentVersion = Convert.ToInt32(result);
+            }
+
+            if (currentVersion >= CurrentSchemaVersion)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Schema is up to date (version {currentVersion})");
+                return;
+            }
+
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Running migrations from version {currentVersion} to {CurrentSchemaVersion}");
+
+            // Run only migrations that haven't been applied yet
+            if (currentVersion < 2) MigrateAddLastSaleColumns();
+            if (currentVersion < 3) MigrateAddInventoryValueItemsTable();
+            if (currentVersion < 4) MigrateAddDisplayNameColumn();
+            if (currentVersion < 5) MigrateAddTimeSeriesColorColumn();
+
+            // Update version
+            using (var updateCmd = _connection.CreateCommand())
+            {
+                updateCmd.CommandText = currentVersion == 0
+                    ? $"INSERT INTO schema_version (version) VALUES ({CurrentSchemaVersion})"
+                    : $"UPDATE schema_version SET version = {CurrentSchemaVersion}";
+                updateCmd.ExecuteNonQuery();
+            }
+
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Migrations complete, schema now at version {CurrentSchemaVersion}");
         }
         catch (Exception ex)
         {
