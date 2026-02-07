@@ -30,6 +30,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly LayoutEditingService _layoutEditingService;
     private readonly ProfilerService _profilerService;
     private readonly FrameLimiterService _frameLimiterService;
+    private readonly IKeyState _keyState;
     private readonly ToolCreationContext _toolContext;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
@@ -51,6 +52,12 @@ public sealed class MainWindow : Window, IService, IDisposable
 
     // Flag to track if this is the first PreDraw call (used for initial positioning)
     private bool _firstPreDraw = true;
+
+    // Flag to apply restored windowed position/size on the next PreDraw after exiting fullscreen
+    private bool _pendingWindowRestore;
+
+    // Suppress ESC-to-close until the ESC key is released after exiting fullscreen via ESC
+    private bool _suppressEscClose;
 
     // Fullscreen mode state - when true, window fills viewport with no decorations
     private bool _isFullscreenMode;
@@ -118,7 +125,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         FavoritesService favoritesService,
         CharacterDataService characterDataService,
         SalePriceCacheService salePriceCacheService,
-        FrameLimiterService frameLimiterService) 
+        FrameLimiterService frameLimiterService,
+        IKeyState keyState) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -128,6 +136,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         _layoutEditingService = layoutEditingService;
         _profilerService = profilerService;
         _frameLimiterService = frameLimiterService;
+        _keyState = keyState;
         
         // Bundle tool-related services into a single context for tool creation
         _toolContext = new ToolCreationContext(
@@ -688,15 +697,18 @@ public sealed class MainWindow : Window, IService, IDisposable
             _log.Debug($"ExitFullscreen: viewport bounds check failed: {ex.Message}");
         }
         
-        ImGui.SetNextWindowPos(restoredPos);
-        ImGui.SetNextWindowSize(restoredSize);
+        // Store the validated position/size for the next PreDraw to apply
+        // (SetNextWindowPos/Size can't be called here — Draw() runs after the window's Begin)
+        _savedPos = restoredPos;
+        _savedSize = restoredSize;
+        _pendingWindowRestore = true;
         
-        if (_stateService.IsLocked)
-        {
-            Config.MainWindowPos = restoredPos;
-            Config.MainWindowSize = restoredSize;
-            _configService.MarkDirty();
-        }
+        // Always persist the restored windowed position/size to config
+        Config.MainWindowPos = restoredPos;
+        Config.MainWindowSize = restoredSize;
+        _lastSavedPos = restoredPos;
+        _lastSavedSize = restoredSize;
+        _configService.MarkDirty();
     }
 
     /// <summary>
@@ -731,6 +743,17 @@ public sealed class MainWindow : Window, IService, IDisposable
             _savedPos = Config.MainWindowPos;
             _savedSize = Config.MainWindowSize;
         }
+        
+        // Persist windowed pos/size to config so it survives plugin restarts
+        Config.MainWindowPos = _savedPos;
+        Config.MainWindowSize = _savedSize;
+        _lastSavedPos = _savedPos;
+        _lastSavedSize = _savedSize;
+        
+        // Also persist to the active windowed layout so the position is layout-specific
+        PersistWindowedPosToActiveLayout(_savedPos, _savedSize);
+        
+        _configService.MarkDirty();
         
         _isFullscreenMode = true;
         _stateService.IsFullscreen = true;
@@ -798,6 +821,20 @@ public sealed class MainWindow : Window, IService, IDisposable
             if (layout.Tools is { Count: > 0 })
                 _contentContainer.ApplyLayout(layout.Tools);
             
+            // When switching to a windowed layout, restore its saved window position/size
+            if (!_isFullscreenMode && layout.WindowedPos.HasValue && layout.WindowedSize.HasValue)
+            {
+                _savedPos = layout.WindowedPos.Value;
+                _savedSize = layout.WindowedSize.Value;
+                Config.MainWindowPos = _savedPos;
+                Config.MainWindowSize = _savedSize;
+                _lastSavedPos = _savedPos;
+                _lastSavedSize = _savedSize;
+                
+                // Schedule the position restore for the next PreDraw
+                _pendingWindowRestore = true;
+            }
+            
             // Update the active layout name if we fell back to a different one
             if (_isFullscreenMode && Config.ActiveFullscreenLayoutName != layout.Name)
             {
@@ -848,6 +885,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Handle fullscreen mode - fill viewport with no decorations
         if (_isFullscreenMode)
         {
+            // Disable ESC-to-close so our ESC handler can exit fullscreen without hiding the window
+            RespectCloseHotkey = false;
+            
             // Fullscreen mode: force fullscreen positioning and disable move/resize/title
             // NoBringToFrontOnFocus is required so popups, context menus, and combo dropdowns render on top
             Flags = ImGuiWindowFlags.NoDecoration 
@@ -877,6 +917,14 @@ public sealed class MainWindow : Window, IService, IDisposable
         
         // Windowed mode logic below
         
+        // Clear ESC suppression once the key is released after a fullscreen exit
+        if (_suppressEscClose && !_keyState[(int)Dalamud.Game.ClientState.Keys.VirtualKey.ESCAPE])
+            _suppressEscClose = false;
+        
+        // Re-enable ESC-to-close for windowed mode, but suppress it while ESC is
+        // still held from the fullscreen exit to prevent closing the window
+        RespectCloseHotkey = !_suppressEscClose;
+        
         // On first PreDraw, apply the saved position/size from config so the window
         // opens where it was last closed, regardless of lock state.
         if (_firstPreDraw)
@@ -889,6 +937,13 @@ public sealed class MainWindow : Window, IService, IDisposable
             _savedSize = Config.MainWindowSize;
             _lastSavedPos = Config.MainWindowPos;
             _lastSavedSize = Config.MainWindowSize;
+        }
+        // After exiting fullscreen, restore the saved windowed position/size
+        else if (_pendingWindowRestore)
+        {
+            _pendingWindowRestore = false;
+            ImGui.SetNextWindowPos(_savedPos);
+            ImGui.SetNextWindowSize(_savedSize);
         }
 
         // Apply custom background color
@@ -960,6 +1015,18 @@ public sealed class MainWindow : Window, IService, IDisposable
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
+        }
+
+        // ESC key exits fullscreen mode (only when focused and no popups are open)
+        // Uses Dalamud IKeyState to read ESC directly from the game's key buffer,
+        // since FFXIV consumes ESC before ImGui sees it
+        if (_isFullscreenMode 
+            && isThisWindowFocused
+            && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel)
+            && _keyState[(int)Dalamud.Game.ClientState.Keys.VirtualKey.ESCAPE])
+        {
+            _suppressEscClose = true;
+            ExitFullscreenModeInternal();
         }
 
         // In fullscreen mode, skip window interaction detection since the window can't be moved/resized
@@ -1043,6 +1110,34 @@ public sealed class MainWindow : Window, IService, IDisposable
         catch (Exception ex) { _log.Debug($"[MainWindow] Quick access bar draw failed: {ex.Message}"); }
     }
 
+    /// <summary>
+    /// Persists the given windowed position/size to the currently active windowed layout.
+    /// This ensures the position is remembered per-layout and survives plugin restarts.
+    /// </summary>
+    private void PersistWindowedPosToActiveLayout(Vector2 pos, Vector2 size)
+    {
+        try
+        {
+            var layouts = Config.Layouts;
+            if (layouts == null) return;
+            
+            var activeName = Config.ActiveWindowedLayoutName;
+            var layout = !string.IsNullOrWhiteSpace(activeName)
+                ? layouts.Find(x => x.Type == LayoutType.Windowed && x.Name == activeName)
+                : layouts.Find(x => x.Type == LayoutType.Windowed);
+            
+            if (layout != null)
+            {
+                layout.WindowedPos = pos;
+                layout.WindowedSize = size;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Debug($"[MainWindow] Failed to persist windowed pos to layout: {ex.Message}");
+        }
+    }
+
     private void PersistWindowPositionIfChanged()
     {
         try
@@ -1059,6 +1154,10 @@ public sealed class MainWindow : Window, IService, IDisposable
                 {
                     Config.MainWindowPos = curPos;
                     Config.MainWindowSize = curSize;
+                    
+                    // Also persist to the active windowed layout for per-layout position memory
+                    PersistWindowedPosToActiveLayout(curPos, curSize);
+                    
                     _configService.MarkDirty();
                     _lastSavedPos = curPos;
                     _lastSavedSize = curSize;
