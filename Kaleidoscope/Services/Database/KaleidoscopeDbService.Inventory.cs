@@ -243,21 +243,25 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cacheCmd = conn.CreateCommand();
-                cacheCmd.CommandText = @"
-                    SELECT id, source_type, retainer_id, name, world, gil, updated_at 
-                    FROM inventory_cache 
-                    WHERE character_id = $cid
-                    ORDER BY source_type, retainer_id";
-                cacheCmd.Parameters.AddWithValue("$cid", (long)characterId);
+                // Single JOIN query replaces the N+1 pattern (1 cache query + N item queries)
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT ic.id, ic.source_type, ic.retainer_id, ic.name, ic.world, ic.gil, ic.updated_at,
+                           ii.item_id, ii.quantity, ii.is_hq, ii.is_collectable, ii.slot, ii.container_type, ii.spiritbond, ii.condition, ii.glamour_id
+                    FROM inventory_cache ic
+                    LEFT JOIN inventory_items ii ON ii.cache_id = ic.id
+                    WHERE ic.character_id = $cid
+                    ORDER BY ic.source_type, ic.retainer_id, ii.id";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
 
-                var cacheEntries = new List<(long id, Models.Inventory.InventoryCacheEntry entry)>();
-                using (var reader = cacheCmd.ExecuteReader())
+                var cacheMap = new Dictionary<long, Models.Inventory.InventoryCacheEntry>();
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
                 {
-                    while (reader.Read())
+                    var cacheId = reader.GetInt64(0);
+                    if (!cacheMap.TryGetValue(cacheId, out var entry))
                     {
-                        var cacheId = reader.GetInt64(0);
-                        var entry = new Models.Inventory.InventoryCacheEntry
+                        entry = new Models.Inventory.InventoryCacheEntry
                         {
                             CharacterId = characterId,
                             SourceType = (Models.Inventory.InventorySourceType)reader.GetInt32(1),
@@ -267,37 +271,26 @@ public sealed partial class KaleidoscopeDbService
                             Gil = reader.GetInt64(5),
                             UpdatedAt = new DateTime(reader.GetInt64(6), DateTimeKind.Utc)
                         };
-                        cacheEntries.Add((cacheId, entry));
+                        cacheMap[cacheId] = entry;
+                        result.Add(entry);
                     }
-                }
 
-                foreach (var (cacheId, entry) in cacheEntries)
-                {
-                    using var itemCmd = conn.CreateCommand();
-                    itemCmd.CommandText = @"
-                        SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
-                        FROM inventory_items
-                        WHERE cache_id = $id";
-                    itemCmd.Parameters.AddWithValue("$id", cacheId);
-
-                    using var itemReader = itemCmd.ExecuteReader();
-                    while (itemReader.Read())
+                    // LEFT JOIN means item columns may be null for empty caches
+                    if (!reader.IsDBNull(7))
                     {
                         entry.Items.Add(new Models.Inventory.InventoryItemSnapshot
                         {
-                            ItemId = (uint)itemReader.GetInt64(0),
-                            Quantity = itemReader.GetInt32(1),
-                            IsHq = itemReader.GetInt32(2) != 0,
-                            IsCollectable = itemReader.GetInt32(3) != 0,
-                            Slot = (short)itemReader.GetInt32(4),
-                            ContainerType = (uint)itemReader.GetInt64(5),
-                            SpiritbondOrCollectability = (ushort)itemReader.GetInt32(6),
-                            Condition = (ushort)itemReader.GetInt32(7),
-                            GlamourId = (uint)itemReader.GetInt64(8)
+                            ItemId = (uint)reader.GetInt64(7),
+                            Quantity = reader.GetInt32(8),
+                            IsHq = reader.GetInt32(9) != 0,
+                            IsCollectable = reader.GetInt32(10) != 0,
+                            Slot = (short)reader.GetInt32(11),
+                            ContainerType = (uint)reader.GetInt64(12),
+                            SpiritbondOrCollectability = (ushort)reader.GetInt32(13),
+                            Condition = (ushort)reader.GetInt32(14),
+                            GlamourId = (uint)reader.GetInt64(15)
                         });
                     }
-
-                    result.Add(entry);
                 }
             }
             catch (Exception ex)
@@ -323,19 +316,23 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cacheCmd = conn.CreateCommand();
-                cacheCmd.CommandText = @"
-                    SELECT id, character_id, source_type, retainer_id, name, world, gil, updated_at 
-                    FROM inventory_cache 
-                    ORDER BY character_id, source_type, retainer_id";
+                // Single JOIN query replaces the N+1 pattern (1 cache query + N item queries)
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT ic.id, ic.character_id, ic.source_type, ic.retainer_id, ic.name, ic.world, ic.gil, ic.updated_at,
+                           ii.item_id, ii.quantity, ii.is_hq, ii.is_collectable, ii.slot, ii.container_type, ii.spiritbond, ii.condition, ii.glamour_id
+                    FROM inventory_cache ic
+                    LEFT JOIN inventory_items ii ON ii.cache_id = ic.id
+                    ORDER BY ic.character_id, ic.source_type, ic.retainer_id, ii.id";
 
-                var cacheEntries = new List<(long id, Models.Inventory.InventoryCacheEntry entry)>();
-                using (var reader = cacheCmd.ExecuteReader())
+                var cacheMap = new Dictionary<long, Models.Inventory.InventoryCacheEntry>();
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
                 {
-                    while (reader.Read())
+                    var cacheId = reader.GetInt64(0);
+                    if (!cacheMap.TryGetValue(cacheId, out var entry))
                     {
-                        var cacheId = reader.GetInt64(0);
-                        var entry = new Models.Inventory.InventoryCacheEntry
+                        entry = new Models.Inventory.InventoryCacheEntry
                         {
                             CharacterId = (ulong)reader.GetInt64(1),
                             SourceType = (Models.Inventory.InventorySourceType)reader.GetInt32(2),
@@ -345,37 +342,26 @@ public sealed partial class KaleidoscopeDbService
                             Gil = reader.GetInt64(6),
                             UpdatedAt = new DateTime(reader.GetInt64(7), DateTimeKind.Utc)
                         };
-                        cacheEntries.Add((cacheId, entry));
+                        cacheMap[cacheId] = entry;
+                        result.Add(entry);
                     }
-                }
 
-                foreach (var (cacheId, entry) in cacheEntries)
-                {
-                    using var itemCmd = conn.CreateCommand();
-                    itemCmd.CommandText = @"
-                        SELECT item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id
-                        FROM inventory_items
-                        WHERE cache_id = $id";
-                    itemCmd.Parameters.AddWithValue("$id", cacheId);
-
-                    using var itemReader = itemCmd.ExecuteReader();
-                    while (itemReader.Read())
+                    // LEFT JOIN means item columns may be null for empty caches
+                    if (!reader.IsDBNull(8))
                     {
                         entry.Items.Add(new Models.Inventory.InventoryItemSnapshot
                         {
-                            ItemId = (uint)itemReader.GetInt64(0),
-                            Quantity = itemReader.GetInt32(1),
-                            IsHq = itemReader.GetInt32(2) != 0,
-                            IsCollectable = itemReader.GetInt32(3) != 0,
-                            Slot = (short)itemReader.GetInt32(4),
-                            ContainerType = (uint)itemReader.GetInt64(5),
-                            SpiritbondOrCollectability = (ushort)itemReader.GetInt32(6),
-                            Condition = (ushort)itemReader.GetInt32(7),
-                            GlamourId = (uint)itemReader.GetInt64(8)
+                            ItemId = (uint)reader.GetInt64(8),
+                            Quantity = reader.GetInt32(9),
+                            IsHq = reader.GetInt32(10) != 0,
+                            IsCollectable = reader.GetInt32(11) != 0,
+                            Slot = (short)reader.GetInt32(12),
+                            ContainerType = (uint)reader.GetInt64(13),
+                            SpiritbondOrCollectability = (ushort)reader.GetInt32(14),
+                            Condition = (ushort)reader.GetInt32(15),
+                            GlamourId = (uint)reader.GetInt64(16)
                         });
                     }
-
-                    result.Add(entry);
                 }
             }
             catch (Exception ex)
