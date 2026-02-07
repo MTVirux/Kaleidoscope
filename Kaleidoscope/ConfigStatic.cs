@@ -17,10 +17,6 @@ public static class ConfigStatic
     public static readonly Vector2 CurrencyTrackerToolSize = new(360, 220);
     public static readonly Vector2 CurrencyTrackerPointsPopupSize = new(700, 300);
 
-    // Currency tracking defaults
-    public const int DefaultTrackingIntervalMs = 1000;
-    public const int MinTrackingIntervalMs = 1000;
-
     // Inventory data stabilization
     /// <summary>
     /// Delay in milliseconds to wait after player inventory changes before reading values.

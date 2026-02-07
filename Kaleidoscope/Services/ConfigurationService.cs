@@ -72,7 +72,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
         GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig { TrackingEnabled = true, TrackingIntervalMs = ConfigStatic.DefaultTrackingIntervalMs });
+        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig());
         WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig
         {
             PinMainWindow = Config.PinMainWindow,
@@ -357,8 +357,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
             var s = new CurrencyTrackerConfig
             {
-                TrackingEnabled = true, // Always enabled, cannot be turned off
-                TrackingIntervalMs = CurrencyTrackerConfig.TrackingIntervalMs,
                 DatabaseCacheSizeMb = CurrencyTrackerConfig.DatabaseCacheSizeMb
             };
             ConfigManager.Save("currencytracker.json", s);
