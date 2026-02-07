@@ -219,8 +219,8 @@ public partial class ItemTableWidget
                         Color = null,
                         SourceCharacterIds = new List<ulong> { row.CharacterId },
                         MergedGroup = null,
-                        ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-                        PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        ItemCounts = row.ItemCounts,
+                        PlayerItemCounts = row.PlayerItemCounts,
                         RetainerBreakdown = row.RetainerBreakdown
                     });
                 }
@@ -286,8 +286,8 @@ public partial class ItemTableWidget
                         Color = null,
                         SourceCharacterIds = new List<ulong>(),
                         MergedGroup = null,
-                        ItemCounts = row.ItemCounts.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-                        PlayerItemCounts = row.PlayerItemCounts?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                        ItemCounts = row.ItemCounts,
+                        PlayerItemCounts = row.PlayerItemCounts,
                         RetainerBreakdown = row.RetainerBreakdown
                     });
                 }

@@ -462,7 +462,9 @@ public sealed class LayoutEditingService : IDisposable, IService
                 };
                 
                 var json = JsonConvert.SerializeObject(snapshot, Formatting.Indented);
-                File.WriteAllText(DirtySnapshotPath, json);
+                var tempPath = DirtySnapshotPath + ".tmp";
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, DirtySnapshotPath, overwrite: true);
                 
                 Interlocked.Increment(ref _snapshotWriteCount);
                 _lastSnapshotTime = DateTime.UtcNow;

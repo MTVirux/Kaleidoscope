@@ -190,6 +190,8 @@ public sealed class ConfigWindow : Window, IService, IDisposable
 
     // Flag to bring window to front on the first frame after opening
     private bool _bringToFrontOnNextDraw;
+    // Track focus state for rising-edge detection (only bring to front on focus-change)
+    private bool _wasFocused;
 
     public override void OnOpen()
     {
@@ -233,14 +235,16 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             ImGuiP.BringWindowToDisplayFront(window);
         }
         
-        // When focused, ensure this window stays above the fullscreen main window
-        // This handles the case where user clicks on this window after interacting with main window
-        // Skip when popups are open so dropdowns render above this window
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !isPopupOpen)
+        // When focus is gained, ensure this window stays above the fullscreen main window.
+        // Only fires on the rising edge (not focused → focused) to avoid per-frame overhead.
+        // Skip when popups are open so dropdowns render above this window.
+        var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        if (isFocused && !_wasFocused && !isPopupOpen)
         {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
         }
+        _wasFocused = isFocused;
 
         // Check if CTRL+ALT are held while this window is focused for profiler access
         // Or if developer mode is permanently enabled
