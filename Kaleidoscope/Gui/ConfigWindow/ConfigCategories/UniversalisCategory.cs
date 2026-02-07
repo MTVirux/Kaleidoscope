@@ -242,25 +242,21 @@ public sealed class UniversalisCategory
         ImGui.Spacing();
 
         // Data Retention - reference to Storage category
-        ImGui.TextUnformatted("Data Retention");
-        ImGui.Spacing();
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
             "Price data retention settings have been moved to the Storage category.");
         ImGui.TextDisabled($"Current: {(settings.RetentionType == PriceRetentionType.ByTime ? $"{settings.RetentionDays} days" : $"{settings.RetentionSizeMb} MB")} retention");
 
         ImGui.Spacing();
 
-        // Tracking Scope sub-section using WorldSelectionWidget
-        ImGui.TextUnformatted("Tracking Scope");
-        ImGui.Spacing();
+        // Sub-sections as collapsible groups
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Connection & Channels", true, () => DrawConnectionAndChannels(settings));
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Tracking Scope", true, () => DrawTrackingScope(settings));
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Sale Filtering", false, () => DrawSaleFiltering(settings));
+        MTTreeHelpers.DrawCollapsingSectionWithContent("Inventory Value", true, () => DrawInventoryValue(settings));
+    }
 
-        DrawWorldSelectionWidget(settings);
-
-        ImGui.Spacing();
-
-        // Channel Subscriptions sub-section
-        ImGui.TextUnformatted("Channel Subscriptions");
-        ImGui.Spacing();
+    private void DrawConnectionAndChannels(PriceTrackingSettings settings)
+    {
         ImGui.TextWrapped("Select which WebSocket events to subscribe to. Disabling channels reduces network traffic but limits available data.");
         ImGui.Spacing();
 
@@ -269,7 +265,6 @@ public sealed class UniversalisCategory
         {
             settings.SubscribeListingsAdd = subscribeListingsAdd;
             _configService.Save();
-            // Reconnect to apply changes
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
@@ -283,7 +278,6 @@ public sealed class UniversalisCategory
         {
             settings.SubscribeListingsRemove = subscribeListingsRemove;
             _configService.Save();
-            // Reconnect to apply changes
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
@@ -297,7 +291,6 @@ public sealed class UniversalisCategory
         {
             settings.SubscribeSalesAdd = subscribeSalesAdd;
             _configService.Save();
-            // Reconnect to apply changes
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
@@ -306,10 +299,24 @@ public sealed class UniversalisCategory
         ImGui.SameLine();
         HelpMarker("Receive notifications when items are sold on the market board.");
 
+        if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.3f, 1f), "Warning: No channels selected - no real-time data will be received!");
+        }
+    }
+
+    private void DrawTrackingScope(PriceTrackingSettings settings)
+    {
+        ImGui.TextWrapped("Choose which worlds, data centers, or regions to track prices for.");
         ImGui.Spacing();
 
-        // Sale filtering sub-section
-        ImGui.TextUnformatted("Sale Filtering");
+        DrawWorldSelectionWidget(settings);
+    }
+
+    private void DrawSaleFiltering(PriceTrackingSettings settings)
+    {
+        ImGui.TextWrapped("Filter out outlier sales to prevent price manipulation from affecting inventory value calculations.");
         ImGui.Spacing();
 
         var filterByListing = settings.FilterSalesByListingPrice;
@@ -323,109 +330,111 @@ public sealed class UniversalisCategory
             "Reference = avg(average of lowest 5 listings, average of last 5 sales) for that world.\n" +
             "This prevents price manipulation and outliers from affecting inventory value calculations.");
 
-        if (settings.FilterSalesByListingPrice)
-        {
-            var threshold = settings.SaleDiscrepancyThreshold;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Discrepancy threshold %##SaleDiscrepancy", ref threshold))
-            {
-                if (threshold < 0) threshold = 0;
-                settings.SaleDiscrepancyThreshold = threshold;
-                _configService.Save();
-            }
-            ImGui.SameLine();
-            HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
-                $"Reference = avg(median of lowest 5 listings, median of last 5 sales) for that world.\n" +
-                $"At {threshold}%: a sale must be between {100 - threshold}% and {100 + threshold}% of the reference price.");
-
-            var minPrice = settings.SaleFilterMinimumPrice;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Minimum price for filter##SaleMinPrice", ref minPrice))
-            {
-                if (minPrice < 0) minPrice = 0;
-                settings.SaleFilterMinimumPrice = minPrice;
-                _configService.Save();
-            }
-            ImGui.SameLine();
-            HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
-                "Low-value items often have high price variance, so filtering them can cause missed data.");
-
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Advanced Outlier Detection");
-            ImGui.Spacing();
-
-            var useMedian = settings.UseMedianForReference;
-            if (ImGui.Checkbox("Use median for reference##UseMedian", ref useMedian))
-            {
-                settings.UseMedianForReference = useMedian;
-                _configService.Save();
-            }
-            ImGui.SameLine();
-            HelpMarker("Use median instead of average for reference price calculation.\n" +
-                "Median is more robust against outliers within the reference data itself.\n" +
-                "Recommended: ON");
-
-            var adjustBulk = settings.AdjustForBulkSales;
-            if (ImGui.Checkbox("Adjust threshold for bulk sales##AdjustBulk", ref adjustBulk))
-            {
-                settings.AdjustForBulkSales = adjustBulk;
-                _configService.Save();
-            }
-            ImGui.SameLine();
-            HelpMarker("Allow more price variance for large stack sales.\n" +
-                "Bulk purchases often have lower per-unit prices (bulk discounts).\n" +
-                "Recommended: ON");
-
-            if (settings.AdjustForBulkSales)
-            {
-                var bulkLeniency = (float)settings.BulkSaleMaxLeniency;
-                ImGui.SetNextItemWidth(100);
-                if (ImGui.SliderFloat("Max bulk leniency##BulkLeniency", ref bulkLeniency, 1.0f, 2.0f, "%.1fx"))
-                {
-                    settings.BulkSaleMaxLeniency = bulkLeniency;
-                    _configService.Save();
-                }
-                ImGui.SameLine();
-                HelpMarker($"Maximum leniency multiplier for bulk sales.\n" +
-                    $"At {bulkLeniency:F1}x: a 100-stack sale can deviate {(int)(threshold * bulkLeniency)}% instead of {threshold}%.");
-            }
-
-            var useStdDev = settings.UseStdDevFilter;
-            if (ImGui.Checkbox("Use standard deviation filter##UseStdDev", ref useStdDev))
-            {
-                settings.UseStdDevFilter = useStdDev;
-                _configService.Save();
-            }
-            ImGui.SameLine();
-            HelpMarker("Use statistical standard deviation instead of fixed percentage.\n" +
-                "More accurate but requires at least 2 recent sales for reference.\n" +
-                "Falls back to percentage threshold if insufficient data.");
-
-            if (settings.UseStdDevFilter)
-            {
-                var stdDevThreshold = (float)settings.StdDevThreshold;
-                ImGui.SetNextItemWidth(100);
-                if (ImGui.SliderFloat("Std dev threshold##StdDevThreshold", ref stdDevThreshold, 1.0f, 4.0f, "%.1f σ"))
-                {
-                    settings.StdDevThreshold = stdDevThreshold;
-                    _configService.Save();
-                }
-                ImGui.SameLine();
-                HelpMarker($"Number of standard deviations from mean to consider a price an outlier.\n" +
-                    "2.0σ = ~95% of normal prices accepted\n" +
-                    "3.0σ = ~99.7% of normal prices accepted");
-            }
-        }
+        if (!settings.FilterSalesByListingPrice)
+            return;
 
         ImGui.Spacing();
 
-        if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
+        // Thresholds
+        var threshold = settings.SaleDiscrepancyThreshold;
+        ImGui.SetNextItemWidth(100);
+        if (ImGui.InputInt("Discrepancy threshold %##SaleDiscrepancy", ref threshold))
         {
-            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.3f, 1f), "Warning: No channels selected - no real-time data will be received!");
+            if (threshold < 0) threshold = 0;
+            settings.SaleDiscrepancyThreshold = threshold;
+            _configService.Save();
         }
+        ImGui.SameLine();
+        HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
+            $"Reference = avg(median of lowest 5 listings, median of last 5 sales) for that world.\n" +
+            $"At {threshold}%: a sale must be between {100 - threshold}% and {100 + threshold}% of the reference price.");
+
+        var minPrice = settings.SaleFilterMinimumPrice;
+        ImGui.SetNextItemWidth(100);
+        if (ImGui.InputInt("Minimum price for filter##SaleMinPrice", ref minPrice))
+        {
+            if (minPrice < 0) minPrice = 0;
+            settings.SaleFilterMinimumPrice = minPrice;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
+            "Low-value items often have high price variance, so filtering them can cause missed data.");
 
         ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
+        // Advanced Outlier Detection
+        ImGui.TextUnformatted("Advanced Outlier Detection");
+        ImGui.Spacing();
+
+        var useMedian = settings.UseMedianForReference;
+        if (ImGui.Checkbox("Use median for reference##UseMedian", ref useMedian))
+        {
+            settings.UseMedianForReference = useMedian;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker("Use median instead of average for reference price calculation.\n" +
+            "Median is more robust against outliers within the reference data itself.\n" +
+            "Recommended: ON");
+
+        var adjustBulk = settings.AdjustForBulkSales;
+        if (ImGui.Checkbox("Adjust threshold for bulk sales##AdjustBulk", ref adjustBulk))
+        {
+            settings.AdjustForBulkSales = adjustBulk;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker("Allow more price variance for large stack sales.\n" +
+            "Bulk purchases often have lower per-unit prices (bulk discounts).\n" +
+            "Recommended: ON");
+
+        if (settings.AdjustForBulkSales)
+        {
+            var bulkLeniency = (float)settings.BulkSaleMaxLeniency;
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.SliderFloat("Max bulk leniency##BulkLeniency", ref bulkLeniency, 1.0f, 2.0f, "%.1fx"))
+            {
+                settings.BulkSaleMaxLeniency = bulkLeniency;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker($"Maximum leniency multiplier for bulk sales.\n" +
+                $"At {bulkLeniency:F1}x: a 100-stack sale can deviate {(int)(threshold * bulkLeniency)}% instead of {threshold}%.");
+        }
+
+        var useStdDev = settings.UseStdDevFilter;
+        if (ImGui.Checkbox("Use standard deviation filter##UseStdDev", ref useStdDev))
+        {
+            settings.UseStdDevFilter = useStdDev;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker("Use statistical standard deviation instead of fixed percentage.\n" +
+            "More accurate but requires at least 2 recent sales for reference.\n" +
+            "Falls back to percentage threshold if insufficient data.");
+
+        if (settings.UseStdDevFilter)
+        {
+            var stdDevThreshold = (float)settings.StdDevThreshold;
+            ImGui.SetNextItemWidth(100);
+            if (ImGui.SliderFloat("Std dev threshold##StdDevThreshold", ref stdDevThreshold, 1.0f, 4.0f, "%.1f σ"))
+            {
+                settings.StdDevThreshold = stdDevThreshold;
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker($"Number of standard deviations from mean to consider a price an outlier.\n" +
+                "2.0σ = ~95% of normal prices accepted\n" +
+                "3.0σ = ~99.7% of normal prices accepted");
+        }
+    }
+
+    private void DrawInventoryValue(PriceTrackingSettings settings)
+    {
+        // Auto-fetch
         var autoFetch = settings.AutoFetchInventoryPrices;
         if (ImGui.Checkbox("Auto-fetch inventory prices on startup##AutoFetch", ref autoFetch))
         {
@@ -439,8 +448,8 @@ public sealed class UniversalisCategory
         ImGui.Separator();
         ImGui.Spacing();
 
-        // Inventory Value Recalculation Interval
-        ImGui.TextUnformatted("Inventory Value Recalculation");
+        // Recalculation interval
+        ImGui.TextUnformatted("Recalculation Interval");
         ImGui.Spacing();
         ImGui.TextWrapped("Controls how frequently inventory values are recalculated when new price data arrives via WebSocket. " +
             "Lower intervals provide more responsive updates but increase CPU and database load.");
@@ -475,8 +484,8 @@ public sealed class UniversalisCategory
         ImGui.Separator();
         ImGui.Spacing();
 
-        // Value Calculation Price Match sub-section
-        ImGui.TextUnformatted("Inventory Value Price Matching");
+        // Price Match
+        ImGui.TextUnformatted("Price Matching");
         ImGui.Spacing();
         ImGui.TextWrapped("Configure which worlds' sales data to use when calculating inventory values for each character. " +
             "Each world/DC/region can have its own setting, with children inheriting from their parent unless overridden.");
