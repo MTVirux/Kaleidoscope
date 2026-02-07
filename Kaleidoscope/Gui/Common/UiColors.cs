@@ -73,6 +73,12 @@ public static class UiColors
     
     /// <summary>Highlighted text - blue.</summary>
     public static readonly Vector4 Highlight = new(0.4f, 0.6f, 1.0f, 1f);
+    
+    /// <summary>Selection highlight background - semi-transparent yellow.</summary>
+    public static readonly Vector4 SelectionHighlight = new(0.8f, 0.8f, 0.2f, 0.5f);
+    
+    /// <summary>Retainer sub-row background - slightly darker blue-tinted.</summary>
+    public static readonly Vector4 SubRowBackground = new(0.15f, 0.15f, 0.2f, 0.5f);
 
     // Size tier colors (for file/memory size displays)
     /// <summary>Small size - green (good).</summary>
