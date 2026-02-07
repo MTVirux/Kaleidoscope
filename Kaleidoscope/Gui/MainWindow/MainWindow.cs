@@ -7,6 +7,9 @@ using Kaleidoscope.Services;
 using Kaleidoscope.Models;
 using Kaleidoscope.Gui.Widgets;
 using OtterGui.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;

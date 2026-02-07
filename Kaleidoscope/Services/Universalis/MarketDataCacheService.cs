@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Universalis;
 
 /// <summary>
 /// Centralized cache for market/price data with TTL support and staleness indicators.

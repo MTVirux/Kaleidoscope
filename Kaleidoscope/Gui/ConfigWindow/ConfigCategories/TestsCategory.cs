@@ -4,6 +4,7 @@ using Kaleidoscope.Services;
 using MTGui.Tree;
 using System.Diagnostics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 

@@ -7,6 +7,9 @@ using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 using Kaleidoscope.Gui.MainWindow.Tools.Status;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow;
 

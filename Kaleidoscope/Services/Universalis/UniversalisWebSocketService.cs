@@ -5,7 +5,7 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Universalis;
 
 /// <summary>
 /// Service for connecting to the Universalis WebSocket API for real-time price updates.

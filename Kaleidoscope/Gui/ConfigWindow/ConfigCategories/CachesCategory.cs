@@ -4,6 +4,9 @@ using Kaleidoscope.Services;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using System.Numerics;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 

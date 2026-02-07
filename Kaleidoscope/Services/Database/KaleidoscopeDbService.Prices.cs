@@ -1,7 +1,7 @@
 using Microsoft.Data.Sqlite;
 using System.Text;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Database;
 
 public sealed partial class KaleidoscopeDbService
 {

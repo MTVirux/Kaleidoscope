@@ -4,6 +4,9 @@ using Kaleidoscope.Models.Inventory;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.Widgets;
 

@@ -2,6 +2,7 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 using System.Collections.Concurrent;
+using Kaleidoscope.Services.Characters;
 
 namespace Kaleidoscope.Services;
 

@@ -7,6 +7,7 @@ using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Tree;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 

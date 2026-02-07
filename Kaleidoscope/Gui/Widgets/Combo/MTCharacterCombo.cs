@@ -9,6 +9,7 @@ using Kaleidoscope.Services;
 using MTGui.Combo;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.Widgets.Combo;
 

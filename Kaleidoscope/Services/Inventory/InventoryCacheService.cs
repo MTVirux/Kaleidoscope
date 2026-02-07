@@ -3,8 +3,9 @@ using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Models.Inventory;
 using OtterGui.Services;
+using Kaleidoscope.Services.Database;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Inventory;
 
 /// <summary>
 /// Service for caching and tracking inventory contents for players and retainers.

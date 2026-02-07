@@ -4,6 +4,7 @@ using Kaleidoscope.Services;
 using System.Numerics;
 using System.Text;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Database;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 

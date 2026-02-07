@@ -5,7 +5,7 @@ using Kaleidoscope.Models;
 using OtterGui.Services;
 using System.Linq;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Inventory;
 
 /// <summary>
 /// Service that detects inventory and currency changes using a hybrid approach:

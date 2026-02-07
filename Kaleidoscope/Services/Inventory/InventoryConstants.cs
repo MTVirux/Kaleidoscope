@@ -1,6 +1,6 @@
 using FFXIVClientStructs.FFXIV.Client.Game;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Inventory;
 
 /// <summary>
 /// Shared constants for inventory container types used across the plugin.

@@ -2,8 +2,9 @@ using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
+using Kaleidoscope.Services.Inventory;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Universalis;
 
 /// <summary>
 /// Service for caching lowest listings for items across worlds.

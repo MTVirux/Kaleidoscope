@@ -1,6 +1,9 @@
 using System.Numerics;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow;
 

@@ -9,6 +9,10 @@ using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using MTGui.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 

@@ -4,6 +4,7 @@ using Dalamud.Interface;
 using Kaleidoscope;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.Widgets;
 

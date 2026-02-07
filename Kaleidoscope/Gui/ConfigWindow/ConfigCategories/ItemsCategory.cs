@@ -6,6 +6,7 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Inventory;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;

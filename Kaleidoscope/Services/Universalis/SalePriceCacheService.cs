@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
+using Kaleidoscope.Services.Database;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Universalis;
 
 /// <summary>
 /// Cache service for sale price lookups with TTL support.

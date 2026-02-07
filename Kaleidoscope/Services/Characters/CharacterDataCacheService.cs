@@ -2,8 +2,9 @@ using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
+using Kaleidoscope.Services.Database;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Characters;
 
 /// <summary>
 /// Centralized cache service for all character-related data (names, display names, colors, metadata).

@@ -2,8 +2,9 @@ using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
+using Kaleidoscope.Services.Universalis;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Characters;
 
 /// <summary>
 /// Represents a character with metadata for display and grouping.

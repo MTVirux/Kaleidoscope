@@ -4,6 +4,7 @@ using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.Widgets;
 

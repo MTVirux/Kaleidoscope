@@ -3,8 +3,11 @@ using System.Threading.Channels;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Inventory;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Universalis;
 
 /// <summary>
 /// Service for tracking item prices over time using Universalis API and WebSocket.

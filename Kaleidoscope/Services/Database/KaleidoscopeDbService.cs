@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 using OtterGui.Services;
 using System.Text;
 
-namespace Kaleidoscope.Services;
+namespace Kaleidoscope.Services.Database;
 
 /// <summary>
 /// Centralized database service for Kaleidoscope plugin data persistence.

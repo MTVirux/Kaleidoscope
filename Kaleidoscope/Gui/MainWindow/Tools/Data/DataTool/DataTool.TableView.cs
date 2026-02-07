@@ -2,6 +2,7 @@ using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Characters;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 

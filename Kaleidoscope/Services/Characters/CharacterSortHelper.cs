@@ -1,6 +1,6 @@
 using Kaleidoscope.Services;
 
-namespace Kaleidoscope;
+namespace Kaleidoscope.Services.Characters;
 
 /// <summary>
 /// Helper class for applying consistent character sorting across the application.

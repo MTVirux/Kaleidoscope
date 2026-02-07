@@ -8,6 +8,7 @@ using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using MTGui.Common;
 using MTGui.Graph;
+using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;

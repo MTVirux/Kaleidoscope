@@ -2,6 +2,9 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 using System.Threading.Channels;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Inventory;
 
 namespace Kaleidoscope.Services;
 

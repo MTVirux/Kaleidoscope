@@ -7,8 +7,10 @@ using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Inventory;
 using MTGui.Widgets.DatePicker;
 using OtterGui.Classes;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 

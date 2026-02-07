@@ -3,6 +3,8 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.Data;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
