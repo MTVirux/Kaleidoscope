@@ -188,7 +188,8 @@ public partial class WindowContentContainer
                 }
 
                 // Content context menu for adding tools (edit mode only)
-                if (editMode && ImGui.BeginPopup("content_context_menu"))
+                // Keep the popup open even if temp edit mode (CTRL+SHIFT) keys are released
+                if ((editMode || ImGui.IsPopupOpen("content_context_menu")) && ImGui.BeginPopup("content_context_menu"))
                 {
                     try
                     {
@@ -388,7 +389,8 @@ public partial class WindowContentContainer
                     ImGui.EndPopup();
                 }
                 
-                if (editMode)
+                // Allow modals to remain open even if temp edit mode (CTRL+SHIFT) keys are released
+                if (editMode || _saveLayoutPopupOpen || _newLayoutPopupOpen || _gridResolutionPopupOpen)
                 {
                     // Save layout modal - open popup if flag is set but popup is not yet open
                     if (_saveLayoutPopupOpen && !ImGui.IsPopupOpen("save_layout_popup"))

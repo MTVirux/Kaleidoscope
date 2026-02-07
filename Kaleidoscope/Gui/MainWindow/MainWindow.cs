@@ -482,6 +482,9 @@ public sealed class MainWindow : Window, IService, IDisposable
             }
             existing.Tools = tools ?? new List<ToolLayoutState>();
             
+            // Apply grid settings (including tool padding) to the layout state
+            _contentContainer.GridSettings?.ApplyToLayoutState(existing);
+            
             // Update the appropriate active layout name
             if (_isFullscreenMode)
                 Config.ActiveFullscreenLayoutName = name;
