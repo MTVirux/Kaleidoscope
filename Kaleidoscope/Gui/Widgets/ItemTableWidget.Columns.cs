@@ -10,18 +10,43 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
 
+/// <summary>
+/// Represents a display column in the item table, which may be a single column or a merged group.
+/// </summary>
+internal class DisplayColumn
+{
+    public bool IsMerged { get; init; }
+    public string Header { get; init; } = string.Empty;
+    public float Width { get; init; }
+    public Vector4? Color { get; init; }
+    public List<int> SourceColumnIndices { get; init; } = new();
+    public MergedColumnGroup? MergedGroup { get; init; }
+}
+
+/// <summary>
+/// Represents a display row in the item table, either a single character or a merged group.
+/// </summary>
+internal class DisplayRow
+{
+    public bool IsMerged { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public Vector4? Color { get; init; }
+    /// <summary>Character IDs that this display row represents.</summary>
+    public List<ulong> SourceCharacterIds { get; init; } = new();
+    /// <summary>The merged group reference (if IsMerged is true).</summary>
+    public MergedRowGroup? MergedGroup { get; init; }
+    /// <summary>Aggregated item counts from all source rows.</summary>
+    public Dictionary<uint, long> ItemCounts { get; init; } = new();
+    /// <summary>Player-only item counts (for retainer breakdown display).</summary>
+    public Dictionary<uint, long>? PlayerItemCounts { get; init; }
+    /// <summary>Retainer breakdown data from the source character row.</summary>
+    public Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>? RetainerBreakdown { get; init; }
+    /// <summary>Whether this row has retainer breakdown data available.</summary>
+    public bool HasRetainerData => RetainerBreakdown != null && RetainerBreakdown.Count > 0;
+}
+
 public partial class ItemTableWidget
 {
-    
-    private class DisplayColumn
-    {
-        public bool IsMerged { get; init; }
-        public string Header { get; init; } = string.Empty;
-        public float Width { get; init; }
-        public Vector4? Color { get; init; }
-        public List<int> SourceColumnIndices { get; init; } = new();
-        public MergedColumnGroup? MergedGroup { get; init; }
-    }
     
     /// <summary>
     /// Builds the list of display columns, combining individual columns and merged groups.
@@ -111,43 +136,7 @@ public partial class ItemTableWidget
     /// Calculates the summed value for a display column from a character row.
     /// </summary>
     private static long GetDisplayColumnValue(DisplayColumn displayCol, ItemTableCharacterRow row, IReadOnlyList<ItemColumnConfig> columns)
-    {
-        long sum = 0;
-        foreach (var idx in displayCol.SourceColumnIndices)
-        {
-            if (idx >= 0 && idx < columns.Count)
-            {
-                var colId = columns[idx].Id;
-                if (row.ItemCounts.TryGetValue(colId, out var count))
-                {
-                    sum += count;
-                }
-            }
-        }
-        return sum;
-    }
-    
-    /// <summary>
-    /// Represents a row to display, either a single character or a merged group.
-    /// </summary>
-    private class DisplayRow
-    {
-        public bool IsMerged { get; init; }
-        public string Name { get; init; } = string.Empty;
-        public Vector4? Color { get; init; }
-        /// <summary>Character IDs that this display row represents.</summary>
-        public List<ulong> SourceCharacterIds { get; init; } = new();
-        /// <summary>The merged group reference (if IsMerged is true).</summary>
-        public MergedRowGroup? MergedGroup { get; init; }
-        /// <summary>Aggregated item counts from all source rows.</summary>
-        public Dictionary<uint, long> ItemCounts { get; init; } = new();
-        /// <summary>Player-only item counts (for retainer breakdown display).</summary>
-        public Dictionary<uint, long>? PlayerItemCounts { get; init; }
-        /// <summary>Retainer breakdown data from the source character row.</summary>
-        public Dictionary<(ulong RetainerId, string Name), Dictionary<uint, long>>? RetainerBreakdown { get; init; }
-        /// <summary>Whether this row has retainer breakdown data available.</summary>
-        public bool HasRetainerData => RetainerBreakdown != null && RetainerBreakdown.Count > 0;
-    }
+        => GetDisplayValueFromCounts(displayCol, row.ItemCounts, columns);
     
     /// <summary>
     /// Builds the list of display rows, combining individual rows and merged groups.
@@ -301,27 +290,13 @@ public partial class ItemTableWidget
     /// Calculates the summed value for a display column from a display row.
     /// </summary>
     private static long GetDisplayValue(DisplayColumn displayCol, DisplayRow displayRow, IReadOnlyList<ItemColumnConfig> columns)
-    {
-        long sum = 0;
-        foreach (var idx in displayCol.SourceColumnIndices)
-        {
-            if (idx >= 0 && idx < columns.Count)
-            {
-                var colId = columns[idx].Id;
-                if (displayRow.ItemCounts.TryGetValue(colId, out var count))
-                {
-                    sum += count;
-                }
-            }
-        }
-        return sum;
-    }
+        => GetDisplayValueFromCounts(displayCol, displayRow.ItemCounts, columns);
     
     /// <summary>
     /// Calculates the summed value for a display column from a raw item counts dictionary.
-    /// Used for retainer breakdown sub-rows.
+    /// This is the single canonical implementation — all other display value methods delegate here.
     /// </summary>
-    private static long GetDisplayValueFromCounts(DisplayColumn displayCol, Dictionary<uint, long> itemCounts, IReadOnlyList<ItemColumnConfig> columns)
+    private static long GetDisplayValueFromCounts(DisplayColumn displayCol, IReadOnlyDictionary<uint, long> itemCounts, IReadOnlyList<ItemColumnConfig> columns)
     {
         long sum = 0;
         foreach (var idx in displayCol.SourceColumnIndices)
