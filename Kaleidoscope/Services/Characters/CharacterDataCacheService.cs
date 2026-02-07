@@ -83,13 +83,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
             var allData = _dbService.GetAllCharacterDataExtended();
             foreach (var (characterId, gameName, displayName, timeSeriesColor) in allData)
             {
-                _cache[characterId] = new CharacterCacheEntry
-                {
-                    CharacterId = characterId,
-                    GameName = gameName,
-                    DisplayName = displayName,
-                    TimeSeriesColor = timeSeriesColor
-                };
+                _cache[characterId] = new CharacterCacheEntry(characterId, gameName, displayName, timeSeriesColor);
             }
         }
         catch (Exception ex)
@@ -283,13 +277,19 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         if (string.IsNullOrEmpty(name) || characterId == 0) return;
 
-        var entry = _cache.GetOrAdd(characterId, _ => new CharacterCacheEntry { CharacterId = characterId });
-        
-        // Skip if name hasn't changed (avoid expensive DB write)
-        if (string.Equals(entry.GameName, name, StringComparison.Ordinal))
-            return;
-        
-        entry.GameName = name;
+        var updated = false;
+        _cache.AddOrUpdate(
+            characterId,
+            _ => { updated = true; return new CharacterCacheEntry(characterId, GameName: name); },
+            (_, existing) =>
+            {
+                if (string.Equals(existing.GameName, name, StringComparison.Ordinal))
+                    return existing; // No change
+                updated = true;
+                return existing with { GameName = name };
+            });
+
+        if (!updated) return;
 
         // Persist to DB (only when name actually changed)
         _dbService?.SaveCharacterName(characterId, name);
@@ -305,8 +305,10 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         if (characterId == 0) return;
 
-        var entry = _cache.GetOrAdd(characterId, _ => new CharacterCacheEntry { CharacterId = characterId });
-        entry.DisplayName = displayName;
+        _cache.AddOrUpdate(
+            characterId,
+            _ => new CharacterCacheEntry(characterId, DisplayName: displayName),
+            (_, existing) => existing with { DisplayName = displayName });
 
         // Persist to DB
         _dbService?.SaveCharacterDisplayName(characterId, displayName);
@@ -322,8 +324,10 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     {
         if (characterId == 0) return;
 
-        var entry = _cache.GetOrAdd(characterId, _ => new CharacterCacheEntry { CharacterId = characterId });
-        entry.TimeSeriesColor = color;
+        _cache.AddOrUpdate(
+            characterId,
+            _ => new CharacterCacheEntry(characterId, TimeSeriesColor: color),
+            (_, existing) => existing with { TimeSeriesColor = color });
 
         // Persist to DB
         _dbService?.SaveCharacterTimeSeriesColor(characterId, color);
@@ -345,7 +349,7 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         }
         else if (!_cache.ContainsKey(characterId))
         {
-            _cache[characterId] = new CharacterCacheEntry { CharacterId = characterId };
+            _cache.TryAdd(characterId, new CharacterCacheEntry(characterId));
         }
     }
 
@@ -382,13 +386,15 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         {
             if (cid == 0) continue;
 
-            var entry = _cache.GetOrAdd(cid, _ => new CharacterCacheEntry { CharacterId = cid });
-            if (!string.IsNullOrEmpty(gameName))
-                entry.GameName = gameName;
-            if (!string.IsNullOrEmpty(displayName))
-                entry.DisplayName = displayName;
-            if (color.HasValue)
-                entry.TimeSeriesColor = color;
+            _cache.AddOrUpdate(
+                cid,
+                _ => new CharacterCacheEntry(cid, gameName, displayName, color),
+                (_, existing) => existing with
+                {
+                    GameName = !string.IsNullOrEmpty(gameName) ? gameName : existing.GameName,
+                    DisplayName = !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
+                    TimeSeriesColor = color ?? existing.TimeSeriesColor
+                });
         }
     }
 
@@ -401,8 +407,10 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         {
             if (cid == 0 || string.IsNullOrEmpty(name)) continue;
 
-            var entry = _cache.GetOrAdd(cid, _ => new CharacterCacheEntry { CharacterId = cid });
-            entry.GameName = name;
+            _cache.AddOrUpdate(
+                cid,
+                _ => new CharacterCacheEntry(cid, GameName: name),
+                (_, existing) => existing with { GameName = name });
         }
     }
 
@@ -438,14 +446,13 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 }
 
 /// <summary>
-/// Cache entry for a single character's data.
+/// Immutable cache entry for a single character's data.
+/// Used with ConcurrentDictionary for thread-safe atomic replacement.
 /// </summary>
-public class CharacterCacheEntry
-{
-    public ulong CharacterId { get; set; }
-    public string? GameName { get; set; }
-    public string? DisplayName { get; set; }
-    public uint? TimeSeriesColor { get; set; }
-    public string? WorldName { get; set; }
-    public string? DataCenterName { get; set; }
-}
+public sealed record CharacterCacheEntry(
+    ulong CharacterId,
+    string? GameName = null,
+    string? DisplayName = null,
+    uint? TimeSeriesColor = null,
+    string? WorldName = null,
+    string? DataCenterName = null);
