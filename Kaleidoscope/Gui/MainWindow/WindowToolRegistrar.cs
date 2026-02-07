@@ -107,8 +107,6 @@ public static class WindowToolRegistrar
                 "Track items and currencies in a table view with characters as rows",
                 "Items/Currency");
 
-            ToolPresets.RegisterPresets(container, currencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
-
             container.DefineToolType(
                 ToolIds.GettingStarted,
                 "Getting Started",
