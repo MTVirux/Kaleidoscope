@@ -260,35 +260,55 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         {
             _pendingValueRecalc = false;
             _lastEventDrivenValueSample = now;
-            _ = Task.Run(TakeEventDrivenValueSnapshotsAsync);
+            _ = Task.Run(async () =>
+            {
+                try { await TakeEventDrivenValueSnapshotsAsync(); }
+                catch (Exception ex) { LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Event-driven value snapshot failed: {ex.Message}"); }
+            });
         }
 
         // Periodic cleanup
         if ((now - _lastCleanup).TotalMinutes >= Settings.CleanupIntervalMinutes)
         {
             _lastCleanup = now;
-            _ = Task.Run(PerformCleanupAsync);
+            _ = Task.Run(async () =>
+            {
+                try { await PerformCleanupAsync(); }
+                catch (Exception ex) { LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Cleanup failed: {ex.Message}"); }
+            });
         }
 
         // Periodic value snapshots (fallback for when no events trigger updates)
         if ((now - _lastValueSnapshot).TotalMinutes >= ValueSnapshotIntervalMinutes && Settings.Enabled)
         {
             _lastValueSnapshot = now;
-            _ = Task.Run(TakeValueSnapshotsAsync);
+            _ = Task.Run(async () =>
+            {
+                try { await TakeValueSnapshotsAsync(); }
+                catch (Exception ex) { LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Value snapshot failed: {ex.Message}"); }
+            });
         }
 
         // Refresh world data periodically
         if ((now - _lastWorldDataFetch).TotalHours >= WorldDataRefreshHours)
         {
             _lastWorldDataFetch = now;
-            _ = Task.Run(RefreshWorldDataAsync);
+            _ = Task.Run(async () =>
+            {
+                try { await RefreshWorldDataAsync(); }
+                catch (Exception ex) { LogService.Error(LogCategory.Universalis, $"[PriceTracking] World data refresh failed: {ex.Message}"); }
+            });
         }
 
         // Refresh marketable items periodically
         if ((now - _lastMarketableItemsFetch).TotalHours >= MarketableItemsRefreshHours)
         {
             _lastMarketableItemsFetch = now;
-            _ = Task.Run(RefreshMarketableItemsAsync);
+            _ = Task.Run(async () =>
+            {
+                try { await RefreshMarketableItemsAsync(); }
+                catch (Exception ex) { LogService.Error(LogCategory.Universalis, $"[PriceTracking] Marketable items refresh failed: {ex.Message}"); }
+            });
         }
     }
 
