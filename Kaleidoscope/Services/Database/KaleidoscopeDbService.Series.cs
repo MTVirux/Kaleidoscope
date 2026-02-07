@@ -174,18 +174,18 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                // Optimized query: use GROUP BY with MAX to get only the latest point per character
-                // This avoids fetching and sorting the entire history
+                // Use window function to get latest point per series efficiently.
+                // ROW_NUMBER avoids the correlated subquery (SELECT MAX per row) which
+                // scales quadratically with the number of points.
                 cmd.CommandText = @"
-                    SELECT s.character_id, p.value
-                    FROM points p
-                    JOIN series s ON p.series_id = s.id
-                    WHERE s.variable = $var
-                      AND p.timestamp = (
-                          SELECT MAX(p2.timestamp) 
-                          FROM points p2 
-                          WHERE p2.series_id = s.id
-                      )";
+                    SELECT character_id, value FROM (
+                        SELECT s.character_id, p.value,
+                               ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY p.timestamp DESC) AS rn
+                        FROM points p
+                        JOIN series s ON p.series_id = s.id
+                        WHERE s.variable = $var
+                    ) ranked
+                    WHERE rn = 1";
                 cmd.Parameters.AddWithValue("$var", variable);
 
                 using var reader = cmd.ExecuteReader();
