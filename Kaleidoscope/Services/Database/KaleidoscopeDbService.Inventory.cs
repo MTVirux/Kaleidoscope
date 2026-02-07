@@ -525,48 +525,43 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Inserts inventory items using batched multi-row INSERT statements.
-    /// Chunks items into batches of ~70 to stay under SQLite's 999 parameter limit.
-    /// Each item has 10 parameters, so 70 items = 700 parameters.
+    /// Inserts inventory items using a single prepared statement with parameter reuse.
+    /// Reuses a single command/parameter set across all items, avoiding per-batch allocations
+    /// of StringBuilder, SqliteCommand, and SqliteParameter objects.
     /// </summary>
     private void SaveItemsBatched(long cacheId, List<Models.Inventory.InventoryItemSnapshot> items, SqliteTransaction transaction)
     {
-        const int columnsPerItem = 10;
-        const int maxParamsPerStatement = 700; // SQLite limit is 999, leave headroom
-        const int batchSize = maxParamsPerStatement / columnsPerItem; // 70 items per batch
+        using var cmd = _connection!.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = @"
+            INSERT INTO inventory_items 
+            (cache_id, item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id)
+            VALUES ($cid, $iid, $qty, $hq, $col, $slot, $cont, $sb, $cond, $glam)";
 
-        for (int batchStart = 0; batchStart < items.Count; batchStart += batchSize)
+        var cidParam = cmd.Parameters.Add("$cid", SqliteType.Integer);
+        var iidParam = cmd.Parameters.Add("$iid", SqliteType.Integer);
+        var qtyParam = cmd.Parameters.Add("$qty", SqliteType.Integer);
+        var hqParam = cmd.Parameters.Add("$hq", SqliteType.Integer);
+        var colParam = cmd.Parameters.Add("$col", SqliteType.Integer);
+        var slotParam = cmd.Parameters.Add("$slot", SqliteType.Integer);
+        var contParam = cmd.Parameters.Add("$cont", SqliteType.Integer);
+        var sbParam = cmd.Parameters.Add("$sb", SqliteType.Integer);
+        var condParam = cmd.Parameters.Add("$cond", SqliteType.Integer);
+        var glamParam = cmd.Parameters.Add("$glam", SqliteType.Integer);
+
+        cidParam.Value = cacheId;
+
+        foreach (var item in items)
         {
-            var batchItems = items.Skip(batchStart).Take(batchSize).ToList();
-            
-            var sb = new StringBuilder();
-            sb.Append(@"INSERT INTO inventory_items 
-                (cache_id, item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id)
-                VALUES ");
-
-            var parameters = new List<SqliteParameter>();
-            for (int i = 0; i < batchItems.Count; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append($"($cid{i}, $iid{i}, $qty{i}, $hq{i}, $col{i}, $slot{i}, $cont{i}, $sb{i}, $cond{i}, $glam{i})");
-                
-                var item = batchItems[i];
-                parameters.Add(new SqliteParameter($"$cid{i}", cacheId));
-                parameters.Add(new SqliteParameter($"$iid{i}", (long)item.ItemId));
-                parameters.Add(new SqliteParameter($"$qty{i}", item.Quantity));
-                parameters.Add(new SqliteParameter($"$hq{i}", item.IsHq ? 1 : 0));
-                parameters.Add(new SqliteParameter($"$col{i}", item.IsCollectable ? 1 : 0));
-                parameters.Add(new SqliteParameter($"$slot{i}", item.Slot));
-                parameters.Add(new SqliteParameter($"$cont{i}", (long)item.ContainerType));
-                parameters.Add(new SqliteParameter($"$sb{i}", item.SpiritbondOrCollectability));
-                parameters.Add(new SqliteParameter($"$cond{i}", item.Condition));
-                parameters.Add(new SqliteParameter($"$glam{i}", (long)item.GlamourId));
-            }
-
-            using var cmd = _connection!.CreateCommand();
-            cmd.Transaction = transaction;
-            cmd.CommandText = sb.ToString();
-            cmd.Parameters.AddRange(parameters.ToArray());
+            iidParam.Value = (long)item.ItemId;
+            qtyParam.Value = item.Quantity;
+            hqParam.Value = item.IsHq ? 1 : 0;
+            colParam.Value = item.IsCollectable ? 1 : 0;
+            slotParam.Value = item.Slot;
+            contParam.Value = (long)item.ContainerType;
+            sbParam.Value = item.SpiritbondOrCollectability;
+            condParam.Value = item.Condition;
+            glamParam.Value = (long)item.GlamourId;
             cmd.ExecuteNonQuery();
         }
     }
