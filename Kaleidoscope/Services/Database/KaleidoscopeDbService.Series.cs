@@ -251,6 +251,77 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Saves multiple sample values in a single transaction, only inserting those that differ from their last value.
+    /// Much more efficient than calling SaveSampleIfChanged per item (avoids N separate lock acquisitions).
+    /// Returns the number of points actually inserted.
+    /// </summary>
+    /// <param name="samples">List of (variable, characterId, value) tuples to save.</param>
+    public int SaveSamplesIfChangedBatched(List<(string Variable, ulong CharacterId, long Value)> samples)
+    {
+        if (samples == null || samples.Count == 0) return 0;
+
+        // Phase 1: Resolve series IDs and check last values (acquires _writeLock for GetOrCreateSeries, _readLock for GetLastValue)
+        var pointsToInsert = new List<(long SeriesId, long Value)>();
+        foreach (var (variable, characterId, value) in samples)
+        {
+            var seriesId = GetOrCreateSeries(variable, characterId);
+            if (seriesId == null) continue;
+
+            var lastValue = GetLastValue(seriesId.Value);
+            if (lastValue.HasValue && lastValue.Value == value)
+                continue;
+
+            pointsToInsert.Add((seriesId.Value, value));
+        }
+
+        if (pointsToInsert.Count == 0) return 0;
+
+        // Phase 2: Batch insert all changed points in a single transaction
+        lock (_writeLock)
+        {
+            if (_connection == null) return 0;
+
+            try
+            {
+                using var transaction = _connection.BeginTransaction();
+                try
+                {
+                    using var cmd = _connection.CreateCommand();
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
+
+                    var sParam = cmd.Parameters.Add("$s", SqliteType.Integer);
+                    var tParam = cmd.Parameters.Add("$t", SqliteType.Integer);
+                    var vParam = cmd.Parameters.Add("$v", SqliteType.Integer);
+
+                    var now = DateTime.UtcNow.Ticks;
+
+                    foreach (var (seriesId, value) in pointsToInsert)
+                    {
+                        sParam.Value = seriesId;
+                        tParam.Value = now;
+                        vParam.Value = value;
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                    return pointsToInsert.Count;
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSamplesIfChangedBatched failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
     /// Gets all points for a character, optionally limited.
     /// </summary>
     public List<(DateTime timestamp, long value)> GetPoints(string variable, ulong characterId, int? limit = null)

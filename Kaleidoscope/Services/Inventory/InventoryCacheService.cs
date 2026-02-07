@@ -857,6 +857,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Flushes all pending item samples to the database.
+    /// Uses batched DB writes for efficiency (single transaction instead of per-item calls).
     /// Called on logout or plugin dispose.
     /// </summary>
     /// <param name="reason">The reason for flushing (for logging).</param>
@@ -865,26 +866,32 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         if (_pendingSamples.IsEmpty)
             return;
         
-        var count = 0;
         var keys = _pendingSamples.Keys.ToList();
-        var cacheService = _cacheService;
+        var samplesToSave = new List<(string Variable, ulong CharacterId, long Value)>();
+        var cacheUpdates = new List<(string VariableName, ulong CharacterId, long Value, DateTime Timestamp)>();
         
         foreach (var key in keys)
         {
             if (_pendingSamples.TryRemove(key, out var sample))
             {
-                _dbService.SaveSampleIfChanged(key.VariableName, key.CharacterId, sample.Value);
-                
-                cacheService.AddPoint(key.VariableName, key.CharacterId, sample.Value, sample.Timestamp);
-                
-                count++;
+                samplesToSave.Add((key.VariableName, key.CharacterId, sample.Value));
+                cacheUpdates.Add((key.VariableName, key.CharacterId, sample.Value, sample.Timestamp));
             }
         }
         
-        if (count > 0)
+        if (samplesToSave.Count == 0)
+            return;
+        
+        // Batch write all samples to DB in a single transaction
+        var inserted = _dbService.SaveSamplesIfChangedBatched(samplesToSave);
+        
+        // Update in-memory cache for all samples
+        foreach (var (variableName, characterId, value, timestamp) in cacheUpdates)
         {
-            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushed {count} pending item samples ({reason})");
+            _cacheService.AddPoint(variableName, characterId, value, timestamp);
         }
+        
+        LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushed {samplesToSave.Count} pending item samples ({inserted} changed) ({reason})");
     }
 
     /// <summary>
