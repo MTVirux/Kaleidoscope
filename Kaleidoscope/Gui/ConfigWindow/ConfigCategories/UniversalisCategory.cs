@@ -439,6 +439,42 @@ public sealed class UniversalisCategory
         ImGui.Separator();
         ImGui.Spacing();
 
+        // Inventory Value Recalculation Interval
+        ImGui.TextUnformatted("Inventory Value Recalculation");
+        ImGui.Spacing();
+        ImGui.TextWrapped("Controls how frequently inventory values are recalculated when new price data arrives via WebSocket. " +
+            "Lower intervals provide more responsive updates but increase CPU and database load.");
+        ImGui.Spacing();
+
+        var recalcEveryUpdate = settings.ValueRecalcOnEveryUpdate;
+        if (ImGui.Checkbox("Recalculate on every price update##RecalcEveryUpdate", ref recalcEveryUpdate))
+        {
+            settings.ValueRecalcOnEveryUpdate = recalcEveryUpdate;
+            _configService.Save();
+        }
+        ImGui.SameLine();
+        HelpMarker("Recalculate inventory values immediately on every price update without any throttling.\n" +
+            "Most responsive but may impact performance on busy servers with frequent price updates.");
+
+        if (!recalcEveryUpdate)
+        {
+            var intervalMs = settings.ValueRecalcIntervalMs;
+            ImGui.SetNextItemWidth(200);
+            if (ImGui.SliderInt("Recalc interval (ms)##RecalcInterval", ref intervalMs, 50, 60000, "%d ms"))
+            {
+                settings.ValueRecalcIntervalMs = Math.Max(50, intervalMs);
+                _configService.Save();
+            }
+            ImGui.SameLine();
+            HelpMarker("Minimum time between event-driven inventory value recalculations.\n" +
+                "Default: 30000ms (30 seconds). Minimum: 50ms.\n" +
+                "Lower values = more responsive, higher CPU/DB usage.");
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         // Value Calculation Price Match sub-section
         ImGui.TextUnformatted("Inventory Value Price Matching");
         ImGui.Spacing();

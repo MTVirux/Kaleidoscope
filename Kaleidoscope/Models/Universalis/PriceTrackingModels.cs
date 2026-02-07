@@ -124,6 +124,20 @@ public class PriceTrackingSettings
 
     /// <summary>Maximum leniency multiplier for bulk sales (e.g., 1.5 = 50% more lenient for large stacks).</summary>
     public double BulkSaleMaxLeniency { get; set; } = 1.5;
+
+    /// <summary>
+    /// Minimum interval in milliseconds between event-driven inventory value recalculations.
+    /// Lower values provide more responsive updates but increase CPU/DB load.
+    /// Ignored when <see cref="ValueRecalcOnEveryUpdate"/> is true.
+    /// Minimum: 50ms. Default: 30000ms (30 seconds).
+    /// </summary>
+    public int ValueRecalcIntervalMs { get; set; } = 30000;
+
+    /// <summary>
+    /// When true, recalculate inventory values on every price update without throttling.
+    /// This provides the most responsive updates but may impact performance on busy servers.
+    /// </summary>
+    public bool ValueRecalcOnEveryUpdate { get; set; } = false;
 }
 
 /// <summary>

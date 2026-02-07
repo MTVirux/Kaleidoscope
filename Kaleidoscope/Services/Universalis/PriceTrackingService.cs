@@ -44,7 +44,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private volatile bool _pendingValueRecalc = false;
     private readonly HashSet<int> _pendingPriceUpdateItemIds = new();
     private readonly object _pendingLock = new();
-    private const int EventDrivenSampleThrottleSeconds = 30; // Min seconds between event-driven samples
 
     // In-memory price cache for quick lookups
     private readonly ConcurrentDictionary<(int itemId, int worldId), (int minNq, int minHq, DateTime updated)> _priceCache = new();
@@ -254,8 +253,9 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         var now = DateTime.UtcNow;
 
         // Event-driven value sampling (triggered by price updates or inventory changes)
+        var recalcIntervalMs = Settings.ValueRecalcOnEveryUpdate ? 0 : Math.Max(50, Settings.ValueRecalcIntervalMs);
         if (_pendingValueRecalc && 
-            (now - _lastEventDrivenValueSample).TotalSeconds >= EventDrivenSampleThrottleSeconds &&
+            (now - _lastEventDrivenValueSample).TotalMilliseconds >= recalcIntervalMs &&
             Settings.Enabled)
         {
             _pendingValueRecalc = false;
