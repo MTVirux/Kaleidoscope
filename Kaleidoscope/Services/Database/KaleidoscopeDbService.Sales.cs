@@ -625,24 +625,30 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 var cutoffTicks = DateTime.UtcNow.AddDays(-retentionDays).Ticks;
+                var totalDeleted = 0;
 
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
-                cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
-                var deleted = cmd.ExecuteNonQuery();
-
-                cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
-                deleted += cmd.ExecuteNonQuery();
-
-                cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
-                deleted += cmd.ExecuteNonQuery();
-
-                if (deleted > 0)
+                RunInTransaction(tx =>
                 {
-                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {deleted} old price/value/sale records");
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
+
+                    cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
+                    totalDeleted += cmd.ExecuteNonQuery();
+                });
+
+                if (totalDeleted > 0)
+                {
+                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} old price/value/sale records");
                 }
 
-                return deleted;
+                return totalDeleted;
             }
             catch (Exception ex)
             {

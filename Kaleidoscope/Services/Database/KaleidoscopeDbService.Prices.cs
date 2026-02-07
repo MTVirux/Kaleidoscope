@@ -737,25 +737,29 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cmd = _connection.CreateCommand();
+                return RunInTransaction(tx =>
+                {
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
 
-                cmd.CommandText = "DELETE FROM item_prices";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM item_prices";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM price_history";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM price_history";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM inventory_value_items";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM inventory_value_items";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM inventory_value_history";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM inventory_value_history";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM sale_records";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM sale_records";
+                    cmd.ExecuteNonQuery();
 
-                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all price tracking data");
-                return true;
+                    LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all price tracking data");
+                    return true;
+                });
             }
             catch (Exception ex)
             {

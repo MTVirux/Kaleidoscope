@@ -18,16 +18,19 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                cmd.ExecuteNonQuery();
+                return RunInTransaction(tx =>
+                {
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)";
+                    cmd.Parameters.AddWithValue("$v", variable);
+                    cmd.Parameters.AddWithValue("$c", (long)characterId);
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM series WHERE variable = $v AND character_id = $c";
-                cmd.ExecuteNonQuery();
-
-                return true;
+                    cmd.CommandText = "DELETE FROM series WHERE variable = $v AND character_id = $c";
+                    cmd.ExecuteNonQuery();
+                    return true;
+                });
             }
             catch (Exception ex)
             {
@@ -49,16 +52,20 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v)";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.ExecuteNonQuery();
+                return RunInTransaction(tx =>
+                {
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v)";
+                    cmd.Parameters.AddWithValue("$v", variable);
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM series WHERE variable = $v";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM series WHERE variable = $v";
+                    cmd.ExecuteNonQuery();
 
-                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
-                return true;
+                    LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
+                    return true;
+                });
             }
             catch (Exception ex)
             {
@@ -80,45 +87,49 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var cmd = _connection.CreateCommand();
-                
-                // Time-series data
-                cmd.CommandText = "DELETE FROM points";
-                cmd.ExecuteNonQuery();
+                return RunInTransaction(tx =>
+                {
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
 
-                cmd.CommandText = "DELETE FROM series";
-                cmd.ExecuteNonQuery();
+                    // Time-series data
+                    cmd.CommandText = "DELETE FROM points";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM character_names";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM series";
+                    cmd.ExecuteNonQuery();
 
-                // Inventory data
-                cmd.CommandText = "DELETE FROM inventory_items";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM character_names";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM inventory_cache";
-                cmd.ExecuteNonQuery();
+                    // Inventory data
+                    cmd.CommandText = "DELETE FROM inventory_items";
+                    cmd.ExecuteNonQuery();
 
-                // Price data
-                cmd.CommandText = "DELETE FROM item_prices";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM inventory_cache";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM price_history";
-                cmd.ExecuteNonQuery();
+                    // Price data
+                    cmd.CommandText = "DELETE FROM item_prices";
+                    cmd.ExecuteNonQuery();
 
-                // Inventory value history
-                cmd.CommandText = "DELETE FROM inventory_value_items";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM price_history";
+                    cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM inventory_value_history";
-                cmd.ExecuteNonQuery();
+                    // Inventory value history
+                    cmd.CommandText = "DELETE FROM inventory_value_items";
+                    cmd.ExecuteNonQuery();
 
-                // Sale records
-                cmd.CommandText = "DELETE FROM sale_records";
-                cmd.ExecuteNonQuery();
+                    cmd.CommandText = "DELETE FROM inventory_value_history";
+                    cmd.ExecuteNonQuery();
 
-                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all data from all tables");
-                return true;
+                    // Sale records
+                    cmd.CommandText = "DELETE FROM sale_records";
+                    cmd.ExecuteNonQuery();
+
+                    LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all data from all tables");
+                    return true;
+                });
             }
             catch (Exception ex)
             {
@@ -505,36 +516,43 @@ public sealed partial class KaleidoscopeDbService
                     }
                 }
 
-                foreach (var (cid, newName) in updates)
-                {
-                    try
-                    {
-                        using var updateCmd = _connection.CreateCommand();
-                        updateCmd.CommandText = "UPDATE character_names SET name = $n WHERE character_id = $c";
-                        updateCmd.Parameters.AddWithValue("$n", newName);
-                        updateCmd.Parameters.AddWithValue("$c", cid);
-                        updateCmd.ExecuteNonQuery();
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
-                    }
-                }
+                if (updates.Count == 0 && deletes.Count == 0) return;
 
-                foreach (var cid in deletes)
+                RunInTransaction(migrationTx =>
                 {
-                    try
+                    foreach (var (cid, newName) in updates)
                     {
-                        using var deleteCmd = _connection.CreateCommand();
-                        deleteCmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
-                        deleteCmd.Parameters.AddWithValue("$c", cid);
-                        deleteCmd.ExecuteNonQuery();
+                        try
+                        {
+                            using var updateCmd = _connection!.CreateCommand();
+                            updateCmd.Transaction = migrationTx;
+                            updateCmd.CommandText = "UPDATE character_names SET name = $n WHERE character_id = $c";
+                            updateCmd.Parameters.AddWithValue("$n", newName);
+                            updateCmd.Parameters.AddWithValue("$c", cid);
+                            updateCmd.ExecuteNonQuery();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
+                        }
                     }
-                    catch (Exception ex)
+
+                    foreach (var cid in deletes)
                     {
-                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
+                        try
+                        {
+                            using var deleteCmd = _connection!.CreateCommand();
+                            deleteCmd.Transaction = migrationTx;
+                            deleteCmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
+                            deleteCmd.Parameters.AddWithValue("$c", cid);
+                            deleteCmd.ExecuteNonQuery();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
+                        }
                     }
-                }
+                });
             }
             catch (Exception ex)
             {
