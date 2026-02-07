@@ -61,7 +61,10 @@ public class WebsocketFeedTool : ToolComponent
         _currencyTrackerService = CurrencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
-        _instanceSettings = new WebsocketFeedSettings();
+        _instanceSettings = new WebsocketFeedSettings
+        {
+            MaxEntries = configService.Config.WebsocketFeed.MaxEntries
+        };
 
         // Create item details popup for viewing market data when clicking entries
         _itemDetailsPopup = new ItemDetailsPopup(
