@@ -230,6 +230,17 @@ public static class WindowToolRegistrar
         }
     }
 
+    /// <summary>
+    /// Applies default UI colors from global configuration to a newly-created tool.
+    /// Called by factory methods so new tools inherit the user's customized defaults.
+    /// When loading from a saved layout, ApplyLayoutState will override these values.
+    /// </summary>
+    private static void ApplyDefaultColors(ToolComponent tool, ToolCreationContext ctx)
+    {
+        var colors = ctx.ConfigService.Config.UIColors;
+        tool.BackgroundColor = colors.ToolBackground;
+    }
+
     private static string GetCategoryPath(TrackedDataCategory category)
     {
         // All data tracker tools are graphs - category path is just "Graph"
@@ -253,6 +264,7 @@ public static class WindowToolRegistrar
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
                 ctx.PriceTrackingService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Graph);
             return tool;
         }
@@ -278,6 +290,7 @@ public static class WindowToolRegistrar
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
                 ctx.PriceTrackingService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Table);
             return tool;
         }
@@ -294,13 +307,15 @@ public static class WindowToolRegistrar
         {
             if (ctx.WebSocketService == null || ctx.PriceTrackingService == null || ctx.ItemDataService == null)
                 return null;
-            return new WebsocketFeedTool(
+            var tool = new WebsocketFeedTool(
                 ctx.WebSocketService, 
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
                 ctx.ItemDataService,
                 ctx.PriceTrackingService.UniversalisService,
                 ctx.CurrencyTrackerService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -319,9 +334,11 @@ public static class WindowToolRegistrar
                 LogService.Debug(LogCategory.UI, "CreateTopInventoryValueTool: Required service is null");
                 return null;
             }
-            return new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
+            var tool = new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
                 ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
                 ctx.InventoryChangeService, ctx.InventoryCacheService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -341,7 +358,7 @@ public static class WindowToolRegistrar
                 LogService.Debug(LogCategory.UI, "CreateItemSalesHistoryTool: Required service is null");
                 return null;
             }
-            return new ItemSalesHistoryTool(
+            var tool = new ItemSalesHistoryTool(
                 ctx.PriceTrackingService.UniversalisService, 
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
@@ -351,6 +368,8 @@ public static class WindowToolRegistrar
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -370,7 +389,7 @@ public static class WindowToolRegistrar
                 LogService.Debug(LogCategory.UI, "CreateItemSalesTrackingTool: Required service is null");
                 return null;
             }
-            return new ItemSalesTrackingTool(
+            var tool = new ItemSalesTrackingTool(
                 ctx.PriceTrackingService.UniversalisService,
                 ctx.WebSocketService,
                 ctx.PriceTrackingService,
@@ -381,6 +400,8 @@ public static class WindowToolRegistrar
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -393,7 +414,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new UniversalisWebSocketStatusTool(ctx.ConfigService, ctx.WebSocketService) { Position = pos };
+            var tool = new UniversalisWebSocketStatusTool(ctx.ConfigService, ctx.WebSocketService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -406,7 +429,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new AutoRetainerStatusTool(ctx.AutoRetainerIpc) { Position = pos };
+            var tool = new AutoRetainerStatusTool(ctx.AutoRetainerIpc) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -419,7 +444,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new AutoRetainerControlTool(ctx.AutoRetainerIpc) { Position = pos };
+            var tool = new AutoRetainerControlTool(ctx.AutoRetainerIpc) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -432,7 +459,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new RetainerVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            var tool = new RetainerVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -445,7 +474,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new SubmersibleVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            var tool = new SubmersibleVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -458,7 +489,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new UniversalisApiStatusTool(ctx.ConfigService, ctx.PriceTrackingService) { Position = pos };
+            var tool = new UniversalisApiStatusTool(ctx.ConfigService, ctx.PriceTrackingService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -471,7 +504,9 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new DatabaseSizeTool(ctx.CurrencyTrackerService) { Position = pos };
+            var tool = new DatabaseSizeTool(ctx.CurrencyTrackerService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -489,7 +524,9 @@ public static class WindowToolRegistrar
                 LogService.Debug(LogCategory.UI, "CreateCacheSizeTool: InventoryCacheService is null");
                 return null;
             }
-            return new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
+            var tool = new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
@@ -518,7 +555,7 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return id switch
+            var tool = id switch
             {
                 ToolIds.DataGraph => CreateDataToolGraph(pos, ctx),
                 ToolIds.DataTable => CreateDataToolTable(pos, ctx),
@@ -541,6 +578,9 @@ public static class WindowToolRegistrar
                 ToolIds.Fps => CreateFpsTool(pos),
                 _ => null
             };
+            // Apply default colors for tools created inline (factory methods handle their own)
+            if (tool != null) ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
