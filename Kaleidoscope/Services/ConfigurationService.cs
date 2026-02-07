@@ -384,6 +384,10 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         {
             ConfigManager.Save("layouts.json", Config.Layouts);
             LogService.Debug(LogCategory.Config, $"Saved layouts: {Config.Layouts?.Count ?? 0}");
+            
+            // Flush main config immediately after layout save — layouts are high-impact 
+            // and a crash within the 500ms debounce window would lose the user's work
+            SaveImmediate();
         }
         catch (Exception ex)
         {
