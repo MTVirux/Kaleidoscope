@@ -1,24 +1,15 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
-using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
 /// <summary>
-/// Settings class for DatabaseSizeTool.
-/// </summary>
-public class DatabaseSizeToolSettings
-{
-    public bool ShowDetails { get; set; } = true;
-}
-
-/// <summary>
 /// A tool that displays the current size of the SQLite database file.
 /// </summary>
-public class DatabaseSizeTool : ToolComponent
+public class DatabaseSizeTool : StatusToolBase
 {
     public override string ToolName => "Database Size";
     
@@ -28,21 +19,6 @@ public class DatabaseSizeTool : ToolComponent
     private long _cachedFileSize;
     private DateTime _lastSizeCheck = DateTime.MinValue;
     private readonly TimeSpan _sizeCheckInterval = TimeSpan.FromSeconds(5);
-    
-    // Settings instance and schema
-    private readonly DatabaseSizeToolSettings _settings = new();
-    
-    private static readonly SettingsSchema<DatabaseSizeToolSettings> Schema = SettingsSchema.For<DatabaseSizeToolSettings>()
-        .Checkbox(s => s.ShowDetails, "Show Details", "Show additional details like raw byte count and size warnings", defaultValue: true);
-
-    /// <summary>
-    /// Whether to show extra details beyond the size.
-    /// </summary>
-    public bool ShowDetails
-    {
-        get => _settings.ShowDetails;
-        set => _settings.ShowDetails = value;
-    }
 
     public DatabaseSizeTool(CurrencyTrackerService currencyTrackerService)
     {
@@ -175,25 +151,4 @@ public class DatabaseSizeTool : ToolComponent
         };
     }
 
-    protected override bool HasToolSettings => true;
-    
-    protected override object? GetToolSettingsSchema() => Schema;
-    
-    protected override object? GetToolSettingsObject() => _settings;
-    
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
-    public override Dictionary<string, object?>? ExportToolSettings()
-    {
-        return Schema.ToDictionary(_settings)!;
-    }
-    
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
-    public override void ImportToolSettings(Dictionary<string, object?>? settings)
-    {
-        Schema.FromDictionary(_settings, settings);
-    }
 }
