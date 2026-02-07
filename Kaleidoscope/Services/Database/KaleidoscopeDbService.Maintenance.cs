@@ -9,6 +9,7 @@ public sealed partial class KaleidoscopeDbService
     /// <summary>
     /// Performs a WAL checkpoint to merge the WAL file back into the main database.
     /// This temporarily closes the read connection to allow a full checkpoint.
+    /// Acquires both locks (write → read) to prevent concurrent readers from seeing a null read connection.
     /// </summary>
     /// <returns>A tuple containing (success, bytesReclaimed) where bytesReclaimed is the approximate WAL size before checkpoint.</returns>
     public (bool Success, long BytesReclaimed) Checkpoint()
@@ -24,21 +25,26 @@ public sealed partial class KaleidoscopeDbService
             if (File.Exists(walPath))
                 walSizeBefore = new FileInfo(walPath).Length;
 
-            lock (_readLock)
-            {
-                _readConnection?.Close();
-                _readConnection?.Dispose();
-                _readConnection = null;
-            }
-
+            // Lock ordering: always acquire _writeLock before _readLock to prevent deadlocks.
+            // Hold both locks for the duration to prevent concurrent readers from seeing a null _readConnection.
             lock (_writeLock)
             {
+                lock (_readLock)
+                {
+                    _readConnection?.Close();
+                    _readConnection?.Dispose();
+                    _readConnection = null;
+                }
+
                 using var cmd = _connection.CreateCommand();
                 cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
                 cmd.ExecuteNonQuery();
-            }
 
-            EnsureReadConnection();
+                lock (_readLock)
+                {
+                    EnsureReadConnection();
+                }
+            }
 
             long walSizeAfter = 0;
             if (File.Exists(walPath))
@@ -54,7 +60,14 @@ public sealed partial class KaleidoscopeDbService
             LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Checkpoint failed: {ex.Message}", ex);
             
             // Try to reopen read connection even on failure
-            try { EnsureReadConnection(); } catch { /* ignore */ }
+            try
+            {
+                lock (_readLock)
+                {
+                    EnsureReadConnection();
+                }
+            }
+            catch { /* ignore */ }
             
             return (false, 0);
         }

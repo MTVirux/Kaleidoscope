@@ -160,16 +160,20 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         FlushPendingSamples("logout");
         
-        try
+        // Run WAL checkpoint on background thread to avoid blocking the framework thread
+        Task.Run(() =>
         {
-            var (success, bytesReclaimed) = _dbService.Checkpoint();
-            if (success && bytesReclaimed > 0)
-                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] WAL checkpoint on logout failed: {ex.Message}");
-        }
+            try
+            {
+                var (success, bytesReclaimed) = _dbService.Checkpoint();
+                if (success && bytesReclaimed > 0)
+                    LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Compacted WAL on logout, reclaimed {bytesReclaimed:N0} bytes");
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] WAL checkpoint on logout failed: {ex.Message}");
+            }
+        });
     }
     
     /// <summary>

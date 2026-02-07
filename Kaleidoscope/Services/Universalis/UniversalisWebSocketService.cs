@@ -24,7 +24,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
-    private bool _isConnected;
+    private volatile bool _isConnected;
     private volatile bool _disposed;
     private DateTime _lastConnectAttempt = DateTime.MinValue;
 

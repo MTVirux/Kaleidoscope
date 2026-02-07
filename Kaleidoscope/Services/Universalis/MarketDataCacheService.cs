@@ -164,61 +164,91 @@ public sealed class MarketDataCacheService : IService, IDisposable
     
     /// <summary>
     /// Updates only the min listing prices (from WebSocket listing events).
+    /// Uses atomic replacement to avoid torn reads from concurrent accessors.
     /// </summary>
     public void UpdateMinPrices(int itemId, int worldId, int? minPriceNq, int? minPriceHq)
     {
         var key = (itemId, worldId);
         
-        if (_priceCache.TryGetValue(key, out var existing))
-        {
-            var newNq = minPriceNq.HasValue && minPriceNq.Value > 0
-                ? (existing.MinPriceNq > 0 ? Math.Min(existing.MinPriceNq, minPriceNq.Value) : minPriceNq.Value)
-                : existing.MinPriceNq;
-            var newHq = minPriceHq.HasValue && minPriceHq.Value > 0
-                ? (existing.MinPriceHq > 0 ? Math.Min(existing.MinPriceHq, minPriceHq.Value) : minPriceHq.Value)
-                : existing.MinPriceHq;
-            
-            existing.MinPriceNq = newNq;
-            existing.MinPriceHq = newHq;
-            existing.LastUpdated = DateTime.UtcNow;
-            existing.Source = PriceSource.WebSocket;
-        }
-        else
-        {
-            SetPrice(itemId, worldId, 
-                minPriceNq ?? 0, minPriceHq ?? 0, 
-                source: PriceSource.WebSocket);
-        }
+        _priceCache.AddOrUpdate(key,
+            // Add factory: no existing entry, create a new one
+            _ => new MarketPriceCacheEntry
+            {
+                ItemId = itemId,
+                WorldId = worldId,
+                MinPriceNq = minPriceNq ?? 0,
+                MinPriceHq = minPriceHq ?? 0,
+                LastUpdated = DateTime.UtcNow,
+                Source = PriceSource.WebSocket,
+                TtlMinutes = DefaultTtlMinutes,
+                StalenessThresholdMinutes = DefaultStalenessThresholdMinutes
+            },
+            // Update factory: replace with new entry using merged values
+            (_, existing) =>
+            {
+                var newNq = minPriceNq.HasValue && minPriceNq.Value > 0
+                    ? (existing.MinPriceNq > 0 ? Math.Min(existing.MinPriceNq, minPriceNq.Value) : minPriceNq.Value)
+                    : existing.MinPriceNq;
+                var newHq = minPriceHq.HasValue && minPriceHq.Value > 0
+                    ? (existing.MinPriceHq > 0 ? Math.Min(existing.MinPriceHq, minPriceHq.Value) : minPriceHq.Value)
+                    : existing.MinPriceHq;
+                
+                return new MarketPriceCacheEntry
+                {
+                    ItemId = itemId,
+                    WorldId = worldId,
+                    MinPriceNq = newNq,
+                    MinPriceHq = newHq,
+                    LastSaleNq = existing.LastSaleNq,
+                    LastSaleHq = existing.LastSaleHq,
+                    LastUpdated = DateTime.UtcNow,
+                    Source = PriceSource.WebSocket,
+                    TtlMinutes = existing.TtlMinutes,
+                    StalenessThresholdMinutes = existing.StalenessThresholdMinutes
+                };
+            });
     }
     
     /// <summary>
     /// Updates only the last sale prices (from WebSocket sale events).
+    /// Uses atomic replacement to avoid torn reads from concurrent accessors.
     /// </summary>
     public void UpdateSalePrices(int itemId, int worldId, int? lastSaleNq, int? lastSaleHq)
     {
         var key = (itemId, worldId);
         
-        if (_priceCache.TryGetValue(key, out var existing))
-        {
-            if (lastSaleNq.HasValue && lastSaleNq.Value > 0)
+        if (lastSaleNq.HasValue && lastSaleNq.Value > 0)
+            _lastSalePriceCache[(itemId, false)] = lastSaleNq.Value;
+        if (lastSaleHq.HasValue && lastSaleHq.Value > 0)
+            _lastSalePriceCache[(itemId, true)] = lastSaleHq.Value;
+        
+        _priceCache.AddOrUpdate(key,
+            // Add factory: no existing entry, create a new one
+            _ => new MarketPriceCacheEntry
             {
-                existing.LastSaleNq = lastSaleNq.Value;
-                _lastSalePriceCache[(itemId, false)] = lastSaleNq.Value;
-            }
-            if (lastSaleHq.HasValue && lastSaleHq.Value > 0)
+                ItemId = itemId,
+                WorldId = worldId,
+                LastSaleNq = lastSaleNq ?? 0,
+                LastSaleHq = lastSaleHq ?? 0,
+                LastUpdated = DateTime.UtcNow,
+                Source = PriceSource.WebSocket,
+                TtlMinutes = DefaultTtlMinutes,
+                StalenessThresholdMinutes = DefaultStalenessThresholdMinutes
+            },
+            // Update factory: replace with new entry using merged values
+            (_, existing) => new MarketPriceCacheEntry
             {
-                existing.LastSaleHq = lastSaleHq.Value;
-                _lastSalePriceCache[(itemId, true)] = lastSaleHq.Value;
-            }
-            existing.LastUpdated = DateTime.UtcNow;
-            existing.Source = PriceSource.WebSocket;
-        }
-        else
-        {
-            SetPrice(itemId, worldId, 0, 0, 
-                lastSaleNq ?? 0, lastSaleHq ?? 0, 
-                source: PriceSource.WebSocket);
-        }
+                ItemId = itemId,
+                WorldId = worldId,
+                MinPriceNq = existing.MinPriceNq,
+                MinPriceHq = existing.MinPriceHq,
+                LastSaleNq = lastSaleNq.HasValue && lastSaleNq.Value > 0 ? lastSaleNq.Value : existing.LastSaleNq,
+                LastSaleHq = lastSaleHq.HasValue && lastSaleHq.Value > 0 ? lastSaleHq.Value : existing.LastSaleHq,
+                LastUpdated = DateTime.UtcNow,
+                Source = PriceSource.WebSocket,
+                TtlMinutes = existing.TtlMinutes,
+                StalenessThresholdMinutes = existing.StalenessThresholdMinutes
+            });
     }
     
     /// <summary>
