@@ -38,7 +38,7 @@ public sealed class QuickAccessBarWidget
     private const float StatusSpacing = 6f;
     private const float SeparatorWidth = 1f;
     private const float SeparatorMargin = 8f;
-    private const uint BarBackgroundColor = 0xDD1A1A1A; // Dark semi-transparent
+    private const uint DefaultBarBackgroundColor = 0xDD1A1A1A; // Dark semi-transparent fallback
     private const uint ButtonHoverColor = 0xFF3A3A3A;
     private const uint ButtonActiveColor = 0xFF505050;
     private const uint SaveButtonColor = 0xFF2A5A2A; // Green tint for save when dirty
@@ -46,11 +46,21 @@ public sealed class QuickAccessBarWidget
     private const uint StatusConnectedColor = 0xFF00CC00; // Green
     private const uint StatusDisconnectedColor = 0xFF0000CC; // Red
     private const uint StatusWarningColor = 0xFF00AAFF; // Orange/Yellow
-    private const uint SeparatorColor = 0xFF505050;
+    private const uint DefaultSeparatorColor = 0xFF505050; // Fallback separator color
     private const uint PinActiveColor = 0xFF00CC00; // Green when pinned
     private const uint PinInactiveColor = 0xFF808080; // Gray when not pinned
     private const float AnimationDuration = 0.1f; // 0.1 second dropdown animation
     private const float TopOffset = 2f; // Reduced spacing from top
+
+    /// <summary>Gets the bar background color from config, falling back to the default.</summary>
+    private uint BarBackgroundColor => _configurationService != null
+        ? ImGui.GetColorU32(_configurationService.Config.UIColors.QuickAccessBarBackground)
+        : DefaultBarBackgroundColor;
+
+    /// <summary>Gets the separator color from config, falling back to the default.</summary>
+    private uint SeparatorColor => _configurationService != null
+        ? ImGui.GetColorU32(_configurationService.Config.UIColors.QuickAccessBarSeparator)
+        : DefaultSeparatorColor;
 
     private bool _isPinned = false;
     private float _animationProgress = 0f;
