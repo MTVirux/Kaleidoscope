@@ -49,6 +49,10 @@ public partial class WindowContentContainer
                                 MathF.Max(MinToolWidth, t.GridColSpan * cellW),
                                 MathF.Max(MinToolHeight, t.GridRowSpan * cellH)
                             );
+                            // Keep grid spans consistent with the clamped pixel size
+                            // so tools don't appear to expand on subsequent layout saves
+                            if (cellW > 0) t.GridColSpan = t.Size.X / cellW;
+                            if (cellH > 0) t.GridRowSpan = t.Size.Y / cellH;
                         }
                     }
                 }

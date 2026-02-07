@@ -35,11 +35,13 @@ public partial class WindowContentContainer
                 tool.ImportToolSettings(entry.ToolSettings);
         }
         /// <summary>
-        /// Clamps grid coordinates to valid ranges: position >= 0, span >= minimum.
+        /// Clamps grid coordinates to valid ranges: position >= 0, span > 0.
+        /// Uses a tiny minimum span to prevent zero/negative values without
+        /// artificially inflating tools on low-resolution grids.
         /// </summary>
         private static void ClampGridCoords(ToolComponent tool)
         {
-            const float minSpan = 0.5f;
+            const float minSpan = 0.01f;
             tool.GridCol = MathF.Max(0f, tool.GridCol);
             tool.GridRow = MathF.Max(0f, tool.GridRow);
             tool.GridColSpan = MathF.Max(minSpan, tool.GridColSpan);

@@ -375,6 +375,9 @@ public partial class WindowContentContainer
                         MathF.Max(MinToolWidth, t.GridColSpan * newCellW),
                         MathF.Max(MinToolHeight, t.GridRowSpan * newCellH)
                     );
+                    // Keep grid spans consistent with the clamped pixel size
+                    if (newCellW > 0) t.GridColSpan = t.Size.X / newCellW;
+                    if (newCellH > 0) t.GridRowSpan = t.Size.Y / newCellH;
                 }
                 
                 MarkLayoutDirty();
