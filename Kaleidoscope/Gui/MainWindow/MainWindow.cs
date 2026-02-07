@@ -31,6 +31,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly ProfilerService _profilerService;
     private readonly FrameLimiterService _frameLimiterService;
     private readonly IKeyState _keyState;
+    private readonly IFramework _framework;
     private readonly ToolCreationContext _toolContext;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
@@ -58,6 +59,10 @@ public sealed class MainWindow : Window, IService, IDisposable
 
     // Suppress ESC-to-close until the ESC key is released after exiting fullscreen via ESC
     private bool _suppressEscClose;
+
+    // ESC pressed state captured during Framework.Update (before the game processes input)
+    // so we can still detect ESC for fullscreen exit after clearing the key buffer
+    private bool _escPressedThisFrame;
 
     // Fullscreen mode state - when true, window fills viewport with no decorations
     private bool _isFullscreenMode;
@@ -126,7 +131,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         CharacterDataService characterDataService,
         SalePriceCacheService salePriceCacheService,
         FrameLimiterService frameLimiterService,
-        IKeyState keyState) 
+        IKeyState keyState,
+        IFramework framework) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -137,6 +143,13 @@ public sealed class MainWindow : Window, IService, IDisposable
         _profilerService = profilerService;
         _frameLimiterService = frameLimiterService;
         _keyState = keyState;
+        _framework = framework;
+        
+        // Suppress game keyboard input while in fullscreen mode.
+        // Framework.Update fires before the game processes its key buffer, so clearing
+        // IKeyState here prevents the game from acting on any keys (movement, menus, etc.)
+        // while ImGui still receives input normally via Win32 messages.
+        _framework.Update += OnFrameworkUpdate;
         
         // Bundle tool-related services into a single context for tool creation
         _toolContext = new ToolCreationContext(
@@ -198,9 +211,26 @@ public sealed class MainWindow : Window, IService, IDisposable
 
     public void Dispose()
     {
+        _framework.Update -= OnFrameworkUpdate;
         _layoutEditingService.OnDirtyStateChanged -= OnDirtyStateChanged;
         _layoutEditingService.OnLayoutReverted -= OnLayoutReverted;
         _configService.OnActiveLayoutChanged -= OnActiveLayoutChangedFromConfig;
+    }
+    
+    /// <summary>
+    /// Clears the game's key buffer while in fullscreen mode so the game doesn't
+    /// process any keyboard input (movement, system menu, chat, etc.).
+    /// ImGui receives input through a separate Win32 message path and is unaffected.
+    /// </summary>
+    private void OnFrameworkUpdate(IFramework _)
+    {
+        if (!_isFullscreenMode) return;
+        
+        // Snapshot ESC state before clearing so Draw() can still detect it for fullscreen exit
+        _escPressedThisFrame = _keyState[(int)Dalamud.Game.ClientState.Keys.VirtualKey.ESCAPE];
+        
+        // Clear the entire game key buffer — prevents the game from acting on any key
+        _keyState.ClearAll();
     }
     
     /// <summary>
@@ -1018,13 +1048,14 @@ public sealed class MainWindow : Window, IService, IDisposable
         }
 
         // ESC key exits fullscreen mode (only when focused and no popups are open)
-        // Uses Dalamud IKeyState to read ESC directly from the game's key buffer,
-        // since FFXIV consumes ESC before ImGui sees it
+        // Uses the ESC state snapshot from Framework.Update (the game's key buffer is
+        // cleared each frame while in fullscreen, so we can't read it here directly)
         if (_isFullscreenMode 
             && isThisWindowFocused
             && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel)
-            && _keyState[(int)Dalamud.Game.ClientState.Keys.VirtualKey.ESCAPE])
+            && _escPressedThisFrame)
         {
+            _escPressedThisFrame = false;
             _suppressEscClose = true;
             ExitFullscreenModeInternal();
         }
