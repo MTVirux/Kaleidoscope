@@ -84,11 +84,11 @@ public class CacheSizeTool : StatusToolBase
 
             // Estimate memory usage:
             // - InventoryCacheEntry: ~100 bytes base (strings, timestamps, etc.)
-            // - InventoryItemSnapshot: ~60 bytes each (uint, long, flags, etc.)
+            // - InventoryItemSnapshot: ~24 bytes each (readonly record struct, stored inline in List<T> array)
             // - Dictionary overhead per character: ~50 bytes
             _estimatedBytes = (_cachedCharacterCount * 50L) +
                               (_cachedEntryCount * 100L) +
-                              (_cachedItemCount * 60L);
+                              (_cachedItemCount * 24L);
         }
         catch (Exception ex)
         {

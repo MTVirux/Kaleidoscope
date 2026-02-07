@@ -956,11 +956,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         
         // Estimate memory usage:
         // - InventoryCacheEntry: ~100 bytes base (strings, timestamps, etc.)
-        // - InventoryItemSnapshot: ~60 bytes each (uint, long, flags, etc.)
+        // - InventoryItemSnapshot: ~24 bytes each (readonly record struct, stored inline in List<T> array)
         // - Dictionary overhead per character: ~50 bytes
         var estimatedBytes = (characterCount * 50L) +
                              (entryCount * 100L) +
-                             (itemCount * 60L);
+                             (itemCount * 24L);
         
         return new InventoryCacheStatistics
         {
