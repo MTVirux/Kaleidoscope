@@ -228,6 +228,13 @@ public sealed class LayoutEditingService : IDisposable, IService
             existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
             _workingGridSettings?.ApplyToLayoutState(existing);
 
+            // For windowed layouts, persist the current window position/size
+            if (_currentLayoutType == LayoutType.Windowed)
+            {
+                existing.WindowedPos = _configService.Config.MainWindowPos;
+                existing.WindowedSize = _configService.Config.MainWindowSize;
+            }
+
             // Update active layout name
             if (_currentLayoutType == LayoutType.Windowed)
             {
