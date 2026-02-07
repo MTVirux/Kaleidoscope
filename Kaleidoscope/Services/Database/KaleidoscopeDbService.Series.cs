@@ -253,6 +253,8 @@ public sealed partial class KaleidoscopeDbService
     /// <summary>
     /// Saves multiple sample values in a single transaction, only inserting those that differ from their last value.
     /// Much more efficient than calling SaveSampleIfChanged per item (avoids N separate lock acquisitions).
+    /// All operations (series resolution, last-value checks, and inserts) are performed under a single
+    /// _writeLock acquisition to eliminate lock ordering issues between _writeLock and _readLock.
     /// Returns the number of points actually inserted.
     /// </summary>
     /// <param name="samples">List of (variable, characterId, value) tuples to save.</param>
@@ -260,34 +262,68 @@ public sealed partial class KaleidoscopeDbService
     {
         if (samples == null || samples.Count == 0) return 0;
 
-        // Phase 1: Resolve series IDs and check last values (acquires _writeLock for GetOrCreateSeries, _readLock for GetLastValue)
-        var pointsToInsert = new List<(long SeriesId, long Value)>();
-        foreach (var (variable, characterId, value) in samples)
-        {
-            var seriesId = GetOrCreateSeries(variable, characterId);
-            if (seriesId == null) continue;
-
-            var lastValue = GetLastValue(seriesId.Value);
-            if (lastValue.HasValue && lastValue.Value == value)
-                continue;
-
-            pointsToInsert.Add((seriesId.Value, value));
-        }
-
-        if (pointsToInsert.Count == 0) return 0;
-
-        // Phase 2: Batch insert all changed points in a single transaction
         lock (_writeLock)
         {
+            EnsureConnection();
             if (_connection == null) return 0;
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-                try
+                // Phase 1: Resolve series IDs and check last values using the write connection
+                // (avoids acquiring _readLock while holding _writeLock — see lock ordering invariant)
+                var pointsToInsert = new List<(long SeriesId, long Value)>();
+                
+                foreach (var (variable, characterId, value) in samples)
+                {
+                    // Inline GetOrCreateSeries logic to stay within _writeLock
+                    long seriesId;
+                    using (var findCmd = _connection.CreateCommand())
+                    {
+                        findCmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
+                        findCmd.Parameters.AddWithValue("$v", variable);
+                        findCmd.Parameters.AddWithValue("$c", (long)characterId);
+                        var result = findCmd.ExecuteScalar();
+
+                        if (result != null && result != DBNull.Value)
+                        {
+                            seriesId = (long)result;
+                        }
+                        else
+                        {
+                            // Create new series
+                            findCmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
+                            seriesId = (long)findCmd.ExecuteScalar()!;
+
+                            // Insert initial 0 value
+                            using var initCmd = _connection.CreateCommand();
+                            initCmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, 0)";
+                            initCmd.Parameters.AddWithValue("$s", seriesId);
+                            initCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.Ticks);
+                            initCmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    // Inline GetLastValue logic using write connection to avoid _readLock
+                    using (var lastCmd = _connection.CreateCommand())
+                    {
+                        lastCmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
+                        lastCmd.Parameters.AddWithValue("$s", seriesId);
+                        var lastResult = lastCmd.ExecuteScalar();
+
+                        if (lastResult != null && lastResult != DBNull.Value && (long)lastResult == value)
+                            continue;
+                    }
+
+                    pointsToInsert.Add((seriesId, value));
+                }
+
+                if (pointsToInsert.Count == 0) return 0;
+
+                // Phase 2: Batch insert all changed points in a single transaction
+                return RunInTransaction(tx =>
                 {
                     using var cmd = _connection.CreateCommand();
-                    cmd.Transaction = transaction;
+                    cmd.Transaction = tx;
                     cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
 
                     var sParam = cmd.Parameters.Add("$s", SqliteType.Integer);
@@ -304,14 +340,8 @@ public sealed partial class KaleidoscopeDbService
                         cmd.ExecuteNonQuery();
                     }
 
-                    transaction.Commit();
                     return pointsToInsert.Count;
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                });
             }
             catch (Exception ex)
             {
