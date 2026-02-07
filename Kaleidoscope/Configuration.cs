@@ -251,11 +251,6 @@ public class Configuration : IPluginConfiguration
     public InventoryValueSettings InventoryValue { get; set; } = new();
 
     /// <summary>
-    /// Settings for the Top Inventory Value Items tool.
-    /// </summary>
-    public TopInventoryValueItemsSettings TopInventoryValueItems { get; set; } = new();
-    
-    /// <summary>
     /// Settings for the Item Table tool.
     /// </summary>
     public ItemTableSettings ItemTable { get; set; } = new();
