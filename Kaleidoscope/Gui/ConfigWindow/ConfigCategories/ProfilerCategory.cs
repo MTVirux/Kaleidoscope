@@ -97,7 +97,7 @@ public sealed class ProfilerCategory
             ImGui.SetTooltip("Operations taking longer than this will be logged. Lower values = more verbose logging.");
         }
 
-        ImGui.Spacing();;
+        ImGui.Spacing();
 
         // Stats view selector
         ImGui.SetNextItemWidth(150);

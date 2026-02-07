@@ -166,7 +166,7 @@ public sealed class GeneralCategory
             if (_frameLimiterService.IsChillFramesAvailable)
             {
                 ImGui.SameLine();
-                ImGui.TextDisabled("(ChillFrames disabled)");;
+                ImGui.TextDisabled("(ChillFrames disabled)");
             }
         }
     }
