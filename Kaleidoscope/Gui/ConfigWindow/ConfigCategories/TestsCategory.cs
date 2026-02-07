@@ -31,6 +31,7 @@ public sealed class TestsCategory
     // Individual test state
     private bool _dbConnectionTested = false;
     private bool _dbReadWriteTested = false;
+    private bool _dbSanityTested = false;
     private bool _arIpcTested = false;
     private bool _universalisTested = false;
     private bool _webSocketTested = false;
@@ -171,9 +172,12 @@ public sealed class TestsCategory
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Run DB Sanity Check"))
             {
+                _dbSanityTested = true;
                 RunSingleTest("DB Sanity Check", TestDbSanity);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_dbSanityTested, "DB Sanity Check");
 
             // DB Stats
             if (MTTreeHelpers.DrawSection("Database Statistics"))
@@ -781,6 +785,7 @@ public sealed class TestsCategory
 
         _dbConnectionTested = true;
         _dbReadWriteTested = true;
+        _dbSanityTested = true;
         _arIpcTested = true;
         _universalisTested = true;
         _webSocketTested = true;
