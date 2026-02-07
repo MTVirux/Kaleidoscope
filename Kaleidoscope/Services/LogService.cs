@@ -531,6 +531,21 @@ public static class LogService
     }
 
     /// <summary>
+    /// Logs a verbose message if the specified category is enabled.
+    /// Uses deferred evaluation to avoid string interpolation cost when the category is disabled.
+    /// Usage: LogService.Verbose(LogCategory.Database, () => $"Expensive {data} to format");
+    /// </summary>
+    public static void Verbose(LogCategory category, Func<string> messageFactory)
+    {
+        if (IsCategoryEnabled(category))
+        {
+            var message = messageFactory();
+            _log?.Verbose(message);
+            WriteToFile("VRB", message, category);
+        }
+    }
+
+    /// <summary>
     /// Logs an info message if the specified category is enabled.
     /// </summary>
     public static void Info(LogCategory category, string message)
@@ -543,12 +558,40 @@ public static class LogService
     }
 
     /// <summary>
+    /// Logs an info message if the specified category is enabled.
+    /// Uses deferred evaluation to avoid string interpolation cost when the category is disabled.
+    /// </summary>
+    public static void Info(LogCategory category, Func<string> messageFactory)
+    {
+        if (IsCategoryEnabled(category))
+        {
+            var message = messageFactory();
+            _log?.Information(message);
+            WriteToFile("INF", message, category);
+        }
+    }
+
+    /// <summary>
     /// Logs a debug message if the specified category is enabled.
     /// </summary>
     public static void Debug(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
         {
+            _log?.Debug(message);
+            WriteToFile("DBG", message, category);
+        }
+    }
+
+    /// <summary>
+    /// Logs a debug message if the specified category is enabled.
+    /// Uses deferred evaluation to avoid string interpolation cost when the category is disabled.
+    /// </summary>
+    public static void Debug(LogCategory category, Func<string> messageFactory)
+    {
+        if (IsCategoryEnabled(category))
+        {
+            var message = messageFactory();
             _log?.Debug(message);
             WriteToFile("DBG", message, category);
         }
