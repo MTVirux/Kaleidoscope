@@ -14,7 +14,8 @@ namespace Kaleidoscope.Services.Universalis;
 public sealed class UniversalisWebSocketService : IDisposable, IService
 {
     private const string WebSocketUrl = "wss://universalis.app/api/ws";
-    private const int ReconnectDelayMs = 5000;
+    private const int InitialReconnectDelayMs = 5000;
+    private const int MaxReconnectDelayMs = 60000;
     private const int MaxFeedEntries = 1000;
 
     private readonly IPluginLog _log;
@@ -27,6 +28,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private volatile bool _isConnected;
     private volatile bool _disposed;
     private DateTime _lastConnectAttempt = DateTime.MinValue;
+    private int _currentReconnectDelayMs = InitialReconnectDelayMs;
+    private static readonly Random _jitterRng = new();
 
     // Subscribed channels
     private readonly HashSet<string> _subscribedChannels = new();
@@ -147,9 +150,9 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         // Rate limit connection attempts
         var now = DateTime.UtcNow;
         var msSinceLastAttempt = (now - _lastConnectAttempt).TotalMilliseconds;
-        if (msSinceLastAttempt < ReconnectDelayMs)
+        if (msSinceLastAttempt < _currentReconnectDelayMs)
         {
-            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] ConnectAsync - rate limited, {msSinceLastAttempt:F0}ms since last attempt");
+            LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] ConnectAsync - rate limited, {msSinceLastAttempt:F0}ms since last attempt (backoff: {_currentReconnectDelayMs}ms)");
             return;
         }
         _lastConnectAttempt = now;
@@ -168,6 +171,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             await _webSocket.ConnectAsync(new Uri(WebSocketUrl), _cts.Token);
 
             _isConnected = true;
+            _currentReconnectDelayMs = InitialReconnectDelayMs; // Reset backoff on success
             LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Connected successfully");
             OnConnectionStateChanged?.Invoke(true);
 
@@ -188,12 +192,14 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         var buffer = new byte[8192];
+        // Reuse a single MemoryStream across messages to avoid per-message allocation
+        var ms = new MemoryStream(8192);
 
         try
         {
             while (!ct.IsCancellationRequested && _webSocket?.State == WebSocketState.Open)
             {
-                using var ms = new MemoryStream();
+                ms.SetLength(0); // Reset without reallocating
 
                 WebSocketReceiveResult result;
                 do
@@ -216,7 +222,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                 }
                 else if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    var text = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+                    var text = System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
                     LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Received text message: {text}");
                 }
             }
@@ -235,14 +241,33 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
         finally
         {
+            ms.Dispose();
             _isConnected = false;
             OnConnectionStateChanged?.Invoke(false);
 
-            // Attempt reconnect if not cancelled
+            // Attempt reconnect with exponential backoff if not cancelled
             if (!ct.IsCancellationRequested && Settings.Enabled)
             {
-                LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Scheduling reconnect");
-                _ = Task.Delay(ReconnectDelayMs, CancellationToken.None).ContinueWith(_ => ConnectAsync());
+                // Add jitter (±20%) to prevent thundering herd
+                var jitter = (int)(_currentReconnectDelayMs * 0.2 * (_jitterRng.NextDouble() * 2 - 1));
+                var delayWithJitter = Math.Max(1000, _currentReconnectDelayMs + jitter);
+                
+                LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Scheduling reconnect in {delayWithJitter}ms (backoff: {_currentReconnectDelayMs}ms)");
+                
+                // Increase backoff for next failure (capped at max)
+                _currentReconnectDelayMs = Math.Min(_currentReconnectDelayMs * 2, MaxReconnectDelayMs);
+                
+                _ = Task.Delay(delayWithJitter, CancellationToken.None).ContinueWith(async _ =>
+                {
+                    try
+                    {
+                        await ConnectAsync();
+                    }
+                    catch (Exception ex2)
+                    {
+                        LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Reconnect failed: {ex2.Message}");
+                    }
+                });
             }
         }
     }
