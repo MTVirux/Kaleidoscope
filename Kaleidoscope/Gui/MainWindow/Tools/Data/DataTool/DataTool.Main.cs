@@ -37,7 +37,7 @@ public partial class DataTool : ToolComponent
     private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly ItemDataService? _itemDataService;
     private readonly IDataManager? _dataManager;
-    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly FavoritesService? _favoritesService;
     private readonly ITextureProvider? _textureProvider;
@@ -96,7 +96,7 @@ public partial class DataTool : ToolComponent
         IDataManager? dataManager = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        AutoRetainerIpcService? autoRetainerService = null,
+        AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _currencyTrackerService = currencyTrackerService;

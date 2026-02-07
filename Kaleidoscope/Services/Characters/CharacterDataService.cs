@@ -33,7 +33,7 @@ public sealed class CharacterDataService : IDisposable, IService
     private readonly IPluginLog _log;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
-    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly FavoritesService _favoritesService;
 
@@ -57,7 +57,7 @@ public sealed class CharacterDataService : IDisposable, IService
         CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
         FavoritesService favoritesService,
-        AutoRetainerIpcService? autoRetainerService = null,
+        AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _log = log;

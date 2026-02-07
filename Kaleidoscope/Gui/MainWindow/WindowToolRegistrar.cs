@@ -77,7 +77,7 @@ public static class WindowToolRegistrar
         ItemDataService? itemDataService = null,
         IDataManager? dataManager = null,
         InventoryCacheService? inventoryCacheService = null,
-        AutoRetainerIpcService? autoRetainerIpc = null,
+        AutoRetainerService? autoRetainerIpc = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
         SalePriceCacheService? salePriceCacheService = null)

@@ -17,7 +17,7 @@ public static class CharacterSortHelper
     public static void ApplySortOrder(
         List<ulong> characters,
         ConfigurationService? configService,
-        AutoRetainerIpcService? autoRetainerService,
+        AutoRetainerService? autoRetainerService,
         Func<ulong, string> getName)
     {
         if (characters == null || characters.Count <= 1) return;
@@ -39,7 +39,7 @@ public static class CharacterSortHelper
     public static IEnumerable<T> SortByCharacter<T>(
         IEnumerable<T> items,
         ConfigurationService? configService,
-        AutoRetainerIpcService? autoRetainerService,
+        AutoRetainerService? autoRetainerService,
         Func<T, ulong> getCharacterId,
         Func<T, string> getName)
     {
@@ -67,7 +67,7 @@ public static class CharacterSortHelper
 
     private static IEnumerable<T> SortByAutoRetainerOrder<T>(
         List<T> items,
-        AutoRetainerIpcService? autoRetainerService,
+        AutoRetainerService? autoRetainerService,
         Func<T, ulong> getCharacterId,
         Func<T, string> getName)
     {
@@ -102,7 +102,7 @@ public static class CharacterSortHelper
     private static void ApplySortOrderInternal(
         List<ulong> characters,
         CharacterSortOrder sortOrder,
-        AutoRetainerIpcService? autoRetainerService,
+        AutoRetainerService? autoRetainerService,
         Func<ulong, string> getName)
     {
         switch (sortOrder)

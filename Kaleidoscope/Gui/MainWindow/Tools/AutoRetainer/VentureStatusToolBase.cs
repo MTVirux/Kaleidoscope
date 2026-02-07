@@ -70,7 +70,7 @@ public readonly struct VesselVoyageAdapter : IVentureEntity
 /// </summary>
 public abstract class VentureStatusToolBase : ToolComponent
 {
-    protected readonly AutoRetainerIpcService? AutoRetainerIpc;
+    protected readonly AutoRetainerService? AutoRetainerIpc;
     protected readonly ConfigurationService? ConfigService;
 
     // Cached state
@@ -115,7 +115,7 @@ public abstract class VentureStatusToolBase : ToolComponent
     protected abstract string HiddenEntitiesSettingsKey { get; } // "HiddenRetainers" or "HiddenSubmersibles"
     protected abstract string NoVentureColorSettingsKey { get; } // "NoVentureColor" or "NoVoyageColor"
 
-    protected VentureStatusToolBase(AutoRetainerIpcService? autoRetainerIpc, ConfigurationService? configService)
+    protected VentureStatusToolBase(AutoRetainerService? autoRetainerIpc, ConfigurationService? configService)
     {
         AutoRetainerIpc = autoRetainerIpc;
         ConfigService = configService;

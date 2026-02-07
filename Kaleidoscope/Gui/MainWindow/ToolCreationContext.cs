@@ -23,7 +23,7 @@ public sealed record ToolCreationContext(
     ItemDataService? ItemDataService = null,
     IDataManager? DataManager = null,
     InventoryCacheService? InventoryCacheService = null,
-    AutoRetainerIpcService? AutoRetainerIpc = null,
+    AutoRetainerService? AutoRetainerIpc = null,
     ITextureProvider? TextureProvider = null,
     FavoritesService? FavoritesService = null,
     SalePriceCacheService? SalePriceCacheService = null);

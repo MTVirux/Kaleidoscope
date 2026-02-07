@@ -12,9 +12,9 @@ public class AutoRetainerStatusTool : StatusToolBase
 {
     public override string ToolName => "AutoRetainer Status";
     
-    private readonly AutoRetainerIpcService? _autoRetainerIpc;
+    private readonly AutoRetainerService? _autoRetainerIpc;
 
-    public AutoRetainerStatusTool(AutoRetainerIpcService? autoRetainerIpc = null)
+    public AutoRetainerStatusTool(AutoRetainerService? autoRetainerIpc = null)
     {
         _autoRetainerIpc = autoRetainerIpc;
 

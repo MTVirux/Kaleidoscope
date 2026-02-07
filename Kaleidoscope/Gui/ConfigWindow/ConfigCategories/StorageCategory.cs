@@ -35,7 +35,7 @@ public sealed class StorageCategory : IDisposable
     private readonly IDataManager _dataManager;
     private readonly FavoritesService _favoritesService;
     private readonly MessageService _messageService;
-    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     
     // Data Cleanup Section state
@@ -63,7 +63,7 @@ public sealed class StorageCategory : IDisposable
         IDataManager dataManager,
         FavoritesService favoritesService,
         MessageService messageService,
-        AutoRetainerIpcService? autoRetainerService = null,
+        AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _configService = configService;

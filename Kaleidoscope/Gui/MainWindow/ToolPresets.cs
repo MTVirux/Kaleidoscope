@@ -34,7 +34,7 @@ public static class ToolPresets
         IDataManager? dataManager,
         ITextureProvider? textureProvider,
         FavoritesService? favoritesService,
-        AutoRetainerIpcService? autoRetainerIpc,
+        AutoRetainerService? autoRetainerIpc,
         PriceTrackingService? priceTrackingService)
     {
         // Table Presets
@@ -59,7 +59,7 @@ public static class ToolPresets
         IDataManager? dataManager,
         ITextureProvider? textureProvider,
         FavoritesService? favoritesService,
-        AutoRetainerIpcService? autoRetainerIpc,
+        AutoRetainerService? autoRetainerIpc,
         PriceTrackingService? priceTrackingService)
     {
         try

@@ -22,7 +22,7 @@ public sealed class MTCharacterCombo : IDisposable
     private readonly FavoritesService _favoritesService;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService? _configService;
-    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     
     private readonly MTComboWidget<MTCharacterItem, ulong> _widget;
@@ -96,7 +96,7 @@ public sealed class MTCharacterCombo : IDisposable
         ConfigurationService? configService,
         string label,
         bool multiSelect = false,
-        AutoRetainerIpcService? autoRetainerService = null,
+        AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _currencyTrackerService = currencyTrackerService;

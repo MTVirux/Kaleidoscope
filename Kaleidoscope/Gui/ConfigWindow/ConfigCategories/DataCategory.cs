@@ -12,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 public sealed class DataCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly AutoRetainerService _autoRetainerIpc;
     private readonly ConfigurationService _configService;
 
     private bool _clearDbOpen = false;
@@ -21,7 +21,7 @@ public sealed class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(CurrencyTrackerService currencyTrackerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
+    public DataCategory(CurrencyTrackerService currencyTrackerService, AutoRetainerService autoRetainerIpc, ConfigurationService configService)
     {
         _currencyTrackerService = currencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;

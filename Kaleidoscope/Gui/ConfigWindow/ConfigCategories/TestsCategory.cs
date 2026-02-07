@@ -16,7 +16,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 public sealed class TestsCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly AutoRetainerIpcService _arIpcService;
+    private readonly AutoRetainerService _arIpcService;
     private readonly UniversalisService _universalisService;
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly ConfigurationService _configService;
@@ -69,7 +69,7 @@ public sealed class TestsCategory
 
     public TestsCategory(
         CurrencyTrackerService currencyTrackerService,
-        AutoRetainerIpcService arIpcService,
+        AutoRetainerService arIpcService,
         UniversalisService universalisService,
         UniversalisWebSocketService webSocketService,
         ConfigurationService configService,

@@ -107,13 +107,13 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
     }
 
-    private readonly AutoRetainerIpcService _arIpc;
+    private readonly AutoRetainerService _arIpc;
 
     public CurrencyTrackerService(
         IPluginLog log,
         FilenameService filenames,
         ConfigurationService configService,
-        AutoRetainerIpcService arIpc,
+        AutoRetainerService arIpc,
         TrackedDataRegistry registry,
         InventoryChangeService inventoryChangeService,
         TimeSeriesCacheService cacheService,

@@ -19,7 +19,7 @@ public sealed class QuickAccessBarWidget
     private readonly ConfigurationService? _configurationService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly UniversalisWebSocketService? _webSocketService;
-    private readonly AutoRetainerIpcService? _autoRetainerService;
+    private readonly AutoRetainerService? _autoRetainerService;
     private readonly FrameLimiterService? _frameLimiterService;
     private readonly Action? _onFullscreenToggle;
     private readonly Action? _onSave;
@@ -89,7 +89,7 @@ public sealed class QuickAccessBarWidget
         ConfigurationService? configurationService = null,
         CurrencyTrackerService? CurrencyTrackerService = null,
         UniversalisWebSocketService? webSocketService = null,
-        AutoRetainerIpcService? autoRetainerService = null,
+        AutoRetainerService? autoRetainerService = null,
         FrameLimiterService? frameLimiterService = null,
         Action? onFullscreenToggle = null,
         Action? onSave = null,

@@ -46,7 +46,7 @@ public record AutoRetainerCharacterData(
 /// Registered as a singleton service to avoid creating multiple IPC subscriptions.
 /// Automatically initializes on first access. Retries connection every 5 seconds if unavailable.
 /// </remarks>
-public sealed class AutoRetainerIpcService : IDisposable, IService
+public sealed class AutoRetainerService : IDisposable, IService
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     
@@ -82,7 +82,7 @@ public sealed class AutoRetainerIpcService : IDisposable, IService
     /// <summary>
     /// Creates and initializes the AutoRetainer IPC service.
     /// </summary>
-    public AutoRetainerIpcService(IDalamudPluginInterface pluginInterface)
+    public AutoRetainerService(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
         Initialize();

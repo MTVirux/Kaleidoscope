@@ -19,7 +19,7 @@ public partial class AutoRetainerControlTool : ToolComponent
 {
     public override string ToolName => "AutoRetainer Control";
 
-    private readonly AutoRetainerIpcService? _autoRetainerIpc;
+    private readonly AutoRetainerService? _autoRetainerIpc;
 
     // Default colors (static for reference)
     private static readonly Vector4 DefaultConnectedColor = new(0.2f, 0.8f, 0.2f, 1f);
@@ -96,7 +96,7 @@ public partial class AutoRetainerControlTool : ToolComponent
     /// </summary>
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
 
-    public AutoRetainerControlTool(AutoRetainerIpcService? autoRetainerIpc = null)
+    public AutoRetainerControlTool(AutoRetainerService? autoRetainerIpc = null)
     {
         _autoRetainerIpc = autoRetainerIpc;
 

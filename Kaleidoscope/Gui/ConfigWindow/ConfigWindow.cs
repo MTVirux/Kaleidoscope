@@ -24,7 +24,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly AutoRetainerIpcService _arIpc;
+    private readonly AutoRetainerService _arIpc;
     private readonly TrackedDataRegistry _registry;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly UniversalisWebSocketService _webSocketService;
@@ -91,7 +91,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         IPluginLog log,
         ConfigurationService configService,
         CurrencyTrackerService currencyTrackerService,
-        AutoRetainerIpcService arIpc,
+        AutoRetainerService arIpc,
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
         UniversalisWebSocketService webSocketService,

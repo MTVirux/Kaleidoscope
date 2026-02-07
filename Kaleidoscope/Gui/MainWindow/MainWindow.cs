@@ -37,7 +37,7 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly IDataManager _dataManager;
     private readonly InventoryCacheService _inventoryCacheService;
     private readonly ProfilerService _profilerService;
-    private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly AutoRetainerService _autoRetainerIpc;
     private readonly ITextureProvider _textureProvider;
     private readonly FavoritesService _favoritesService;
     private readonly CharacterDataService _characterDataService;
@@ -125,7 +125,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         IDataManager dataManager,
         InventoryCacheService inventoryCacheService,
         ProfilerService profilerService,
-        AutoRetainerIpcService autoRetainerIpc,
+        AutoRetainerService autoRetainerIpc,
         ITextureProvider textureProvider,
         FavoritesService favoritesService,
         CharacterDataService characterDataService,

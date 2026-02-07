@@ -15,7 +15,7 @@ public class RetainerVentureStatusTool : VentureStatusToolBase
     protected override string HiddenEntitiesSettingsKey => "HiddenRetainers";
     protected override string NoVentureColorSettingsKey => "NoVentureColor";
 
-    public RetainerVentureStatusTool(AutoRetainerIpcService? autoRetainerIpc = null, ConfigurationService? configService = null)
+    public RetainerVentureStatusTool(AutoRetainerService? autoRetainerIpc = null, ConfigurationService? configService = null)
         : base(autoRetainerIpc, configService)
     {
         Title = "Retainer Ventures";

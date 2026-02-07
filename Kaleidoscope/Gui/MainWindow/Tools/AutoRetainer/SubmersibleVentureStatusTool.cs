@@ -15,7 +15,7 @@ public class SubmersibleVentureStatusTool : VentureStatusToolBase
     protected override string HiddenEntitiesSettingsKey => "HiddenSubmersibles";
     protected override string NoVentureColorSettingsKey => "NoVoyageColor";
 
-    public SubmersibleVentureStatusTool(AutoRetainerIpcService? autoRetainerIpc = null, ConfigurationService? configService = null)
+    public SubmersibleVentureStatusTool(AutoRetainerService? autoRetainerIpc = null, ConfigurationService? configService = null)
         : base(autoRetainerIpc, configService)
     {
         Title = "Submersible Voyages";
