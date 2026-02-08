@@ -10,6 +10,8 @@ using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.FFXIVMT;
 using Kaleidoscope.Services.Universalis;
+using MTGui.Table;
+using MTGui.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.FFXIVMT;
@@ -48,6 +50,19 @@ public class GilFluxToolSettings
 
     /// <summary>How often to re-fetch API data (minutes). 0 = never auto-refresh.</summary>
     public int RefreshIntervalMinutes { get; set; } = 5;
+
+    // Standard table settings
+    /// <summary>Optional custom color for the table header row background.</summary>
+    public Vector4? HeaderColor { get; set; }
+
+    /// <summary>Optional custom color for even-numbered rows.</summary>
+    public Vector4? EvenRowColor { get; set; }
+
+    /// <summary>Optional custom color for odd-numbered rows.</summary>
+    public Vector4? OddRowColor { get; set; }
+
+    /// <summary>Whether to freeze the header row when scrolling.</summary>
+    public bool FreezeHeader { get; set; } = true;
 }
 
 /// <summary>
@@ -286,7 +301,8 @@ public class GilFluxTool : ToolComponent
 
         if (ImGui.BeginTable("gilflux_table", columnCount, flags, new Vector2(0, ImGui.GetContentRegionAvail().Y)))
         {
-            ImGui.TableSetupScrollFreeze(0, 1);
+            if (_settings.FreezeHeader)
+                ImGui.TableSetupScrollFreeze(0, 1);
             ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.DefaultSort, 200f);
 
             for (var i = 0; i < _timeframeLabels.Count; i++)
@@ -297,15 +313,28 @@ public class GilFluxTool : ToolComponent
                 ImGui.TableSetupColumn(_timeframeLabels[i], colFlags, isLast ? 80f : 70f);
             }
 
+            // Apply header color if set
+            if (_settings.HeaderColor.HasValue)
+            {
+                ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.HeaderColor.Value));
+            }
             ImGui.TableHeadersRow();
 
             var sortSpecs = ImGui.TableGetSortSpecs();
             SortItems(displayItems, sortSpecs);
             sortSpecs.SpecsDirty = false;
 
+            var rowIndex = 0;
             foreach (var item in displayItems)
             {
                 ImGui.TableNextRow();
+
+                // Apply even/odd row colors if set
+                var isEven = rowIndex % 2 == 0;
+                if (isEven && _settings.EvenRowColor.HasValue)
+                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.EvenRowColor.Value));
+                else if (!isEven && _settings.OddRowColor.HasValue)
+                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.OddRowColor.Value));
 
                 ImGui.TableNextColumn();
                 var displayName = string.IsNullOrEmpty(item.ItemName) ? "(No Name)" : item.ItemName;
@@ -336,6 +365,8 @@ public class GilFluxTool : ToolComponent
                     ImGui.TableNextColumn();
                     DrawGilValue(item.GetRanking(label));
                 }
+
+                rowIndex++;
             }
 
             ImGui.EndTable();
@@ -398,8 +429,7 @@ public class GilFluxTool : ToolComponent
         }
         else
         {
-            var color = value >= 100000 ? UiColors.Good : value >= 10000 ? UiColors.Info : UiColors.Value;
-            ImGui.TextColored(color, FormatGil(value));
+            ImGui.TextColored(UiColors.Value, FormatGil(value));
         }
     }
 
@@ -761,6 +791,28 @@ public class GilFluxTool : ToolComponent
             ImGui.TextDisabled("Waiting for world data...");
         }
 
+        // Standard table settings
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextUnformatted("Table Settings");
+        ImGui.Spacing();
+
+        var freezeHeader = _settings.FreezeHeader;
+        if (ImGui.Checkbox("Freeze header row", ref freezeHeader))
+        {
+            _settings.FreezeHeader = freezeHeader;
+            changed = true;
+        }
+
+        ImGui.Spacing();
+        if (MTTreeHelpers.DrawSection("Row Colors"))
+        {
+            changed |= MTTableHelpers.DrawColorOption("Header", _settings.HeaderColor, c => _settings.HeaderColor = c);
+            changed |= MTTableHelpers.DrawColorOption("Even Rows", _settings.EvenRowColor, c => _settings.EvenRowColor = c);
+            changed |= MTTableHelpers.DrawColorOption("Odd Rows", _settings.OddRowColor, c => _settings.OddRowColor = c);
+            MTTreeHelpers.EndSection();
+        }
+
         // Ignored items management
         if (_settings.IgnoredItems.Count > 0)
         {
@@ -835,6 +887,12 @@ public class GilFluxTool : ToolComponent
         }).ToList();
         dict["IgnoredItems"] = ignoredList;
 
+        // Table settings
+        dict["HeaderColor"] = _settings.HeaderColor.HasValue ? new float[] { _settings.HeaderColor.Value.X, _settings.HeaderColor.Value.Y, _settings.HeaderColor.Value.Z, _settings.HeaderColor.Value.W } : null;
+        dict["EvenRowColor"] = _settings.EvenRowColor.HasValue ? new float[] { _settings.EvenRowColor.Value.X, _settings.EvenRowColor.Value.Y, _settings.EvenRowColor.Value.Z, _settings.EvenRowColor.Value.W } : null;
+        dict["OddRowColor"] = _settings.OddRowColor.HasValue ? new float[] { _settings.OddRowColor.Value.X, _settings.OddRowColor.Value.Y, _settings.OddRowColor.Value.Z, _settings.OddRowColor.Value.W } : null;
+        dict["FreezeHeader"] = _settings.FreezeHeader;
+
         return dict;
     }
 
@@ -853,6 +911,12 @@ public class GilFluxTool : ToolComponent
                 _settings.PinnedItemIds = DeserializeUintSet(pinnedObj);
             if (settings.TryGetValue("IgnoredItems", out var ignoredObj))
                 _settings.IgnoredItems = DeserializeIgnoredItems(ignoredObj);
+
+            // Table settings
+            _settings.HeaderColor = ImportColorArray(settings, "HeaderColor");
+            _settings.EvenRowColor = ImportColorArray(settings, "EvenRowColor");
+            _settings.OddRowColor = ImportColorArray(settings, "OddRowColor");
+            _settings.FreezeHeader = GetSetting(settings, "FreezeHeader", _settings.FreezeHeader);
 
             if (_worldSelector != null)
             {
