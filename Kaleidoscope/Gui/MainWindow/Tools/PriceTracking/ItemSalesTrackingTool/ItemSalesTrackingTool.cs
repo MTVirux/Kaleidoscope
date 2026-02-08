@@ -133,8 +133,11 @@ public partial class ItemSalesTrackingTool : ToolComponent
     {
         try
         {
-            DrawItemSelector();
-            ImGui.Separator();
+            if (Settings.ShowActionButtons)
+            {
+                DrawItemSelector();
+                ImGui.Separator();
+            }
 
             using (ProfilerService.BeginStaticChildScope("DrawSalesGraph"))
             {

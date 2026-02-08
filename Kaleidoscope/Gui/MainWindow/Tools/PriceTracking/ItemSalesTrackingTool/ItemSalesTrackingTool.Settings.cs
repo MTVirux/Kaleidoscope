@@ -45,6 +45,17 @@ public partial class ItemSalesTrackingTool
             ImGui.SetTooltip($"Filter out sales with prices far from expected values.\nIgnore sales outside {filterType} threshold.\nReference = {refType}(lowest 5 listings, last 5 sales) per world.\nConfigure thresholds in Settings > Universalis.");
         }
 
+        var showActionButtons = Settings.ShowActionButtons;
+        if (ImGui.Checkbox("Show Action Buttons", ref showActionButtons))
+        {
+            Settings.ShowActionButtons = showActionButtons;
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Show or hide the item selector, world scope selector, and refresh button.");
+        }
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -109,6 +120,7 @@ public partial class ItemSalesTrackingTool
             ["SelectedRegions"] = Settings.SelectedRegions.ToList(),
             ["SelectedDataCenters"] = Settings.SelectedDataCenters.ToList(),
             ["SelectedWorldIds"] = Settings.SelectedWorldIds.ToList(),
+            ["ShowActionButtons"] = Settings.ShowActionButtons,
             
             // Graph settings
             ["ColorMode"] = (int)Settings.ColorMode,
@@ -150,6 +162,7 @@ public partial class ItemSalesTrackingTool
         Settings.MaxHistoryEntries = GetSetting(settings, "MaxHistoryEntries", 100);
         Settings.FilterOutliers = GetSetting(settings, "FilterOutliers", true);
         Settings.ScopeMode = (WorldSelectionMode)GetSetting(settings, "ScopeMode", 0);
+        Settings.ShowActionButtons = GetSetting(settings, "ShowActionButtons", true);
 
         var regions = GetSetting<List<string>>(settings, "SelectedRegions");
         if (regions != null)
@@ -229,6 +242,11 @@ public class ItemSalesTrackingSettings : IGraphWidgetSettings
     public HashSet<string> SelectedRegions { get; set; } = new();
     public HashSet<string> SelectedDataCenters { get; set; } = new();
     public HashSet<int> SelectedWorldIds { get; set; } = new();
+    
+    /// <summary>
+    /// Whether to show the action buttons row (item selector, world scope, refresh).
+    /// </summary>
+    public bool ShowActionButtons { get; set; } = true;
     
     // === IGraphWidgetSettings implementation ===
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;

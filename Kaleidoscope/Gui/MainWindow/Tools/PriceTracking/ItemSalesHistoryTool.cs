@@ -37,6 +37,7 @@ public class ItemSalesHistoryTool : ToolComponent
     private int _maxEntries = 100;
     private bool _showHqOnly = false;
     private bool _showNqOnly = false;
+    private bool _showActionButtons = true;
 
     public ItemSalesHistoryTool(
         UniversalisService universalisService,
@@ -75,10 +76,13 @@ public class ItemSalesHistoryTool : ToolComponent
     {
         try
         {
-            DrawItemSelector();
-            ImGui.Separator();
-            DrawFilters();
-            ImGui.Separator();
+            if (_showActionButtons)
+            {
+                DrawItemSelector();
+                ImGui.Separator();
+                DrawFilters();
+                ImGui.Separator();
+            }
             using (ProfilerService.BeginStaticChildScope("DrawSalesHistory"))
             {
                 DrawSalesHistory();
@@ -359,6 +363,17 @@ public class ItemSalesHistoryTool : ToolComponent
             NotifyToolSettingsChanged();
         }
         ImGui.TextDisabled("Number of sale entries to fetch and display.");
+
+        ImGui.Spacing();
+
+        if (ImGui.Checkbox("Show Action Buttons", ref _showActionButtons))
+        {
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Show or hide the item selector, quality filters, and refresh button.");
+        }
     }
     
     /// <summary>
@@ -370,7 +385,8 @@ public class ItemSalesHistoryTool : ToolComponent
         {
             ["MaxEntries"] = _maxEntries,
             ["ShowHqOnly"] = _showHqOnly,
-            ["ShowNqOnly"] = _showNqOnly
+            ["ShowNqOnly"] = _showNqOnly,
+            ["ShowActionButtons"] = _showActionButtons
         };
     }
     
@@ -384,6 +400,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _maxEntries = GetSetting(settings, "MaxEntries", _maxEntries);
         _showHqOnly = GetSetting(settings, "ShowHqOnly", _showHqOnly);
         _showNqOnly = GetSetting(settings, "ShowNqOnly", _showNqOnly);
+        _showActionButtons = GetSetting(settings, "ShowActionButtons", true);
     }
 
     public override void Dispose()
