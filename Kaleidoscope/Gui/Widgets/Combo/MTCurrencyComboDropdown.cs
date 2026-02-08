@@ -202,7 +202,10 @@ public sealed class MTCurrencyComboDropdown : IDisposable
     
     private void DrawCurrencyIcon(MTCurrencyItem item, Vector2 size)
     {
-        if (!item.ItemId.HasValue)
+        // Resolve the icon source: prefer ItemId, fall back to IconId
+        var iconSource = item.ItemId ?? item.IconId;
+        
+        if (!iconSource.HasValue)
         {
             ImGui.Dummy(size);
             return;
@@ -214,12 +217,12 @@ public sealed class MTCurrencyComboDropdown : IDisposable
             
             if (_itemDataService != null)
             {
-                iconId = _itemDataService.GetItemIconId(item.ItemId.Value);
+                iconId = _itemDataService.GetItemIconId(iconSource.Value);
             }
             
             if (iconId == 0)
             {
-                iconId = (ushort)item.ItemId.Value;
+                iconId = (ushort)iconSource.Value;
             }
             
             var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
@@ -259,6 +262,7 @@ public sealed class MTCurrencyComboDropdown : IDisposable
                 Name = def.DisplayName,
                 ShortName = def.ShortName,
                 ItemId = def.ItemId,
+                IconId = def.IconId,
                 Category = def.Category
             });
         }

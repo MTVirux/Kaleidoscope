@@ -62,6 +62,7 @@ public sealed class MTCurrencyItem : IMTGroupableComboItem<TrackedDataType>
     public string Name { get; init; } = string.Empty;
     public string ShortName { get; init; } = string.Empty;
     public uint? ItemId { get; init; }
+    public uint? IconId { get; init; }
     public TrackedDataCategory Category { get; init; }
     
     // IMTGroupableComboItem implementation - group by category

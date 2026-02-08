@@ -274,7 +274,10 @@ public sealed class CurrenciesCategory
 
     private void DrawCurrencyIcon(TrackedDataDefinition definition)
     {
-        if (_textureProvider == null || _itemDataService == null || !definition.ItemId.HasValue)
+        // Resolve the icon source: prefer ItemId, fall back to IconId
+        var iconSource = definition.ItemId ?? definition.IconId;
+        
+        if (_textureProvider == null || _itemDataService == null || !iconSource.HasValue)
         {
             ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
             return;
@@ -282,7 +285,7 @@ public sealed class CurrenciesCategory
 
         try
         {
-            var iconId = _itemDataService.GetItemIconId(definition.ItemId.Value);
+            var iconId = _itemDataService.GetItemIconId(iconSource.Value);
             if (iconId > 0)
             {
                 var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));

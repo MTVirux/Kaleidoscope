@@ -369,7 +369,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             DisplayName = "Free Company Credits",
             ShortName = "FC Credits",
             Category = TrackedDataCategory.GrandCompany,
-            ItemId = 10155, // FC Credit item icon
+            IconId = 10155, // Use IconId to avoid blacklisting Ceruleum Tank (item 10155) from item combos
             MaxValue = 999_999_999,
             EnabledByDefault = false,
             Description = "Free Company credits earned from FC activities, used to purchase FC actions."
