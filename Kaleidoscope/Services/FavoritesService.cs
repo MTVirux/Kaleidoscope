@@ -172,9 +172,8 @@ public sealed class FavoritesService : IDisposable, IService
 
     /// <summary>
     /// Gets all favorite character IDs.
-    /// Returns a snapshot to avoid race conditions with concurrent mutations.
     /// </summary>
-    public IReadOnlySet<ulong> FavoriteCharacters => _configService.Config.FavoriteCharacters.ToHashSet();
+    public IReadOnlySet<ulong> FavoriteCharacters => _configService.Config.FavoriteCharacters;
 
     #endregion
 }
