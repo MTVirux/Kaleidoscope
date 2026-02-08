@@ -420,6 +420,13 @@ public partial class ItemTableWidget : ISettingsProvider
     // Track which grouped rows (by name) are expanded to show retainer breakdown (for World/DC/Region/All modes)
     private readonly HashSet<string> _expandedGroupNames = new();
     
+    // Column resize actions requested via right-click context menu
+    private enum ColumnResizeAction { None, HeaderWidth, DataWidth, FillSpace }
+    private ColumnResizeAction _pendingResizeAction = ColumnResizeAction.None;
+    private int _resizeTargetDisplayColumn = -1; // -1 means "all data columns"
+    private int _contextMenuDisplayColumn = -1; // Which display column the context menu was opened for
+    private int _tableIdSuffix; // Incremented to force ImGui table state reset after resize
+    
     /// <summary>
     /// Configuration for this table widget instance.
     /// </summary>

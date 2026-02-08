@@ -213,6 +213,72 @@ public partial class ItemTableWidget
         MTTableHorizontalAlignment hAlign,
         MTTableVerticalAlignment vAlign,
         int columnIndex,
-        bool sortable) => MTTableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable);
+        bool sortable,
+        out bool rightClicked) => MTTableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable, out rightClicked);
+    
+    /// <summary>
+    /// Calculates the maximum data cell text width for a display column across all rows.
+    /// </summary>
+    private static float CalculateMaxDataWidth(
+        DisplayColumn dispCol,
+        IReadOnlyList<ItemTableCharacterRow> rows,
+        IReadOnlyList<ItemColumnConfig> columns,
+        IItemTableWidgetSettings settings)
+    {
+        var numberFormat = settings.NumberFormat;
+        float maxWidth = 30f; // Minimum sensible width
+        foreach (var row in rows)
+        {
+            var value = GetDisplayColumnValue(dispCol, row, columns);
+            var text = FormatNumber(value, numberFormat);
+            var textWidth = ImGui.CalcTextSize(text).X;
+            if (textWidth > maxWidth)
+                maxWidth = textWidth;
+        }
+        return maxWidth;
+    }
+    
+    /// <summary>
+    /// Calculates the width needed for a single column to fill the remaining table space.
+    /// </summary>
+    private static float CalculateFillWidth(
+        List<DisplayColumn> displayColumns,
+        int targetDispIdx,
+        bool hideCharColumn,
+        float charColumnWidth)
+    {
+        var availableWidth = ImGui.GetContentRegionAvail().X;
+        var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
+        var totalCols = hideCharColumn ? displayColumns.Count : displayColumns.Count + 1;
+        var borderOverhead = (totalCols + 1) * 1f + 15f;
+        
+        // Sum up widths of all other display columns
+        float otherColumnsWidth = 0f;
+        for (int i = 0; i < displayColumns.Count; i++)
+        {
+            if (i != targetDispIdx)
+                otherColumnsWidth += displayColumns[i].Width;
+        }
+        
+        var fillWidth = availableWidth - effectiveCharWidth - otherColumnsWidth - borderOverhead;
+        return Math.Max(30f, fillWidth);
+    }
+    
+    /// <summary>
+    /// Applies a new width to a display column's underlying config (regular column or merged group).
+    /// </summary>
+    private static void ApplyColumnWidth(DisplayColumn dispCol, IReadOnlyList<ItemColumnConfig> columns, float newWidth)
+    {
+        if (dispCol.IsMerged && dispCol.MergedGroup != null)
+        {
+            dispCol.MergedGroup.Width = newWidth;
+        }
+        else if (!dispCol.IsMerged && dispCol.SourceColumnIndices.Count == 1)
+        {
+            var colIdx = dispCol.SourceColumnIndices[0];
+            if (colIdx >= 0 && colIdx < columns.Count)
+                columns[colIdx].Width = newWidth;
+        }
+    }
     
 }

@@ -139,6 +139,69 @@ public partial class ItemTableWidget
             charColumnWidth = Math.Max(charColumnWidth, maxNameWidth);
         }
         
+        // Handle pending column resize actions from context menu
+        // We still update the config widths here so they persist and are used by BuildDisplayColumns.
+        if (_pendingResizeAction != ColumnResizeAction.None && columns.Count > 0)
+        {
+            var action = _pendingResizeAction;
+            var targetDispCol = _resizeTargetDisplayColumn;
+            _pendingResizeAction = ColumnResizeAction.None;
+            _resizeTargetDisplayColumn = -1;
+            
+            // Build display columns first so we can reference them
+            var preDisplayColumns = BuildDisplayColumns(columns, settings, 0f);
+            var cellPadding = ImGui.GetStyle().CellPadding.X * 2;
+            
+            if (targetDispCol >= 0 && targetDispCol < preDisplayColumns.Count)
+            {
+                // Single column resize
+                var dispCol = preDisplayColumns[targetDispCol];
+                float newWidth = action switch
+                {
+                    ColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                    ColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                    ColumnResizeAction.FillSpace => CalculateFillWidth(preDisplayColumns, targetDispCol, hideCharColumn, charColumnWidth),
+                    _ => 0f
+                };
+                if (newWidth > 0f)
+                {
+                    ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
+                    _onSettingsChanged?.Invoke();
+                }
+            }
+            else if (targetDispCol == -1)
+            {
+                // All data columns resize
+                foreach (var dispCol in preDisplayColumns)
+                {
+                    float newWidth = action switch
+                    {
+                        ColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                        ColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                        _ => 0f
+                    };
+                    if (newWidth > 0f)
+                        ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
+                }
+                if (action == ColumnResizeAction.FillSpace)
+                {
+                    var availableWidth = ImGui.GetContentRegionAvail().X;
+                    var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
+                    var totalCols = hideCharColumn ? preDisplayColumns.Count : preDisplayColumns.Count + 1;
+                    var borderOverhead = (totalCols + 1) * 1f + 15f;
+                    var remainingWidth = availableWidth - effectiveCharWidth - borderOverhead;
+                    var fillWidth = Math.Max(30f, remainingWidth / preDisplayColumns.Count);
+                    foreach (var dispCol in preDisplayColumns)
+                        ApplyColumnWidth(dispCol, columns, fillWidth);
+                }
+                _onSettingsChanged?.Invoke();
+            }
+            
+            // Force ImGui to create a fresh table (new ID) so it picks up the new init widths.
+            // Without this, ImGui's internal column width cache ignores TableSetupColumn init widths.
+            _tableIdSuffix++;
+        }
+        
         // Calculate equal width for data columns if AutoSizeEqualColumns is enabled
         float dataColumnWidth = 0f;
         if (settings.AutoSizeEqualColumns && columns.Count > 0)
@@ -155,10 +218,12 @@ public partial class ItemTableWidget
         _cachedDisplayColumns = displayColumns; // Cache for merge operations
         var displayColumnCount = hideCharColumn ? displayColumns.Count : 1 + displayColumns.Count;
         
-        var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
+        var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingFixedFit;
         if (settings.Sortable) flags |= ImGuiTableFlags.Sortable;
         
-        if (!ImGui.BeginTable(_config.TableId, displayColumnCount, flags))
+        // Append _tableIdSuffix to force ImGui to reset column state after resize actions
+        var tableId = _tableIdSuffix > 0 ? $"{_config.TableId}_{_tableIdSuffix}" : _config.TableId;
+        if (!ImGui.BeginTable(tableId, displayColumnCount, flags))
             return;
         
         try
@@ -217,15 +282,25 @@ public partial class ItemTableWidget
             if (!hideCharColumn)
             {
                 ImGui.TableNextColumn();
+                
                 DrawAlignedHeaderCell(
                     "Character",
                     settings.HeaderHorizontalAlignment,
                     settings.HeaderVerticalAlignment,
                     0,
-                    settings.Sortable);
+                    settings.Sortable,
+                    out var charRightClicked);
+                
+                // Override the built-in table context menu when right-clicking the character header.
+                // The rightClicked flag covers the full header interaction area including resize grips.
+                if (charRightClicked)
+                    ImGui.OpenPopup($"CharHdrCtx_{_config.TableId}");
+                if (ImGui.BeginPopup($"CharHdrCtx_{_config.TableId}"))
+                    ImGui.EndPopup();
             }
             
             // Data column headers (using display columns which include merged columns)
+            var headerPopupId = $"DataColCtx_{_config.TableId}";
             for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
             {
                 ImGui.TableNextColumn();
@@ -249,74 +324,104 @@ public partial class ItemTableWidget
                     settings.HeaderHorizontalAlignment,
                     settings.HeaderVerticalAlignment,
                     hideCharColumn ? dispIdx : dispIdx + 1,
-                    settings.Sortable);
+                    settings.Sortable,
+                    out var colRightClicked);
+                
+                // Override the built-in table context menu with our custom one.
+                // The rightClicked flag covers the full header interaction area including resize grips.
+                if (colRightClicked)
+                {
+                    _contextMenuDisplayColumn = dispIdx;
+                    ImGui.OpenPopup(headerPopupId);
+                }
             }
             
-            // Right-click context menu for column merging (when display columns are selected)
-            if (_selectedDisplayColumnIndices.Count >= 2)
+            // Render the data column context menu (shared popup, content based on _contextMenuDisplayColumn)
+            if (ImGui.BeginPopup(headerPopupId))
             {
-                // Create a unique popup ID for this widget instance
-                var popupId = $"MergeColumnsPopup_{_config.TableId}";
+                var ctxDispIdx = _contextMenuDisplayColumn;
+                var ctxHeader = ctxDispIdx >= 0 && ctxDispIdx < displayColumns.Count
+                    ? displayColumns[ctxDispIdx].Header
+                    : "Column";
                 
-                // Check if right-click happened anywhere in the table area
-                if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
+                ImGui.TextDisabled(ctxHeader);
+                ImGui.Separator();
+                
+                if (ImGui.MenuItem("Resize to header width"))
                 {
-                    ImGui.OpenPopup(popupId);
+                    _pendingResizeAction = ColumnResizeAction.HeaderWidth;
+                    _resizeTargetDisplayColumn = ctxDispIdx;
+                }
+                if (ImGui.MenuItem("Resize to data width"))
+                {
+                    _pendingResizeAction = ColumnResizeAction.DataWidth;
+                    _resizeTargetDisplayColumn = ctxDispIdx;
+                }
+                if (ImGui.MenuItem("Resize to fill space"))
+                {
+                    _pendingResizeAction = ColumnResizeAction.FillSpace;
+                    _resizeTargetDisplayColumn = ctxDispIdx;
                 }
                 
-                if (ImGui.BeginPopup(popupId))
+                ImGui.Spacing();
+                ImGui.Separator();
+                
+                if (ImGui.MenuItem("Resize all data columns to header width"))
                 {
-                    ImGui.TextDisabled($"{_selectedDisplayColumnIndices.Count} columns selected");
+                    _pendingResizeAction = ColumnResizeAction.HeaderWidth;
+                    _resizeTargetDisplayColumn = -1;
+                }
+                if (ImGui.MenuItem("Resize all data columns to data width"))
+                {
+                    _pendingResizeAction = ColumnResizeAction.DataWidth;
+                    _resizeTargetDisplayColumn = -1;
+                }
+                if (ImGui.MenuItem("Resize all data columns to fill space"))
+                {
+                    _pendingResizeAction = ColumnResizeAction.FillSpace;
+                    _resizeTargetDisplayColumn = -1;
+                }
+                
+                if (_selectedDisplayColumnIndices.Count >= 2)
+                {
+                    ImGui.Spacing();
                     ImGui.Separator();
+                    ImGui.TextDisabled($"{_selectedDisplayColumnIndices.Count} columns selected");
                     
                     if (ImGui.MenuItem("Merge Selected Columns"))
                     {
-                        // Collect all source column indices from selected display columns
-                        // This flattens any existing merged groups
                         var allSourceIndices = new HashSet<int>();
                         var mergedGroupsToRemove = new List<MergedColumnGroup>();
                         
-                        foreach (var dispIdx in _selectedDisplayColumnIndices)
+                        foreach (var selIdx in _selectedDisplayColumnIndices)
                         {
-                            if (dispIdx >= 0 && dispIdx < displayColumns.Count)
+                            if (selIdx >= 0 && selIdx < displayColumns.Count)
                             {
-                                var displayCol = displayColumns[dispIdx];
-                                foreach (var srcIdx in displayCol.SourceColumnIndices)
-                                {
+                                var selCol = displayColumns[selIdx];
+                                foreach (var srcIdx in selCol.SourceColumnIndices)
                                     allSourceIndices.Add(srcIdx);
-                                }
-                                
-                                // Track merged groups that need to be removed
-                                if (displayCol.IsMerged && displayCol.MergedGroup != null)
-                                {
-                                    mergedGroupsToRemove.Add(displayCol.MergedGroup);
-                                }
+                                if (selCol.IsMerged && selCol.MergedGroup != null)
+                                    mergedGroupsToRemove.Add(selCol.MergedGroup);
                             }
                         }
                         
-                        // Remove old merged groups that were consumed
                         foreach (var oldGroup in mergedGroupsToRemove)
-                        {
                             settings.MergedColumnGroups.Remove(oldGroup);
-                        }
                         
-                        // Create a new merged column group with all source indices
-                        var mergedGroup = new MergedColumnGroup
+                        settings.MergedColumnGroups.Add(new MergedColumnGroup
                         {
                             Name = "Merged",
                             ColumnIndices = allSourceIndices.OrderBy(x => x).ToList(),
                             Width = 80f
-                        };
-                        
-                        settings.MergedColumnGroups.Add(mergedGroup);
+                        });
                         _selectedDisplayColumnIndices.Clear();
                         _selectedColumnIndices.Clear();
-                        _skipNextClick = true; // Prevent click from selecting underneath
+                        _skipNextClick = true;
                         _onSettingsChanged?.Invoke();
                     }
-                    
-                    ImGui.EndPopup();
                 }
+                
+                ImGui.EndPopup();
             }
             
             // Right-click context menu for row merging (when display rows are selected)
