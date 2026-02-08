@@ -248,6 +248,110 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Per-table size breakdown entry.
+    /// </summary>
+    /// <param name="TableName">Name of the database table.</param>
+    /// <param name="RowCount">Number of rows in the table.</param>
+    /// <param name="SizeBytes">Estimated size in bytes (proportional to row count vs total DB).</param>
+    public sealed record TableSizeInfo(string TableName, long RowCount, long SizeBytes);
+
+    /// <summary>
+    /// Gets a per-table size breakdown for all user tables.
+    /// Row counts are exact; byte sizes are estimated proportionally from total DB file size.
+    /// </summary>
+    /// <returns>List of per-table size info, sorted by size descending.</returns>
+    public List<TableSizeInfo> GetTableSizes()
+    {
+        var results = new List<TableSizeInfo>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return results;
+
+            try
+            {
+                // Get total database page count and page size
+                long totalPages = 0;
+                long pageSize = 0;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT page_count, page_size FROM pragma_page_count(), pragma_page_size()";
+                    using var reader = cmd.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        totalPages = reader.GetInt64(0);
+                        pageSize = reader.GetInt64(1);
+                    }
+                }
+
+                var totalDbSize = totalPages * pageSize;
+
+                // Get all user table names (exclude internal sqlite tables)
+                var tableNames = new List<string>();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read())
+                        tableNames.Add(reader.GetString(0));
+                }
+
+                if (tableNames.Count == 0) return results;
+
+                // Get row counts for each table
+                long totalRows = 0;
+                var rowCounts = new List<(string name, long count)>();
+
+                foreach (var table in tableNames)
+                {
+                    // Table names are from sqlite_master, safe to interpolate
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = $"SELECT COUNT(*) FROM \"{table}\"";
+                    var count = (long)(cmd.ExecuteScalar() ?? 0);
+                    rowCounts.Add((table, count));
+                    totalRows += count;
+                }
+
+                // Estimate per-table size proportionally from total DB file size
+                // If we have the actual file, use file size (includes WAL); otherwise use page-based size
+                long fileSizeTotal = totalDbSize;
+                if (!string.IsNullOrEmpty(_dbPath))
+                {
+                    try
+                    {
+                        if (File.Exists(_dbPath))
+                        {
+                            fileSizeTotal = new FileInfo(_dbPath).Length;
+                            var walPath = _dbPath + "-wal";
+                            if (File.Exists(walPath))
+                                fileSizeTotal += new FileInfo(walPath).Length;
+                        }
+                    }
+                    catch { /* fall back to page-based size */ }
+                }
+
+                foreach (var (name, count) in rowCounts)
+                {
+                    var estimatedSize = totalRows > 0
+                        ? (long)((double)count / totalRows * fileSizeTotal)
+                        : 0;
+                    results.Add(new TableSizeInfo(name, count, estimatedSize));
+                }
+
+                // Sort by size descending
+                results.Sort((a, b) => b.SizeBytes.CompareTo(a.SizeBytes));
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetTableSizes failed: {ex.Message}");
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Gets the schema (column info) for a specific table.
     /// </summary>
     public List<(string Name, string Type, bool NotNull, string? DefaultValue, bool IsPrimaryKey)> GetTableSchema(string tableName)

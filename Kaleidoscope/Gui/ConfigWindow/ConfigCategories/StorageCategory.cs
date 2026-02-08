@@ -2,11 +2,13 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
 using MTGui.Widgets.DatePicker;
 using OtterGui.Classes;
@@ -56,6 +58,13 @@ public sealed class StorageCategory : IDisposable
     private string? _lastBackupPath;
     private int _lastDeletedCount;
     private bool _showDeleteResult;
+
+    // Table size breakdown state
+    private List<KaleidoscopeDbService.TableSizeInfo>? _tableSizes;
+    private long _tableSizeTotalBytes;
+    private DateTime _tableSizeLastRefresh = DateTime.MinValue;
+    private bool _tableSizeLoading;
+    private static readonly TimeSpan TableSizeRefreshInterval = TimeSpan.FromSeconds(10);
 
     public StorageCategory(
         ConfigurationService configService,
@@ -245,8 +254,144 @@ public sealed class StorageCategory : IDisposable
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
             $"Estimated RAM: ~{totalCacheMb} MB (2 connections × {cacheSizeMb} MB)");
 
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        DrawTableSizeBreakdown();
+
         ImGui.Unindent();
         ImGui.Spacing();
+    }
+
+    private void DrawTableSizeBreakdown()
+    {
+        var dbService = _currencyTrackerService.DbService;
+        if (dbService == null)
+        {
+            ImGui.TextDisabled("Database not available.");
+            return;
+        }
+
+        // Auto-refresh on interval
+        var now = DateTime.UtcNow;
+        if (_tableSizes == null && !_tableSizeLoading)
+        {
+            RefreshTableSizes(dbService);
+        }
+        else if (!_tableSizeLoading && now - _tableSizeLastRefresh >= TableSizeRefreshInterval)
+        {
+            RefreshTableSizes(dbService);
+        }
+
+        ImGui.TextUnformatted("Table Size Breakdown");
+        ImGui.SameLine();
+        if (_tableSizeLoading)
+        {
+            ImGui.TextDisabled("(loading...)");
+        }
+        else
+        {
+            if (ImGui.SmallButton("Refresh##TableSizes"))
+                RefreshTableSizes(dbService);
+        }
+
+        if (_tableSizes == null || _tableSizes.Count == 0)
+        {
+            if (!_tableSizeLoading)
+                ImGui.TextDisabled("No table data available.");
+            return;
+        }
+
+        if (ImGui.BeginTable("##TableSizeBreakdown", 3,
+            ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+        {
+            ImGui.TableSetupColumn("Table", ImGuiTableColumnFlags.WidthStretch, 2.0f);
+            ImGui.TableSetupColumn("Rows", ImGuiTableColumnFlags.WidthFixed, 80);
+            ImGui.TableSetupColumn("Est. Size", ImGuiTableColumnFlags.WidthFixed, 80);
+            ImGui.TableHeadersRow();
+
+            foreach (var table in _tableSizes)
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(table.TableName);
+
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(table.RowCount.ToString("N0"));
+
+                ImGui.TableNextColumn();
+                var sizeColor = UiColors.GetSizeColor(table.SizeBytes,
+                    smallThreshold: 1 * 1024 * 1024,
+                    normalThreshold: 10 * 1024 * 1024,
+                    largeThreshold: 50 * 1024 * 1024);
+                ImGui.TextColored(sizeColor, FormatUtils.FormatByteSize(table.SizeBytes));
+            }
+
+            // Total row
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.Separator();
+            ImGui.TextUnformatted("Total");
+
+            ImGui.TableNextColumn();
+            ImGui.Separator();
+            var totalRows = 0L;
+            foreach (var t in _tableSizes) totalRows += t.RowCount;
+            ImGui.TextUnformatted(totalRows.ToString("N0"));
+
+            ImGui.TableNextColumn();
+            ImGui.Separator();
+            var totalColor = UiColors.GetSizeColor(_tableSizeTotalBytes);
+            ImGui.TextColored(totalColor, FormatUtils.FormatByteSize(_tableSizeTotalBytes));
+
+            ImGui.EndTable();
+        }
+
+        // Show overhead note
+        var estimatedDataBytes = 0L;
+        foreach (var t in _tableSizes) estimatedDataBytes += t.SizeBytes;
+        var overhead = _tableSizeTotalBytes - estimatedDataBytes;
+        if (overhead > 0)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(0.5f, 0.5f, 0.5f, 1f),
+                $"Indexes & overhead: ~{FormatUtils.FormatByteSize(overhead)}");
+        }
+    }
+
+    private void RefreshTableSizes(KaleidoscopeDbService dbService)
+    {
+        _tableSizeLoading = true;
+        Task.Run(() =>
+        {
+            try
+            {
+                var sizes = dbService.GetTableSizes();
+                var totalBytes = 0L;
+                // Get actual file size for the total
+                var dbPath = dbService.DbPath;
+                if (!string.IsNullOrEmpty(dbPath) && File.Exists(dbPath))
+                {
+                    totalBytes = new FileInfo(dbPath).Length;
+                    var walPath = dbPath + "-wal";
+                    if (File.Exists(walPath))
+                        totalBytes += new FileInfo(walPath).Length;
+                }
+
+                _tableSizes = sizes;
+                _tableSizeTotalBytes = totalBytes;
+                _tableSizeLastRefresh = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.Database, $"[StorageCategory] Table size refresh failed: {ex.Message}");
+            }
+            finally
+            {
+                _tableSizeLoading = false;
+            }
+        });
     }
 
     private void DrawMemoryCacheSection()
