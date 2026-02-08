@@ -149,7 +149,7 @@ public class MTGraphWidget : ISettingsProvider
     /// <summary>
     /// Gets or sets the hidden series names.
     /// </summary>
-    public IReadOnlyCollection<string> HiddenSeries => GetHiddenSeriesSet();
+    public IReadOnlyCollection<string> HiddenSeries => _graph.HiddenSeries;
 
     #endregion
 
@@ -179,7 +179,7 @@ public class MTGraphWidget : ISettingsProvider
     public void SetHiddenSeries(IEnumerable<string>? seriesNames)
     {
         // Clear all by showing all series first, then hide the ones we want hidden
-        foreach (var name in GetHiddenSeriesSet().ToList())
+        foreach (var name in _graph.HiddenSeries.ToList())
         {
             _graph.ShowSeries(name);
         }
@@ -570,14 +570,6 @@ public class MTGraphWidget : ISettingsProvider
     #endregion
 
     #region Private Helpers
-
-    /// <summary>
-    /// Gets the set of hidden series names from the underlying graph.
-    /// </summary>
-    private HashSet<string> GetHiddenSeriesSet()
-    {
-        return new HashSet<string>(_graph.HiddenSeries);
-    }
 
     #endregion
 }
