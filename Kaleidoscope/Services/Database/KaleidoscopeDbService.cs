@@ -18,15 +18,14 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
 {
     /// <summary>
     /// Lock for write operations on the write connection.
-    /// LOCK ORDERING INVARIANT: Always acquire _writeLock BEFORE _readLock.
-    /// Never acquire _readLock while holding _writeLock, and never acquire _writeLock while holding _readLock.
-    /// Nested lock acquisition between these two locks is forbidden to prevent deadlocks.
+    /// LOCK ORDERING INVARIANT: When both locks are needed, always acquire _writeLock BEFORE _readLock.
+    /// Never acquire _writeLock while already holding _readLock (would violate ordering and risk deadlock).
     /// </summary>
     private readonly object _writeLock = new();
     
     /// <summary>
     /// Lock for read operations on the read connection.
-    /// See _writeLock documentation for lock ordering invariant.
+    /// When both locks are needed, _writeLock must be acquired first. See _writeLock for invariant.
     /// </summary>
     private readonly object _readLock = new();
     private readonly string? _dbPath;
