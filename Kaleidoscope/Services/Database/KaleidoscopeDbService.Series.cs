@@ -666,13 +666,17 @@ public sealed partial class KaleidoscopeDbService
                         SELECT id, variable, character_id FROM series WHERE variable LIKE $prefix
                     ),
                     -- Get the latest point before window for each series (for line continuity)
+                    -- Uses ROW_NUMBER to correctly select the single most recent point per series
                     last_before AS (
-                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
-                        FROM series_match sm
-                        JOIN points p ON p.series_id = sm.id
-                        WHERE p.timestamp < $windowStart
-                        GROUP BY sm.id
-                        HAVING p.timestamp = MAX(p.timestamp)
+                        SELECT variable, character_id, timestamp, value
+                        FROM (
+                            SELECT sm.variable, sm.character_id, p.timestamp, p.value,
+                                   ROW_NUMBER() OVER (PARTITION BY sm.id ORDER BY p.timestamp DESC) AS rn
+                            FROM series_match sm
+                            JOIN points p ON p.series_id = sm.id
+                            WHERE p.timestamp < $windowStart
+                        )
+                        WHERE rn = 1
                     ),
                     -- Get all points within the window
                     in_window AS (
