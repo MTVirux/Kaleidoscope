@@ -35,6 +35,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private readonly ITextureProvider _textureProvider;
     private readonly FavoritesService _favoritesService;
     private readonly MessageService _messageService;
+    private readonly StateService _stateService;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -85,6 +86,17 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     {
         _selectedTab = tabIndex;
         IsOpen = true;
+        _bringToFrontOnNextDraw = true;
+    }
+
+    /// <summary>
+    /// Brings the config window to the front on the next draw frame.
+    /// If the window is not open, it will be opened first.
+    /// </summary>
+    public new void BringToFront()
+    {
+        IsOpen = true;
+        _bringToFrontOnNextDraw = true;
     }
 
     public ConfigWindow(
@@ -109,6 +121,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         FrameLimiterService frameLimiterService,
         IUiBuilder uiBuilder,
         MessageService messageService,
+        StateService stateService,
         FilenameService filenameService,
         FileDialogService fileDialogService)
         : base("Kaleidoscope Configuration")
@@ -127,6 +140,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
         _messageService = messageService;
+        _stateService = stateService;
 
         var lockTb = new TitleBarButton
         {
@@ -227,20 +241,15 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         // render the window above the popup, making dropdowns appear "under" the window
         var isPopupOpen = ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel);
         
-        // Bring window to front when first opened (so it appears above the fullscreen main window)
-        if (_bringToFrontOnNextDraw && !isPopupOpen)
+        // In fullscreen mode, always bring config window to front so it stays above the main window.
+        // In windowed mode, only bring to front on first open or when focus is gained.
+        // Skip when popups are open so dropdowns render above this window.
+        var isFullscreen = _stateService.IsFullscreen;
+        var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        var shouldBringToFront = _bringToFrontOnNextDraw || isFullscreen || (isFocused && !_wasFocused);
+        if (shouldBringToFront && !isPopupOpen)
         {
             _bringToFrontOnNextDraw = false;
-            var window = ImGuiP.GetCurrentWindow();
-            ImGuiP.BringWindowToDisplayFront(window);
-        }
-        
-        // When focus is gained, ensure this window stays above the fullscreen main window.
-        // Only fires on the rising edge (not focused → focused) to avoid per-frame overhead.
-        // Skip when popups are open so dropdowns render above this window.
-        var isFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
-        if (isFocused && !_wasFocused && !isPopupOpen)
-        {
             var window = ImGuiP.GetCurrentWindow();
             ImGuiP.BringWindowToDisplayFront(window);
         }

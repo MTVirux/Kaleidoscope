@@ -130,7 +130,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     }
 
     public void OpenMainWindow() => _mainWindow.IsOpen = true;
-    public void OpenConfigWindow() => _configWindow.IsOpen = true;
+    public void OpenConfigWindow() => _configWindow.BringToFront();
     public void OpenLayoutsConfig() => _configWindow.OpenToTab(ConfigWindow.TabIndex.Layouts);
 
     /// <summary>
