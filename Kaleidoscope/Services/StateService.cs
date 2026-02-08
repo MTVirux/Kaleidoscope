@@ -13,10 +13,6 @@ namespace Kaleidoscope.Services;
 /// </remarks>
 public sealed class StateService : IStateService, IService, IDisposable
 {
-    // Static accessor for legacy code that cannot use DI (e.g., static methods)
-    // This should be used sparingly - prefer constructor injection
-    private static StateService? _instance;
-
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
 
@@ -38,12 +34,6 @@ public sealed class StateService : IStateService, IService, IDisposable
         false;
 #endif
 
-    /// <summary>
-    /// Static accessor for edit mode state. Returns false if service not initialized.
-    /// Prefer using the instance property via DI when possible.
-    /// </summary>
-    public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
-
     public StateService(IPluginLog log, ConfigurationService configService)
     {
         _log = log;
@@ -53,7 +43,6 @@ public sealed class StateService : IStateService, IService, IDisposable
         _isLocked = configService.Config.PinMainWindow;
         _isFullscreen = configService.Config.ExclusiveFullscreen;
 
-        _instance = this;
         LogService.Debug(LogCategory.UI, "StateService initialized");
     }
 
@@ -214,6 +203,5 @@ public sealed class StateService : IStateService, IService, IDisposable
 
     public void Dispose()
     {
-        _instance = null;
     }
 }

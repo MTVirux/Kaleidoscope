@@ -853,35 +853,6 @@ public static class ColumnManagementWidget
     }
     
     /// <summary>
-    /// Backward-compatible overload that ignores merged groups.
-    /// </summary>
-    public static bool Draw(
-        List<ItemColumnConfig> columns,
-        Func<ItemColumnConfig, string> getDefaultName,
-        Action? onSettingsChanged = null,
-        Action? onRefreshNeeded = null,
-        string sectionTitle = "Item / Currency Management",
-        string emptyMessage = "No columns configured.",
-        HashSet<int>? mergedColumnIndices = null,
-        string itemLabel = "Item",
-        string currencyLabel = "Currency")
-    {
-        // Create a temporary empty list for backward compatibility
-        var emptyMergedGroups = new List<MergedColumnGroup>();
-        return Draw(
-            columns,
-            emptyMergedGroups,
-            getDefaultName,
-            onSettingsChanged,
-            onRefreshNeeded,
-            sectionTitle,
-            emptyMessage,
-            itemLabel,
-            currencyLabel,
-            "legacy");
-    }
-    
-    /// <summary>
     /// Adds a column/series if it doesn't already exist.
     /// </summary>
     /// <returns>True if the column was added.</returns>

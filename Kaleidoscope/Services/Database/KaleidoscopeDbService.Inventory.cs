@@ -8,7 +8,6 @@ public sealed partial class KaleidoscopeDbService
 
     /// <summary>
     /// Gets total crystal count for a character across all retainer inventories.
-    /// Uses the inventory cache system instead of the legacy retainer_crystals table.
     /// </summary>
     /// <param name="characterId">The character ID.</param>
     /// <param name="element">Crystal element (0=Fire, 1=Ice, 2=Wind, 3=Earth, 4=Lightning, 5=Water).</param>

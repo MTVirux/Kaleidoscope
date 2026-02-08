@@ -402,36 +402,12 @@ public partial class DataTool
             target.TableNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "TableNumberFormatStyle", (int)target.TableNumberFormat.Style);
             target.TableNumberFormat.DecimalPlaces = GetSetting(settings, "TableNumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
         }
-        else if (settings.ContainsKey("NumberFormatStyle"))
-        {
-            // Backward compatibility: migrate old shared NumberFormat to table format
-            target.TableNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)target.TableNumberFormat.Style);
-            target.TableNumberFormat.DecimalPlaces = GetSetting(settings, "NumberFormatDecimalPlaces", target.TableNumberFormat.DecimalPlaces);
-        }
-        else if (settings.ContainsKey("UseCompactNumbers"))
-        {
-            // Backward compatibility: migrate old UseCompactNumbers setting
-            var useCompact = GetSetting(settings, "UseCompactNumbers", false);
-            target.TableNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
-        }
         
         // Graph number format
         if (settings.ContainsKey("GraphNumberFormatStyle"))
         {
             target.GraphNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "GraphNumberFormatStyle", (int)target.GraphNumberFormat.Style);
             target.GraphNumberFormat.DecimalPlaces = GetSetting(settings, "GraphNumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
-        }
-        else if (settings.ContainsKey("NumberFormatStyle"))
-        {
-            // Backward compatibility: migrate old shared NumberFormat to graph format too
-            target.GraphNumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)target.GraphNumberFormat.Style);
-            target.GraphNumberFormat.DecimalPlaces = GetSetting(settings, "NumberFormatDecimalPlaces", target.GraphNumberFormat.DecimalPlaces);
-        }
-        else if (settings.ContainsKey("UseCompactNumbers"))
-        {
-            // Backward compatibility: migrate old UseCompactNumbers setting
-            var useCompact = GetSetting(settings, "UseCompactNumbers", false);
-            target.GraphNumberFormat.Style = useCompact ? NumberFormatStyle.Compact : NumberFormatStyle.Standard;
         }
         
         target.UseCharacterFilter = GetSetting(settings, "UseCharacterFilter", target.UseCharacterFilter);

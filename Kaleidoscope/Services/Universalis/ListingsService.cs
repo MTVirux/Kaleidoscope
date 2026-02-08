@@ -166,16 +166,6 @@ public sealed class ListingsService : IDisposable, IService
     }
 
     /// <summary>
-    /// Updates listings from API data with single min prices (legacy compatibility).
-    /// </summary>
-    private void UpdateListingsFromApiSingle(int itemId, int worldId, int minPriceNq, int minPriceHq)
-    {
-        var nqPrices = minPriceNq > 0 ? new[] { minPriceNq } : Array.Empty<int>();
-        var hqPrices = minPriceHq > 0 ? new[] { minPriceHq } : Array.Empty<int>();
-        UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
-    }
-
-    /// <summary>
     /// Gets the cached listing for an item on a specific world.
     /// Returns null if not cached.
     /// </summary>
