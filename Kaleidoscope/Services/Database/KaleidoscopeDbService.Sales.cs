@@ -55,11 +55,10 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-                try
+                RunInTransaction(tx =>
                 {
-                    using var cmd = _connection.CreateCommand();
-                    cmd.Transaction = transaction;
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
                     cmd.CommandText = @"
                         INSERT INTO sale_records (item_id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name)
                         VALUES ($iid, $wid, $ppu, $qty, $hq, $total, $time, $buyer)";
@@ -87,14 +86,7 @@ public sealed partial class KaleidoscopeDbService
                         buyerParam.Value = (object?)buyerName ?? DBNull.Value;
                         cmd.ExecuteNonQuery();
                     }
-
-                    transaction.Commit();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                });
             }
             catch (Exception ex)
             {
@@ -454,14 +446,12 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-
-                try
+                return RunInTransaction(tx =>
                 {
                     int? saleItemId = null;
-                    using (var getItemCmd = _connection.CreateCommand())
+                    using (var getItemCmd = _connection!.CreateCommand())
                     {
-                        getItemCmd.Transaction = transaction;
+                        getItemCmd.Transaction = tx;
                         getItemCmd.CommandText = "SELECT item_id FROM sale_records WHERE id = $id";
                         getItemCmd.Parameters.AddWithValue("$id", id);
                         var result = getItemCmd.ExecuteScalar();
@@ -473,12 +463,11 @@ public sealed partial class KaleidoscopeDbService
 
                     if (!saleItemId.HasValue)
                     {
-                        transaction.Rollback();
                         return false;
                     }
 
-                    using var deleteCmd = _connection.CreateCommand();
-                    deleteCmd.Transaction = transaction;
+                    using var deleteCmd = _connection!.CreateCommand();
+                    deleteCmd.Transaction = tx;
                     deleteCmd.CommandText = "DELETE FROM sale_records WHERE id = $id";
                     deleteCmd.Parameters.AddWithValue("$id", id);
                     var rowsAffected = deleteCmd.ExecuteNonQuery();
@@ -488,7 +477,7 @@ public sealed partial class KaleidoscopeDbService
                         int newPrice = 0;
                         using (var priceCmd = _connection.CreateCommand())
                         {
-                            priceCmd.Transaction = transaction;
+                            priceCmd.Transaction = tx;
                             priceCmd.CommandText = @"
                                 SELECT price_per_unit FROM sale_records 
                                 WHERE item_id = $iid 
@@ -505,7 +494,7 @@ public sealed partial class KaleidoscopeDbService
                         var historyToUpdate = new List<(long HistoryId, long OldQuantity, int OldPrice)>();
                         using (var findCmd = _connection.CreateCommand())
                         {
-                            findCmd.Transaction = transaction;
+                            findCmd.Transaction = tx;
                             findCmd.CommandText = @"
                                 SELECT h.id, i.quantity, i.unit_price
                                 FROM inventory_value_history h
@@ -528,7 +517,7 @@ public sealed partial class KaleidoscopeDbService
                         if (historyToUpdate.Count > 0)
                         {
                             using var updateHistoryCmd = _connection.CreateCommand();
-                            updateHistoryCmd.Transaction = transaction;
+                            updateHistoryCmd.Transaction = tx;
                             updateHistoryCmd.CommandText = @"
                                 UPDATE inventory_value_history 
                                 SET item_value = item_value - $oldContrib + $newContrib,
@@ -540,7 +529,7 @@ public sealed partial class KaleidoscopeDbService
                             var newContribParam = updateHistoryCmd.Parameters.Add("$newContrib", Microsoft.Data.Sqlite.SqliteType.Integer);
 
                             using var updateItemCmd = _connection.CreateCommand();
-                            updateItemCmd.Transaction = transaction;
+                            updateItemCmd.Transaction = tx;
                             updateItemCmd.CommandText = @"
                                 UPDATE inventory_value_items 
                                 SET unit_price = $newPrice
@@ -570,14 +559,8 @@ public sealed partial class KaleidoscopeDbService
                         }
                     }
 
-                    transaction.Commit();
                     return rowsAffected > 0;
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                });
             }
             catch (Exception ex)
             {

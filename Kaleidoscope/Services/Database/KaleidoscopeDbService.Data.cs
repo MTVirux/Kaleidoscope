@@ -435,12 +435,12 @@ public sealed partial class KaleidoscopeDbService
 
                 if (idsToRemove.Count == 0) return 0;
 
-                using var tx = _connection.BeginTransaction();
-                try
+                RunInTransaction(tx =>
                 {
                     foreach (var cid in idsToRemove)
                     {
-                        using var cmd = _connection.CreateCommand();
+                        using var cmd = _connection!.CreateCommand();
+                        cmd.Transaction = tx;
                         cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)";
                         cmd.Parameters.AddWithValue("$v", variable);
                         cmd.Parameters.AddWithValue("$c", cid);
@@ -449,18 +449,10 @@ public sealed partial class KaleidoscopeDbService
                         cmd.CommandText = "DELETE FROM series WHERE variable = $v AND character_id = $c";
                         cmd.ExecuteNonQuery();
                     }
+                });
 
-                    tx.Commit();
-                    LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated characters");
-                    return idsToRemove.Count;
-                }
-                catch (Exception ex)
-                {
-                    LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Transaction failed: {ex.Message}", ex);
-                    try { tx.Rollback(); } 
-                    catch (Exception rollbackEx) { LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Rollback also failed: {rollbackEx.Message}"); }
-                    return 0;
-                }
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated characters");
+                return idsToRemove.Count;
             }
             catch (Exception ex)
             {

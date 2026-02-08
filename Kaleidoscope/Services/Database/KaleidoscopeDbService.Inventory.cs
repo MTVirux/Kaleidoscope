@@ -70,12 +70,10 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-
-                try
+                RunInTransaction(tx =>
                 {
-                    using var cacheCmd = _connection.CreateCommand();
-                    cacheCmd.Transaction = transaction;
+                    using var cacheCmd = _connection!.CreateCommand();
+                    cacheCmd.Transaction = tx;
                     cacheCmd.CommandText = @"
                         INSERT INTO inventory_cache (character_id, source_type, retainer_id, name, world, gil, updated_at)
                         VALUES ($cid, $type, $rid, $name, $world, $gil, $time)
@@ -96,7 +94,7 @@ public sealed partial class KaleidoscopeDbService
                     var cacheId = (long)cacheCmd.ExecuteScalar()!;
 
                     using var deleteCmd = _connection.CreateCommand();
-                    deleteCmd.Transaction = transaction;
+                    deleteCmd.Transaction = tx;
                     deleteCmd.CommandText = "DELETE FROM inventory_items WHERE cache_id = $id";
                     deleteCmd.Parameters.AddWithValue("$id", cacheId);
                     deleteCmd.ExecuteNonQuery();
@@ -104,7 +102,7 @@ public sealed partial class KaleidoscopeDbService
                     if (entry.Items.Count > 0)
                     {
                         using var itemCmd = _connection.CreateCommand();
-                        itemCmd.Transaction = transaction;
+                        itemCmd.Transaction = tx;
                         itemCmd.CommandText = @"
                             INSERT INTO inventory_items 
                             (cache_id, item_id, quantity, is_hq, is_collectable, slot, container_type, spiritbond, condition, glamour_id)
@@ -137,15 +135,9 @@ public sealed partial class KaleidoscopeDbService
                             itemCmd.ExecuteNonQuery();
                         }
                     }
+                });
 
-                    transaction.Commit();
-                    LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved inventory cache for {entry.SourceType} {entry.Name}: {entry.Items.Count} items");
             }
             catch (Exception ex)
             {
@@ -469,14 +461,12 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-
-                try
+                RunInTransaction(tx =>
                 {
                     foreach (var entry in entries)
                     {
-                        using var cacheCmd = _connection.CreateCommand();
-                        cacheCmd.Transaction = transaction;
+                        using var cacheCmd = _connection!.CreateCommand();
+                        cacheCmd.Transaction = tx;
                         cacheCmd.CommandText = @"
                             INSERT INTO inventory_cache (character_id, source_type, retainer_id, name, world, gil, updated_at)
                             VALUES ($cid, $type, $rid, $name, $world, $gil, $time)
@@ -497,25 +487,19 @@ public sealed partial class KaleidoscopeDbService
                         var cacheId = (long)cacheCmd.ExecuteScalar()!;
 
                         using var deleteCmd = _connection.CreateCommand();
-                        deleteCmd.Transaction = transaction;
+                        deleteCmd.Transaction = tx;
                         deleteCmd.CommandText = "DELETE FROM inventory_items WHERE cache_id = $id";
                         deleteCmd.Parameters.AddWithValue("$id", cacheId);
                         deleteCmd.ExecuteNonQuery();
 
                         if (entry.Items.Count > 0)
                         {
-                            SaveItemsBatched(cacheId, entry.Items, transaction);
+                            SaveItemsBatched(cacheId, entry.Items, tx);
                         }
                     }
+                });
 
-                    transaction.Commit();
-                    LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved {entries.Count} inventory caches batched");
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                LogService.Verbose(LogCategory.Database, $"[KaleidoscopeDb] Saved {entries.Count} inventory caches batched");
             }
             catch (Exception ex)
             {

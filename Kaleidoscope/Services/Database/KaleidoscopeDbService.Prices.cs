@@ -66,11 +66,10 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-                try
+                RunInTransaction(tx =>
                 {
-                    using var cmd = _connection.CreateCommand();
-                    cmd.Transaction = transaction;
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
                     cmd.CommandText = @"
                         INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, last_sale_nq, last_sale_hq, sale_velocity, last_updated)
                         VALUES ($iid, $wid, $mnq, $mhq, 0, 0, $lsnq, $lshq, 0, $time)
@@ -102,14 +101,7 @@ public sealed partial class KaleidoscopeDbService
                         timeParam.Value = now;
                         cmd.ExecuteNonQuery();
                     }
-
-                    transaction.Commit();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                });
             }
             catch (Exception ex)
             {
@@ -426,12 +418,10 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                using var transaction = _connection.BeginTransaction();
-                
-                try
+                RunInTransaction(tx =>
                 {
-                    using var cmd = _connection.CreateCommand();
-                    cmd.Transaction = transaction;
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
                     cmd.CommandText = @"
                         INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
                         VALUES ($cid, $time, $total, $gil, $item);
@@ -446,7 +436,7 @@ public sealed partial class KaleidoscopeDbService
                     if (itemContributions != null && itemContributions.Count > 0)
                     {
                         using var itemCmd = _connection.CreateCommand();
-                        itemCmd.Transaction = transaction;
+                        itemCmd.Transaction = tx;
                         itemCmd.CommandText = @"
                             INSERT INTO inventory_value_items (history_id, item_id, quantity, unit_price)
                             VALUES ($hid, $iid, $qty, $price)";
@@ -466,16 +456,9 @@ public sealed partial class KaleidoscopeDbService
                             itemCmd.ExecuteNonQuery();
                         }
                     }
-
-                    transaction.Commit();
+                });
                     
-                    InvalidateInventoryValueStatsCache();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                InvalidateInventoryValueStatsCache();
             }
             catch (Exception ex)
             {
