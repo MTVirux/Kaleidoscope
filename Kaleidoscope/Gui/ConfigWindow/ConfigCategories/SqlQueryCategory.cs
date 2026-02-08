@@ -86,7 +86,7 @@ public sealed class SqlQueryCategory
     private void DrawWarning()
     {
         ImGui.PushStyleColor(ImGuiCol.Text, WarningColor);
-        ImGui.TextWrapped("WARNING: Direct SQL access can corrupt your data. Use with caution. " +
+        ImGui.TextWrapped("WARNING: Direct SQL access can corrupt your Kaleidoscope data. Use with caution. " +
                          "Modification queries (INSERT/UPDATE/DELETE) are irreversible.");
         ImGui.PopStyleColor();
     }
