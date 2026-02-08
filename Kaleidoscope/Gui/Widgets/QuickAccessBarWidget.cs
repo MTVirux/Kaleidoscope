@@ -394,7 +394,7 @@ public sealed class QuickAccessBarWidget
         currentX += SeparatorWidth + SeparatorMargin;
         
         var textY = barPos.Y + (BarHeight - characterTextSize.Y) / 2f;
-        var textColor = isLoggedIn ? 0xFF80FF80u : 0xFF80FF80u; // Light green for both states
+        var textColor = isLoggedIn ? 0xFF80FF80u : 0xFFAAAAAAu; // Light green when logged in, gray when not
         dl.AddText(new Vector2(currentX, textY), textColor, characterText);
         currentX += characterTextSize.X;
         
