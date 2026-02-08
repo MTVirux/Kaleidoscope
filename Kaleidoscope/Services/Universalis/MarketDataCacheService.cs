@@ -625,12 +625,12 @@ public class MarketPriceCacheEntry
 {
     public int ItemId { get; init; }
     public int WorldId { get; init; }
-    public int MinPriceNq { get; set; }
-    public int MinPriceHq { get; set; }
-    public int LastSaleNq { get; set; }
-    public int LastSaleHq { get; set; }
-    public DateTime LastUpdated { get; set; }
-    public PriceSource Source { get; set; }
+    public int MinPriceNq { get; init; }
+    public int MinPriceHq { get; init; }
+    public int LastSaleNq { get; init; }
+    public int LastSaleHq { get; init; }
+    public DateTime LastUpdated { get; init; }
+    public PriceSource Source { get; init; }
     
     /// <summary>Time-to-live in minutes before data is considered stale.</summary>
     public int TtlMinutes { get; init; } = 15;
@@ -736,34 +736,44 @@ public class RecentSalesCacheEntry
     
     private double CalculateMedian(List<int> prices)
     {
+        int[] snapshot;
         lock (_lock)
         {
             if (prices.Count == 0) return 0;
-            var sorted = prices.OrderBy(p => p).ToList();
-            var mid = sorted.Count / 2;
-            return sorted.Count % 2 == 0 
-                ? (sorted[mid - 1] + sorted[mid]) / 2.0 
-                : sorted[mid];
+            snapshot = prices.ToArray();
         }
+        Array.Sort(snapshot);
+        var mid = snapshot.Length / 2;
+        return snapshot.Length % 2 == 0 
+            ? (snapshot[mid - 1] + snapshot[mid]) / 2.0 
+            : snapshot[mid];
     }
     
     private double CalculateAverage(List<int> prices)
     {
         lock (_lock)
         {
-            return prices.Count > 0 ? prices.Average() : 0;
+            if (prices.Count == 0) return 0;
+            long sum = 0;
+            foreach (var p in prices) sum += p;
+            return (double)sum / prices.Count;
         }
     }
     
     private double CalculateStdDev(List<int> prices)
     {
+        int[] snapshot;
         lock (_lock)
         {
             if (prices.Count < 2) return 0;
-            var avg = prices.Average();
-            var sumSquares = prices.Sum(p => (p - avg) * (p - avg));
-            return Math.Sqrt(sumSquares / (prices.Count - 1));
+            snapshot = prices.ToArray();
         }
+        double sum = 0;
+        foreach (var p in snapshot) sum += p;
+        var avg = sum / snapshot.Length;
+        double sumSquares = 0;
+        foreach (var p in snapshot) sumSquares += (p - avg) * (p - avg);
+        return Math.Sqrt(sumSquares / (snapshot.Length - 1));
     }
 }
 
