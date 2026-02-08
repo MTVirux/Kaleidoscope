@@ -410,4 +410,71 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
+    /// <summary>
+    /// Deletes all data associated with a character across all character-scoped tables:
+    /// time-series (points + series), character names, inventory cache + items (CASCADE),
+    /// and inventory value history + items (CASCADE).
+    /// World-scoped tables (sale_records, price_history, item_prices) are not affected.
+    /// Returns the total number of rows deleted.
+    /// </summary>
+    public int DeleteAllCharacterData(ulong characterId)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+
+            try
+            {
+                var totalDeleted = 0;
+
+                RunInTransaction(tx =>
+                {
+                    using var cmd = _connection!.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.Parameters.AddWithValue("$c", (long)characterId);
+
+                    // Time-series data
+                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE character_id = $c)";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    cmd.CommandText = "DELETE FROM series WHERE character_id = $c";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // Character name
+                    cmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // Inventory cache (CASCADE deletes inventory_items)
+                    cmd.CommandText = "DELETE FROM inventory_cache WHERE character_id = $c";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // Inventory value history (CASCADE deletes inventory_value_items)
+                    // Delete in batches of 100 to limit CASCADE impact
+                    int batchDeleted;
+                    do
+                    {
+                        cmd.CommandText = @"DELETE FROM inventory_value_history 
+                            WHERE id IN (SELECT id FROM inventory_value_history WHERE character_id = $c LIMIT 100)";
+                        batchDeleted = cmd.ExecuteNonQuery();
+                        totalDeleted += batchDeleted;
+                    } while (batchDeleted > 0);
+                });
+
+                if (totalDeleted > 0)
+                {
+                    LogService.Info(LogCategory.Database,
+                        $"[KaleidoscopeDb] Deleted all data for character {characterId}: {totalDeleted} rows removed");
+                }
+
+                return totalDeleted;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteAllCharacterData failed: {ex.Message}", ex);
+                return 0;
+            }
+        }
+    }
+
 }

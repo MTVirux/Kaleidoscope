@@ -659,6 +659,7 @@ public sealed partial class KaleidoscopeDbService
                         (SELECT COUNT(*) FROM item_prices) * 50 +
                         (SELECT COUNT(*) FROM price_history) * 30 +
                         (SELECT COUNT(*) FROM inventory_value_history) * 40 +
+                        (SELECT COUNT(*) FROM inventory_value_items) * 35 +
                         (SELECT COUNT(*) FROM sale_records) * 45";
                 
                 var result = cmd.ExecuteScalar();
@@ -700,6 +701,13 @@ public sealed partial class KaleidoscopeDbService
                     cmd.CommandText = @"
                         DELETE FROM sale_records 
                         WHERE id IN (SELECT id FROM sale_records ORDER BY timestamp ASC LIMIT 1000)";
+                    deleted += cmd.ExecuteNonQuery();
+
+                    // Delete inventory_value_history in smaller batches (100) since CASCADE
+                    // to inventory_value_items can remove many rows per parent row.
+                    cmd.CommandText = @"
+                        DELETE FROM inventory_value_history 
+                        WHERE id IN (SELECT id FROM inventory_value_history ORDER BY timestamp ASC LIMIT 100)";
                     deleted += cmd.ExecuteNonQuery();
                     
                     totalDeleted += deleted;
