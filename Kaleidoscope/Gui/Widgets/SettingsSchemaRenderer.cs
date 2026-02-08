@@ -181,20 +181,17 @@ public static class SettingsSchemaRenderer
     {
         if (def.EnumType == null) return false;
         
-        // Get getter/setter via reflection
-        var getterProp = def.GetType().GetProperty("Getter");
-        var setterProp = def.GetType().GetProperty("Setter");
-        var getter = getterProp?.GetValue(def) as Delegate;
-        var setter = setterProp?.GetValue(def) as Delegate;
+        // Use pre-cached delegates and enum arrays from schema construction time
+        var getter = def.UntypedGetter;
+        var setter = def.UntypedSetter;
         
         if (getter == null || setter == null) return false;
         
         var currentValue = getter.DynamicInvoke(settings);
         if (currentValue == null) return false;
         
-        var enumValues = Enum.GetValues(def.EnumType);
-        var enumNames = def.GetType().GetProperty("EnumNames")?.GetValue(def) as string[]
-            ?? Enum.GetNames(def.EnumType);
+        var enumValues = def.CachedEnumValues ?? Enum.GetValues(def.EnumType);
+        var enumNames = def.CachedEnumNames ?? Enum.GetNames(def.EnumType);
         var currentIndex = Array.IndexOf(enumValues, currentValue);
         
         var changed = false;
