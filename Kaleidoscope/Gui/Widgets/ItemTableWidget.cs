@@ -408,9 +408,6 @@ public partial class ItemTableWidget : ISettingsProvider
     // Cached display columns for merge operations (refreshed each frame)
     private List<DisplayColumn> _cachedDisplayColumns = new();
     
-    // Track if we've applied the initial sort from saved settings
-    private bool _sortInitialized = false;
-    
     // Track if column widths have been initialized (skip first frame to avoid overwriting saved widths)
     private bool _columnWidthsInitialized = false;
     

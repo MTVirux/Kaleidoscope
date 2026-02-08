@@ -70,20 +70,14 @@ public partial class ItemTableWidget
         if (!settings.Sortable)
             return rows.ToList(); // Preserve order from caller (already sorted by config)
         
-        // Check for sort specs - update settings when user changes sort
+        // Check for sort specs - update settings when user clicks a column header
         var sortSpecs = ImGui.TableGetSortSpecs();
-        if (sortSpecs.SpecsDirty)
+        if (sortSpecs.SpecsDirty && sortSpecs.SpecsCount > 0)
         {
-            // On first frame, SpecsDirty is true but we should use saved settings
-            // Only save if this isn't the initial sort setup
-            if (_sortInitialized && sortSpecs.SpecsCount > 0)
-            {
-                var spec = sortSpecs.Specs;
-                settings.SortColumnIndex = spec.ColumnIndex;
-                settings.SortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
-                _onSettingsChanged?.Invoke();
-            }
-            _sortInitialized = true;
+            var spec = sortSpecs.Specs;
+            settings.SortColumnIndex = spec.ColumnIndex;
+            settings.SortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
+            _onSettingsChanged?.Invoke();
             sortSpecs.SpecsDirty = false;
         }
         

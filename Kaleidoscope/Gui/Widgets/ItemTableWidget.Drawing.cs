@@ -155,9 +155,7 @@ public partial class ItemTableWidget
         _cachedDisplayColumns = displayColumns; // Cache for merge operations
         var displayColumnCount = hideCharColumn ? displayColumns.Count : 1 + displayColumns.Count;
         
-        // NoSavedSettings prevents ImGui from trying to use its internal ini persistence
-        // (Dalamud doesn't support ImGui ini files for plugins - we save column widths ourselves)
-        var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY | ImGuiTableFlags.NoSavedSettings;
+        var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
         if (settings.Sortable) flags |= ImGuiTableFlags.Sortable;
         
         if (!ImGui.BeginTable(_config.TableId, displayColumnCount, flags))
