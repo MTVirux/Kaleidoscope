@@ -64,7 +64,7 @@ internal sealed class DeferredStartupService : IDisposable
         _notification = _notificationManager.AddNotification(new Notification
         {
             Content         = _currentMessage,
-            Title           = "Kaleidoscope",
+            Title           = "Starting up Kaleidoscope...",
             Type            = NotificationType.Info,
             InitialDuration = TimeSpan.MaxValue,
             Progress        = 0f,
