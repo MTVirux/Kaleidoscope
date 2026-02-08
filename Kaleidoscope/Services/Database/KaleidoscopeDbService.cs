@@ -38,6 +38,17 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     private bool _inventoryValueStatsCacheValid;
     
     private readonly int _cacheSizeKb;
+    
+    /// <summary>
+    /// Timer for periodic PASSIVE WAL checkpoints to keep the WAL file small.
+    /// Runs every 5 minutes during normal operation so there's minimal work at dispose.
+    /// </summary>
+    private Timer? _checkpointTimer;
+    
+    /// <summary>
+    /// Interval between periodic passive WAL checkpoints (5 minutes).
+    /// </summary>
+    private static readonly TimeSpan CheckpointInterval = TimeSpan.FromMinutes(5);
 
     public string? DbPath => _dbPath;
 
@@ -202,6 +213,13 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
                 
                 // Initialize read-only connection for concurrent reads
                 EnsureReadConnection();
+                
+                // Start periodic passive checkpoints to keep WAL small
+                _checkpointTimer = new Timer(
+                    _ => CheckpointPassive(),
+                    null,
+                    CheckpointInterval,
+                    CheckpointInterval);
             }
             catch (Exception ex)
             {
@@ -585,14 +603,21 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     public void Dispose()
     {
-        // Checkpoint before closing to merge WAL into main database
+        // Stop the periodic checkpoint timer first
+        _checkpointTimer?.Dispose();
+        _checkpointTimer = null;
+
+        // Use PASSIVE checkpoint on dispose — non-blocking, only checkpoints pages not in use.
+        // Any remaining WAL is harmless and will be recovered automatically on next startup.
+        // Previously used TRUNCATE which forced writing the entire WAL to disk synchronously,
+        // causing 30MB/s+ disk I/O spikes and UI freezes during plugin reload.
         try
         {
-            Checkpoint();
+            CheckpointPassive();
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Checkpoint on dispose failed: {ex.Message}");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Passive checkpoint on dispose failed: {ex.Message}");
         }
 
         lock (_writeLock)

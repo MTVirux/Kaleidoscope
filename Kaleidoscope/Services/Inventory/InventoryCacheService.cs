@@ -1014,11 +1014,24 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _clientState.Login -= OnLogin;
         _clientState.Logout -= OnLogout;
         
-        // Flush dirty inventory caches synchronously before disposing (ensure data is saved)
-        FlushDirtyInventoryCaches("dispose", runAsync: false);
-        
-        // Flush pending item samples before disposing
-        FlushPendingSamples("dispose");
+        // Flush dirty inventory caches with a timeout to avoid blocking dispose indefinitely.
+        // Data in the WAL is not lost — it will be recovered automatically on next startup.
+        try
+        {
+            var flushTask = Task.Run(() =>
+            {
+                FlushDirtyInventoryCaches("dispose", runAsync: false);
+                FlushPendingSamples("dispose");
+            });
+            if (!flushTask.Wait(TimeSpan.FromSeconds(3)))
+            {
+                LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Inventory flush timed out during dispose (3s) — data is safe in WAL");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Inventory flush on dispose failed: {ex.Message}");
+        }
         
         lock (_cacheLock)
         {

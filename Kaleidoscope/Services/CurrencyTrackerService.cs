@@ -757,7 +757,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
 
         _cts.Dispose();
-        _dbService.Dispose();
+        // Note: Do NOT dispose _dbService here — it is a shared singleton owned by the DI container.
+        // Disposing it prematurely causes a heavy WAL checkpoint and breaks other services still flushing.
         GC.SuppressFinalize(this);
     }
 }
