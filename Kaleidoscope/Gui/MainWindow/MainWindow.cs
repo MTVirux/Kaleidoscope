@@ -1021,6 +1021,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         }
 
         Flags &= ~ImGuiWindowFlags.NoTitleBar;
+        Flags &= ~ImGuiWindowFlags.NoCollapse;
+        Flags &= ~ImGuiWindowFlags.NoScrollbar;
+        Flags &= ~ImGuiWindowFlags.NoScrollWithMouse;
         
         // Prevent the main window from coming in front of the config window when clicked
         Flags |= ImGuiWindowFlags.NoBringToFrontOnFocus;
