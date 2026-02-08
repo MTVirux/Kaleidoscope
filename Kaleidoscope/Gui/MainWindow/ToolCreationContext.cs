@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.FFXIVMT;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 
@@ -26,4 +27,5 @@ public sealed record ToolCreationContext(
     AutoRetainerService? AutoRetainerIpc = null,
     ITextureProvider? TextureProvider = null,
     FavoritesService? FavoritesService = null,
-    SalePriceCacheService? SalePriceCacheService = null);
+    SalePriceCacheService? SalePriceCacheService = null,
+    FFXIVMTService? FFXIVMTService = null);

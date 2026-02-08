@@ -92,7 +92,10 @@ public sealed class MTItemComboDropdown : IDisposable
         ConfigurationService? configService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
         bool excludeCurrencies = false,
-        bool multiSelect = false)
+        bool multiSelect = false,
+        string? emptySelectionText = null,
+        bool showAllBulkAction = false,
+        bool showNoneBulkAction = false)
     {
         _textureProvider = textureProvider;
         _dataManager = dataManager;
@@ -124,10 +127,12 @@ public sealed class MTItemComboDropdown : IDisposable
             ShowSortToggle = true,
             ShowGroupingToggle = false, // Items don't have natural grouping
             ShowBulkActions = true,
+            ShowAllBulkAction = showAllBulkAction,
+            ShowNoneBulkAction = showNoneBulkAction,
             ShowFavoritesBulkAction = true,
             ShowInvertBulkAction = false,
             ShowAllOption = false,
-            EmptySelectionText = "0 items",
+            EmptySelectionText = emptySelectionText ?? "0 items",
             MultiSelectItemTypeSingular = "item",
             MultiSelectItemTypePlural = "items",
             ShowItemIds = true,

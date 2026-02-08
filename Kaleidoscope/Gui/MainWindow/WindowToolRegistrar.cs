@@ -1,6 +1,7 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 using Kaleidoscope.Gui.MainWindow.Tools.Data;
+using Kaleidoscope.Gui.MainWindow.Tools.FFXIVMT;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Gui.MainWindow.Tools.Label;
 using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
@@ -8,6 +9,7 @@ using Kaleidoscope.Gui.MainWindow.Tools.Status;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.FFXIVMT;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 
@@ -38,6 +40,7 @@ public static class WindowToolRegistrar
         public const string RetainerVentureStatus = "RetainerVentureStatus";
         public const string SubmersibleVentureStatus = "SubmersibleVentureStatus";
         public const string Fps = "Fps";
+        public const string GilFlux = "GilFlux";
     }
 
     /// <summary>
@@ -61,7 +64,8 @@ public static class WindowToolRegistrar
             ctx.AutoRetainerIpc,
             ctx.TextureProvider,
             ctx.FavoritesService,
-            ctx.SalePriceCacheService);
+            ctx.SalePriceCacheService,
+            ctx.FFXIVMTService);
     }
 
     public static void RegisterTools(
@@ -80,7 +84,8 @@ public static class WindowToolRegistrar
         AutoRetainerService? autoRetainerIpc = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        SalePriceCacheService? salePriceCacheService = null)
+        SalePriceCacheService? salePriceCacheService = null,
+        FFXIVMTService? ffxivmtService = null)
     {
         if (container == null) return;
 
@@ -89,7 +94,8 @@ public static class WindowToolRegistrar
             filenameService, currencyTrackerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
+            ffxivmtService);
 
         try
         {
@@ -221,6 +227,16 @@ public static class WindowToolRegistrar
                 pos => CreateFpsTool(pos),
                 "Displays the current frames per second",
                 "Utility");
+
+            if (ctx.FFXIVMTService != null)
+            {
+                container.DefineToolType(
+                    ToolIds.GilFlux,
+                    "GilFlux",
+                    pos => CreateGilFluxTool(pos, ctx),
+                    "Shows which items move the most gil on the market board for a given world, datacenter, or region",
+                    "FFXIVMT");
+            }
         }
         catch (Exception ex)
         {
@@ -546,6 +562,27 @@ public static class WindowToolRegistrar
         }
     }
 
+    private static ToolComponent? CreateGilFluxTool(Vector2 pos, ToolCreationContext ctx)
+    {
+        try
+        {
+            if (ctx.FFXIVMTService == null) return null;
+            var tool = new GilFluxTool(
+                ctx.FFXIVMTService, ctx.PriceTrackingService, ctx.ItemDataService,
+                ctx.TextureProvider, ctx.DataManager, ctx.FavoritesService,
+                ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.UI, "Failed to create GilFluxTool", ex);
+            return null;
+        }
+    }
+
+
+
     /// <summary>
     /// Creates a tool instance by ID using a bundled context.
     /// </summary>
@@ -574,6 +611,7 @@ public static class WindowToolRegistrar
                 ToolIds.DatabaseSize => CreateDatabaseSizeTool(pos, ctx),
                 ToolIds.CacheSize => CreateCacheSizeTool(pos, ctx),
                 ToolIds.Fps => CreateFpsTool(pos),
+                ToolIds.GilFlux => CreateGilFluxTool(pos, ctx),
                 _ => null
             };
             // Apply default colors for tools created inline (factory methods handle their own)

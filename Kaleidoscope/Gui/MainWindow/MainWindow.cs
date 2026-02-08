@@ -8,6 +8,7 @@ using Kaleidoscope.Models;
 using Kaleidoscope.Gui.Widgets;
 using OtterGui.Services;
 using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.FFXIVMT;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -130,6 +131,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         FavoritesService favoritesService,
         CharacterDataService characterDataService,
         SalePriceCacheService salePriceCacheService,
+        FFXIVMTService ffxivmtService,
         FrameLimiterService frameLimiterService,
         IKeyState keyState,
         IFramework framework) 
@@ -156,7 +158,8 @@ public sealed class MainWindow : Window, IService, IDisposable
             filenameService, currencyTrackerService, configService, characterDataService,
             inventoryChangeService, trackedDataRegistry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
+            ffxivmtService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 

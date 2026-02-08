@@ -7,7 +7,7 @@ namespace Kaleidoscope.Services;
 
 /// <summary>
 /// Service for looking up item data from game Excel sheets.
-/// Provides item name resolution and caching for efficient lookups.
+/// Provides item name resolution, craftability checks, and caching for efficient lookups.
 /// </summary>
 public sealed class ItemDataService : IService
 {
@@ -17,12 +17,83 @@ public sealed class ItemDataService : IService
     // Cache for item names to avoid repeated Excel lookups
     private readonly ConcurrentDictionary<uint, string> _itemNameCache = new();
 
+    // Set of item IDs that are craftable (have at least one recipe)
+    private HashSet<uint>? _craftableItemIds;
+    private readonly object _craftableLock = new();
+
     public ItemDataService(IDataManager dataManager, IPluginLog log)
     {
         _dataManager = dataManager;
         _log = log;
 
         LogService.Debug(LogCategory.Inventory, "[ItemDataService] Initialized");
+    }
+
+    /// <summary>
+    /// Checks whether an item is craftable (has at least one crafting recipe).
+    /// Uses the RecipeLookup Excel sheet to determine craftability.
+    /// The result is cached after the first call.
+    /// </summary>
+    /// <param name="itemId">The item ID to check.</param>
+    /// <returns>True if the item has at least one crafting recipe, false otherwise.</returns>
+    public bool IsCraftable(uint itemId)
+    {
+        return GetCraftableItemIds().Contains(itemId);
+    }
+
+    /// <summary>
+    /// Checks whether an item is craftable (int overload).
+    /// </summary>
+    public bool IsCraftable(int itemId)
+    {
+        return IsCraftable((uint)itemId);
+    }
+
+    /// <summary>
+    /// Gets the total number of craftable items.
+    /// </summary>
+    public int CraftableItemCount => GetCraftableItemIds().Count;
+
+    /// <summary>
+    /// Lazily builds and caches the set of craftable item IDs from the RecipeLookup sheet.
+    /// Each row in RecipeLookup corresponds to an item ID, and its columns (CRP through CUL)
+    /// link to Recipe rows. If any column is non-zero, the item is craftable.
+    /// </summary>
+    private HashSet<uint> GetCraftableItemIds()
+    {
+        if (_craftableItemIds != null)
+            return _craftableItemIds;
+
+        lock (_craftableLock)
+        {
+            if (_craftableItemIds != null)
+                return _craftableItemIds;
+
+            var ids = new HashSet<uint>();
+
+            try
+            {
+                var recipeSheet = _dataManager.GetExcelSheet<Recipe>();
+                if (recipeSheet != null)
+                {
+                    foreach (var recipe in recipeSheet)
+                    {
+                        var itemResult = recipe.ItemResult;
+                        if (itemResult.RowId != 0)
+                            ids.Add(itemResult.RowId);
+                    }
+                }
+
+                LogService.Debug(LogCategory.Inventory, $"[ItemDataService] Built craftable item set: {ids.Count} items");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Inventory, $"[ItemDataService] Failed to build craftable item set: {ex.Message}");
+            }
+
+            _craftableItemIds = ids;
+            return _craftableItemIds;
+        }
     }
 
     /// <summary>

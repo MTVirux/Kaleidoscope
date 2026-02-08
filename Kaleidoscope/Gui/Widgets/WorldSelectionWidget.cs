@@ -462,6 +462,40 @@ public class WorldSelectionWidget
     }
 
     /// <summary>
+    /// Gets the selected location names based on the current mode.
+    /// In Worlds mode, returns world names. In DataCenters mode, returns DC names.
+    /// In Regions mode, returns region names.
+    /// These names can be passed directly to APIs that accept a location string.
+    /// </summary>
+    public List<string> GetSelectedLocationNames()
+    {
+        var result = new List<string>();
+        if (_worldData == null) return result;
+
+        switch (Mode)
+        {
+            case WorldSelectionMode.Regions:
+                result.AddRange(SelectedRegions);
+                break;
+
+            case WorldSelectionMode.DataCenters:
+                result.AddRange(SelectedDataCenters);
+                break;
+
+            case WorldSelectionMode.Worlds:
+                foreach (var wid in SelectedWorldIds)
+                {
+                    var name = _worldData.GetWorldName(wid);
+                    if (!string.IsNullOrEmpty(name))
+                        result.Add(name);
+                }
+                break;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Checks if a specific world ID is selected (directly or via DC/region).
     /// </summary>
     public bool IsWorldSelected(int worldId)
