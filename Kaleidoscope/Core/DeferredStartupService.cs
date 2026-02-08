@@ -4,7 +4,7 @@ using System.Reflection;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using Microsoft.Extensions.DependencyInjection;
-using MTGui.Widgets.Common;
+using MTGui.Common;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Core;
