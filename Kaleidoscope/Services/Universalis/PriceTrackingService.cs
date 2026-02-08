@@ -1196,6 +1196,78 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     /// <summary>
     /// Performs cleanup of old price data based on retention settings.
     /// </summary>
+    /// <summary>
+    /// Manually triggers price data retention cleanup.
+    /// Returns the number of records deleted.
+    /// </summary>
+    public async Task<int> TriggerCleanupAsync()
+    {
+        if (_disposed) return 0;
+
+        var settings = Settings;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        LogService.Debug(LogCategory.PriceTracking,
+            $"[PriceTracking] Manual cleanup started — policy: {settings.RetentionType}, " +
+            (settings.RetentionType == PriceRetentionType.ByTime
+                ? $"retaining last {settings.RetentionDays} day(s)"
+                : $"target size {settings.RetentionSizeMb} MB"));
+
+        try
+        {
+            var sizeBefore = _dbService.GetPriceDataSize();
+            LogService.Debug(LogCategory.PriceTracking,
+                $"[PriceTracking] Pre-cleanup estimated data size: {sizeBefore / 1024.0 / 1024.0:F2} MB");
+
+            int deleted;
+            switch (settings.RetentionType)
+            {
+                case PriceRetentionType.ByTime:
+                    LogService.Debug(LogCategory.PriceTracking,
+                        $"[PriceTracking] Deleting records older than {DateTime.UtcNow.AddDays(-settings.RetentionDays):yyyy-MM-dd HH:mm} UTC...");
+                    deleted = _dbService.CleanupOldPriceData(settings.RetentionDays);
+                    break;
+
+                case PriceRetentionType.BySize:
+                    var maxBytes = settings.RetentionSizeMb * 1024L * 1024L;
+                    LogService.Debug(LogCategory.PriceTracking,
+                        $"[PriceTracking] Deleting oldest records to fit under {settings.RetentionSizeMb} MB ({maxBytes:N0} bytes)...");
+                    deleted = _dbService.CleanupPriceDataBySize(maxBytes);
+                    break;
+
+                default:
+                    LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Manual cleanup skipped — unknown retention type");
+                    return 0;
+            }
+
+            sw.Stop();
+            var sizeAfter = _dbService.GetPriceDataSize();
+
+            if (deleted > 0)
+            {
+                LogService.Debug(LogCategory.PriceTracking,
+                    $"[PriceTracking] Manual cleanup completed in {sw.ElapsedMilliseconds} ms — " +
+                    $"deleted {deleted} record(s), size {sizeBefore / 1024.0 / 1024.0:F2} MB → {sizeAfter / 1024.0 / 1024.0:F2} MB " +
+                    $"(freed ~{(sizeBefore - sizeAfter) / 1024.0 / 1024.0:F2} MB)");
+            }
+            else
+            {
+                LogService.Debug(LogCategory.PriceTracking,
+                    $"[PriceTracking] Manual cleanup completed in {sw.ElapsedMilliseconds} ms — no records needed cleanup " +
+                    $"(current size: {sizeAfter / 1024.0 / 1024.0:F2} MB)");
+            }
+
+            return deleted;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            LogService.Error(LogCategory.PriceTracking,
+                $"[PriceTracking] Manual cleanup failed after {sw.ElapsedMilliseconds} ms: {ex.Message}", ex);
+            throw;
+        }
+    }
+
     private async Task PerformCleanupAsync()
     {
         if (_disposed) return;

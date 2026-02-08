@@ -59,6 +59,12 @@ public sealed class StorageCategory : IDisposable
     private int _lastDeletedCount;
     private bool _showDeleteResult;
 
+    // Manual retention cleanup state
+    private bool _retentionCleanupRunning;
+    private int? _retentionCleanupResult;
+    private string? _retentionCleanupError;
+    private DateTime _retentionCleanupResultTime;
+
     // Table size breakdown state
     private List<KaleidoscopeDbService.TableSizeInfo>? _tableSizes;
     private long _tableSizeTotalBytes;
@@ -622,6 +628,58 @@ public sealed class StorageCategory : IDisposable
             "• 240+ minutes: Less overhead, temporary size growth\n\n" +
             "Lower values may impact performance during cleanup.\n" +
             "Higher values allow database to grow between cleanups.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        // Manual cleanup trigger
+        var canRun = _priceTrackingService != null && !_retentionCleanupRunning;
+        if (!canRun) ImGui.BeginDisabled();
+        if (ImGui.Button(_retentionCleanupRunning ? "Running...##ForceRetention" : "Run Cleanup Now##ForceRetention"))
+        {
+            _retentionCleanupRunning = true;
+            _retentionCleanupResult = null;
+            _retentionCleanupError = null;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var deleted = await _priceTrackingService!.TriggerCleanupAsync();
+                    _retentionCleanupResult = deleted;
+                    _retentionCleanupResultTime = DateTime.Now;
+                }
+                catch (Exception ex)
+                {
+                    _retentionCleanupError = ex.Message;
+                    _retentionCleanupResultTime = DateTime.Now;
+                }
+                finally
+                {
+                    _retentionCleanupRunning = false;
+                }
+            });
+        }
+        if (!canRun) ImGui.EndDisabled();
+        ImGui.SameLine();
+        DrawHelpMarker(
+            "Immediately runs the retention cleanup using the current policy.\n\n" +
+            "This is the same operation that runs automatically on the configured interval.");
+
+        // Show result/error for a few seconds
+        if (_retentionCleanupResult.HasValue && (DateTime.Now - _retentionCleanupResultTime).TotalSeconds < 8)
+        {
+            ImGui.SameLine();
+            var msg = _retentionCleanupResult.Value > 0
+                ? $"Deleted {_retentionCleanupResult.Value} records."
+                : "No records to clean up.";
+            ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1f, 0.4f, 1f), msg);
+        }
+        else if (_retentionCleanupError != null && (DateTime.Now - _retentionCleanupResultTime).TotalSeconds < 8)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.4f, 0.4f, 1f), $"Error: {_retentionCleanupError}");
+        }
 
         ImGui.Unindent();
         ImGui.Spacing();
