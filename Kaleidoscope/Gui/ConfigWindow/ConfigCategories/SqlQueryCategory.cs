@@ -50,6 +50,23 @@ public sealed class SqlQueryCategory
     private static readonly Vector4 NullColor = new(0.5f, 0.5f, 0.5f, 1f);
     private static readonly Vector4 PkColor = new(1f, 0.9f, 0.4f, 1f);
 
+    /// <summary>
+    /// Tooltip descriptions for each database table, shown on hover in the table browser.
+    /// </summary>
+    private static readonly Dictionary<string, string> TableDescriptions = new()
+    {
+        ["series"] = "Time-series metadata. Each row defines a tracked variable (e.g. Gil, Tomestones) for a specific character.",
+        ["points"] = "Time-series data points. Stores timestamped values linked to a series. Only inserted when the value changes.",
+        ["character_names"] = "Character identity mapping. Stores game name, display name, and time-series color per character ID.",
+        ["inventory_cache"] = "Inventory snapshot headers. One row per character/source/retainer, replaced on each save (UPSERT).",
+        ["inventory_items"] = "Inventory snapshot items. Individual item entries linked to an inventory_cache row.",
+        ["item_prices"] = "Current market prices. At most one row per (item, world) pair, updated via UPSERT from Universalis.",
+        ["price_history"] = "Historical market price snapshots. Appended on each Universalis WebSocket update. Pruned by retention policy.",
+        ["inventory_value_history"] = "Periodic inventory value snapshots. Stores total_value = gil_value + item_value per character per timestamp.",
+        ["inventory_value_items"] = "Per-item breakdown of inventory value snapshots. Linked to inventory_value_history via CASCADE DELETE.",
+        ["sale_records"] = "Market sale records from Universalis. Pruned by retention policy.",
+    };
+
     public SqlQueryCategory(CurrencyTrackerService currencyTrackerService)
     {
         _currencyTrackerService = currencyTrackerService;
@@ -117,6 +134,12 @@ public sealed class SqlQueryCategory
             {
                 _selectedTable = table;
                 _tableSchema = DbService.GetTableSchema(table);
+            }
+
+            // Hover tooltip with table description
+            if (ImGui.IsItemHovered() && TableDescriptions.TryGetValue(table, out var description))
+            {
+                ImGui.SetTooltip(description);
             }
 
             // Right-click context menu
