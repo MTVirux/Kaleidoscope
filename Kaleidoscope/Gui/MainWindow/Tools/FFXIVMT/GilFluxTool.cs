@@ -260,6 +260,29 @@ public class GilFluxTool : ToolComponent
             ImGui.SameLine();
             ImGui.TextColored(UiColors.Bad, _errorMessage);
         }
+
+        // WebSocket status circle
+        DrawWebSocketStatusCircle();
+    }
+
+    /// <summary>
+    /// Draws a small colored circle indicating WebSocket connection status, with a tooltip on hover.
+    /// </summary>
+    private void DrawWebSocketStatusCircle()
+    {
+        var ws = _priceTrackingService?.WebSocketService;
+        if (ws == null) return;
+
+        var isConnected = ws.IsConnected;
+        var color = isConnected ? UiColors.Connected : UiColors.Disconnected;
+        var tooltip = isConnected
+            ? "Universalis WebSocket: Connected"
+            : "Universalis WebSocket: Disconnected";
+
+        ImGui.SameLine();
+        ImGui.TextColored(color, "●");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
     }
 
     private void DrawTable()
