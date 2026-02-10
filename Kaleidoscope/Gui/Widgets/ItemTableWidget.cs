@@ -470,6 +470,18 @@ public partial class ItemTableWidget : ISettingsProvider
     }
     
     /// <summary>
+    /// Resets the column width capture state so that on the next frame, ImGui will
+    /// pick up the current init_width values from settings instead of using its
+    /// internally cached column widths.  Call this after externally modifying
+    /// column width settings (e.g. during layout import).
+    /// </summary>
+    public void ResetColumnWidthState()
+    {
+        _columnWidthsInitialized = false;
+        _tableIdSuffix++;
+    }
+
+    /// <summary>
     /// Binds this widget to a settings object for automatic synchronization.
     /// </summary>
     public void BindSettings(

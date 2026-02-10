@@ -512,6 +512,10 @@ public partial class DataTool
         UpdateTitle();
         _pendingTableRefresh = true;
         _graphCacheIsDirty = true;
+        
+        // Tell the table widget to discard its cached column widths so it picks up
+        // the freshly imported values on the next frame instead of overwriting them.
+        _tableWidget.ResetColumnWidthState();
     }
     
     /// <summary>
