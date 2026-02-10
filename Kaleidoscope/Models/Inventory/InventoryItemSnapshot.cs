@@ -52,4 +52,11 @@ public readonly record struct InventoryItemSnapshot
     /// The glamour item ID applied to this item, if any.
     /// </summary>
     public uint GlamourId { get; init; }
+
+    /// <summary>
+    /// Whether this item is bound (spiritbond > 0) and therefore untradeable on the market board.
+    /// Collectables are excluded since they reuse the SpiritbondOrCollectability field for collectability value.
+    /// Covers both equipment (gear) and non-equipment items that gain spiritbond (e.g., submersible parts after voyages).
+    /// </summary>
+    public bool IsBound => SpiritbondOrCollectability > 0 && !IsCollectable;
 }
