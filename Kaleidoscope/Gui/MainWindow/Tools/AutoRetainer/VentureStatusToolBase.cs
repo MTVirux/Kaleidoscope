@@ -195,9 +195,12 @@ public abstract class VentureStatusToolBase : ToolComponent
     {
         var sortedCharacters = GetSortedCharacters(nowUnix);
 
+        var isCtrlHeld = ImGui.GetIO().KeyCtrl;
+
         foreach (var character in sortedCharacters)
         {
-            if (HiddenCharacters.Contains(character.CID))
+            var isRevealedHidden = HiddenCharacters.Contains(character.CID);
+            if (isRevealedHidden && !isCtrlHeld)
                 continue;
 
             var entities = GetEntities(character).ToList();
@@ -205,11 +208,13 @@ public abstract class VentureStatusToolBase : ToolComponent
                 continue;
 
             ImGui.PushID((int)character.CID);
+            if (isRevealedHidden)
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
 
             var headerLabel = $"{GetFormattedCharacterName(character)} @ {character.World}";
             if (MTTreeHelpers.DrawCollapsingSection(headerLabel, true))
             {
-                DrawCharacterContextMenu(character.CID);
+                DrawCharacterContextMenu(character.CID, isRevealedHidden);
 
                 var visibleEntities = entities.Where(e => !IsEntityHidden(character.CID, e.Name)).ToList();
                 var sortedEntities = GetSortedEntities(visibleEntities, nowUnix);
@@ -233,33 +238,52 @@ public abstract class VentureStatusToolBase : ToolComponent
             }
             else
             {
-                DrawCharacterContextMenu(character.CID);
+                DrawCharacterContextMenu(character.CID, isRevealedHidden);
             }
 
+            if (isRevealedHidden)
+                ImGui.PopStyleVar();
             ImGui.PopID();
         }
     }
 
-    private void DrawCharacterContextMenu(ulong characterCid)
+    private void DrawCharacterContextMenu(ulong characterCid, bool isRevealedHidden = false)
     {
+        if (isRevealedHidden)
+            ImGui.PopStyleVar();
         if (ImGui.BeginPopupContextItem($"CharContext_{characterCid}"))
         {
-            if (ImGui.MenuItem("Hide Character"))
+            if (isRevealedHidden)
             {
-                HiddenCharacters.Add(characterCid);
-                NotifyToolSettingsChanged();
+                if (ImGui.MenuItem("Unhide Character"))
+                {
+                    HiddenCharacters.Remove(characterCid);
+                    NotifyToolSettingsChanged();
+                }
+            }
+            else
+            {
+                if (ImGui.MenuItem("Hide Character"))
+                {
+                    HiddenCharacters.Add(characterCid);
+                    NotifyToolSettingsChanged();
+                }
             }
             ImGui.EndPopup();
         }
+        if (isRevealedHidden)
+            ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
     }
 
     private void DrawFlatList(long nowUnix, long nowMs)
     {
         var allEntities = new List<(IVentureEntity Entity, AutoRetainerCharacterData Character)>();
+        var isCtrlHeld = ImGui.GetIO().KeyCtrl;
 
         foreach (var character in Characters!)
         {
-            if (HiddenCharacters.Contains(character.CID))
+            var isCharHidden = HiddenCharacters.Contains(character.CID);
+            if (isCharHidden && !isCtrlHeld)
                 continue;
 
             foreach (var entity in GetEntities(character))
@@ -313,8 +337,12 @@ public abstract class VentureStatusToolBase : ToolComponent
 
     private void DrawEntityTableRowWithCharacter(IVentureEntity entity, AutoRetainerCharacterData character, long nowUnix, long nowMs, bool showCharacter)
     {
+        var isRevealedHidden = HiddenCharacters.Contains(character.CID) && ImGui.GetIO().KeyCtrl;
         ImGui.TableNextRow();
         
+        if (isRevealedHidden)
+            ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
+
         ImGui.TableNextColumn();
         var (color, _) = GetEntityDisplayInfo(entity, nowUnix);
         ImGui.TextColored(color, entity.Name);
@@ -325,11 +353,18 @@ public abstract class VentureStatusToolBase : ToolComponent
         {
             ImGui.TableNextColumn();
             ImGui.TextColored(DisabledColor, GetFormattedCharacterName(character));
-            DrawCharacterColumnContextMenu(character.CID, entity.Name);
+            if (isRevealedHidden)
+                ImGui.PopStyleVar();
+            DrawCharacterColumnContextMenu(character.CID, entity.Name, isRevealedHidden);
+            if (isRevealedHidden)
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
         }
 
         ImGui.TableNextColumn();
         DrawEntityStatus(entity, nowUnix, nowMs);
+
+        if (isRevealedHidden)
+            ImGui.PopStyleVar();
     }
 
     private void DrawEntityContextMenu(ulong characterCid, string entityName)
@@ -345,14 +380,25 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
     }
 
-    private void DrawCharacterColumnContextMenu(ulong characterCid, string entityName)
+    private void DrawCharacterColumnContextMenu(ulong characterCid, string entityName, bool isRevealedHidden = false)
     {
         if (ImGui.BeginPopupContextItem($"CharColContext_{characterCid}_{entityName}"))
         {
-            if (ImGui.MenuItem("Hide Character"))
+            if (isRevealedHidden)
             {
-                HiddenCharacters.Add(characterCid);
-                NotifyToolSettingsChanged();
+                if (ImGui.MenuItem("Unhide Character"))
+                {
+                    HiddenCharacters.Remove(characterCid);
+                    NotifyToolSettingsChanged();
+                }
+            }
+            else
+            {
+                if (ImGui.MenuItem("Hide Character"))
+                {
+                    HiddenCharacters.Add(characterCid);
+                    NotifyToolSettingsChanged();
+                }
             }
             ImGui.EndPopup();
         }

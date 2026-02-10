@@ -76,8 +76,9 @@ public partial class ItemTableWidget
             return;
         }
         
-        // Handle selection state based on SHIFT key
+        // Handle selection state based on modifier keys
         var isShiftHeld = ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift);
+        var isCtrlHeld = ImGui.GetIO().KeyCtrl;
         
         // Check if any popup is currently open (to avoid clearing selection when clicking menu items)
         var isPopupOpen = ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId);
@@ -497,8 +498,19 @@ public partial class ItemTableWidget
             var sortedRows = GetSortedRows(rows, columns, displayColumns, hideCharColumn, settings);
             var numberFormat = settings.NumberFormat;
             
-            // Filter out hidden characters
-            var visibleRows = sortedRows.Where(r => !settings.HiddenCharacters.Contains(r.CharacterId)).ToList();
+            // Filter out hidden characters (show them dimmed when CTRL is held)
+            var revealedHiddenCids = new HashSet<ulong>();
+            List<ItemTableCharacterRow> visibleRows;
+            if (isCtrlHeld && settings.HiddenCharacters.Count > 0)
+            {
+                visibleRows = sortedRows.ToList();
+                foreach (var cid in settings.HiddenCharacters)
+                    revealedHiddenCids.Add(cid);
+            }
+            else
+            {
+                visibleRows = sortedRows.Where(r => !settings.HiddenCharacters.Contains(r.CharacterId)).ToList();
+            }
             
             // Apply grouping if not in Character mode
             var groupedRows = ApplyGrouping(visibleRows, columns, settings.GroupingMode);
@@ -556,6 +568,9 @@ public partial class ItemTableWidget
                 {
                     ImGui.TableNextColumn();
                     var primaryCid = dispRow.SourceCharacterIds.FirstOrDefault();
+                    var isRevealedHidden = revealedHiddenCids.Contains(primaryCid);
+                    if (isRevealedHidden)
+                        ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
                     ImGui.PushID((int)primaryCid);
                     
                     // Handle row selection with SHIFT+click/drag on character column
@@ -623,15 +638,28 @@ public partial class ItemTableWidget
                     }
                     
                     // Right-click context menu on character name (only in Character mode for non-merged rows)
+                    if (isRevealedHidden)
+                        ImGui.PopStyleVar();
                     if (showCharContextMenu && !dispRow.IsMerged && ImGui.BeginPopupContextItem($"CharContext_{primaryCid}"))
                     {
                         ImGui.TextDisabled(dispRow.Name);
                         ImGui.Separator();
                         
-                        if (ImGui.MenuItem("Hide Character"))
+                        if (isRevealedHidden)
                         {
-                            settings.HiddenCharacters.Add(primaryCid);
-                            _onSettingsChanged?.Invoke();
+                            if (ImGui.MenuItem("Unhide Character"))
+                            {
+                                settings.HiddenCharacters.Remove(primaryCid);
+                                _onSettingsChanged?.Invoke();
+                            }
+                        }
+                        else
+                        {
+                            if (ImGui.MenuItem("Hide Character"))
+                            {
+                                settings.HiddenCharacters.Add(primaryCid);
+                                _onSettingsChanged?.Invoke();
+                            }
                         }
                         
                         ImGui.EndPopup();
