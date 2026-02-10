@@ -1019,6 +1019,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 if (_marketableItems != null && !_marketableItems.Contains((int)item.ItemId))
                     continue;
 
+                // Skip bound items — they cannot be sold on the market board
+                if (item.IsBound)
+                    continue;
+
                 if (!itemQuantities.ContainsKey((int)item.ItemId))
                     itemQuantities[(int)item.ItemId] = 0;
                 
@@ -1499,6 +1503,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 foreach (var item in cache.Items)
                 {
                     if (_marketableItems != null && !_marketableItems.Contains((int)item.ItemId))
+                        continue;
+
+                    // Skip bound items — they cannot be sold on the market board
+                    if (item.IsBound)
                         continue;
 
                     if (!itemQuantities.ContainsKey((int)item.ItemId))
