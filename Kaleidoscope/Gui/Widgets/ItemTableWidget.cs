@@ -408,8 +408,8 @@ public partial class ItemTableWidget : ISettingsProvider
     // Cached display columns for merge operations (refreshed each frame)
     private List<DisplayColumn> _cachedDisplayColumns = new();
     
-    // Track if column widths have been initialized (skip first frame to avoid overwriting saved widths)
-    private bool _columnWidthsInitialized = false;
+    // Frame counter to skip ImGui's auto-fit queue (3 frames) before capturing widths
+    private int _columnWidthsInitFrames = 0;
     
     // Track if we just processed a merge action (to skip click handling for one frame)
     private bool _skipNextClick = false;
@@ -421,8 +421,7 @@ public partial class ItemTableWidget : ISettingsProvider
     private readonly HashSet<string> _expandedGroupNames = new();
     
     // Column resize actions requested via right-click context menu
-    private enum ColumnResizeAction { None, HeaderWidth, DataWidth, FillSpace }
-    private ColumnResizeAction _pendingResizeAction = ColumnResizeAction.None;
+    private MTColumnResizeAction _pendingResizeAction = MTColumnResizeAction.None;
     private int _resizeTargetDisplayColumn = -1; // -1 means "all data columns"
     private int _contextMenuDisplayColumn = -1; // Which display column the context menu was opened for
     private int _tableIdSuffix; // Incremented to force ImGui table state reset after resize
@@ -477,7 +476,7 @@ public partial class ItemTableWidget : ISettingsProvider
     /// </summary>
     public void ResetColumnWidthState()
     {
-        _columnWidthsInitialized = false;
+        _columnWidthsInitFrames = 0;
         _tableIdSuffix++;
     }
 

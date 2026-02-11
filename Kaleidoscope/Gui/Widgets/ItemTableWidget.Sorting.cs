@@ -247,10 +247,8 @@ public partial class ItemTableWidget
         bool hideCharColumn,
         float charColumnWidth)
     {
-        var availableWidth = ImGui.GetContentRegionAvail().X;
         var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
         var totalCols = hideCharColumn ? displayColumns.Count : displayColumns.Count + 1;
-        var borderOverhead = (totalCols + 1) * 1f + 15f;
         
         // Sum up widths of all other display columns
         float otherColumnsWidth = 0f;
@@ -260,8 +258,7 @@ public partial class ItemTableWidget
                 otherColumnsWidth += displayColumns[i].Width;
         }
         
-        var fillWidth = availableWidth - effectiveCharWidth - otherColumnsWidth - borderOverhead;
-        return Math.Max(30f, fillWidth);
+        return MTTableHelpers.CalculateFillWidthSingle(totalCols, effectiveCharWidth, otherColumnsWidth);
     }
     
     /// <summary>

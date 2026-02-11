@@ -14,53 +14,14 @@ public partial class ItemTableWidget
 {
     
     /// <summary>
-    /// Handles SHIFT+click/drag range selection for columns or rows.
-    /// Returns the updated selection state for the current index.
+    /// Delegates to <see cref="MTTableWidget{TRow}.HandleShiftSelection"/> for SHIFT+click/drag range selection.
     /// </summary>
-    /// <param name="currentIdx">The current column/row display index being processed.</param>
-    /// <param name="selectedIndices">The set of currently selected display indices.</param>
-    /// <param name="isSelecting">Whether a drag selection is in progress.</param>
-    /// <param name="selectionStart">The display index where the current drag started.</param>
-    /// <returns>True if the current index is selected after processing.</returns>
     private static bool HandleShiftSelection(
         int currentIdx,
         HashSet<int> selectedIndices,
         ref bool isSelecting,
         ref int selectionStart)
-    {
-        var cellMin = ImGui.GetCursorScreenPos();
-        var cellMax = new Vector2(cellMin.X + ImGui.GetContentRegionAvail().X, cellMin.Y + ImGui.GetTextLineHeightWithSpacing());
-        var isHovered = ImGui.IsMouseHoveringRect(cellMin, cellMax);
-        
-        // Start selection on click
-        if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-        {
-            isSelecting = true;
-            selectionStart = currentIdx;
-            selectedIndices.Clear();
-            selectedIndices.Add(currentIdx);
-        }
-        
-        // Extend selection while dragging
-        if (isSelecting && ImGui.IsMouseDown(ImGuiMouseButton.Left) && isHovered)
-        {
-            var min = Math.Min(selectionStart, currentIdx);
-            var max = Math.Max(selectionStart, currentIdx);
-            selectedIndices.Clear();
-            for (int i = min; i <= max; i++)
-            {
-                selectedIndices.Add(i);
-            }
-        }
-        
-        // End selection on mouse release
-        if (isSelecting && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
-        {
-            isSelecting = false;
-        }
-        
-        return selectedIndices.Contains(currentIdx);
-    }
+        => MTTableWidget<int>.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
     
     /// <summary>
     /// Draws the item table.
@@ -142,11 +103,11 @@ public partial class ItemTableWidget
         
         // Handle pending column resize actions from context menu
         // We still update the config widths here so they persist and are used by BuildDisplayColumns.
-        if (_pendingResizeAction != ColumnResizeAction.None && columns.Count > 0)
+        if (_pendingResizeAction != MTColumnResizeAction.None && columns.Count > 0)
         {
             var action = _pendingResizeAction;
             var targetDispCol = _resizeTargetDisplayColumn;
-            _pendingResizeAction = ColumnResizeAction.None;
+            _pendingResizeAction = MTColumnResizeAction.None;
             _resizeTargetDisplayColumn = -1;
             
             // Build display columns first so we can reference them
@@ -159,9 +120,9 @@ public partial class ItemTableWidget
                 var dispCol = preDisplayColumns[targetDispCol];
                 float newWidth = action switch
                 {
-                    ColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
-                    ColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
-                    ColumnResizeAction.FillSpace => CalculateFillWidth(preDisplayColumns, targetDispCol, hideCharColumn, charColumnWidth),
+                    MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                    MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                    MTColumnResizeAction.FillSpace => CalculateFillWidth(preDisplayColumns, targetDispCol, hideCharColumn, charColumnWidth),
                     _ => 0f
                 };
                 if (newWidth > 0f)
@@ -177,29 +138,26 @@ public partial class ItemTableWidget
                 {
                     float newWidth = action switch
                     {
-                        ColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
-                        ColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                        MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                        MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
                         _ => 0f
                     };
                     if (newWidth > 0f)
                         ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
                 }
-                if (action == ColumnResizeAction.FillSpace)
+                if (action == MTColumnResizeAction.FillSpace)
                 {
-                    var availableWidth = ImGui.GetContentRegionAvail().X;
                     var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
                     var totalCols = hideCharColumn ? preDisplayColumns.Count : preDisplayColumns.Count + 1;
-                    var borderOverhead = (totalCols + 1) * 1f + 15f;
-                    var remainingWidth = availableWidth - effectiveCharWidth - borderOverhead;
-                    var fillWidth = Math.Max(30f, remainingWidth / preDisplayColumns.Count);
+                    var fillWidth = MTTableHelpers.CalculateFillWidthEqual(totalCols, preDisplayColumns.Count, effectiveCharWidth);
                     foreach (var dispCol in preDisplayColumns)
                         ApplyColumnWidth(dispCol, columns, fillWidth);
                 }
                 _onSettingsChanged?.Invoke();
             }
             
-            // Force ImGui to create a fresh table (new ID) so it picks up the new init widths.
-            // Without this, ImGui's internal column width cache ignores TableSetupColumn init widths.
+            // Force fresh table ID so ImGui picks up new init widths
+            _columnWidthsInitFrames = 0;
             _tableIdSuffix++;
         }
         
@@ -236,17 +194,13 @@ public partial class ItemTableWidget
             var sortColIdx = settings.SortColumnIndex;
             var savedIsDescending = !settings.SortAscending;
             
-            var charFlags = ImGuiTableColumnFlags.PreferSortDescending;
+            var charFlags = ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize;
             if (sortColIdx == 0)
             {
-                charFlags = savedIsDescending 
-                    ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
-                    : ImGuiTableColumnFlags.DefaultSort;
-            }
-            // When auto-sizing is enabled, use WidthFixed for character column so it only shrinks as a last resort
-            if (settings.AutoSizeEqualColumns)
-            {
-                charFlags |= ImGuiTableColumnFlags.WidthFixed;
+                charFlags = ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize
+                    | (savedIsDescending 
+                        ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
+                        : ImGuiTableColumnFlags.DefaultSort);
             }
             
             // Only setup character column if not hidden
@@ -255,16 +209,23 @@ public partial class ItemTableWidget
                 ImGui.TableSetupColumn("Character", charFlags, charColumnWidth);
             }
             
-            // Setup display columns (includes merged columns)
+            // During first 3 frames after table recreation, apply NoResize to prevent
+            // ImGui's auto-fit queue from overwriting our init_widths.
+            var isInitializing = _columnWidthsInitFrames <= 3;
             for (int i = 0; i < displayColumns.Count; i++)
             {
                 var displayCol = displayColumns[i];
-                var colFlags = ImGuiTableColumnFlags.PreferSortDescending;
+                var colFlags = ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.WidthFixed;
+                if (isInitializing)
+                    colFlags |= ImGuiTableColumnFlags.NoResize;
                 if (sortColIdx == i + 1)
                 {
-                    colFlags = savedIsDescending
-                        ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
-                        : ImGuiTableColumnFlags.DefaultSort;
+                    colFlags = ImGuiTableColumnFlags.WidthFixed
+                        | (savedIsDescending
+                            ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
+                            : ImGuiTableColumnFlags.DefaultSort);
+                    if (isInitializing)
+                        colFlags |= ImGuiTableColumnFlags.NoResize;
                 }
                 ImGui.TableSetupColumn(displayCol.Header, colFlags, displayCol.Width);
             }
@@ -298,6 +259,13 @@ public partial class ItemTableWidget
                     ImGui.OpenPopup($"CharHdrCtx_{_config.TableId}");
                 if (ImGui.BeginPopup($"CharHdrCtx_{_config.TableId}"))
                     ImGui.EndPopup();
+            }
+            
+            // Suppress ImGui's built-in header context menu that auto-sizes all columns
+            if (ImGui.BeginPopup("##TableContextMenu"))
+            {
+                ImGui.CloseCurrentPopup();
+                ImGui.EndPopup();
             }
             
             // Data column headers (using display columns which include merged columns)
@@ -350,17 +318,17 @@ public partial class ItemTableWidget
                 
                 if (ImGui.MenuItem("Resize to header width"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.HeaderWidth;
+                    _pendingResizeAction = MTColumnResizeAction.HeaderWidth;
                     _resizeTargetDisplayColumn = ctxDispIdx;
                 }
                 if (ImGui.MenuItem("Resize to data width"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.DataWidth;
+                    _pendingResizeAction = MTColumnResizeAction.DataWidth;
                     _resizeTargetDisplayColumn = ctxDispIdx;
                 }
                 if (ImGui.MenuItem("Resize to fill space"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.FillSpace;
+                    _pendingResizeAction = MTColumnResizeAction.FillSpace;
                     _resizeTargetDisplayColumn = ctxDispIdx;
                 }
                 
@@ -369,17 +337,17 @@ public partial class ItemTableWidget
                 
                 if (ImGui.MenuItem("Resize all data columns to header width"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.HeaderWidth;
+                    _pendingResizeAction = MTColumnResizeAction.HeaderWidth;
                     _resizeTargetDisplayColumn = -1;
                 }
                 if (ImGui.MenuItem("Resize all data columns to data width"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.DataWidth;
+                    _pendingResizeAction = MTColumnResizeAction.DataWidth;
                     _resizeTargetDisplayColumn = -1;
                 }
                 if (ImGui.MenuItem("Resize all data columns to fill space"))
                 {
-                    _pendingResizeAction = ColumnResizeAction.FillSpace;
+                    _pendingResizeAction = MTColumnResizeAction.FillSpace;
                     _resizeTargetDisplayColumn = -1;
                 }
                 
@@ -822,9 +790,9 @@ public partial class ItemTableWidget
                 }
             }
             
-            // Capture and save column widths if user has resized them
-            // Skip the first frame to avoid overwriting saved widths with defaults
-            if (_columnWidthsInitialized)
+            // Capture column widths after ImGui's auto-fit queue settles (3 frames)
+            _columnWidthsInitFrames++;
+            if (_columnWidthsInitFrames > 3)
             {
                 var widthsChanged = false;
                 
@@ -836,8 +804,6 @@ public partial class ItemTableWidget
                 {
                     ImGui.TableSetColumnIndex(0);
                     var currentCharWidth = ImGui.GetContentRegionAvail().X;
-                    // Add cell padding back to get the actual column width
-                    currentCharWidth += ImGui.GetStyle().CellPadding.X * 2;
                     if (Math.Abs(currentCharWidth - settings.CharacterColumnWidth) > 1f)
                     {
                         settings.CharacterColumnWidth = currentCharWidth;
@@ -851,7 +817,6 @@ public partial class ItemTableWidget
                 {
                     ImGui.TableSetColumnIndex(dispIdx + dataColOffset);
                     var currentWidth = ImGui.GetContentRegionAvail().X;
-                    currentWidth += ImGui.GetStyle().CellPadding.X * 2;
                     
                     var displayCol = displayColumns[dispIdx];
                     if (displayCol.IsMerged && displayCol.MergedGroup != null)
@@ -879,10 +844,6 @@ public partial class ItemTableWidget
                 {
                     _onSettingsChanged?.Invoke();
                 }
-            }
-            else
-            {
-                _columnWidthsInitialized = true;
             }
         }
         finally
