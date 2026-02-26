@@ -133,6 +133,9 @@ public enum LogCategory
     /// <summary>Configuration and settings.</summary>
     Config = 1 << 12,
 
+    /// <summary>Lifestream IPC integration.</summary>
+    Lifestream = 1 << 13,
+
     /// <summary>All categories enabled.</summary>
     All = ~None
 }
