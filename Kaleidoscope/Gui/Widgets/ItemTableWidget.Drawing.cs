@@ -613,6 +613,31 @@ public partial class ItemTableWidget
                         ImGui.TextDisabled(dispRow.Name);
                         ImGui.Separator();
                         
+                        // Relog to character via Lifestream (only if Lifestream is available and this isn't the current character)
+                        if (_lifestreamService != null && _lifestreamService.IsAvailable)
+                        {
+                            var currentCid = GameStateService.PlayerContentId;
+                            if (primaryCid != 0 && primaryCid != currentCid)
+                            {
+                                // Look up world name from cached rows
+                                var worldName = _cachedRows?
+                                    .FirstOrDefault(r => r.CharacterId == primaryCid)?.WorldName;
+                                
+                                if (!string.IsNullOrEmpty(worldName))
+                                {
+                                    // Use game name (full "Firstname Lastname") for Lifestream IPC, not the display name
+                                    var gameName = _cachedRows?
+                                        .FirstOrDefault(r => r.CharacterId == primaryCid)?.GameName;
+                                    var nameForRelog = !string.IsNullOrEmpty(gameName) ? gameName : dispRow.Name;
+                                    
+                                    if (ImGui.MenuItem("Relog to Character"))
+                                    {
+                                        _lifestreamService.ChangeCharacter(nameForRelog, worldName);
+                                    }
+                                }
+                            }
+                        }
+                        
                         if (isRevealedHidden)
                         {
                             if (ImGui.MenuItem("Unhide Character"))

@@ -62,10 +62,15 @@ public partial class DataTool
             // Get all character names with disambiguation (from cache, no DB access)
             IReadOnlyDictionary<ulong, string?> characterNames;
             IReadOnlyDictionary<ulong, string> disambiguatedNames;
+            Dictionary<ulong, string?> gameNames;
             using (ProfilerService.BeginStaticChildScope("GetCharacterNames"))
             {
                 characterNames = CharacterDataCache.GetAllCharacterNamesDict();
                 disambiguatedNames = CharacterDataCache.GetDisambiguatedNames(characterNames.Keys);
+                
+                // Build game name lookup for IPC calls (e.g., Lifestream relog)
+                var extendedNames = CharacterDataCache.GetAllCharacterNamesExtended();
+                gameNames = extendedNames.ToDictionary(x => x.characterId, x => x.gameName);
             }
             var rows = new Dictionary<ulong, ItemTableCharacterRow>();
             
@@ -112,6 +117,7 @@ public partial class DataTool
                 {
                     CharacterId = charId,
                     Name = displayName,
+                    GameName = gameNames.TryGetValue(charId, out var gn) ? gn ?? displayName : displayName,
                     WorldName = charWorldName,
                     DataCenterName = dcName,
                     RegionName = regionName,

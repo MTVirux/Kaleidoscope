@@ -315,6 +315,11 @@ public class ItemTableCharacterRow
     public string Name { get; set; } = string.Empty;
     
     /// <summary>
+    /// Full in-game character name (e.g., "Firstname Lastname"). Used for IPC calls like Lifestream relog.
+    /// </summary>
+    public string GameName { get; set; } = string.Empty;
+    
+    /// <summary>
     /// World name for this character (e.g., "Balmung").
     /// </summary>
     public string WorldName { get; set; } = string.Empty;
@@ -379,6 +384,7 @@ public partial class ItemTableWidget : ISettingsProvider
     private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly Configuration? _configuration;
     private readonly TimeSeriesCacheService? _cacheService;
+    private readonly LifestreamService? _lifestreamService;
     
     // Settings binding
     private IItemTableWidgetSettings? _boundSettings;
@@ -459,13 +465,15 @@ public partial class ItemTableWidget : ISettingsProvider
         ItemDataService? itemDataService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
         Configuration? configuration = null,
-        TimeSeriesCacheService? cacheService = null)
+        TimeSeriesCacheService? cacheService = null,
+        LifestreamService? lifestreamService = null)
     {
         _config = config ?? new TableConfig();
         _itemDataService = itemDataService;
         _trackedDataRegistry = trackedDataRegistry;
         _configuration = configuration;
         _cacheService = cacheService;
+        _lifestreamService = lifestreamService;
     }
     
     /// <summary>
