@@ -28,4 +28,5 @@ public sealed record ToolCreationContext(
     ITextureProvider? TextureProvider = null,
     FavoritesService? FavoritesService = null,
     SalePriceCacheService? SalePriceCacheService = null,
-    FFXIVMTService? FFXIVMTService = null);
+    FFXIVMTService? FFXIVMTService = null,
+    LifestreamService? LifestreamService = null);

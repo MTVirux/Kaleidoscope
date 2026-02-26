@@ -41,6 +41,7 @@ public partial class DataTool : ToolComponent
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly FavoritesService? _favoritesService;
     private readonly ITextureProvider? _textureProvider;
+    private readonly LifestreamService? _lifestreamService;
     
     // Widgets
     private readonly ItemTableWidget _tableWidget;
@@ -102,7 +103,8 @@ public partial class DataTool : ToolComponent
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
         AutoRetainerService? autoRetainerService = null,
-        PriceTrackingService? priceTrackingService = null)
+        PriceTrackingService? priceTrackingService = null,
+        LifestreamService? lifestreamService = null)
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
@@ -114,6 +116,7 @@ public partial class DataTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _favoritesService = favoritesService;
         _textureProvider = textureProvider;
+        _lifestreamService = lifestreamService;
         
         // Initialize instance-specific settings with global defaults
         var uiColors = configService.Config.UIColors;
@@ -140,7 +143,8 @@ public partial class DataTool : ToolComponent
             itemDataService,
             trackedDataRegistry,
             configService.Config,
-            currencyTrackerService.CacheService);
+            currencyTrackerService.CacheService,
+            lifestreamService);
         
         // Bind table widget to settings
         _tableWidget.BindSettings(

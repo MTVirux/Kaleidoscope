@@ -65,7 +65,8 @@ public static class WindowToolRegistrar
             ctx.TextureProvider,
             ctx.FavoritesService,
             ctx.SalePriceCacheService,
-            ctx.FFXIVMTService);
+            ctx.FFXIVMTService,
+            ctx.LifestreamService);
     }
 
     public static void RegisterTools(
@@ -85,7 +86,8 @@ public static class WindowToolRegistrar
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
         SalePriceCacheService? salePriceCacheService = null,
-        FFXIVMTService? ffxivmtService = null)
+        FFXIVMTService? ffxivmtService = null,
+        LifestreamService? lifestreamService = null)
     {
         if (container == null) return;
 
@@ -95,7 +97,7 @@ public static class WindowToolRegistrar
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
-            ffxivmtService);
+            ffxivmtService, lifestreamService);
 
         try
         {
@@ -277,7 +279,8 @@ public static class WindowToolRegistrar
                 ctx.TextureProvider,
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
-                ctx.PriceTrackingService) { Position = pos };
+                ctx.PriceTrackingService,
+                ctx.LifestreamService) { Position = pos };
             ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Graph);
             return tool;
@@ -303,7 +306,8 @@ public static class WindowToolRegistrar
                 ctx.TextureProvider,
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
-                ctx.PriceTrackingService) { Position = pos };
+                ctx.PriceTrackingService,
+                ctx.LifestreamService) { Position = pos };
             ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Table);
             return tool;
