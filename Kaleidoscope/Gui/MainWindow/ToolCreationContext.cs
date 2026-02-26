@@ -29,4 +29,5 @@ public sealed record ToolCreationContext(
     FavoritesService? FavoritesService = null,
     SalePriceCacheService? SalePriceCacheService = null,
     FFXIVMTService? FFXIVMTService = null,
-    LifestreamService? LifestreamService = null);
+    LifestreamService? LifestreamService = null,
+    INotificationManager? NotificationManager = null);

@@ -6,6 +6,7 @@ using Kaleidoscope.Services;
 using MTGui.Common;
 using MTGui.Table;
 using MTGui.Tree;
+using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -385,6 +386,7 @@ public partial class ItemTableWidget : ISettingsProvider
     private readonly Configuration? _configuration;
     private readonly TimeSeriesCacheService? _cacheService;
     private readonly LifestreamService? _lifestreamService;
+    private readonly INotificationManager? _notificationManager;
     
     // Settings binding
     private IItemTableWidgetSettings? _boundSettings;
@@ -466,7 +468,8 @@ public partial class ItemTableWidget : ISettingsProvider
         TrackedDataRegistry? trackedDataRegistry = null,
         Configuration? configuration = null,
         TimeSeriesCacheService? cacheService = null,
-        LifestreamService? lifestreamService = null)
+        LifestreamService? lifestreamService = null,
+        INotificationManager? notificationManager = null)
     {
         _config = config ?? new TableConfig();
         _itemDataService = itemDataService;
@@ -474,6 +477,7 @@ public partial class ItemTableWidget : ISettingsProvider
         _configuration = configuration;
         _cacheService = cacheService;
         _lifestreamService = lifestreamService;
+        _notificationManager = notificationManager;
     }
     
     /// <summary>

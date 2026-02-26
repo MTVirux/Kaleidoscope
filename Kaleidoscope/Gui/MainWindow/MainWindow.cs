@@ -135,7 +135,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         FrameLimiterService frameLimiterService,
         IKeyState keyState,
         IFramework framework,
-        LifestreamService? lifestreamService = null) 
+        LifestreamService? lifestreamService = null,
+        INotificationManager? notificationManager = null) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -160,7 +161,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             inventoryChangeService, trackedDataRegistry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
-            ffxivmtService, lifestreamService);
+            ffxivmtService, lifestreamService, notificationManager);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 

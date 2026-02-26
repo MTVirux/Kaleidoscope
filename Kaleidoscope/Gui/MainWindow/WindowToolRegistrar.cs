@@ -66,7 +66,8 @@ public static class WindowToolRegistrar
             ctx.FavoritesService,
             ctx.SalePriceCacheService,
             ctx.FFXIVMTService,
-            ctx.LifestreamService);
+            ctx.LifestreamService,
+            ctx.NotificationManager);
     }
 
     public static void RegisterTools(
@@ -87,7 +88,8 @@ public static class WindowToolRegistrar
         FavoritesService? favoritesService = null,
         SalePriceCacheService? salePriceCacheService = null,
         FFXIVMTService? ffxivmtService = null,
-        LifestreamService? lifestreamService = null)
+        LifestreamService? lifestreamService = null,
+        INotificationManager? notificationManager = null)
     {
         if (container == null) return;
 
@@ -97,7 +99,7 @@ public static class WindowToolRegistrar
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
             inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
-            ffxivmtService, lifestreamService);
+            ffxivmtService, lifestreamService, notificationManager);
 
         try
         {
@@ -280,7 +282,8 @@ public static class WindowToolRegistrar
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
                 ctx.PriceTrackingService,
-                ctx.LifestreamService) { Position = pos };
+                ctx.LifestreamService,
+                ctx.NotificationManager) { Position = pos };
             ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Graph);
             return tool;
@@ -307,7 +310,8 @@ public static class WindowToolRegistrar
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
                 ctx.PriceTrackingService,
-                ctx.LifestreamService) { Position = pos };
+                ctx.LifestreamService,
+                ctx.NotificationManager) { Position = pos };
             ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Table);
             return tool;
