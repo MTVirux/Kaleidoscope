@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.ImGuiNotification;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
@@ -610,7 +611,17 @@ public partial class ItemTableWidget
                         ImGui.PopStyleVar();
                     if (showCharContextMenu && !dispRow.IsMerged && ImGui.BeginPopupContextItem($"CharContext_{primaryCid}"))
                     {
-                        ImGui.TextDisabled(dispRow.Name);
+                        if (ImGui.Selectable(dispRow.Name))
+                        {
+                            ImGui.SetClipboardText(dispRow.Name);
+                            _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                            {
+                                Content = $"Copied \"{dispRow.Name}\" to clipboard.",
+                                Type = NotificationType.Info,
+                                Minimized = true,
+                                InitialDuration = TimeSpan.FromSeconds(2),
+                            });
+                        }
                         ImGui.Separator();
                         
                         // Relog to character via Lifestream (only if Lifestream is available and this isn't the current character)
@@ -633,6 +644,13 @@ public partial class ItemTableWidget
                                     if (ImGui.MenuItem("Relog to Character"))
                                     {
                                         _lifestreamService.ChangeCharacter(nameForRelog, worldName);
+                                        _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                                        {
+                                            Content = $"Relogging to {nameForRelog} ({worldName})...",
+                                            Type = NotificationType.Info,
+                                            Minimized = true,
+                                            InitialDuration = TimeSpan.FromSeconds(2),
+                                        });
                                     }
                                 }
                             }
@@ -644,6 +662,13 @@ public partial class ItemTableWidget
                             {
                                 settings.HiddenCharacters.Remove(primaryCid);
                                 _onSettingsChanged?.Invoke();
+                                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                                {
+                                    Content = $"\"{dispRow.Name}\" is no longer hidden.",
+                                    Type = NotificationType.Info,
+                                    Minimized = true,
+                                    InitialDuration = TimeSpan.FromSeconds(2),
+                                });
                             }
                         }
                         else
@@ -652,6 +677,13 @@ public partial class ItemTableWidget
                             {
                                 settings.HiddenCharacters.Add(primaryCid);
                                 _onSettingsChanged?.Invoke();
+                                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                                {
+                                    Content = $"\"{dispRow.Name}\" is now hidden.",
+                                    Type = NotificationType.Info,
+                                    Minimized = true,
+                                    InitialDuration = TimeSpan.FromSeconds(2),
+                                });
                             }
                         }
                         
