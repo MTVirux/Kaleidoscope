@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// This is a thin wrapper around MTGui.Graph.MTGraph that maintains backward compatibility
 /// with the existing Kaleidoscope API and provides ISettingsProvider integration.
 /// </summary>
-public class MTGraphWidget : ISettingsProvider
+public sealed class MTGraphWidget : ISettingsProvider
 {
     private readonly MTGraph _graph;
     

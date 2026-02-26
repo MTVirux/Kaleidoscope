@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the Universalis REST API status and configuration.
 /// </summary>
-public class UniversalisApiStatusTool : StatusToolBase
+public sealed class UniversalisApiStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis API Status";
     

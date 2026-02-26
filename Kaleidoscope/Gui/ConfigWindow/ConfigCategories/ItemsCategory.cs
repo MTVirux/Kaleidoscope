@@ -412,7 +412,7 @@ public sealed class ItemsCategory
         }
     }
     
-    private class TrackedItemInfo
+    private sealed class TrackedItemInfo
     {
         public uint ItemId { get; set; }
         public bool InItemTable { get; set; }

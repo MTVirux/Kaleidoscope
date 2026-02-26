@@ -19,7 +19,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.FFXIVMT;
 /// <summary>
 /// Represents an ignored item with an optional expiration time.
 /// </summary>
-public class IgnoredItemEntry
+public sealed class IgnoredItemEntry
 {
     /// <summary>Item ID being ignored.</summary>
     public int ItemId { get; set; }
@@ -34,7 +34,7 @@ public class IgnoredItemEntry
 /// <summary>
 /// Settings for the GilFlux tool.
 /// </summary>
-public class GilFluxToolSettings
+public sealed class GilFluxToolSettings
 {
     public HashSet<int> SelectedWorldIds { get; set; } = new();
     public HashSet<string> SelectedDataCenters { get; set; } = new();
@@ -70,7 +70,7 @@ public class GilFluxToolSettings
 /// Shows which items move the most gil on the market for a given set of worlds.
 /// Queries each world individually and merges results.
 /// </summary>
-public class GilFluxTool : ToolComponent
+public sealed class GilFluxTool : ToolComponent
 {
     public override string ToolName => "GilFlux";
 

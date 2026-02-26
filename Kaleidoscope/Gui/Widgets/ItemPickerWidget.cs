@@ -22,7 +22,7 @@ public enum ItemSortOrder
 /// <summary>
 /// A reusable item picker widget with search and optional marketable-only filter.
 /// </summary>
-public class ItemPickerWidget
+public sealed class ItemPickerWidget
 {
     private readonly IDataManager _dataManager;
     private readonly ItemDataService _itemDataService;

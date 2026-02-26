@@ -467,7 +467,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// <summary>
     /// Helper comparer for (Name, Type) tuple that uses case-insensitive name comparison.
     /// </summary>
-    private class LayoutNameTypeComparer : IEqualityComparer<(string Name, LayoutType Type)>
+    private sealed class LayoutNameTypeComparer : IEqualityComparer<(string Name, LayoutType Type)>
     {
         public bool Equals((string Name, LayoutType Type) x, (string Name, LayoutType Type) y)
         {

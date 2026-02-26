@@ -53,7 +53,7 @@ public enum PriceMatchMode
 /// <summary>
 /// Configuration for price tracking feature.
 /// </summary>
-public class PriceTrackingSettings
+public sealed class PriceTrackingSettings
 {
     /// <summary>Whether price tracking is enabled.</summary>
     public bool Enabled { get; set; } = false;
@@ -143,7 +143,7 @@ public class PriceTrackingSettings
 /// <summary>
 /// Settings for the Websocket Feed tool.
 /// </summary>
-public class WebsocketFeedSettings
+public sealed class WebsocketFeedSettings
 {
     /// <summary>Maximum number of entries to display.</summary>
     public int MaxEntries { get; set; } = 100;
@@ -183,7 +183,7 @@ public class WebsocketFeedSettings
 /// Settings for the Inventory Value tool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
-public class InventoryValueSettings : IGraphWidgetSettings
+public sealed class InventoryValueSettings : IGraphWidgetSettings
 {
     /// <summary>Whether to show multiple lines per character.</summary>
     public bool ShowMultipleLines { get; set; } = true;
@@ -284,7 +284,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
 /// <summary>
 /// Settings for the Top Inventory Value Items tool.
 /// </summary>
-public class TopInventoryValueItemsSettings
+public sealed class TopInventoryValueItemsSettings
 {
     /// <summary>Maximum number of items to display.</summary>
     public int MaxItems { get; set; } = 100;

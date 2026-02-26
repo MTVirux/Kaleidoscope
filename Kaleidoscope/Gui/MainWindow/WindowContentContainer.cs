@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// Container that manages tool layout and rendering within the main window.
 /// Supports drag-and-drop, grid snapping, and layout persistence.
 /// </summary>
-public partial class WindowContentContainer
+public sealed partial class WindowContentContainer
 {
     
     private readonly Func<float> _getCellWidthPercent;
@@ -47,7 +47,7 @@ public partial class WindowContentContainer
     // Flag to suppress dirty marking during layout application (restoring from persistence)
     private bool _suppressDirtyMarking = false;
 
-    private class ToolRegistration
+    private sealed class ToolRegistration
     {
         public string Id = string.Empty;
         public string Label = string.Empty;
@@ -59,7 +59,7 @@ public partial class WindowContentContainer
 
     private readonly List<ToolRegistration> _toolRegistry = new();
 
-    private class ToolEntry
+    private sealed class ToolEntry
     {
         public ToolComponent Tool;
         public Vector2 OrigPos;
@@ -76,7 +76,7 @@ public partial class WindowContentContainer
         }
     }
 
-    private class MenuNode
+    private sealed class MenuNode
     {
         public Dictionary<string, MenuNode> Children = new Dictionary<string, MenuNode>();
         public List<ToolRegistration> Items = new List<ToolRegistration>();

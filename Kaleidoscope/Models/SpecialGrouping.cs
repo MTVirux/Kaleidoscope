@@ -22,7 +22,7 @@ public enum SpecialGroupingType
 /// <summary>
 /// Settings for special grouping filters when a special grouping is active.
 /// </summary>
-public class SpecialGroupingSettings
+public sealed class SpecialGroupingSettings
 {
     /// <summary>
     /// Whether special grouping filters are currently enabled.

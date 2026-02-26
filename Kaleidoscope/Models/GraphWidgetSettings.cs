@@ -34,7 +34,7 @@ public interface IGraphWidgetSettings : IMTGraphSettings
 /// Used by tools that embed an MTGraphWidget to avoid duplicating settings definitions.
 /// Implements IGraphWidgetSettings for automatic binding with MTGraphWidget.
 /// </summary>
-public class GraphWidgetSettings : IGraphWidgetSettings
+public sealed class GraphWidgetSettings : IGraphWidgetSettings
 {
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
     public float LegendWidth { get; set; } = 140f;

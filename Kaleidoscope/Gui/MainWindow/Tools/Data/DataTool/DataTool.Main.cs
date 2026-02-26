@@ -27,7 +27,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// - DataTool.GraphView.cs: Graph view rendering and series data loading
 /// - DataTool.Settings.cs: Tool settings, context menus, import/export
 /// </remarks>
-public partial class DataTool : ToolComponent
+public sealed partial class DataTool : ToolComponent
 {
     public override string ToolName => "Data";
     

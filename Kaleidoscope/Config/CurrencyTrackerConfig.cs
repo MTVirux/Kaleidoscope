@@ -3,7 +3,7 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// Configuration for the currency tracking service.
 /// </summary>
-public class CurrencyTrackerConfig
+public sealed class CurrencyTrackerConfig
 {
     /// <summary>
     /// SQLite page cache size in megabytes.

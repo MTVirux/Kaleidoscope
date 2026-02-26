@@ -416,7 +416,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         
         #region Dirty Snapshot Persistence
         
-        private class DirtySnapshot
+        private sealed class DirtySnapshot
         {
             public string LayoutName { get; set; } = string.Empty;
             public LayoutType LayoutType { get; set; } = LayoutType.Windowed;

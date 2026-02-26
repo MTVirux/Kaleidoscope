@@ -6,7 +6,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// TopInventoryValueTool partial class containing settings UI and import/export logic.
 /// </summary>
-public partial class TopInventoryValueTool
+public sealed partial class TopInventoryValueTool
 {
     protected override bool HasToolSettings => true;
 

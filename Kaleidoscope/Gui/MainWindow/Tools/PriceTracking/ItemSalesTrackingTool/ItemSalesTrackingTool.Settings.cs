@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// ItemSalesTrackingTool partial class containing settings UI and import/export logic.
 /// </summary>
-public partial class ItemSalesTrackingTool
+public sealed partial class ItemSalesTrackingTool
 {
     protected override void DrawToolSettings()
     {
@@ -233,7 +233,7 @@ public partial class ItemSalesTrackingTool
 /// Instance settings for ItemSalesTrackingTool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
-public class ItemSalesTrackingSettings : IGraphWidgetSettings
+public sealed class ItemSalesTrackingSettings : IGraphWidgetSettings
 {
     // Tool-specific settings
     public int MaxHistoryEntries { get; set; } = 100;

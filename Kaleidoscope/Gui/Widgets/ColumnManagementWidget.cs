@@ -20,7 +20,7 @@ public static class ColumnManagementWidget
     /// Represents a display item that can be either an individual column or a merged group.
     /// Used for unified display ordering.
     /// </summary>
-    private class DisplayItem
+    private sealed class DisplayItem
     {
         public bool IsMerged { get; init; }
         public int ColumnIndex { get; init; } = -1;

@@ -13,7 +13,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// <summary>
 /// Data for a single inventory row showing item distribution per character/retainer.
 /// </summary>
-public class ItemInventoryRow
+public sealed class ItemInventoryRow
 {
     public ulong CharacterId { get; set; }
     public string CharacterName { get; set; } = string.Empty;
@@ -29,7 +29,7 @@ public class ItemInventoryRow
 /// <summary>
 /// A popup window that displays current listings and recent sales for a market item.
 /// </summary>
-public class ItemDetailsPopup
+public sealed class ItemDetailsPopup
 {
     private readonly UniversalisService _universalisService;
     private readonly ItemDataService _itemDataService;

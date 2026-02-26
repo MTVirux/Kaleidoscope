@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// Tool component that shows sale history for a selected item from Universalis.
 /// </summary>
-public class ItemSalesHistoryTool : ToolComponent
+public sealed class ItemSalesHistoryTool : ToolComponent
 {
     public override string ToolName => "Item Sales History";
     

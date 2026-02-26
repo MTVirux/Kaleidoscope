@@ -15,7 +15,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// 
 /// Series loading methods are in DataTool.GraphSeriesLoaders.cs.
 /// </summary>
-public partial class DataTool
+public sealed partial class DataTool
 {
     private bool _cachedShowRetainerBreakdownInGraph;
 

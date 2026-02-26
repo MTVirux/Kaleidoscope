@@ -23,7 +23,7 @@ public enum WorldSelectionMode
 /// A reusable world/datacenter/region selection widget with a dropdown containing
 /// nested checkboxes in a hierarchical structure (Region > DataCenter > World).
 /// </summary>
-public class WorldSelectionWidget
+public sealed class WorldSelectionWidget
 {
     private readonly UniversalisWorldData? _worldData;
     private readonly string _id;

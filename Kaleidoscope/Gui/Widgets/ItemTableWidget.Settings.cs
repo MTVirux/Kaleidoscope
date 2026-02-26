@@ -10,7 +10,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
 
-public partial class ItemTableWidget
+public sealed partial class ItemTableWidget
 {
     
     /// <inheritdoc/>

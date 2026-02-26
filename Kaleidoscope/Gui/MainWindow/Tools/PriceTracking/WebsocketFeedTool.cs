@@ -17,7 +17,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// Shows listings added/removed and sales as they happen in real-time.
 /// Click on any entry to open the ItemDetailsPopup with full market data from the API.
 /// </summary>
-public class WebsocketFeedTool : ToolComponent
+public sealed class WebsocketFeedTool : ToolComponent
 {
     public override string ToolName => "Websocket Feed";
     

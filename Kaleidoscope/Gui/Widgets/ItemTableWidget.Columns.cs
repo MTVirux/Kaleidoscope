@@ -13,7 +13,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// <summary>
 /// Represents a display column in the item table, which may be a single column or a merged group.
 /// </summary>
-internal class DisplayColumn
+internal sealed class DisplayColumn
 {
     public bool IsMerged { get; init; }
     public string Header { get; init; } = string.Empty;
@@ -26,7 +26,7 @@ internal class DisplayColumn
 /// <summary>
 /// Represents a display row in the item table, either a single character or a merged group.
 /// </summary>
-internal class DisplayRow
+internal sealed class DisplayRow
 {
     public bool IsMerged { get; init; }
     public string Name { get; init; } = string.Empty;
@@ -45,7 +45,7 @@ internal class DisplayRow
     public bool HasRetainerData => RetainerBreakdown != null && RetainerBreakdown.Count > 0;
 }
 
-public partial class ItemTableWidget
+public sealed partial class ItemTableWidget
 {
     
     /// <summary>

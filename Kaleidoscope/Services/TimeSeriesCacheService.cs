@@ -956,7 +956,7 @@ internal sealed class TimeSeriesCache
 /// <summary>
 /// Configuration for the time-series cache.
 /// </summary>
-public class TimeSeriesCacheConfig
+public sealed class TimeSeriesCacheConfig
 {
     /// <summary>
     /// Maximum number of points to cache per series.

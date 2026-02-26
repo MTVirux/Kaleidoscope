@@ -44,7 +44,7 @@ public enum TableTextColorMode
 /// <summary>
 /// Configuration for an item column in the table.
 /// </summary>
-public class ItemColumnConfig
+public sealed class ItemColumnConfig
 {
     /// <summary>
     /// Unique identifier for this column (item ID or currency type).
@@ -92,7 +92,7 @@ public class ItemColumnConfig
 /// Represents a group of merged columns that display summed values.
 /// Extends MTGui's MTMergedColumnGroupBase with Kaleidoscope-specific visibility settings.
 /// </summary>
-public class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
+public sealed class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
 {
     /// <summary>
     /// Whether to show this merged group in table view.
@@ -119,7 +119,7 @@ public class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
 /// Supports both Character-mode (CharacterIds) and grouped-mode (GroupKeys).
 /// This is FFXIV-specific due to character/world/DC/region grouping concepts.
 /// </summary>
-public class MergedRowGroup
+public sealed class MergedRowGroup
 {
     /// <summary>
     /// Custom display name for the merged row.
@@ -303,7 +303,7 @@ public interface IItemTableWidgetSettings
 /// <summary>
 /// Data for a single character row in the table.
 /// </summary>
-public class ItemTableCharacterRow
+public sealed class ItemTableCharacterRow
 {
     /// <summary>
     /// Character ID.
@@ -361,7 +361,7 @@ public class ItemTableCharacterRow
 /// <summary>
 /// Prepared data for item table rendering.
 /// </summary>
-public class PreparedItemTableData
+public sealed class PreparedItemTableData
 {
     /// <summary>
     /// All character rows to display.
@@ -379,7 +379,7 @@ public class PreparedItemTableData
 /// Characters are displayed as rows, items/currencies as columns.
 /// Implements ISettingsProvider to expose table settings for automatic inclusion in tool settings.
 /// </summary>
-public partial class ItemTableWidget : ISettingsProvider
+public sealed partial class ItemTableWidget : ISettingsProvider
 {
     private readonly ItemDataService? _itemDataService;
     private readonly TrackedDataRegistry? _trackedDataRegistry;
@@ -437,7 +437,7 @@ public partial class ItemTableWidget : ISettingsProvider
     /// <summary>
     /// Configuration for this table widget instance.
     /// </summary>
-    public class TableConfig
+    public sealed class TableConfig
     {
         /// <summary>
         /// Unique ID for ImGui table identification.

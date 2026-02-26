@@ -15,7 +15,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// - AutoRetainerControlTool.CharacterList.cs: Character list and entry rendering
 /// - AutoRetainerControlTool.Settings.cs: Tool settings UI and import/export
 /// </remarks>
-public partial class AutoRetainerControlTool : ToolComponent
+public sealed partial class AutoRetainerControlTool : ToolComponent
 {
     public override string ToolName => "AutoRetainer Control";
 

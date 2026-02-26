@@ -8,7 +8,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the AutoRetainer IPC connection status.
 /// </summary>
-public class AutoRetainerStatusTool : StatusToolBase
+public sealed class AutoRetainerStatusTool : StatusToolBase
 {
     public override string ToolName => "AutoRetainer Status";
     

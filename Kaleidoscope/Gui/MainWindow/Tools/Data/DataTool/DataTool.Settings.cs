@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// <summary>
 /// DataTool partial class containing tool settings, context menus, and import/export logic.
 /// </summary>
-public partial class DataTool
+public sealed partial class DataTool
 {
     protected override bool HasToolSettings => true;
     

@@ -7,7 +7,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// ItemSalesTrackingTool partial class containing data fetching and world scope resolution logic.
 /// </summary>
-public partial class ItemSalesTrackingTool
+public sealed partial class ItemSalesTrackingTool
 {
     private void OnItemSelectionChanged(IReadOnlySet<uint> selectedIds)
     {

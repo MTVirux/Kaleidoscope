@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// <summary>
 /// A collapsible widget for displaying and editing a single layout entry.
 /// </summary>
-public class LayoutItemWidget
+public sealed class LayoutItemWidget
 {
     private static int _nextInstanceId;
     private readonly int _instanceId;

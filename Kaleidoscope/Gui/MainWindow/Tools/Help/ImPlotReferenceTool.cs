@@ -8,7 +8,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Help;
 /// <summary>
 /// A tool that displays graph control instructions for users.
 /// </summary>
-public class ImPlotReferenceTool : ToolComponent
+public sealed class ImPlotReferenceTool : ToolComponent
 {
     public override string ToolName => "Graph Controls";
     

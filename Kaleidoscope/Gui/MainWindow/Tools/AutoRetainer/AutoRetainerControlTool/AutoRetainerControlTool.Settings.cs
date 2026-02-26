@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// <summary>
 /// AutoRetainerControlTool partial class containing settings UI and import/export logic.
 /// </summary>
-public partial class AutoRetainerControlTool
+public sealed partial class AutoRetainerControlTool
 {
     protected override bool HasToolSettings => true;
 

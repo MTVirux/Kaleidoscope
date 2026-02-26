@@ -366,7 +366,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
 /// <summary>
 /// Cache entry for single sale price lookup.
 /// </summary>
-public class SalePriceCacheEntry
+public sealed class SalePriceCacheEntry
 {
     public int Price { get; }
     public DateTime Timestamp { get; }
@@ -383,7 +383,7 @@ public class SalePriceCacheEntry
 /// <summary>
 /// Cache entry for batch sale price lookup.
 /// </summary>
-public class BatchSalePriceCacheEntry
+public sealed class BatchSalePriceCacheEntry
 {
     public int LastSaleNq { get; }
     public int LastSaleHq { get; }

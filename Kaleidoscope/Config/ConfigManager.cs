@@ -6,7 +6,7 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// Manages JSON configuration files in the plugin config directory.
 /// </summary>
-public class ConfigManager
+public sealed class ConfigManager
 {
     private readonly string _folder;
 

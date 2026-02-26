@@ -621,7 +621,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
 /// <summary>
 /// Represents a cached market price entry with TTL and staleness tracking.
 /// </summary>
-public class MarketPriceCacheEntry
+public sealed class MarketPriceCacheEntry
 {
     public int ItemId { get; init; }
     public int WorldId { get; init; }
@@ -678,7 +678,7 @@ public enum PriceSource
 /// <summary>
 /// Cache entry for recent sales used in outlier detection.
 /// </summary>
-public class RecentSalesCacheEntry
+public sealed class RecentSalesCacheEntry
 {
     public const int MaxSalesPerType = 5;
     

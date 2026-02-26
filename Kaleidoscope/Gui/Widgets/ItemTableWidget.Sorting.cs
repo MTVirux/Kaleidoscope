@@ -10,7 +10,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
 
-public partial class ItemTableWidget
+public sealed partial class ItemTableWidget
 {
     /// <summary>
     /// Merges values from a source dictionary into a target dictionary using additive semantics.

@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// <summary>
 /// DataTool partial class containing table view rendering and data population logic.
 /// </summary>
-public partial class DataTool
+public sealed partial class DataTool
 {
     private void DrawTableView()
     {

@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// Settings class for FpsTool with all configurable properties.
 /// </summary>
-public class FpsToolSettings
+public sealed class FpsToolSettings
 {
     public bool ShowFrameTime { get; set; } = true;
     public float WarningThreshold { get; set; } = 30f;
@@ -19,7 +19,7 @@ public class FpsToolSettings
 /// <summary>
 /// A tool that displays the current frames per second.
 /// </summary>
-public class FpsTool : ToolComponent
+public sealed class FpsTool : ToolComponent
 {
     public override string ToolName => "FPS";
 

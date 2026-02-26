@@ -22,7 +22,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// - ItemSalesTrackingTool.DataFetching.cs: Data fetching and world scope resolution
 /// - ItemSalesTrackingTool.Settings.cs: Settings UI and import/export logic
 /// </summary>
-public partial class ItemSalesTrackingTool : ToolComponent
+public sealed partial class ItemSalesTrackingTool : ToolComponent
 {
     public override string ToolName => "Item Sales Tracking";
     protected override bool HasToolSettings => true;

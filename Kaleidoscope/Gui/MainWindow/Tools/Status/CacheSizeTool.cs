@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the current size of the inventory memory cache.
 /// </summary>
-public class CacheSizeTool : StatusToolBase
+public sealed class CacheSizeTool : StatusToolBase
 {
     public override string ToolName => "Cache Size";
     

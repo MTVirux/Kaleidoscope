@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Help;
 /// A tool that displays getting started instructions for new users.
 /// This is the default tool shown when creating a new layout from scratch.
 /// </summary>
-public class GettingStartedTool : ToolComponent
+public sealed class GettingStartedTool : ToolComponent
 {
     public override string ToolName => "Getting Started";
     

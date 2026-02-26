@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the current size of the SQLite database file.
 /// </summary>
-public class DatabaseSizeTool : StatusToolBase
+public sealed class DatabaseSizeTool : StatusToolBase
 {
     public override string ToolName => "Database Size";
     

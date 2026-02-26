@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// DataTool partial class containing graph series loading, grouping, and color logic.
 /// Extracted to reduce the size of DataTool.GraphView.cs.
 /// </summary>
-public partial class DataTool
+public sealed partial class DataTool
 {
     /// <summary>
     /// Gets a display name for the provided character ID.

@@ -3,7 +3,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// <summary>
 /// Represents the grid settings for a layout, including resolution and calculation mode.
 /// </summary>
-public class LayoutGridSettings
+public sealed class LayoutGridSettings
 {
     /// <summary>
     /// When true, grid resolution is calculated from aspect ratio * GridResolutionMultiplier.

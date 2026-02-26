@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// <summary>
 /// AutoRetainerControlTool partial class containing character list rendering logic.
 /// </summary>
-public partial class AutoRetainerControlTool
+public sealed partial class AutoRetainerControlTool
 {
     private void DrawCharacterSection()
     {

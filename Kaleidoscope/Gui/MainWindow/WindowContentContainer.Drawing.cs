@@ -5,7 +5,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
-public partial class WindowContentContainer
+public sealed partial class WindowContentContainer
 {
 
         public void Draw(bool editMode) => Draw(editMode, null);

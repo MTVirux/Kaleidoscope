@@ -5,7 +5,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
-public partial class WindowContentContainer
+public sealed partial class WindowContentContainer
 {
         /// <summary>
         /// Applies layout state properties from a <see cref="ToolLayoutState"/> to a <see cref="ToolComponent"/>.

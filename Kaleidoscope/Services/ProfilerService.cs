@@ -62,7 +62,7 @@ public sealed class ProfilerService : IDisposable, IService
     /// <summary>
     /// Statistics for a single profiled target with detailed metrics.
     /// </summary>
-    public class ProfileStats
+    public sealed class ProfileStats
     {
         public string Name { get; set; } = string.Empty;
         

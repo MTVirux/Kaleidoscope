@@ -10,7 +10,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// A tree-based widget for configuring price match modes hierarchically.
 /// Shows Region > DC > World hierarchy with cascading dropdowns.
 /// </summary>
-public class PriceMatchTreeWidget
+public sealed class PriceMatchTreeWidget
 {
     private readonly UniversalisWorldData _worldData;
     private readonly string _id;

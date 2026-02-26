@@ -43,7 +43,7 @@ public record TooltipMarketData(
 /// - TopInventoryValueTool.ItemRendering.cs: Item/tooltip rendering
 /// - TopInventoryValueTool.Settings.cs: Settings UI and import/export
 /// </summary>
-public partial class TopInventoryValueTool : ToolComponent
+public sealed partial class TopInventoryValueTool : ToolComponent
 {
     public override string ToolName => "Top Inventory Value Items";
     

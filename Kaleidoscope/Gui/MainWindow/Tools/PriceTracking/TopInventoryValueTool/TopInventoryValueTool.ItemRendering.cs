@@ -9,7 +9,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// <summary>
 /// TopInventoryValueTool partial class containing item rendering, tooltips, and sales table logic.
 /// </summary>
-public partial class TopInventoryValueTool
+public sealed partial class TopInventoryValueTool
 {
     private void DrawGilRow()
     {
