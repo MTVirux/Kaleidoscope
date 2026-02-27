@@ -628,7 +628,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         for (uint i = 2; i <= 19; i++)
         {
             try { total += im->GetInventoryItemCount(i); }
-            catch { /* ignore individual crystal read failures */ }
+            catch (Exception) { /* ignore individual crystal read failures */ }
         }
         
         // Add cached retainer crystals
@@ -651,9 +651,9 @@ public sealed class TrackedDataRegistry : IRequiredService
         var crystalId = (uint)(ConfigStatic.CrystalBaseItemId + ConfigStatic.CrystalTierOffset + element);
         var clusterId = (uint)(ConfigStatic.CrystalBaseItemId + 2 * ConfigStatic.CrystalTierOffset + element);
         
-        try { total += im->GetInventoryItemCount(shardId); } catch { }
-        try { total += im->GetInventoryItemCount(crystalId); } catch { }
-        try { total += im->GetInventoryItemCount(clusterId); } catch { }
+        try { total += im->GetInventoryItemCount(shardId); } catch (Exception) { /* ignore crystal read failure */ }
+        try { total += im->GetInventoryItemCount(crystalId); } catch (Exception) { /* ignore crystal read failure */ }
+        try { total += im->GetInventoryItemCount(clusterId); } catch (Exception) { /* ignore crystal read failure */ }
         
         // Add cached retainer crystals for this element
         total += retainerCrystals[element];           // Shard

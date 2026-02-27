@@ -207,9 +207,9 @@ public sealed class LifestreamService : IDisposable, IService
             _initialized = false;
             Initialize();
         }
-        catch
+        catch (Exception)
         {
-            // Still not available, timer will try again
+            // Lifestream IPC still not available, timer will retry
         }
     }
 

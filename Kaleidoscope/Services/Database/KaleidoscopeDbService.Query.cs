@@ -328,7 +328,7 @@ public sealed partial class KaleidoscopeDbService
                                 fileSizeTotal += new FileInfo(walPath).Length;
                         }
                     }
-                    catch { /* fall back to page-based size */ }
+                    catch (Exception) { /* fall back to page-based size */ }
                 }
 
                 foreach (var (name, count) in rowCounts)

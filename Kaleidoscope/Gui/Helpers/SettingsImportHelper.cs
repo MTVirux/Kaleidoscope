@@ -1,4 +1,5 @@
 using System.Numerics;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.Helpers;
 
@@ -50,9 +51,9 @@ public static class SettingsImportHelper
                 return new Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback - return null on any conversion error
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] Color import failed for key '{key}': {ex.Message}");
         }
 
         return null;
@@ -103,9 +104,9 @@ public static class SettingsImportHelper
                 return result;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] List import failed for key '{key}': {ex.Message}");
         }
 
         return null;
@@ -195,8 +196,9 @@ public static class SettingsImportHelper
             // Try Convert.ChangeType for primitives
             return (T)Convert.ChangeType(value, typeof(T));
         }
-        catch
+        catch (Exception ex)
         {
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] GetSetting failed for key '{key}': {ex.Message}");
             return defaultValue;
         }
     }
@@ -255,9 +257,9 @@ public static class SettingsImportHelper
                 return result;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] ConvertToDictionary failed: {ex.Message}");
         }
         
         return null;

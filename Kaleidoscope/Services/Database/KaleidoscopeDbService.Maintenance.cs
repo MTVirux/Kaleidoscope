@@ -97,7 +97,7 @@ public sealed partial class KaleidoscopeDbService
                     EnsureReadConnection();
                 }
             }
-            catch { /* ignore */ }
+            catch (Exception) { /* ignore read connection recovery failure */ }
             
             return (false, 0);
         }

@@ -31,9 +31,9 @@ public static class AutoRetainerIpcHelper
                 }
             }
         }
-        catch
+        catch (Exception)
         {
-            // Ignore IPC errors - return empty dictionary
+            // AutoRetainer IPC not available, returning empty dictionary
         }
 
         return characterWorlds;
@@ -56,9 +56,9 @@ public static class AutoRetainerIpcHelper
         {
             return action(autoRetainerService);
         }
-        catch
+        catch (Exception)
         {
-            // Ignore IPC errors
+            // AutoRetainer IPC not available, returning default value
             return defaultValue;
         }
     }

@@ -363,9 +363,9 @@ public abstract class ToolComponent : IDisposable
                 return new HashSet<T>(enumerable);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall through to default
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportHashSet failed for key '{key}': {ex.Message}");
         }
         
         return defaultValue;
@@ -419,9 +419,9 @@ public abstract class ToolComponent : IDisposable
                 return new Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportColorArray failed for key '{key}': {ex.Message}");
         }
 
         return null;
@@ -469,9 +469,9 @@ public abstract class ToolComponent : IDisposable
                 return enumerable.ToList();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportList failed for key '{key}': {ex.Message}");
         }
 
         return null;
@@ -530,9 +530,9 @@ public abstract class ToolComponent : IDisposable
                 return result;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ConvertToDictionary failed: {ex.Message}");
         }
         
         return null;
