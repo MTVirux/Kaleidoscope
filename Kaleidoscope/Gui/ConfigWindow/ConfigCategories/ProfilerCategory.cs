@@ -22,11 +22,11 @@ public sealed class ProfilerCategory
     /// </summary>
     private string? _selectedHistogramTool;
 
-    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, CurrencyTrackerService? CurrencyTrackerService = null)
+    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, CurrencyTrackerService? currencyTrackerService = null)
     {
         _profilerService = profilerService;
         _configService = configService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
     }
 
     public void Draw()

@@ -80,7 +80,7 @@ public sealed class ItemDetailsPopup
         UniversalisService universalisService,
         ItemDataService itemDataService,
         PriceTrackingService priceTrackingService,
-        CurrencyTrackerService? CurrencyTrackerService = null,
+        CurrencyTrackerService? currencyTrackerService = null,
         InventoryCacheService? inventoryCacheService = null,
         CharacterDataService? characterDataService = null,
         SalePriceCacheService? salePriceCacheService = null)
@@ -88,7 +88,7 @@ public sealed class ItemDetailsPopup
         _universalisService = universalisService;
         _itemDataService = itemDataService;
         _priceTrackingService = priceTrackingService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
         _salePriceCacheService = salePriceCacheService;

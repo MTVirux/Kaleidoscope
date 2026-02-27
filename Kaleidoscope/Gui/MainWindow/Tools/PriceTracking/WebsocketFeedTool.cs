@@ -49,7 +49,7 @@ public sealed class WebsocketFeedTool : ToolComponent
         ConfigurationService configService,
         ItemDataService itemDataService,
         UniversalisService universalisService,
-        CurrencyTrackerService? CurrencyTrackerService = null,
+        CurrencyTrackerService? currencyTrackerService = null,
         InventoryCacheService? inventoryCacheService = null,
         CharacterDataService? characterDataService = null)
     {
@@ -58,7 +58,7 @@ public sealed class WebsocketFeedTool : ToolComponent
         _configService = configService;
         _itemDataService = itemDataService;
         _universalisService = universalisService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
         _instanceSettings = new WebsocketFeedSettings

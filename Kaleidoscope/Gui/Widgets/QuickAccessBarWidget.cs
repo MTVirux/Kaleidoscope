@@ -84,7 +84,7 @@ public sealed class QuickAccessBarWidget
     /// <param name="stateService">State service for edit/lock/fullscreen state.</param>
     /// <param name="layoutEditingService">Layout editing service for dirty state.</param>
     /// <param name="configurationService">Configuration service for layout access (optional).</param>
-    /// <param name="CurrencyTrackerService">Currency tracking service for database status (optional).</param>
+    /// <param name="currencyTrackerService">Currency tracking service for database status (optional).</param>
     /// <param name="webSocketService">WebSocket service for Universalis connection status (optional).</param>
     /// <param name="autoRetainerService">AutoRetainer IPC service for plugin integration status (optional).</param>
     /// <param name="frameLimiterService">Frame limiter service for FPS control (optional).</param>
@@ -97,7 +97,7 @@ public sealed class QuickAccessBarWidget
         StateService stateService,
         LayoutEditingService layoutEditingService,
         ConfigurationService? configurationService = null,
-        CurrencyTrackerService? CurrencyTrackerService = null,
+        CurrencyTrackerService? currencyTrackerService = null,
         UniversalisWebSocketService? webSocketService = null,
         AutoRetainerService? autoRetainerService = null,
         FrameLimiterService? frameLimiterService = null,
@@ -110,7 +110,7 @@ public sealed class QuickAccessBarWidget
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _layoutEditingService = layoutEditingService ?? throw new ArgumentNullException(nameof(layoutEditingService));
         _configurationService = configurationService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _webSocketService = webSocketService;
         _autoRetainerService = autoRetainerService;
         _frameLimiterService = frameLimiterService;

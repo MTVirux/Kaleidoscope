@@ -42,14 +42,14 @@ public sealed class ItemsCategory
         IDataManager? dataManager = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        CurrencyTrackerService? CurrencyTrackerService = null)
+        CurrencyTrackerService? currencyTrackerService = null)
     {
         _configService = configService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
