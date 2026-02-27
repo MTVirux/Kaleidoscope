@@ -11,7 +11,7 @@ namespace Kaleidoscope.Services;
 /// This service is the central source of truth for all UI state in the plugin.
 /// It follows the Glamourer/InventoryTools pattern of using event-based state changes.
 /// </remarks>
-public sealed class StateService : IStateService, IService, IDisposable
+public sealed class StateService : IStateService, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -201,7 +201,4 @@ public sealed class StateService : IStateService, IService, IDisposable
         LogService.Debug(LogCategory.UI, "Exited fullscreen");
     }
 
-    public void Dispose()
-    {
-    }
 }
