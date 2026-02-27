@@ -35,9 +35,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ProfilerEnabled { get; set; } = false;
 
-    /// <summary>
-    /// Whether to log slow operations to the Dalamud log.
-    /// </summary>
     public bool ProfilerLogSlowOperations { get; set; } = true;
 
     /// <summary>
@@ -50,24 +47,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public int ProfilerStatsView { get; set; } = 0;
 
-    /// <summary>
-    /// Whether to show the histogram panel in the profiler.
-    /// </summary>
     public bool ProfilerShowHistogram { get; set; } = false;
 
-    /// <summary>
-    /// Whether to expand child scopes in profiler tool stats.
-    /// </summary>
     public bool ProfilerShowChildScopes { get; set; } = true;
 
-    /// <summary>
-    /// Whether the frame limiter is enabled.
-    /// </summary>
     public bool FrameLimiterEnabled { get; set; } = false;
 
-    /// <summary>
-    /// Target framerate for the frame limiter in frames per second.
-    /// </summary>
     public int FrameLimiterTargetFps { get; set; } = 60;
 
     /// <summary>
@@ -103,9 +88,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public int FileLoggingMaxSizeMB { get; set; } = 10;
 
-    /// <summary>
-    /// Whether to include timestamps in file log entries.
-    /// </summary>
     public bool FileLoggingIncludeTimestamps { get; set; } = true;
 
     /// <summary>
@@ -130,9 +112,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;
 
-    /// <summary>
-    /// Sort order for character lists throughout the UI.
-    /// </summary>
     public CharacterSortOrder CharacterSortOrder { get; set; } = CharacterSortOrder.Alphabetical;
     
     /// <summary>
@@ -148,9 +127,6 @@ public class Configuration : IPluginConfiguration
     public Vector4 MainWindowBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
     public Vector4 FullscreenBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
 
-    /// <summary>
-    /// Default UI color settings for customization.
-    /// </summary>
     public UIColors UIColors { get; set; } = new();
 
     public float ContentGridCellWidthPercent { get; set; } = 25f;
@@ -235,45 +211,20 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public HashSet<ulong> FavoriteCharacters { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Universalis price tracking feature.
-    /// </summary>
     public PriceTrackingSettings PriceTracking { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Websocket Feed tool.
-    /// </summary>
     public WebsocketFeedSettings WebsocketFeed { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Inventory Value tool.
-    /// </summary>
     public InventoryValueSettings InventoryValue { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Item Table tool.
-    /// </summary>
     public ItemTableSettings ItemTable { get; set; } = new();
     
-    /// <summary>
-    /// Settings for the Item Graph tool.
-    /// </summary>
     public ItemGraphSettings ItemGraph { get; set; } = new();
 
-    /// <summary>
-    /// User-created tool presets for quick tool configuration.
-    /// </summary>
     public List<UserToolPreset> UserToolPresets { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the time-series in-memory cache.
-    /// </summary>
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
 
-    /// <summary>
-    /// Style configuration for all graph widgets.
-    /// Customizes colors, spacing, and styling for graph components.
-    /// </summary>
     public MTGraphStyleConfig GraphStyle { get; set; } = new();
     
     /// <summary>

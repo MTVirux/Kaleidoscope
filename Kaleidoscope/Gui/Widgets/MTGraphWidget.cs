@@ -37,11 +37,6 @@ public sealed class MTGraphWidget : ISettingsProvider
     private static readonly string[] AutoScrollTimeUnitNames = 
         { "Seconds", "Minutes", "Hours", "Days", "Weeks" };
 
-    #region Constructors
-
-    /// <summary>
-    /// Creates a new MTGraphWidget with default configuration.
-    /// </summary>
     public MTGraphWidget() : this(new MTGraphConfig()) { }
 
     /// <summary>
@@ -68,10 +63,6 @@ public sealed class MTGraphWidget : ISettingsProvider
             }
         };
     }
-
-    #endregion
-
-    #region Properties
 
     /// <summary>
     /// Gets the underlying MTGraph instance.
@@ -151,19 +142,11 @@ public sealed class MTGraphWidget : ISettingsProvider
     /// </summary>
     public IReadOnlyCollection<string> HiddenSeries => _graph.HiddenSeries;
 
-    #endregion
-
-    #region Events
-
     /// <summary>
     /// Event fired when auto-scroll settings are changed via the controls drawer.
     /// Parameters: (bool autoScrollEnabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
     /// </summary>
     public event Action<bool, int, MTTimeUnit, float>? OnAutoScrollSettingsChanged;
-
-    #endregion
-
-    #region Public Methods
 
     /// <summary>
     /// Updates the Y-axis bounds without recreating the widget.
@@ -201,10 +184,6 @@ public sealed class MTGraphWidget : ISettingsProvider
         _graph.ClearCache();
     }
 
-    #endregion
-
-    #region Render Methods
-
     /// <summary>
     /// Renders the graph with the provided samples using ImPlot (trading platform style).
     /// </summary>
@@ -238,10 +217,6 @@ public sealed class MTGraphWidget : ISettingsProvider
         SyncToBoundSettings();
     }
 
-    #endregion
-
-    #region ISettingsProvider Implementation
-    
     /// <inheritdoc />
     public bool HasSettings => true;
     
@@ -566,10 +541,4 @@ public sealed class MTGraphWidget : ISettingsProvider
             ImGui.EndTooltip();
         }
     }
-
-    #endregion
-
-    #region Private Helpers
-
-    #endregion
 }

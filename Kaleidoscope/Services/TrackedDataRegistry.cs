@@ -407,19 +407,11 @@ public sealed class TrackedDataRegistry : IRequiredService
         _definitions[definition.Type] = definition;
     }
 
-    /// <summary>
-    /// Gets the definition for a specific data type.
-    /// O(1) dictionary lookup.
-    /// </summary>
     public TrackedDataDefinition? GetDefinition(TrackedDataType type)
     {
         return _definitions.TryGetValue(type, out var def) ? def : null;
     }
 
-    /// <summary>
-    /// Gets all definitions in a specific category.
-    /// Uses cached category lookup - O(1) instead of O(n) iteration.
-    /// </summary>
     public IReadOnlyList<TrackedDataDefinition> GetByCategory(TrackedDataCategory category)
     {
         if (_byCategory != null && _byCategory.TryGetValue(category, out var list))
@@ -429,10 +421,6 @@ public sealed class TrackedDataRegistry : IRequiredService
         return _definitions.Values.Where(d => d.Category == category).ToList();
     }
     
-    /// <summary>
-    /// Gets the definition for a specific item ID.
-    /// Uses cached ItemId lookup - O(1) instead of O(n) iteration.
-    /// </summary>
     public TrackedDataDefinition? GetByItemId(uint itemId)
     {
         if (_byItemId != null && _byItemId.TryGetValue(itemId, out var def))
@@ -442,24 +430,12 @@ public sealed class TrackedDataRegistry : IRequiredService
         return _definitions.Values.FirstOrDefault(d => d.ItemId == itemId);
     }
     
-    /// <summary>
-    /// Gets all registered data types as a cached list.
-    /// </summary>
     public IReadOnlyList<TrackedDataType> AllTypes => _allTypes ?? _definitions.Keys.ToList();
     
-    /// <summary>
-    /// Gets all definitions that are enabled by default.
-    /// </summary>
     public IReadOnlyList<TrackedDataDefinition> EnabledByDefault => _enabledByDefaultList ?? _definitions.Values.Where(d => d.EnabledByDefault).ToList();
     
-    /// <summary>
-    /// Gets the count of registered definitions.
-    /// </summary>
     public int Count => _definitions.Count;
     
-    /// <summary>
-    /// Gets the count of categories with registered definitions.
-    /// </summary>
     public int CategoryCount => _byCategory?.Count ?? 0;
 
     /// <summary>

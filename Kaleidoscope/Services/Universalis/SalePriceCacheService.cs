@@ -46,7 +46,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
     private const int DefaultTtlSeconds = 30;
     private const int MaxCacheEntries = 20000;
     
-    /// <summary>TTL in seconds for cache entries. Default: 30 seconds.</summary>
     public int TtlSeconds { get; set; } = DefaultTtlSeconds;
     
     public SalePriceCacheService(IPluginLog log, CurrencyTrackerService currencyTrackerService)
@@ -56,24 +55,16 @@ public sealed class SalePriceCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[SalePriceCache] Service initialized");
     }
     
-    #region Public Properties - Statistics
-    
-    /// <summary>Number of cache hits.</summary>
     public long CacheHits => Interlocked.Read(ref _cacheHits);
     
-    /// <summary>Number of cache misses.</summary>
     public long CacheMisses => Interlocked.Read(ref _cacheMisses);
     
-    /// <summary>Number of DB fetches performed.</summary>
     public long DbFetches => Interlocked.Read(ref _dbFetches);
     
-    /// <summary>Total entries in the global sale cache.</summary>
     public int GlobalCacheCount => _globalSaleCache.Count;
     
-    /// <summary>Total entries in the world-specific cache.</summary>
     public int WorldCacheCount => _worldSaleCache.Count;
     
-    /// <summary>Total entries in the batch cache.</summary>
     public int BatchCacheCount => _batchSaleCache.Count;
     
     /// <summary>Cache hit rate as a percentage (0-100).</summary>
@@ -85,10 +76,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
             return total > 0 ? (CacheHits * 100.0 / total) : 0;
         }
     }
-    
-    #endregion
-    
-    #region Global Sale Price (no world filter)
     
     /// <summary>
     /// Gets the most recent sale price for an item.
@@ -134,10 +121,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         _globalSaleCache[key] = new SalePriceCacheEntry(price);
     }
     
-    #endregion
-    
-    #region World-Specific Sale Price
-    
     /// <summary>
     /// Gets the most recent sale price for an item on a specific world.
     /// Cache-first: returns cached value if within TTL, otherwise fetches from DB.
@@ -182,10 +165,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         var key = (itemId, worldId, isHq);
         _worldSaleCache[key] = new SalePriceCacheEntry(price);
     }
-    
-    #endregion
-    
-    #region Batch Sale Prices
     
     /// <summary>
     /// Gets the latest sale prices for multiple items.
@@ -264,10 +243,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
             _batchSaleCache[itemId] = new BatchSalePriceCacheEntry(lastSaleNq ?? 0, lastSaleHq ?? 0);
         }
     }
-    
-    #endregion
-    
-    #region Cache Management
     
     /// <summary>
     /// Clears all caches.
@@ -352,8 +327,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
             _batchSaleCache.TryRemove(key, out _);
         }
     }
-    
-    #endregion
     
     public void Dispose()
     {

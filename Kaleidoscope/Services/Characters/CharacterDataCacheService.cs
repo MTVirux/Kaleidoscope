@@ -62,8 +62,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Character, "[CharacterDataCacheService] Initialized (awaiting DB connection)");
     }
 
-    #region Initialization
-
     /// <summary>
     /// Sets the database service reference and populates the cache.
     /// Called by CurrencyTrackerService after DbService is created.
@@ -110,10 +108,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Refreshed cache with {_cache.Count} characters");
     }
-
-    #endregion
-
-    #region Read Operations
 
     /// <summary>
     /// Gets the effective display name for a character (custom display name if set, otherwise game name).
@@ -273,10 +267,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     public static string? FormatName(string? fullName, CharacterNameFormat format)
         => Libs.CharacterNameFormatter.FormatName(fullName, format);
 
-    #endregion
-
-    #region Write Operations
-
     /// <summary>
     /// Sets a character's game name (automatically detected from the game).
     /// Updates cache immediately and persists to DB only if the name has changed.
@@ -389,10 +379,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
     }
 
-    #endregion
-
-    #region Bulk Operations
-
     /// <summary>
     /// Populates the cache with character data from an external source.
     /// Used during initialization or when syncing from external data.
@@ -433,10 +419,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
     }
 
-    #endregion
-
-    #region Statistics
-
     /// <summary>
     /// Gets cache statistics for diagnostics.
     /// </summary>
@@ -454,8 +436,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
                 : 0.0
         };
     }
-
-    #endregion
 
     public void Dispose()
     {

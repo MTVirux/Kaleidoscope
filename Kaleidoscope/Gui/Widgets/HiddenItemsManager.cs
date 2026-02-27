@@ -212,8 +212,6 @@ public sealed class HiddenItemsManager<TId> : ISettingsProvider where TId : notn
         }
     }
     
-    #region ISettingsProvider Implementation
-    
     bool ISettingsProvider.HasSettings => _hiddenItems.Count > 0;
     
     string ISettingsProvider.SettingsName => $"Hidden {_pluralName}";
@@ -224,11 +222,7 @@ public sealed class HiddenItemsManager<TId> : ISettingsProvider where TId : notn
         DrawSettingsContent(id => id.ToString() ?? "Unknown");
         return _hiddenItems.Count != countBefore;
     }
-    
-    #endregion
-    
-    #region Serialization Helpers
-    
+
     /// <summary>
     /// Exports the hidden items to a list for serialization.
     /// </summary>
@@ -242,6 +236,4 @@ public sealed class HiddenItemsManager<TId> : ISettingsProvider where TId : notn
         if (list == null) return;
         SetAll(list);
     }
-    
-    #endregion
 }

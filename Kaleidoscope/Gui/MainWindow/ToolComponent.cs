@@ -269,22 +269,9 @@ public abstract class ToolComponent : IDisposable
         }
     }
     
-    #region Logging Helpers
-    
-    /// <summary>
-    /// Logs a debug message with the tool type name as context.
-    /// Use this instead of hardcoding tool names in log messages.
-    /// </summary>
     protected void LogDebug(string message) => LogService.Debug(LogCategory.UI, $"[{GetType().Name}] {message}");
     
-    /// <summary>
-    /// Logs an error message with the tool type name as context.
-    /// </summary>
     protected void LogError(string message) => LogService.Error(LogCategory.UI, $"[{GetType().Name}] {message}");
-    
-    #endregion
-    
-    #region Settings Serialization Helpers
     
     /// <summary>
     /// Exports a Vector4 color to the settings dictionary with RGBA component keys.
@@ -537,6 +524,4 @@ public abstract class ToolComponent : IDisposable
         
         return null;
     }
-    
-    #endregion
 }

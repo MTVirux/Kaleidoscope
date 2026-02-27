@@ -20,8 +20,6 @@ public sealed class LifestreamService : IDisposable, IService
 {
     private readonly IDalamudPluginInterface _pluginInterface;
 
-    #region IPC Subscribers
-
     // --- Status ---
     private ICallGateSubscriber<bool>? _isBusy;
     private ICallGateSubscriber<object?>? _abort;
@@ -72,8 +70,6 @@ public sealed class LifestreamService : IDisposable, IService
     private ICallGateSubscriber<uint>? _getRealTerritoryType;
     private ICallGateSubscriber<uint, int?>? _getWorldChangeAetheryteByTerritoryType;
 
-    #endregion
-
     private bool _initialized = false;
     private Timer? _retryTimer;
     private const int RetryIntervalMs = 5000;
@@ -83,9 +79,6 @@ public sealed class LifestreamService : IDisposable, IService
     /// </summary>
     public bool IsAvailable { get; private set; } = false;
 
-    /// <summary>
-    /// Creates and initializes the Lifestream IPC service.
-    /// </summary>
     public LifestreamService(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
@@ -172,8 +165,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    #region Retry Logic
-
     private void StartRetryTimer()
     {
         if (_retryTimer != null) return;
@@ -213,13 +204,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Status
-
-    /// <summary>
-    /// Checks if Lifestream is currently busy performing a task.
-    /// </summary>
     public bool IsBusy()
     {
         if (!IsAvailable || _isBusy == null) return false;
@@ -235,9 +219,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Aborts all current Lifestream tasks.
-    /// </summary>
     public void Abort()
     {
         if (!IsAvailable || _abort == null) return;
@@ -252,10 +233,6 @@ public sealed class LifestreamService : IDisposable, IService
             IsAvailable = false;
         }
     }
-
-    #endregion
-
-    #region World Travel
 
     /// <summary>
     /// Checks if the specified world can be visited within the same data center.
@@ -339,10 +316,6 @@ public sealed class LifestreamService : IDisposable, IService
             return false;
         }
     }
-
-    #endregion
-
-    #region Teleportation
 
     /// <summary>
     /// Teleports to an aetheryte by its sheet row ID.
@@ -479,10 +452,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Teleports to the player's Free Company house.
-    /// </summary>
-    /// <returns>True if the request was accepted.</returns>
     public bool TeleportToFC()
     {
         if (!IsAvailable || _teleportToFC == null) return false;
@@ -500,10 +469,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Teleports to the player's private house.
-    /// </summary>
-    /// <returns>True if the request was accepted.</returns>
     public bool TeleportToHome()
     {
         if (!IsAvailable || _teleportToHome == null) return false;
@@ -521,10 +486,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Teleports to the player's apartment.
-    /// </summary>
-    /// <returns>True if the request was accepted.</returns>
     public bool TeleportToApartment()
     {
         if (!IsAvailable || _teleportToApartment == null) return false;
@@ -541,10 +502,6 @@ public sealed class LifestreamService : IDisposable, IService
             return false;
         }
     }
-
-    #endregion
-
-    #region Aetheryte State
 
     /// <summary>
     /// Gets the ID of the currently active aetheryte/aetheryte shard, if any.
@@ -603,13 +560,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Instance
-
-    /// <summary>
-    /// Checks if the player can currently change instances.
-    /// </summary>
     public bool CanChangeInstance()
     {
         if (!IsAvailable || _canChangeInstance == null) return false;
@@ -681,10 +631,6 @@ public sealed class LifestreamService : IDisposable, IService
             return 0;
         }
     }
-
-    #endregion
-
-    #region Housing
 
     /// <summary>
     /// Checks if the current character has an apartment.
@@ -762,13 +708,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Character / Login
-
-    /// <summary>
-    /// Checks if Lifestream can perform an auto-login.
-    /// </summary>
     public bool CanAutoLogin()
     {
         if (!IsAvailable || _canAutoLogin == null) return false;
@@ -874,10 +813,6 @@ public sealed class LifestreamService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Misc
-
     /// <summary>
     /// Executes a Lifestream command as if typed in chat (e.g., "/li goto Limsa Lominsa").
     /// </summary>
@@ -935,8 +870,6 @@ public sealed class LifestreamService : IDisposable, IService
             return null;
         }
     }
-
-    #endregion
 
     public void Dispose()
     {

@@ -438,8 +438,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         Initialize();
     }
 
-    #region IPC Helper Methods
-
     /// <summary>
     /// Safely invokes an IPC function, returning null on failure.
     /// </summary>
@@ -560,10 +558,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Plugin State Queries
-
     /// <summary>
     /// Checks if AutoRetainer is currently busy processing tasks.
     /// </summary>
@@ -632,10 +626,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         var enabledRetainers = GetEnabledRetainersForCharacter(cid);
         return enabledRetainers.Contains(retainerName);
     }
-
-    #endregion
-
-    #region Plugin Control Actions
 
     /// <summary>
     /// Sets the suppressed state of AutoRetainer.
@@ -903,8 +893,6 @@ public sealed class AutoRetainerService : IDisposable, IService
 #endif
         return false;
     }
-
-    #endregion
 
     public void Dispose()
     {

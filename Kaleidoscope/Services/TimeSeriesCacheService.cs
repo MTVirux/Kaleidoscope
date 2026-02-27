@@ -79,8 +79,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Cache, "[TimeSeriesCacheService] Initialized");
     }
 
-    #region Cache Read Operations
-
     /// <summary>
     /// Gets cached points for a variable/character combination.
     /// Returns empty list if not cached (caller should populate from DB).
@@ -299,8 +297,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return _characterDataCache.GetDisambiguatedNames(characterIds);
     }
 
-    #region Cache-First Batch Read Operations (Phase 3)
-
     /// <summary>
     /// Gets the latest cached value for each character for a given variable.
     /// Cache-first: returns only cached data, no DB fallback.
@@ -454,12 +450,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     {
         return _cache.Keys.Any(k => k.Variable == variable);
     }
-
-    #endregion
-
-    #endregion
-
-    #region Cache Write Operations
 
     /// <summary>
     /// Adds or updates a single point in the cache.
@@ -659,10 +649,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             Interlocked.Increment(ref _version);
     }
 
-    #endregion
-
-    #region Cache Maintenance
-
     /// <summary>
     /// Trims old data from all cached series based on the configured time window.
     /// Call this periodically to prevent unbounded memory growth.
@@ -700,10 +686,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 : 0.0
         };
     }
-
-    #endregion
-
-    #region Inventory Value Cache
 
     /// <summary>
     /// Gets or refreshes the inventory value history cache.
@@ -849,8 +831,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
         }
     }
-
-    #endregion
 
     public void Dispose()
     {

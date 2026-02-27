@@ -47,19 +47,10 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private int _salesAddCount;
     private readonly object _messageCountLock = new();
 
-    /// <summary>Event fired when a new price update is received.</summary>
     public event Action<PriceFeedEntry>? OnPriceUpdate;
-
-    /// <summary>Event fired when connection state changes.</summary>
     public event Action<bool>? OnConnectionStateChanged;
-
-    /// <summary>Gets whether the WebSocket is currently connected.</summary>
     public bool IsConnected => _isConnected;
-
-    /// <summary>Gets the current live feed entries.</summary>
     public IEnumerable<PriceFeedEntry> LiveFeed => _liveFeed.ToArray();
-
-    /// <summary>Gets the count of entries in the live feed.</summary>
     public int LiveFeedCount => _feedCount;
 
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;

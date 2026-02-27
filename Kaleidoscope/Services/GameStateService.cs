@@ -34,8 +34,6 @@ public static unsafe class GameStateService
         _objectTable = objectTable;
     }
 
-    #region Character Utilities
-
     /// <summary>
     /// Validates that a character name follows FFXIV naming conventions.
     /// </summary>
@@ -97,10 +95,6 @@ public static unsafe class GameStateService
         }
     }
 
-    #endregion
-
-    #region Game Manager Access
-
     public static InventoryManager* InventoryManagerInstance()
     {
         try { return InventoryManager.Instance(); }
@@ -112,10 +106,6 @@ public static unsafe class GameStateService
         try { return RetainerManager.Instance(); }
         catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"RetainerManager.Instance() failed: {ex.Message}"); return null; }
     }
-
-    #endregion
-
-    #region Player State
 
     public static ulong PlayerContentId => _playerState?.ContentId ?? 0;
 
@@ -130,10 +120,6 @@ public static unsafe class GameStateService
             catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"LocalPlayer name access failed: {ex.Message}"); return null; }
         }
     }
-
-    #endregion
-
-    #region Retainer Operations
 
     /// <summary>
     /// Gets the total gil held by all retainers (from RetainerManager cached data).
@@ -296,10 +282,6 @@ public static unsafe class GameStateService
         return totals;
     }
 
-    #endregion
-
-    #region Currency Queries
-
     /// <summary>
     /// Gets the Free Company Credits from the FreeCompanyCreditShop agent.
     /// Based on AutoRetainer implementation: offset 256 in the agent.
@@ -330,8 +312,6 @@ public static unsafe class GameStateService
             return null;
         }
     }
-
-    #endregion
 
     /// <summary>
     /// Clears static service references during plugin unload.

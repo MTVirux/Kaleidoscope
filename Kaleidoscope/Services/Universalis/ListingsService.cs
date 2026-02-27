@@ -12,10 +12,7 @@ namespace Kaleidoscope.Services.Universalis;
 /// </summary>
 public sealed class ListingsService : IDisposable, IService
 {
-    /// <summary>Threshold for considering cached listings stale (10 minutes).</summary>
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(10);
-
-    /// <summary>Maximum items to backfill per API batch.</summary>
     private const int MaxBackfillBatchSize = 100;
 
     /// <summary>Delay between API batches to avoid rate limiting.</summary>
@@ -37,13 +34,8 @@ public sealed class ListingsService : IDisposable, IService
     private volatile bool _initialized;
     private CancellationTokenSource? _backfillCts;
 
-    /// <summary>Gets whether the service has completed initial backfill.</summary>
     public bool IsInitialized => _initialized;
-
-    /// <summary>Gets the number of cached listings.</summary>
     public int CacheCount => _listingsCache.Count;
-
-    /// <summary>Event fired when a listing is updated.</summary>
     public event Action<int, int>? OnListingUpdated;
 
     public ListingsService(

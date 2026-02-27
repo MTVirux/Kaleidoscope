@@ -42,8 +42,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Service initialized");
     }
     
-    #region Secondary Index Helpers
-    
     /// <summary>
     /// Adds an (itemId, worldId) pair to both secondary indexes.
     /// </summary>
@@ -90,34 +88,19 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
     }
     
-    #endregion
-    
-    #region Public Properties - Statistics
-    
     /// <summary>
     /// Monotonically increasing version counter. Incremented on every cache mutation.
     /// Consumers can compare against a stored version to detect changes without polling.
     /// </summary>
     public long Version => Volatile.Read(ref _version);
     
-    /// <summary>Number of cache hits (fresh data returned).</summary>
     public long CacheHits => Interlocked.Read(ref _cacheHits);
-    
-    /// <summary>Number of cache misses (no data in cache).</summary>
     public long CacheMisses => Interlocked.Read(ref _cacheMisses);
-    
-    /// <summary>Number of stale hits (data returned but marked as stale).</summary>
     public long StaleHits => Interlocked.Read(ref _staleHits);
-    
-    /// <summary>Number of cache evictions due to size limits.</summary>
     public long Evictions => Interlocked.Read(ref _evictions);
-    
-    /// <summary>Total entries in the price cache.</summary>
     public int PriceCacheCount => _priceCache.Count;
-    
-    /// <summary>Total entries in the recent sales cache.</summary>
     public int RecentSalesCacheCount => _recentSalesCache.Count;
-    
+
     /// <summary>Cache hit rate as a percentage (0-100).</summary>
     public double HitRate
     {
@@ -128,12 +111,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
     }
     
-    /// <summary>Last time cache eviction was performed.</summary>
     public DateTime? LastEvictionTime => _lastEvictionTime;
-    
-    #endregion
-    
-    #region Price Cache Operations
     
     /// <summary>
     /// Gets a cached price entry if available.
@@ -452,10 +430,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Evicted {count} oldest entries");
     }
     
-    #endregion
-    
-    #region Recent Sales Cache Operations
-    
     /// <summary>
     /// Gets recent sales data for an item/world combination.
     /// </summary>
@@ -532,10 +506,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Recent sales cache cleared");
     }
     
-    #endregion
-    
-    #region Statistics and Maintenance
-    
     /// <summary>
     /// Resets all statistics counters.
     /// </summary>
@@ -601,8 +571,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
             LastEvictionTime = _lastEvictionTime
         };
     }
-    
-    #endregion
     
     public void Dispose()
     {

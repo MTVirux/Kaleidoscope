@@ -734,8 +734,6 @@ public sealed class StorageCategory : IDisposable
         }
     }
 
-    #region Data Cleanup Section
-
     private void DrawDataCleanupSection()
     {
         if (!ImGui.CollapsingHeader("Data Cleanup##StorageCleanup"))
@@ -1246,6 +1244,4 @@ public sealed class StorageCategory : IDisposable
             _messageService.NotificationMessage(ex, "Failed to delete data points.", NotificationType.Error);
         }
     }
-
-    #endregion
 }

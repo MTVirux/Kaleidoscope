@@ -15,8 +15,6 @@ namespace Kaleidoscope.Services.Universalis;
 /// </summary>
 public sealed class PriceTrackingService : IDisposable, IRequiredService
 {
-    #region Fields and Properties
-    
     private readonly IPluginLog _log;
     private readonly IFramework _framework;
     private readonly ConfigurationService _configService;
@@ -68,36 +66,16 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
 
-    /// <summary>Gets the cached world data.</summary>
     public UniversalisWorldData? WorldData => _worldData;
-
-    /// <summary>Gets the Universalis service for API calls.</summary>
     public UniversalisService UniversalisService => _universalisService;
-
-    /// <summary>Gets the listings cache service for lowest listing lookups.</summary>
     public ListingsService ListingsService => _listingsService;
-
-    /// <summary>Gets the set of marketable item IDs.</summary>
     public IReadOnlySet<int>? MarketableItems => _marketableItems;
-
-    /// <summary>Gets whether the service is initialized.</summary>
     public bool IsInitialized => _worldData != null && _marketableItems != null;
-
-    /// <summary>Gets whether the WebSocket is currently connected for real-time price updates.</summary>
     public bool IsSocketConnected => _webSocketService.IsConnected;
-
-    /// <summary>Gets the WebSocket service for checking subscription status.</summary>
     public UniversalisWebSocketService WebSocketService => _webSocketService;
 
-    /// <summary>Event fired when price data is updated (new price received via WebSocket).</summary>
     public event Action<int>? OnPriceDataUpdated;
-    
-    /// <summary>Event fired when world data is loaded/refreshed from Universalis.</summary>
     public event Action? OnWorldDataLoaded;
-
-    #endregion
-
-    #region Constructor and Initialization
 
     public PriceTrackingService(
         IPluginLog log,
@@ -240,10 +218,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             LogService.Error(LogCategory.PriceTracking, $"[PriceTracking] Failed to populate recent sales cache: {ex.Message}");
         }
     }
-
-    #endregion
-
-    #region Framework Update and Events
 
     private void OnFrameworkUpdate(IFramework framework)
     {
@@ -528,10 +502,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
-    #endregion
-
-    #region Background Processing
-
     /// <summary>
     /// Background worker that processes queued price updates.
     /// Drains the channel in batches and writes to the database on a dedicated thread.
@@ -760,10 +730,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         return _worldData.GetWorldIdsForPriceMatchMode(characterWorldId, mode);
     }
 
-    #endregion
-
-    #region World Data and Marketable Items
-
     /// <summary>
     /// Refreshes the cached world/DC data from Universalis.
     /// Falls back to static data if the API is unavailable.
@@ -879,10 +845,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
-    #endregion
-
-    #region Price Fetching and Caching
-
     /// <summary>
     /// Gets the current price for an item.
     /// First checks cache, then database, optionally fetches from API.
@@ -977,10 +939,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             return null;
         }
     }
-
-    #endregion
-
-    #region Inventory Value Calculation
 
     /// <summary>
     /// Calculates the liquid value of a character's inventory.
@@ -1308,10 +1266,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         await Task.CompletedTask;
     }
 
-    #endregion
-
-    #region Inventory Price Fetching
-
     /// <summary>
     /// Fetches prices for all items in the player's inventories.
     /// Uses batch database writes for better performance.
@@ -1461,10 +1415,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         }
     }
 
-    #endregion
-
-    #region Top Items Analysis
-
     /// <summary>
     /// Gets the top items by value for a character or all characters.
     /// When a specific character is specified, uses their world's price match mode.
@@ -1546,10 +1496,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         return result;
     }
-
-    #endregion
-
-    #region Service Control
 
     /// <summary>
     /// Enables or disables price tracking.
@@ -1637,8 +1583,6 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
         try { _cts.Dispose(); }
         catch (Exception) { /* Ignore */ }
     }
-
-    #endregion
 }
 
 /// <summary>

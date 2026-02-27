@@ -40,9 +40,6 @@ public static class LogService
     // when async code resumes on a different thread pool thread.
     private static readonly AsyncLocal<string?> _currentCharacterContext = new();
 
-    /// <summary>
-    /// Gets whether the log service has been initialized.
-    /// </summary>
     public static bool IsInitialized => _log != null;
 
     /// <summary>
@@ -55,14 +52,8 @@ public static class LogService
     /// </summary>
     public static string? LogFilePath => _logFilePath;
 
-    /// <summary>
-    /// Gets the number of active category log files.
-    /// </summary>
     public static int ActiveCategoryWriters => _categoryWriters.Count;
 
-    /// <summary>
-    /// Gets the number of active character log files.
-    /// </summary>
     public static int ActiveCharacterWriters => _characterWriters.Count;
 
     /// <summary>
@@ -661,8 +652,6 @@ public static class LogService
         }
     }
 
-    #region Helper Classes
-
     /// <summary>
     /// Base class for rotating file log writers. Handles file creation, size-based rotation,
     /// timestamped line formatting, and thread-safe writes.
@@ -796,9 +785,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Manages a log file for a specific category.
-    /// </summary>
     private sealed class CategoryLogWriter : RotatingLogWriter
     {
         public LogCategory Category { get; }
@@ -810,9 +796,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Manages a log file for a specific character.
-    /// </summary>
     private sealed class CharacterLogWriter : RotatingLogWriter
     {
         public string CharacterName { get; }
@@ -823,6 +806,4 @@ public static class LogService
             CharacterName = characterName;
         }
     }
-
-    #endregion
 }

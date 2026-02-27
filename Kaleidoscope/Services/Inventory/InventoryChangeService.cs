@@ -68,9 +68,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     public event Action? OnRetainerInventoryReady;
 
-    /// <summary>
-    /// Event fired when the retainer is closed.
-    /// </summary>
     public event Action? OnRetainerClosed;
 
     public InventoryChangeService(IPluginLog log, IClientState clientState, IGameInventory gameInventory, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)

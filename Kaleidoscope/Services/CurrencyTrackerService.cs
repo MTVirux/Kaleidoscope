@@ -49,24 +49,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         set { /* Interval is now controlled by InventoryChangeService */ }
     }
 
-    /// <summary>
-    /// Gets the underlying database service for direct data access.
-    /// </summary>
     public KaleidoscopeDbService DbService => _dbService;
 
-    /// <summary>
-    /// Gets the tracked data registry.
-    /// </summary>
     public TrackedDataRegistry Registry => _registry;
 
-    /// <summary>
-    /// Gets the in-memory cache service for fast data access.
-    /// </summary>
     public TimeSeriesCacheService CacheService => _cacheService;
 
-    /// <summary>
-    /// Gets the character data cache service for character name lookups.
-    /// </summary>
     public CharacterDataCacheService CharacterDataCache => _characterDataCache;
 
     /// <summary>
@@ -193,7 +181,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 var seriesId = _dbService.GetOrCreateSeries("Gil", cid);
                 if (seriesId.HasValue)
                 {
-                    // Check if we already have data for this character
                     var existingValue = _dbService.GetLastValueForCharacter("Gil", cid);
                     
                     // AutoRetainer data takes priority - add sample if gil differs from latest
@@ -252,8 +239,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 _cacheService.SetCharacterName(cid, characterName);
             }
 
-            // Queue all changed values for background database write
-            // Also update cache immediately for instant UI access
             foreach (var (dataType, value) in changedValues)
             {
                 var variable = dataType.ToString();
@@ -323,10 +308,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Populates the in-memory cache from database on startup.
-    /// Loads recent data based on cache configuration.
-    /// </summary>
     private void PopulateCacheFromDatabase()
     {
         var cacheConfig = _configService.Config.TimeSeriesCacheConfig;
@@ -345,18 +326,15 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             // Character names are now loaded by CharacterDataCacheService.Initialize()
             LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
 
-            // Load data for each tracked data type (currencies)
             foreach (var dataType in _registry.Definitions.Keys)
             {
                 var variable = dataType.ToString();
 
-                // Get available characters for this variable
                 var characters = _dbService.GetAvailableCharacters(variable);
                 if (characters.Count == 0) continue;
 
                 _cacheService.PopulateAvailableCharacters(variable, characters);
 
-                // Load recent points for each character
                 foreach (var charId in characters)
                 {
                     var points = _dbService.GetPointsSince(variable, charId, cutoffTime);
@@ -421,35 +399,21 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
     }
 
-    #region Data Management Helpers
-
-    /// <summary>
-    /// Gets whether the database exists and has data.
-    /// </summary>
     public bool HasDb => !string.IsNullOrEmpty(_filenames.DatabasePath) 
                          && File.Exists(_filenames.DatabasePath);
 
-    /// <summary>
-    /// Clears all data for a specific data type from the database.
-    /// </summary>
     public void ClearAllData(TrackedDataType dataType)
     {
         _dbService.ClearAllData(dataType.ToString());
         LogService.Info(LogCategory.CurrencyTracker, $"Cleared all {dataType} data");
     }
 
-    /// <summary>
-    /// Clears all data from the database (all data types).
-    /// </summary>
     public void ClearAllData()
     {
         _dbService.ClearAllTables();
         LogService.Info(LogCategory.CurrencyTracker, "Cleared all tracking data");
     }
 
-    /// <summary>
-    /// Removes data for characters without a name association.
-    /// </summary>
     public int CleanUnassociatedCharacters()
     {
         var totalCount = 0;
@@ -462,9 +426,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         return totalCount;
     }
 
-    /// <summary>
-    /// Removes data for characters without a name association for a specific data type.
-    /// </summary>
     public int CleanUnassociatedCharacters(TrackedDataType dataType)
     {
         var count = _dbService.CleanUnassociatedCharacters(dataType.ToString());
@@ -473,9 +434,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         return count;
     }
 
-    /// <summary>
-    /// Exports data to a CSV file and returns the file path.
-    /// </summary>
     public string? ExportCsv(TrackedDataType dataType, ulong? characterId = null)
     {
         var dbPath = _filenames.DatabasePath;
@@ -733,8 +691,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     {
         return _dbService.Vacuum();
     }
-
-    #endregion
 
     public void Dispose()
     {

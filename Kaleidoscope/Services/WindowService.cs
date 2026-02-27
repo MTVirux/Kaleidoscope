@@ -133,17 +133,11 @@ public sealed class WindowService : IDisposable, IRequiredService
     public void OpenConfigWindow() => _configWindow.BringToFront();
     public void OpenLayoutsConfig() => _configWindow.OpenToTab(ConfigWindow.TabIndex.Layouts);
 
-    /// <summary>
-    /// Requests entering fullscreen mode.
-    /// </summary>
     public void RequestShowFullscreen()
     {
         _mainWindow.EnterFullscreenMode();
     }
 
-    /// <summary>
-    /// Requests exiting fullscreen mode.
-    /// </summary>
     public void RequestExitFullscreen()
     {
         _mainWindow.ExitFullscreenMode();

@@ -414,8 +414,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             );
         }
         
-        #region Dirty Snapshot Persistence
-        
         private sealed class DirtySnapshot
         {
             public string LayoutName { get; set; } = string.Empty;
@@ -541,20 +539,12 @@ public sealed class LayoutEditingService : IDisposable, IService
             }
         }
         
-        #endregion
-        
-        #region Helpers
-        
         private static List<ToolLayoutState> CloneToolList(List<ToolLayoutState> source)
         {
             // Deep clone by serializing/deserializing
             var json = JsonConvert.SerializeObject(source);
             return JsonConvert.DeserializeObject<List<ToolLayoutState>>(json) ?? new List<ToolLayoutState>();
         }
-        
-        #endregion
-        
-        #region Tool Lookup Cache
         
         /// <summary>
         /// Gets a tool by name from the working layout using a cached lookup.
@@ -612,10 +602,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             _toolByNameCache = null;
         }
         
-        #endregion
-        
-        #region Grid Dimensions Cache
-        
         /// <summary>
         /// Gets the effective grid dimensions (cached).
         /// </summary>
@@ -641,37 +627,22 @@ public sealed class LayoutEditingService : IDisposable, IService
             _cachedGridDimensions = null;
         }
         
-        #endregion
-        
-        #region Statistics
-        
-        /// <summary>Number of layout saves performed.</summary>
         public long SaveCount => Interlocked.Read(ref _saveCount);
         
-        /// <summary>Number of times changes were discarded.</summary>
         public long DiscardCount => Interlocked.Read(ref _discardCount);
         
-        /// <summary>Number of dirty snapshots written to disk.</summary>
         public long SnapshotWriteCount => Interlocked.Read(ref _snapshotWriteCount);
         
-        /// <summary>Number of snapshot writes skipped due to debouncing.</summary>
         public long SnapshotSkippedCount => Interlocked.Read(ref _snapshotSkippedCount);
         
-        /// <summary>Number of times MarkDirty was called.</summary>
         public long DirtyMarkCount => Interlocked.Read(ref _dirtyMarkCount);
         
-        /// <summary>Last time the layout was saved.</summary>
         public DateTime? LastSaveTime => _lastSaveTime;
         
-        /// <summary>Last time a dirty snapshot was written.</summary>
         public DateTime? LastSnapshotTime => _lastSnapshotTime;
         
-        /// <summary>Number of tools in the current working layout.</summary>
         public int ToolCount => _workingLayout?.Count ?? 0;
         
-        /// <summary>
-        /// Resets all statistics counters.
-        /// </summary>
         public void ResetStatistics()
         {
             Interlocked.Exchange(ref _saveCount, 0);
@@ -683,9 +654,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             _lastSnapshotTime = null;
         }
         
-        /// <summary>
-        /// Gets a summary of layout editing statistics.
-        /// </summary>
         public LayoutEditingStatistics GetStatistics()
         {
             return new LayoutEditingStatistics
@@ -706,10 +674,6 @@ public sealed class LayoutEditingService : IDisposable, IService
                     : 0
             };
         }
-        
-        #endregion
-        
-        #region IDisposable
         
         /// <summary>
         /// Clears event handlers and flushes pending snapshots.
@@ -739,8 +703,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             OnLayoutReverted = null;
             LogService.Debug(LogCategory.Layout, "LayoutEditingService disposed");
         }
-        
-        #endregion
     }
     
 /// <summary>

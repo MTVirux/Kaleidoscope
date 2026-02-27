@@ -395,16 +395,8 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
     }
 
-    #region Statistics Properties
-    
-    /// <summary>
-    /// Total number of saves performed.
-    /// </summary>
     public long SaveCount => Interlocked.Read(ref _saveCount);
     
-    /// <summary>
-    /// Number of saves skipped because config was not dirty.
-    /// </summary>
     public long SaveSkippedCount => Interlocked.Read(ref _saveSkippedCount);
     
     /// <summary>
@@ -412,19 +404,10 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// </summary>
     public long ConfigAccessCount => Interlocked.Read(ref _configAccessCount);
     
-    /// <summary>
-    /// Whether the configuration has unsaved changes.
-    /// </summary>
     public bool IsDirty => _isDirty;
     
-    /// <summary>
-    /// Last time the configuration was saved.
-    /// </summary>
     public DateTime? LastSaveTime => _lastSaveTime;
     
-    /// <summary>
-    /// Resets all statistics counters.
-    /// </summary>
     public void ResetStatistics()
     {
         Interlocked.Exchange(ref _saveCount, 0);
@@ -432,11 +415,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         Interlocked.Exchange(ref _configAccessCount, 0);
         _lastSaveTime = null;
     }
-    
-    #endregion
 
-    #region IDisposable
-    
     public void Dispose()
     {
         lock (_saveLock)
@@ -461,8 +440,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             }
         }
     }
-    
-    #endregion
 
     /// <summary>
     /// Helper comparer for (Name, Type) tuple that uses case-insensitive name comparison.

@@ -160,8 +160,6 @@ public static class ImGuiHelpers
         return (changed, result);
     }
     
-    #region Inline Color Editor
-    
     /// <summary>
     /// Placeholder color shown when no custom color is set and the user hasn't clicked to edit.
     /// </summary>
@@ -375,10 +373,6 @@ public static class ImGuiHelpers
         return false;
     }
     
-    #endregion
-    
-    #region Styled Buttons
-    
     /// <summary>Standard danger button color (red).</summary>
     public static readonly Vector4 DangerButtonColor = new(0.6f, 0.2f, 0.2f, 1f);
     /// <summary>Standard danger button hover color.</summary>
@@ -493,10 +487,6 @@ public static class ImGuiHelpers
         return clicked;
     }
     
-    #endregion
-    
-    #region Stat Display
-    
     /// <summary>
     /// Standard color for stat/info labels.
     /// </summary>
@@ -525,10 +515,6 @@ public static class ImGuiHelpers
         ImGui.SameLine(labelWidth);
         ImGui.TextColored(valueColor ?? StatValueColor, value);
     }
-    
-    #endregion
-    
-    #region Tooltips
     
     /// <summary>
     /// Shows a simple tooltip if the previous item is hovered.
@@ -573,7 +559,5 @@ public static class ImGuiHelpers
         }
         ImGui.EndTooltip();
     }
-    
-    #endregion
 }
 

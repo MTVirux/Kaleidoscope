@@ -86,15 +86,9 @@ public sealed class ProfilerService : IDisposable, IService
         // Child scopes for hierarchical profiling
         private Dictionary<string, ProfileStats>? _childScopes;
         
-        /// <summary>
-        /// Gets child scopes for hierarchical profiling.
-        /// </summary>
         public IReadOnlyDictionary<string, ProfileStats> ChildScopes => 
             _childScopes ?? (IReadOnlyDictionary<string, ProfileStats>)new Dictionary<string, ProfileStats>();
 
-        /// <summary>
-        /// Gets or creates a child scope for hierarchical profiling.
-        /// </summary>
         public ProfileStats GetOrCreateChildScope(string name)
         {
             _childScopes ??= new Dictionary<string, ProfileStats>();
@@ -116,9 +110,6 @@ public sealed class ProfilerService : IDisposable, IService
         /// </summary>
         public double EffectiveFps => AverageDrawTimeMs > 0 ? 1000.0 / AverageDrawTimeMs : 0;
 
-        /// <summary>
-        /// Gets the number of samples in the ring buffer.
-        /// </summary>
         public int RecentSampleCount => _ringCount;
 
         /// <summary>
@@ -126,24 +117,12 @@ public sealed class ProfilerService : IDisposable, IService
         /// </summary>
         public double P50Ms => GetPercentile(50);
 
-        /// <summary>
-        /// Gets the 90th percentile from recent samples.
-        /// </summary>
         public double P90Ms => GetPercentile(90);
 
-        /// <summary>
-        /// Gets the 95th percentile from recent samples.
-        /// </summary>
         public double P95Ms => GetPercentile(95);
 
-        /// <summary>
-        /// Gets the 99th percentile from recent samples.
-        /// </summary>
         public double P99Ms => GetPercentile(99);
 
-        /// <summary>
-        /// Gets the average of samples from the last N seconds.
-        /// </summary>
         public double GetRollingAverageMs(double seconds)
         {
             if (_ringCount == 0) return 0;
@@ -169,14 +148,8 @@ public sealed class ProfilerService : IDisposable, IService
             return count > 0 ? sum / count : 0;
         }
 
-        /// <summary>
-        /// Gets the 1-second rolling average.
-        /// </summary>
         public double Rolling1SecMs => GetRollingAverageMs(1.0);
 
-        /// <summary>
-        /// Gets the 5-second rolling average.
-        /// </summary>
         public double Rolling5SecMs => GetRollingAverageMs(5.0);
 
         /// <summary>
