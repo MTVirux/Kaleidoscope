@@ -6,25 +6,25 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Combo;
+using Kaleidoscope.Gui.Widgets.Combo;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets.Combo;
 
 /// <summary>
-/// A currency combo widget using MTComboWidget from MTGui.
+/// A currency combo widget using ComboWidget.
 /// Provides the same public interface as the legacy CurrencyComboDropdown.
 /// </summary>
-public sealed class MTCurrencyComboDropdown : IDisposable
+public sealed class CurrencyComboDropdown : IDisposable
 {
     private readonly ITextureProvider _textureProvider;
     private readonly TrackedDataRegistry _registry;
     private readonly FavoritesService _favoritesService;
     private readonly ItemDataService? _itemDataService;
     
-    private readonly MTComboWidget<MTCurrencyItem, TrackedDataType> _widget;
-    private readonly MTComboState<TrackedDataType> _state;
+    private readonly ComboWidget<CurrencyItem, TrackedDataType> _widget;
+    private readonly ComboState<TrackedDataType> _state;
     
     private bool _disposed;
     private bool _needsRebuild = true;
@@ -71,7 +71,7 @@ public sealed class MTCurrencyComboDropdown : IDisposable
     /// </summary>
     public event Action<IReadOnlySet<TrackedDataType>>? MultiSelectionChanged;
     
-    public MTCurrencyComboDropdown(
+    public CurrencyComboDropdown(
         ITextureProvider textureProvider,
         TrackedDataRegistry registry,
         FavoritesService favoritesService,
@@ -87,13 +87,13 @@ public sealed class MTCurrencyComboDropdown : IDisposable
         MultiSelectEnabled = multiSelect;
         
         // Create state
-        _state = new MTComboState<TrackedDataType>
+        _state = new ComboState<TrackedDataType>
         {
-            SortOrder = MTComboSortOrder.Custom
+            SortOrder = ComboSortOrder.Custom
         };
         
         // Create config
-        var config = new MTComboConfig
+        var config = new ComboConfig
         {
             ComboId = label,
             Placeholder = "Select currency...",
@@ -115,7 +115,7 @@ public sealed class MTCurrencyComboDropdown : IDisposable
         };
         
         // Create widget
-        _widget = new MTComboWidget<MTCurrencyItem, TrackedDataType>(config, _state);
+        _widget = new ComboWidget<CurrencyItem, TrackedDataType>(config, _state);
         
         // Configure grouping by category
         _widget.WithGrouping(item => item.Category.ToString());
@@ -200,7 +200,7 @@ public sealed class MTCurrencyComboDropdown : IDisposable
             _favoritesService.RemoveCurrency(type);
     }
     
-    private void DrawCurrencyIcon(MTCurrencyItem item, Vector2 size)
+    private void DrawCurrencyIcon(CurrencyItem item, Vector2 size)
     {
         // Resolve the icon source: prefer ItemId, fall back to IconId
         var iconSource = item.ItemId ?? item.IconId;
@@ -250,13 +250,13 @@ public sealed class MTCurrencyComboDropdown : IDisposable
         _needsRebuild = false;
     }
     
-    private List<MTCurrencyItem> BuildCurrencyList()
+    private List<CurrencyItem> BuildCurrencyList()
     {
-        var items = new List<MTCurrencyItem>();
+        var items = new List<CurrencyItem>();
         
         foreach (var (type, def) in _registry.Definitions)
         {
-            items.Add(new MTCurrencyItem
+            items.Add(new CurrencyItem
             {
                 Id = type,
                 Name = def.DisplayName,

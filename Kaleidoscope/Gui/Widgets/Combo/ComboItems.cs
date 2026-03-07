@@ -1,13 +1,13 @@
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
-using MTGui.Combo;
+using Kaleidoscope.Gui.Widgets.Combo;
 
 namespace Kaleidoscope.Gui.Widgets.Combo;
 
 /// <summary>
-/// Character item for MTComboWidget with grouping support.
+/// Character item for ComboWidget with grouping support.
 /// </summary>
-public sealed class MTCharacterItem : IMTGroupableComboItem<ulong>
+public sealed class CharacterItem : IGroupableComboItem<ulong>
 {
     public ulong Id { get; init; }
     public string Name { get; init; } = string.Empty;
@@ -15,15 +15,15 @@ public sealed class MTCharacterItem : IMTGroupableComboItem<ulong>
     public string? DataCenter { get; init; }
     public string? Region { get; init; }
     
-    // IMTGroupableComboItem implementation
-    string? IMTGroupableComboItem<ulong>.Group => Region;
-    string? IMTGroupableComboItem<ulong>.SubGroup => DataCenter;
-    string? IMTGroupableComboItem<ulong>.TertiaryGroup => World;
+    // IGroupableComboItem implementation
+    string? IGroupableComboItem<ulong>.Group => Region;
+    string? IGroupableComboItem<ulong>.SubGroup => DataCenter;
+    string? IGroupableComboItem<ulong>.TertiaryGroup => World;
     
     /// <summary>
     /// Creates from the legacy ComboCharacter type.
     /// </summary>
-    public static MTCharacterItem FromComboCharacter(ComboCharacter c) => new()
+    public static CharacterItem FromComboCharacter(ComboCharacter c) => new()
     {
         Id = c.Id,
         Name = c.Name,
@@ -34,9 +34,9 @@ public sealed class MTCharacterItem : IMTGroupableComboItem<ulong>
 }
 
 /// <summary>
-/// Game item for MTComboWidget.
+/// Game item for ComboWidget.
 /// </summary>
-public sealed class MTGameItem : IMTComboItem<uint>
+public sealed class GameItem : IComboItem<uint>
 {
     public uint Id { get; init; }
     public string Name { get; init; } = string.Empty;
@@ -45,7 +45,7 @@ public sealed class MTGameItem : IMTComboItem<uint>
     /// <summary>
     /// Creates from the legacy ComboItem type.
     /// </summary>
-    public static MTGameItem FromComboItem(ComboItem c) => new()
+    public static GameItem FromComboItem(ComboItem c) => new()
     {
         Id = c.Id,
         Name = c.Name,
@@ -54,9 +54,9 @@ public sealed class MTGameItem : IMTComboItem<uint>
 }
 
 /// <summary>
-/// Currency item for MTComboWidget with category grouping.
+/// Currency item for ComboWidget with category grouping.
 /// </summary>
-public sealed class MTCurrencyItem : IMTGroupableComboItem<TrackedDataType>
+public sealed class CurrencyItem : IGroupableComboItem<TrackedDataType>
 {
     public TrackedDataType Id { get; init; }
     public string Name { get; init; } = string.Empty;
@@ -65,15 +65,15 @@ public sealed class MTCurrencyItem : IMTGroupableComboItem<TrackedDataType>
     public uint? IconId { get; init; }
     public TrackedDataCategory Category { get; init; }
     
-    // IMTGroupableComboItem implementation - group by category
-    string? IMTGroupableComboItem<TrackedDataType>.Group => Category.ToString();
-    string? IMTGroupableComboItem<TrackedDataType>.SubGroup => null;
-    string? IMTGroupableComboItem<TrackedDataType>.TertiaryGroup => null;
+    // IGroupableComboItem implementation - group by category
+    string? IGroupableComboItem<TrackedDataType>.Group => Category.ToString();
+    string? IGroupableComboItem<TrackedDataType>.SubGroup => null;
+    string? IGroupableComboItem<TrackedDataType>.TertiaryGroup => null;
     
     /// <summary>
     /// Creates from the legacy ComboCurrency type.
     /// </summary>
-    public static MTCurrencyItem FromComboCurrency(ComboCurrency c) => new()
+    public static CurrencyItem FromComboCurrency(ComboCurrency c) => new()
     {
         Id = c.Type,
         Name = c.Name,

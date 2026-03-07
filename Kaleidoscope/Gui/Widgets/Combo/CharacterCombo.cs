@@ -6,7 +6,7 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Combo;
+using Kaleidoscope.Gui.Widgets.Combo;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -14,10 +14,10 @@ using Kaleidoscope.Services.Universalis;
 namespace Kaleidoscope.Gui.Widgets.Combo;
 
 /// <summary>
-/// A character combo widget using MTComboWidget from MTGui.
+/// A character combo widget using ComboWidget.
 /// Provides the same public interface as the legacy CharacterCombo.
 /// </summary>
-public sealed class MTCharacterCombo : IDisposable
+public sealed class CharacterCombo : IDisposable
 {
     private readonly FavoritesService _favoritesService;
     private readonly CurrencyTrackerService _currencyTrackerService;
@@ -25,8 +25,8 @@ public sealed class MTCharacterCombo : IDisposable
     private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     
-    private readonly MTComboWidget<MTCharacterItem, ulong> _widget;
-    private readonly MTComboState<ulong> _state;
+    private readonly ComboWidget<CharacterItem, ulong> _widget;
+    private readonly ComboState<ulong> _state;
     
     private bool _disposed;
     private bool _needsRebuild = true;
@@ -48,7 +48,7 @@ public sealed class MTCharacterCombo : IDisposable
         get => _widget.Config.MultiSelect;
         set
         {
-            // Can't change after construction in MTComboWidget, but we can ignore single/multi draw
+            // Can't change after construction in ComboWidget, but we can ignore single/multi draw
         }
     }
     
@@ -90,7 +90,7 @@ public sealed class MTCharacterCombo : IDisposable
     /// </summary>
     public event Action<IReadOnlySet<ulong>>? MultiSelectionChanged;
     
-    public MTCharacterCombo(
+    public CharacterCombo(
         CurrencyTrackerService currencyTrackerService,
         FavoritesService favoritesService,
         ConfigurationService? configService,
@@ -107,15 +107,15 @@ public sealed class MTCharacterCombo : IDisposable
         Label = label;
         
         // Create state
-        _state = new MTComboState<ulong>
+        _state = new ComboState<ulong>
         {
-            SortOrder = MTComboSortOrder.Alphabetical,
+            SortOrder = ComboSortOrder.Alphabetical,
             GroupMode = MTComboGroupDisplayMode.Flat,
             AllSelected = true
         };
         
         // Create config
-        var config = new MTComboConfig
+        var config = new ComboConfig
         {
             ComboId = label,
             Placeholder = "Select character...",
@@ -137,7 +137,7 @@ public sealed class MTCharacterCombo : IDisposable
         };
         
         // Create widget
-        _widget = new MTComboWidget<MTCharacterItem, ulong>(config, _state);
+        _widget = new ComboWidget<CharacterItem, ulong>(config, _state);
         
         // Configure grouping (Region → DC → World)
         _widget.WithGrouping(
@@ -229,7 +229,7 @@ public sealed class MTCharacterCombo : IDisposable
         return null;
     }
     
-    private static ComboCharacter ToComboCharacter(MTCharacterItem item) =>
+    private static ComboCharacter ToComboCharacter(CharacterItem item) =>
         new(item.Id, item.Name, item.World, item.DataCenter, item.Region);
     
     private void EnsureCharactersLoaded()
@@ -249,9 +249,9 @@ public sealed class MTCharacterCombo : IDisposable
         _needsRebuild = false;
     }
     
-    private List<MTCharacterItem> BuildCharacterList()
+    private List<CharacterItem> BuildCharacterList()
     {
-        var items = new List<MTCharacterItem>();
+        var items = new List<CharacterItem>();
         var cacheService = _currencyTrackerService.CacheService;
         var nameFormat = _configService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
         var worldData = _priceTrackingService?.WorldData;
@@ -295,7 +295,7 @@ public sealed class MTCharacterCombo : IDisposable
                     regionName = worldData.GetRegionForWorld(world);
                 }
                 
-                items.Add(new MTCharacterItem
+                items.Add(new CharacterItem
                 {
                     Id = charId,
                     Name = displayName,
@@ -307,7 +307,7 @@ public sealed class MTCharacterCombo : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.UI, $"[MTCharacterCombo] Error building character list: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[CharacterCombo] Error building character list: {ex.Message}");
         }
         
         return items;

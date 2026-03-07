@@ -2,21 +2,21 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
-using MTGui.Common;
-using MTGui.Graph;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
 /// A reusable graph widget for displaying numerical sample data.
-/// This is a thin wrapper around MTGui.Graph.MTGraph that maintains backward compatibility
+/// This is a thin wrapper around GraphRenderer that maintains backward compatibility
 /// with the existing Kaleidoscope API and provides ISettingsProvider integration.
 /// </summary>
-public sealed class MTGraphWidget : ISettingsProvider
+public sealed class GraphWidget : ISettingsProvider
 {
-    private readonly MTGraph _graph;
+    private readonly GraphRenderer _graph;
     
     // === ISettingsProvider implementation fields ===
     private IGraphWidgetSettings? _boundSettings;
@@ -37,15 +37,15 @@ public sealed class MTGraphWidget : ISettingsProvider
     private static readonly string[] AutoScrollTimeUnitNames = 
         { "Seconds", "Minutes", "Hours", "Days", "Weeks" };
 
-    public MTGraphWidget() : this(new MTGraphConfig()) { }
+    public GraphWidget() : this(new GraphConfig()) { }
 
     /// <summary>
-    /// Creates a new MTGraphWidget with custom configuration.
+    /// Creates a new GraphWidget with custom configuration.
     /// </summary>
     /// <param name="config">The graph configuration.</param>
-    public MTGraphWidget(MTGraphConfig config)
+    public GraphWidget(GraphConfig config)
     {
-        _graph = new MTGraph(config);
+        _graph = new GraphRenderer(config);
         
         // Forward auto-scroll settings changes
         _graph.OnAutoScrollSettingsChanged += (enabled, value, unit, position) =>
@@ -65,21 +65,21 @@ public sealed class MTGraphWidget : ISettingsProvider
     }
 
     /// <summary>
-    /// Gets the underlying MTGraph instance.
+    /// Gets the underlying Graph instance.
     /// </summary>
-    public MTGraph Graph => _graph;
+    public GraphRenderer Graph => _graph;
     
     /// <summary>
     /// Gets the current graph configuration.
     /// </summary>
-    public MTGraphConfig Config => _graph.Config;
+    public GraphConfig Config => _graph.Config;
     
     /// <summary>
     /// Gets or sets the groups for the legend. Groups can be toggled to show/hide all their member series.
     /// When set, groups are displayed in the legend before individual series, allowing users to toggle
     /// visibility of all series within a group at once.
     /// </summary>
-    public IReadOnlyList<MTGraphSeriesGroup>? Groups
+    public IReadOnlyList<GraphSeriesGroup>? Groups
     {
         get => _graph.Groups;
         set => _graph.Groups = value;
@@ -121,7 +121,7 @@ public sealed class MTGraphWidget : ISettingsProvider
     /// <summary>
     /// Gets or sets the auto-scroll time unit.
     /// </summary>
-    public MTTimeUnit AutoScrollTimeUnit
+    public TimeUnit AutoScrollTimeUnit
     {
         get => _graph.Config.AutoScrollTimeUnit;
         set => _graph.Config.AutoScrollTimeUnit = value;
@@ -144,9 +144,9 @@ public sealed class MTGraphWidget : ISettingsProvider
 
     /// <summary>
     /// Event fired when auto-scroll settings are changed via the controls drawer.
-    /// Parameters: (bool autoScrollEnabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
+    /// Parameters: (bool autoScrollEnabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     /// </summary>
-    public event Action<bool, int, MTTimeUnit, float>? OnAutoScrollSettingsChanged;
+    public event Action<bool, int, TimeUnit, float>? OnAutoScrollSettingsChanged;
 
     /// <summary>
     /// Updates the Y-axis bounds without recreating the widget.
@@ -307,7 +307,7 @@ public sealed class MTGraphWidget : ISettingsProvider
         var settings = _boundSettings;
         
         // Settings are written to the bound IGraphWidgetSettings only.
-        // SyncFromBoundSettings() copies them to MTGraphConfig before each render frame.
+        // SyncFromBoundSettings() copies them to GraphConfig before each render frame.
         
         // Color mode setting
         var colorMode = (int)settings.ColorMode;
@@ -359,12 +359,12 @@ public sealed class MTGraphWidget : ISettingsProvider
                 var legendPosition = (int)settings.LegendPosition;
                 if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
                 {
-                    settings.LegendPosition = (MTLegendPosition)legendPosition;
+                    settings.LegendPosition = (LegendPosition)legendPosition;
                     changed = true;
                 }
                 ShowSettingsTooltip("Where to display the legend: outside the graph or inside at a corner.");
                 
-                if (settings.LegendPosition == MTLegendPosition.Outside)
+                if (settings.LegendPosition == LegendPosition.Outside)
                 {
                     var legendWidth = settings.LegendWidth;
                     if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
@@ -418,7 +418,7 @@ public sealed class MTGraphWidget : ISettingsProvider
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Graph Style"))
+        if (TreeHelpers.DrawSection("Graph Style"))
         {
             // Graph type
             var graphType = settings.GraphType;
@@ -465,11 +465,11 @@ public sealed class MTGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a horizontal line at the current (latest) value.");
             
-            MTTreeHelpers.EndSection();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Auto-Scroll"))
+        if (TreeHelpers.DrawSection("Auto-Scroll"))
         {
             var autoScrollEnabled = settings.AutoScrollEnabled;
             if (ImGui.Checkbox("Enable auto-scroll", ref autoScrollEnabled))
@@ -494,7 +494,7 @@ public sealed class MTGraphWidget : ISettingsProvider
                 var timeUnit = (int)settings.AutoScrollTimeUnit;
                 if (ImGui.Combo("Time window unit", ref timeUnit, AutoScrollTimeUnitNames, AutoScrollTimeUnitNames.Length))
                 {
-                    settings.AutoScrollTimeUnit = (MTTimeUnit)timeUnit;
+                    settings.AutoScrollTimeUnit = (TimeUnit)timeUnit;
                     changed = true;
                 }
                 
@@ -516,7 +516,7 @@ public sealed class MTGraphWidget : ISettingsProvider
             }
             ShowSettingsTooltip("Shows a collapsible controls panel in the bottom-left corner of the graph.");
             
-            MTTreeHelpers.EndSection();
+            TreeHelpers.EndSection();
         }
         
         if (changed)

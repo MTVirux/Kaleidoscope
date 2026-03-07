@@ -6,7 +6,7 @@ using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
-using MTGui.Combo;
+using Kaleidoscope.Gui.Widgets.Combo;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -16,7 +16,7 @@ namespace Kaleidoscope.Gui.Widgets.Combo;
 /// <summary>
 /// Sort order for items in the combo.
 /// </summary>
-public enum MTItemSortOrder
+public enum ComboItemSortOrder
 {
     /// <summary>Sort alphabetically by name.</summary>
     Alphabetical,
@@ -25,10 +25,10 @@ public enum MTItemSortOrder
 }
 
 /// <summary>
-/// An item combo widget using MTComboWidget from MTGui.
+/// An item combo widget using ComboWidget.
 /// Provides the same public interface as the legacy ItemComboDropdown.
 /// </summary>
-public sealed class MTItemComboDropdown : IDisposable
+public sealed class ItemComboDropdown : IDisposable
 {
     private readonly ITextureProvider _textureProvider;
     private readonly IDataManager _dataManager;
@@ -39,8 +39,8 @@ public sealed class MTItemComboDropdown : IDisposable
     private readonly bool _marketableOnly;
     private readonly bool _excludeCurrencies;
     
-    private readonly MTComboWidget<MTGameItem, uint> _widget;
-    private readonly MTComboState<uint> _state;
+    private readonly ComboWidget<GameItem, uint> _widget;
+    private readonly ComboState<uint> _state;
     
     private bool _disposed;
     private bool _needsRebuild = true;
@@ -82,7 +82,7 @@ public sealed class MTItemComboDropdown : IDisposable
     /// </summary>
     public event Action<IReadOnlySet<uint>>? MultiSelectionChanged;
     
-    public MTItemComboDropdown(
+    public ItemComboDropdown(
         ITextureProvider textureProvider,
         IDataManager dataManager,
         FavoritesService favoritesService,
@@ -109,13 +109,13 @@ public sealed class MTItemComboDropdown : IDisposable
         MultiSelectEnabled = multiSelect;
         
         // Create state
-        _state = new MTComboState<uint>
+        _state = new ComboState<uint>
         {
-            SortOrder = MTComboSortOrder.Alphabetical
+            SortOrder = ComboSortOrder.Alphabetical
         };
         
         // Create config
-        var config = new MTComboConfig
+        var config = new ComboConfig
         {
             ComboId = label,
             Placeholder = "Select item...",
@@ -140,7 +140,7 @@ public sealed class MTItemComboDropdown : IDisposable
         };
         
         // Create widget
-        _widget = new MTComboWidget<MTGameItem, uint>(config, _state);
+        _widget = new ComboWidget<GameItem, uint>(config, _state);
         
         // Configure icon renderer
         _widget.WithIconRenderer(DrawItemIcon);
@@ -190,7 +190,7 @@ public sealed class MTItemComboDropdown : IDisposable
             _favoritesService.RemoveItem(id);
     }
     
-    private void DrawItemIcon(MTGameItem item, Vector2 size)
+    private void DrawItemIcon(GameItem item, Vector2 size)
     {
         var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(item.IconId));
         if (icon.TryGetWrap(out var wrap, out _))
@@ -213,9 +213,9 @@ public sealed class MTItemComboDropdown : IDisposable
         _needsRebuild = false;
     }
     
-    private List<MTGameItem> BuildItemList()
+    private List<GameItem> BuildItemList()
     {
-        var items = new List<MTGameItem>();
+        var items = new List<GameItem>();
         var marketable = _priceTrackingService?.MarketableItems;
         
         HashSet<uint>? currencyItemIds = null;
@@ -246,7 +246,7 @@ public sealed class MTItemComboDropdown : IDisposable
                 if (currencyItemIds != null && currencyItemIds.Contains(row.RowId))
                     continue;
                 
-                items.Add(new MTGameItem
+                items.Add(new GameItem
                 {
                     Id = row.RowId,
                     Name = name,
@@ -256,7 +256,7 @@ public sealed class MTItemComboDropdown : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.UI, $"[MTItemComboDropdown] Error building item list: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemComboDropdown] Error building item list: {ex.Message}");
         }
         
         return items;
