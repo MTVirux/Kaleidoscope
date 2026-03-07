@@ -41,8 +41,9 @@ public sealed partial class DataTool
     {
         try
         {
-            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
             string variableName;
+            string? pendingPrefix = null;
+            string? pendingSuffix = null;
             string? perRetainerVariablePrefix = null;
             
             if (seriesConfig.IsCurrency)
@@ -52,113 +53,36 @@ public sealed partial class DataTool
             else
             {
                 variableName = $"Item_{seriesConfig.Id}";
-                // If showing retainer breakdown in graph, we'll fetch per-retainer data
+                pendingPrefix = "Item_";
+                pendingSuffix = $"_{seriesConfig.Id}";
                 if (settings.IncludeRetainers && settings.ShowRetainerBreakdownInGraph)
-                {
-                    // Per-retainer data uses pattern: ItemRetainerX_{retainerId}_{itemId}
-                    // We need to search for all matching the item ID at the end
-                    perRetainerVariablePrefix = $"ItemRetainerX_";
-                }
+                    perRetainerVariablePrefix = "ItemRetainerX_";
             }
             
             IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points;
             Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>? perRetainerPointsDict = null;
             using (ProfilerService.BeginStaticChildScope("CacheGetPoints"))
             {
-                // Cache-first: get points from TimeSeriesCacheService
-                var allPoints = CacheService.GetAllPointsBatch(variableName, startTime);
-            
-                if (!allPoints.TryGetValue(variableName, out var pts) || pts.Count == 0)
-                {
-                    // Try to get from pending samples cache (for real-time display before DB flush)
-                    if (_inventoryCacheService != null && variableName.StartsWith("Item_"))
-                    {
-                        var pendingPlayerSamples = _inventoryCacheService.GetPendingSamples("Item_", $"_{seriesConfig.Id}");
-                        if (pendingPlayerSamples.TryGetValue(variableName, out var pendingPts) && pendingPts.Count > 0)
-                        {
-                            pts = pendingPts;
-                        }
-                    }
-                    
-                    if (pts == null || pts.Count == 0)
-                        return null;
-                }
-                
-                // Merge in pending (cached but not yet flushed) player samples for real-time display
-                if (_inventoryCacheService != null && variableName.StartsWith("Item_"))
-                {
-                    var pendingPlayerSamples = _inventoryCacheService.GetPendingSamples("Item_", $"_{seriesConfig.Id}");
-                    if (pendingPlayerSamples.TryGetValue(variableName, out var pendingPts) && pendingPts.Count > 0)
-                    {
-                        var mutablePoints = pts.ToList();
-                        mutablePoints.AddRange(pendingPts);
-                        pts = mutablePoints;
-                    }
-                }
-                
-                points = pts;
+                var loaded = LoadAndMergePoints(variableName, pendingPrefix, pendingSuffix, startTime);
+                if (loaded == null)
+                    return null;
+                points = loaded;
                 
                 // If IncludeRetainers is enabled but ShowRetainerBreakdownInGraph is disabled,
-                // we need to add retainer totals to the main series (not show them separately)
+                // add retainer totals to the main series (not separate)
                 if (settings.IncludeRetainers && !settings.ShowRetainerBreakdownInGraph && !seriesConfig.IsCurrency)
                 {
                     var retainerVariableName = $"ItemRetainer_{seriesConfig.Id}";
-                    // Cache-first: get retainer points from TimeSeriesCacheService
-                    var retainerPoints = CacheService.GetAllPointsBatch(retainerVariableName, startTime);
-                    
-                    if (retainerPoints.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
-                    {
-                        // Merge in pending retainer samples for real-time display
-                        if (_inventoryCacheService != null)
-                        {
-                            var pendingRetainerSamples = _inventoryCacheService.GetPendingSamples("ItemRetainer_", $"_{seriesConfig.Id}");
-                            if (pendingRetainerSamples.TryGetValue(retainerVariableName, out var pendingPts) && pendingPts.Count > 0)
-                            {
-                                var mutableRetainerPoints = retainerPts.ToList();
-                                mutableRetainerPoints.AddRange(pendingPts);
-                                retainerPts = mutableRetainerPoints;
-                            }
-                        }
-                        
-                        // Merge player and retainer data using forward-fill logic.
-                        points = MergePlayerAndRetainerData(points, retainerPts);
-                    }
+                    var retainerPts = LoadAndMergePoints(retainerVariableName, "ItemRetainer_", pendingSuffix, startTime);
+                    if (retainerPts != null && retainerPts.Count > 0)
+                        points = MergePlayerAndRetainerData(points, retainerPts.ToList());
                 }
                 
-                // Also fetch per-retainer data if breakdown is enabled
+                // Fetch per-retainer data if breakdown is enabled
                 if (perRetainerVariablePrefix != null)
                 {
-                    // Cache-first: use TimeSeriesCacheService with prefix and suffix matching
                     var itemIdSuffix = $"_{seriesConfig.Id}";
-                    perRetainerPointsDict = CacheService.GetPointsBatchWithSuffix(perRetainerVariablePrefix, itemIdSuffix, startTime);
-                    
-                    // Merge in pending (cached but not yet flushed) retainer samples for real-time display
-                    if (_inventoryCacheService != null)
-                    {
-                        var pendingSamples = _inventoryCacheService.GetPendingSamples(perRetainerVariablePrefix, itemIdSuffix);
-                        foreach (var (varName, pendingPoints) in pendingSamples)
-                        {
-                            if (!perRetainerPointsDict.TryGetValue(varName, out var existingList))
-                            {
-                                existingList = new List<(ulong, DateTime, long)>();
-                                perRetainerPointsDict[varName] = existingList;
-                            }
-                            existingList.AddRange(pendingPoints);
-                        }
-                    }
-                    
-                    // If no per-retainer data found, fall back to the old total retainer data
-                    if (perRetainerPointsDict.Count == 0)
-                    {
-                        var fallbackVariableName = $"ItemRetainer_{seriesConfig.Id}";
-                        // Cache-first: get fallback points from TimeSeriesCacheService
-                        var fallbackPoints = CacheService.GetAllPointsBatch(fallbackVariableName, startTime);
-                        if (fallbackPoints.TryGetValue(fallbackVariableName, out var fallbackPts) && fallbackPts.Count > 0)
-                        {
-                            // Use the old total data with a generic "Retainers" label
-                            perRetainerPointsDict[fallbackVariableName] = fallbackPts;
-                        }
-                    }
+                    perRetainerPointsDict = LoadPerRetainerPoints(perRetainerVariablePrefix, itemIdSuffix, seriesConfig.Id, startTime);
                 }
                 
                 // Apply character filter
@@ -179,65 +103,10 @@ public sealed partial class DataTool
             }
             
             var defaultName = GetSeriesDisplayName(seriesConfig);
-            var color = GetEffectiveSeriesColor(seriesConfig, settings, result.Count);
-            
-            // Use GroupingMode for graph series grouping
+            var color = GetEffectiveSeriesColor(seriesConfig, settings, 0);
             var groupingMode = settings.GroupingMode;
             
-            if (groupingMode == TableGroupingMode.Character)
-            {
-                // Separate series per character
-                var byCharacter = points.GroupBy(p => p.characterId);
-                var charIndex = 0;
-                
-                foreach (var charGroup in byCharacter)
-                {
-                    var charName = GetCharacterDisplayName(charGroup.Key);
-                    // When there's only one item/currency, show just the grouping name in the legend
-                    var seriesName = isSingleItem ? charName : $"{defaultName} ({charName})";
-                    
-                    // Determine color: prefer character color in PreferredCharacterColors mode,
-                    // otherwise use item color or fallback
-                    Vector4 seriesColor;
-                    if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
-                    {
-                        seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
-                    }
-                    else
-                    {
-                        seriesColor = color;
-                    }
-                    
-                    var samples = charGroup
-                        .OrderBy(p => p.timestamp)
-                        .Select(p => (ts: p.timestamp, value: (float)p.value))
-                        .ToList();
-                    
-                    if (samples.Count > 0)
-                    {
-                        result.Add((seriesName, samples, seriesColor));
-                    }
-                    charIndex++;
-                }
-            }
-            else if (groupingMode == TableGroupingMode.All)
-            {
-                var aggregated = points
-                    .OrderBy(p => p.timestamp)
-                    .Select(p => (ts: p.timestamp, value: (float)p.value))
-                    .ToList();
-                
-                if (aggregated.Count > 0)
-                {
-                    result.Add((seriesConfig.CustomName ?? defaultName, aggregated, color));
-                }
-            }
-            else
-            {
-                // Group by World, DataCenter, or Region
-                var groupedSeries = GroupPointsByLocation(points, groupingMode, defaultName, seriesConfig, settings, isSingleItem);
-                result.AddRange(groupedSeries);
-            }
+            var result = BuildGroupedSeries(points, groupingMode, seriesConfig.CustomName ?? defaultName, color, settings, isSingleItem);
             
             if (perRetainerPointsDict != null && perRetainerPointsDict.Count > 0)
             {
@@ -245,7 +114,7 @@ public sealed partial class DataTool
                 result.AddRange(retainerSeriesResult);
             }
             
-            return result;
+            return result.Count > 0 ? result : null;
         }
         catch (Exception ex)
         {
@@ -385,7 +254,6 @@ public sealed partial class DataTool
     {
         try
         {
-            // Get the member columns
             var memberColumns = group.ColumnIndices
                 .Where(idx => idx >= 0 && idx < settings.Columns.Count)
                 .Select(idx => settings.Columns[idx])
@@ -394,53 +262,37 @@ public sealed partial class DataTool
             if (memberColumns.Count == 0)
                 return null;
             
-            // Collect all points from all member columns (now with character ID and source)
+            // Collect all points from all member columns (tagged with source for forward-fill)
             var allPoints = new List<(string source, ulong characterId, DateTime ts, long value)>();
             
             foreach (var column in memberColumns)
             {
-                string variableName;
-                if (column.IsCurrency)
-                {
-                    variableName = ((TrackedDataType)column.Id).ToString();
-                }
-                else
-                {
-                    variableName = $"Item_{column.Id}";
-                }
+                string variableName = column.IsCurrency
+                    ? ((TrackedDataType)column.Id).ToString()
+                    : $"Item_{column.Id}";
                 
-                // Cache-first: use TimeSeriesCacheService instead of direct DB access
                 var pointsDict = CacheService.GetAllPointsBatch(variableName, startTime);
                 if (pointsDict.TryGetValue(variableName, out var pts) && pts.Count > 0)
                 {
-                    // Filter by allowed characters if specified
-                    var filteredPoints = allowedCharacters != null
+                    var filtered = allowedCharacters != null
                         ? pts.Where(p => allowedCharacters.Contains(p.characterId))
                         : pts;
-                    
-                    // Add points with character ID and source
-                    foreach (var p in filteredPoints)
-                    {
+                    foreach (var p in filtered)
                         allPoints.Add((variableName, p.characterId, p.timestamp, p.value));
-                    }
                 }
                 
                 // Also include retainer data if IncludeRetainers is enabled
                 if (settings.IncludeRetainers && !column.IsCurrency)
                 {
                     var retainerVariableName = $"ItemRetainer_{column.Id}";
-                    // Cache-first: use TimeSeriesCacheService instead of direct DB access
                     var retainerPointsDict = CacheService.GetAllPointsBatch(retainerVariableName, startTime);
                     if (retainerPointsDict.TryGetValue(retainerVariableName, out var retainerPts) && retainerPts.Count > 0)
                     {
-                        var filteredRetainerPoints = allowedCharacters != null
+                        var filtered = allowedCharacters != null
                             ? retainerPts.Where(p => allowedCharacters.Contains(p.characterId))
                             : retainerPts;
-                        
-                        foreach (var p in filteredRetainerPoints)
-                        {
+                        foreach (var p in filtered)
                             allPoints.Add((retainerVariableName, p.characterId, p.timestamp, p.value));
-                        }
                     }
                 }
             }
@@ -451,92 +303,10 @@ public sealed partial class DataTool
             // Use the merged group's color if set, otherwise use first member's color
             var baseColor = group.Color;
             if (!baseColor.HasValue && memberColumns.Count > 0 && memberColumns[0].Color.HasValue)
-            {
                 baseColor = memberColumns[0].Color;
-            }
             
-            var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
-            
-            // Use GroupingMode for series grouping
-            var groupingMode = settings.GroupingMode;
-            
-            if (groupingMode == TableGroupingMode.Character)
-            {
-                // Separate series per character
-                var byCharacter = allPoints.GroupBy(p => p.characterId);
-                var charIndex = 0;
-                
-                foreach (var charGroup in byCharacter)
-                {
-                    var charName = GetCharacterDisplayName(charGroup.Key);
-                    // When there's only one merged group, show just the grouping name in the legend
-                    var seriesName = isSingleItem ? charName : $"{group.Name} ({charName})";
-                    
-                    // Determine color
-                    Vector4 seriesColor;
-                    if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
-                    {
-                        seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
-                    }
-                    else
-                    {
-                        seriesColor = baseColor ?? GetDefaultSeriesColor(charIndex);
-                    }
-                    
-                    // Use forward-fill aggregation to properly sum values from different columns
-                    // even when they were sampled at different times
-                    var taggedPoints = charGroup.Select(p => (p.source, p.ts, p.value));
-                    var samples = AggregateWithForwardFill(taggedPoints);
-                    
-                    if (samples.Count > 0)
-                    {
-                        result.Add((seriesName, samples, seriesColor));
-                    }
-                    charIndex++;
-                }
-            }
-            else if (groupingMode == TableGroupingMode.All)
-            {
-                // Aggregate all into a single series using forward-fill
-                // Tag each point by source+character to track distinct data sources
-                var taggedPoints = allPoints.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value));
-                var groupedPoints = AggregateWithForwardFill(taggedPoints);
-
-                if (groupedPoints.Count > 0)
-                {
-                    result.Add((group.Name, groupedPoints, baseColor));
-                }
-            }
-            else
-            {
-                // Group by World, DataCenter, or Region
-                var characterGroups = BuildCharacterLocationMap(groupingMode);
-                
-                // Group points by their location group
-                var byGroup = allPoints
-                    .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
-                    .OrderBy(g => g.Key);
-                
-                var groupIndex = 0;
-                foreach (var locationGroup in byGroup)
-                {
-                    var locationName = locationGroup.Key;
-                    // When there's only one merged group, show just the grouping name in the legend
-                    var seriesName = isSingleItem ? locationName : $"{group.Name} ({locationName})";
-                    
-                    // Use forward-fill aggregation to properly sum values from different characters
-                    // even when they were sampled at different times
-                    var taggedPoints = locationGroup.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value));
-                    var aggregated = AggregateWithForwardFill(taggedPoints);
-                    
-                    if (aggregated.Count > 0)
-                    {
-                        var seriesColor = baseColor ?? GetDefaultSeriesColor(groupIndex);
-                        result.Add((seriesName, aggregated, seriesColor));
-                    }
-                    groupIndex++;
-                }
-            }
+            var result = BuildGroupedSeriesWithAggregation(
+                allPoints, settings.GroupingMode, group.Name, baseColor, settings, isSingleItem);
             
             return result.Count > 0 ? result : null;
         }
@@ -545,55 +315,6 @@ public sealed partial class DataTool
             LogDebug($"LoadMergedSeriesData error: {ex.Message}");
             return null;
         }
-    }
-    
-    /// <summary>
-    /// Groups time series points by World, DataCenter, or Region.
-    /// </summary>
-    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> GroupPointsByLocation(
-        IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points,
-        TableGroupingMode groupingMode,
-        string defaultName,
-        ItemColumnConfig seriesConfig,
-        DataToolSettings settings,
-        bool isSingleItem = true)
-    {
-        var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
-        
-        var characterGroups = BuildCharacterLocationMap(groupingMode);
-        
-        // Group points by their location group
-        var byGroup = points
-            .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
-            .OrderBy(g => g.Key);
-        
-        var groupIndex = 0;
-        var color = GetEffectiveSeriesColor(seriesConfig, settings, 0);
-        
-        foreach (var group in byGroup)
-        {
-            var groupName = group.Key;
-            // When there's only one item/currency, show just the grouping name in the legend
-            var seriesName = isSingleItem ? groupName : $"{defaultName} ({groupName})";
-            
-            // Aggregate points by timestamp within the group
-            var aggregated = group
-                .OrderBy(p => p.timestamp)
-                .Select(p => (ts: p.timestamp, value: (float)p.value))
-                .ToList();
-            
-            if (aggregated.Count > 0)
-            {
-                // Use different colors per group if not using item colors
-                var seriesColor = settings.ColorMode == Models.GraphColorMode.PreferredItemColors 
-                    ? color 
-                    : GetDefaultSeriesColor(groupIndex);
-                result.Add((seriesName, aggregated, seriesColor));
-            }
-            groupIndex++;
-        }
-        
-        return result;
     }
     
     /// <summary>
@@ -912,4 +633,233 @@ public sealed partial class DataTool
         };
         return colors[index % colors.Length];
     }
+    
+    #region Series Building Helpers
+    
+    /// <summary>
+    /// Loads points from the time-series cache and merges any pending (unflushed) inventory samples.
+    /// Returns null if no data is available.
+    /// </summary>
+    /// <param name="variableName">The fully-qualified variable name (e.g. "Item_123", "Gil").</param>
+    /// <param name="pendingPrefix">Prefix for pending sample lookup (e.g. "Item_"), or null to skip pending merge.</param>
+    /// <param name="pendingSuffix">Suffix for pending sample lookup (e.g. "_123"), or null to skip pending merge.</param>
+    /// <param name="startTime">Optional start time filter.</param>
+    private IReadOnlyList<(ulong characterId, DateTime timestamp, long value)>? LoadAndMergePoints(
+        string variableName,
+        string? pendingPrefix,
+        string? pendingSuffix,
+        DateTime? startTime)
+    {
+        var allPoints = CacheService.GetAllPointsBatch(variableName, startTime);
+        allPoints.TryGetValue(variableName, out var pts);
+        
+        // Merge pending samples for real-time display (also serves as fallback when cache is empty)
+        if (_inventoryCacheService != null && pendingPrefix != null && pendingSuffix != null)
+        {
+            var pending = _inventoryCacheService.GetPendingSamples(pendingPrefix, pendingSuffix);
+            if (pending.TryGetValue(variableName, out var pendingPts) && pendingPts.Count > 0)
+            {
+                if (pts == null || pts.Count == 0)
+                {
+                    pts = pendingPts;
+                }
+                else
+                {
+                    var mutablePoints = pts.ToList();
+                    mutablePoints.AddRange(pendingPts);
+                    pts = mutablePoints;
+                }
+            }
+        }
+        
+        return pts == null || pts.Count == 0 ? null : pts;
+    }
+    
+    /// <summary>
+    /// Loads per-retainer points matching a prefix+suffix pattern and merges pending samples.
+    /// </summary>
+    private Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> LoadPerRetainerPoints(
+        string prefix,
+        string itemIdSuffix,
+        uint itemId,
+        DateTime? startTime)
+    {
+        var dict = CacheService.GetPointsBatchWithSuffix(prefix, itemIdSuffix, startTime);
+        
+        // Merge pending samples
+        if (_inventoryCacheService != null)
+        {
+            var pendingSamples = _inventoryCacheService.GetPendingSamples(prefix, itemIdSuffix);
+            foreach (var (varName, pendingPoints) in pendingSamples)
+            {
+                if (!dict.TryGetValue(varName, out var existingList))
+                {
+                    existingList = new List<(ulong, DateTime, long)>();
+                    dict[varName] = existingList;
+                }
+                existingList.AddRange(pendingPoints);
+            }
+        }
+        
+        // Fallback to old total retainer data if no per-retainer data
+        if (dict.Count == 0)
+        {
+            var fallbackName = $"ItemRetainer_{itemId}";
+            var fallbackPoints = CacheService.GetAllPointsBatch(fallbackName, startTime);
+            if (fallbackPoints.TryGetValue(fallbackName, out var fallbackPts) && fallbackPts.Count > 0)
+                dict[fallbackName] = fallbackPts;
+        }
+        
+        return dict;
+    }
+    
+    /// <summary>
+    /// Groups flat points by the current grouping mode and builds named/colored series.
+    /// For simple aggregation (no forward-fill) — used by LoadSeriesData and BuildPerRetainerSeries.
+    /// </summary>
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> BuildGroupedSeries(
+        IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> points,
+        TableGroupingMode groupingMode,
+        string seriesLabel,
+        Vector4? baseColor,
+        DataToolSettings settings,
+        bool isSingleItem)
+    {
+        var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+        
+        if (groupingMode == TableGroupingMode.Character)
+        {
+            var byCharacter = points.GroupBy(p => p.characterId);
+            var charIndex = 0;
+            foreach (var charGroup in byCharacter)
+            {
+                var charName = GetCharacterDisplayName(charGroup.Key);
+                var seriesName = isSingleItem ? charName : $"{seriesLabel} ({charName})";
+                
+                Vector4 seriesColor;
+                if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
+                    seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
+                else
+                    seriesColor = baseColor ?? GetDefaultSeriesColor(charIndex);
+                
+                var samples = charGroup
+                    .OrderBy(p => p.timestamp)
+                    .Select(p => (ts: p.timestamp, value: (float)p.value))
+                    .ToList();
+                
+                if (samples.Count > 0)
+                    result.Add((seriesName, samples, seriesColor));
+                charIndex++;
+            }
+        }
+        else if (groupingMode == TableGroupingMode.All)
+        {
+            var aggregated = points
+                .OrderBy(p => p.timestamp)
+                .Select(p => (ts: p.timestamp, value: (float)p.value))
+                .ToList();
+            
+            if (aggregated.Count > 0)
+                result.Add((seriesLabel, aggregated, baseColor));
+        }
+        else
+        {
+            // World / DataCenter / Region
+            var characterGroups = BuildCharacterLocationMap(groupingMode);
+            var byGroup = points
+                .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
+                .OrderBy(g => g.Key);
+            
+            var groupIndex = 0;
+            foreach (var group in byGroup)
+            {
+                var seriesName = isSingleItem ? group.Key : $"{seriesLabel} ({group.Key})";
+                var aggregated = group
+                    .OrderBy(p => p.timestamp)
+                    .Select(p => (ts: p.timestamp, value: (float)p.value))
+                    .ToList();
+                
+                if (aggregated.Count > 0)
+                {
+                    var seriesColor = settings.ColorMode == Models.GraphColorMode.PreferredItemColors
+                        ? baseColor ?? GetDefaultSeriesColor(groupIndex)
+                        : GetDefaultSeriesColor(groupIndex);
+                    result.Add((seriesName, aggregated, seriesColor));
+                }
+                groupIndex++;
+            }
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Groups tagged (multi-source) points by grouping mode with forward-fill aggregation.
+    /// Used by LoadMergedSeriesData where multiple variables are summed together.
+    /// </summary>
+    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> BuildGroupedSeriesWithAggregation(
+        IReadOnlyList<(string source, ulong characterId, DateTime ts, long value)> taggedPoints,
+        TableGroupingMode groupingMode,
+        string seriesLabel,
+        Vector4? baseColor,
+        DataToolSettings settings,
+        bool isSingleItem)
+    {
+        var result = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
+        
+        if (groupingMode == TableGroupingMode.Character)
+        {
+            var byCharacter = taggedPoints.GroupBy(p => p.characterId);
+            var charIndex = 0;
+            foreach (var charGroup in byCharacter)
+            {
+                var charName = GetCharacterDisplayName(charGroup.Key);
+                var seriesName = isSingleItem ? charName : $"{seriesLabel} ({charName})";
+                
+                Vector4 seriesColor;
+                if (settings.ColorMode == Models.GraphColorMode.PreferredCharacterColors)
+                    seriesColor = GetPreferredCharacterColor(charGroup.Key) ?? GetDefaultSeriesColor(charIndex);
+                else
+                    seriesColor = baseColor ?? GetDefaultSeriesColor(charIndex);
+                
+                var samples = AggregateWithForwardFill(charGroup.Select(p => (p.source, p.ts, p.value)));
+                if (samples.Count > 0)
+                    result.Add((seriesName, samples, seriesColor));
+                charIndex++;
+            }
+        }
+        else if (groupingMode == TableGroupingMode.All)
+        {
+            var tagged = taggedPoints.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value));
+            var aggregated = AggregateWithForwardFill(tagged);
+            if (aggregated.Count > 0)
+                result.Add((seriesLabel, aggregated, baseColor));
+        }
+        else
+        {
+            var characterGroups = BuildCharacterLocationMap(groupingMode);
+            var byGroup = taggedPoints
+                .GroupBy(p => characterGroups.TryGetValue(p.characterId, out var g) ? g : "Unknown")
+                .OrderBy(g => g.Key);
+            
+            var groupIndex = 0;
+            foreach (var group in byGroup)
+            {
+                var seriesName = isSingleItem ? group.Key : $"{seriesLabel} ({group.Key})";
+                var aggregated = AggregateWithForwardFill(
+                    group.Select(p => ($"{p.source}_{p.characterId}", p.ts, p.value)));
+                
+                if (aggregated.Count > 0)
+                {
+                    var seriesColor = baseColor ?? GetDefaultSeriesColor(groupIndex);
+                    result.Add((seriesName, aggregated, seriesColor));
+                }
+                groupIndex++;
+            }
+        }
+        
+        return result;
+    }
+    
+    #endregion
 }
