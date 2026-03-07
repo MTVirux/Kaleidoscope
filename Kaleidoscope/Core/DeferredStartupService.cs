@@ -31,7 +31,7 @@ internal sealed class DeferredStartupService : IDisposable
     private readonly IActiveNotification _notification;
     private readonly int _totalServices;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
-    private readonly Random _random = new();
+    private readonly Random _random = Random.Shared;
     private readonly IDictionary _timersDictionary;
 
     private string _currentMessage;
@@ -41,7 +41,7 @@ internal sealed class DeferredStartupService : IDisposable
     private volatile bool _completed;
     private volatile bool _failed;
     private volatile string? _errorMessage;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public DeferredStartupService(ServiceManager services, Assembly pluginAssembly)
     {

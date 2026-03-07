@@ -29,7 +29,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private volatile bool _disposed;
     private DateTime _lastConnectAttempt = DateTime.MinValue;
     private int _currentReconnectDelayMs = InitialReconnectDelayMs;
-    private static readonly Random _jitterRng = new();
+    private static Random JitterRng => Random.Shared;
 
     // Subscribed channels
     private readonly HashSet<string> _subscribedChannels = new();
@@ -240,7 +240,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             if (!ct.IsCancellationRequested && Settings.Enabled)
             {
                 // Add jitter (±20%) to prevent thundering herd
-                var jitter = (int)(_currentReconnectDelayMs * 0.2 * (_jitterRng.NextDouble() * 2 - 1));
+                var jitter = (int)(_currentReconnectDelayMs * 0.2 * (JitterRng.NextDouble() * 2 - 1));
                 var delayWithJitter = Math.Max(1000, _currentReconnectDelayMs + jitter);
                 
                 LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Scheduling reconnect in {delayWithJitter}ms (backoff: {_currentReconnectDelayMs}ms)");
