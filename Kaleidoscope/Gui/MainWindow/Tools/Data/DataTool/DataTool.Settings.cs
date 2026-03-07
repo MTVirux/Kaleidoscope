@@ -282,30 +282,35 @@ public sealed partial class DataTool
     {
         var settings = _instanceSettings;
         
-        // Use centralized column export
         var columns = ColumnManagementWidget.ExportColumns(settings.Columns);
         
-        // Serialize merged column groups
-        var mergedColumnGroups = settings.MergedColumnGroups.Select(g => new Dictionary<string, object?>
+        var mergedColumnGroups = settings.MergedColumnGroups.Select(g =>
         {
-            ["Name"] = g.Name,
-            ["ColumnIndices"] = g.ColumnIndices.ToList(),
-            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null,
-            ["Width"] = g.Width,
-            ["ShowInTable"] = g.ShowInTable,
-            ["ShowInGraph"] = g.ShowInGraph,
-            ["DisplayOrder"] = g.DisplayOrder
+            var d = new Dictionary<string, object?>
+            {
+                ["Name"] = g.Name,
+                ["ColumnIndices"] = g.ColumnIndices.ToList(),
+                ["Width"] = g.Width,
+                ["ShowInTable"] = g.ShowInTable,
+                ["ShowInGraph"] = g.ShowInGraph,
+                ["DisplayOrder"] = g.DisplayOrder
+            };
+            ExportColorArray(d, "Color", g.Color);
+            return d;
         }).ToList();
         
-        // Serialize merged row groups
-        var mergedRowGroups = settings.MergedRowGroups.Select(g => new Dictionary<string, object?>
+        var mergedRowGroups = settings.MergedRowGroups.Select(g =>
         {
-            ["Name"] = g.Name,
-            ["CharacterIds"] = g.CharacterIds.ToList(),
-            ["Color"] = g.Color.HasValue ? new float[] { g.Color.Value.X, g.Color.Value.Y, g.Color.Value.Z, g.Color.Value.W } : null
+            var d = new Dictionary<string, object?>
+            {
+                ["Name"] = g.Name,
+                ["CharacterIds"] = g.CharacterIds.ToList()
+            };
+            ExportColorArray(d, "Color", g.Color);
+            return d;
         }).ToList();
         
-        return new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>
         {
             // View mode
             ["ViewMode"] = (int)settings.ViewMode,
@@ -330,12 +335,13 @@ public sealed partial class DataTool
             ["ShowTotalRow"] = settings.ShowTotalRow,
             ["Sortable"] = settings.Sortable,
             ["CharacterColumnWidth"] = settings.CharacterColumnWidth,
-            ["CharacterColumnColor"] = settings.CharacterColumnColor.HasValue ? new float[] { settings.CharacterColumnColor.Value.X, settings.CharacterColumnColor.Value.Y, settings.CharacterColumnColor.Value.Z, settings.CharacterColumnColor.Value.W } : null,
             ["SortColumnIndex"] = settings.SortColumnIndex,
             ["SortAscending"] = settings.SortAscending,
-            ["HeaderColor"] = settings.HeaderColor.HasValue ? new float[] { settings.HeaderColor.Value.X, settings.HeaderColor.Value.Y, settings.HeaderColor.Value.Z, settings.HeaderColor.Value.W } : null,
-            ["EvenRowColor"] = settings.EvenRowColor.HasValue ? new float[] { settings.EvenRowColor.Value.X, settings.EvenRowColor.Value.Y, settings.EvenRowColor.Value.Z, settings.EvenRowColor.Value.W } : null,
-            ["OddRowColor"] = settings.OddRowColor.HasValue ? new float[] { settings.OddRowColor.Value.X, settings.OddRowColor.Value.Y, settings.OddRowColor.Value.Z, settings.OddRowColor.Value.W } : null,
+            ["SortColumns"] = settings.SortColumns.Select(sc => new Dictionary<string, object?>
+            {
+                ["ColumnIndex"] = sc.ColumnIndex,
+                ["Ascending"] = sc.Ascending
+            }).ToList(),
             ["UseFullNameWidth"] = settings.UseFullNameWidth,
             ["AutoSizeEqualColumns"] = settings.AutoSizeEqualColumns,
             ["HorizontalAlignment"] = (int)settings.HorizontalAlignment,
@@ -373,6 +379,14 @@ public sealed partial class DataTool
             ["TimeRangeValue"] = settings.TimeRangeValue,
             ["TimeRangeUnit"] = (int)settings.TimeRangeUnit
         };
+        
+        // Colors (using array format helper)
+        ExportColorArray(result, "CharacterColumnColor", settings.CharacterColumnColor);
+        ExportColorArray(result, "HeaderColor", settings.HeaderColor);
+        ExportColorArray(result, "EvenRowColor", settings.EvenRowColor);
+        ExportColorArray(result, "OddRowColor", settings.OddRowColor);
+        
+        return result;
     }
     
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
@@ -434,6 +448,25 @@ public sealed partial class DataTool
         target.CharacterColumnWidth = GetSetting(settings, "CharacterColumnWidth", target.CharacterColumnWidth);
         target.SortColumnIndex = GetSetting(settings, "SortColumnIndex", target.SortColumnIndex);
         target.SortAscending = GetSetting(settings, "SortAscending", target.SortAscending);
+        
+        // Import multi-column sort entries
+        if (settings.TryGetValue("SortColumns", out var sortColumnsObj) && sortColumnsObj is System.Collections.IEnumerable sortColumnsList)
+        {
+            target.SortColumns.Clear();
+            foreach (var item in sortColumnsList)
+            {
+                var dict = ConvertToDictionary(item);
+                if (dict != null)
+                {
+                    target.SortColumns.Add(new SortColumnEntry
+                    {
+                        ColumnIndex = GetSetting(dict, "ColumnIndex", 0),
+                        Ascending = GetSetting(dict, "Ascending", true)
+                    });
+                }
+            }
+        }
+        
         target.UseFullNameWidth = GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
         target.AutoSizeEqualColumns = GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
         target.HorizontalAlignment = (TableHorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
