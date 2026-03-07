@@ -2,7 +2,7 @@
   <PropertyGroup>
     <AssemblyName>Kaleidoscope</AssemblyName>
     <Authors>MTVirux</Authors>
-    <Description>Temp description</Description>
+    <Description>Multi-character game data tracker and visualizer for FFXIV</Description>
     <Version>1.0.0.0</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
