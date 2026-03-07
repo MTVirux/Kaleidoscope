@@ -145,7 +145,7 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         _dbPath = filenames.DatabasePath;
         var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
         cacheSizeMb = Math.Clamp(cacheSizeMb, 1, 64);
-        _cacheSizeKb = cacheSizeMb * 1000; // Convert MB to KB (approximate)
+        _cacheSizeKb = cacheSizeMb * 1024;
         EnsureConnection();
     }
 

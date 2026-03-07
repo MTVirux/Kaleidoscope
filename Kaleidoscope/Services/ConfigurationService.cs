@@ -1,7 +1,6 @@
 using Kaleidoscope.Config;
 using Kaleidoscope.Interfaces;
 using Dalamud.Plugin;
-using Dalamud.Plugin.Services;
 using OtterGui.Services;
 using System.Timers;
 
@@ -24,7 +23,6 @@ namespace Kaleidoscope.Services;
 public sealed class ConfigurationService : IConfigurationService, IRequiredService, IDisposable
 {
     private readonly IDalamudPluginInterface _pluginInterface;
-    private readonly IPluginLog _log;
     
     private bool _isDirty;
     private System.Timers.Timer? _saveDebounceTimer;
@@ -53,10 +51,9 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// </summary>
     public event Action<string, LayoutType>? OnActiveLayoutChanged;
 
-    public ConfigurationService(IDalamudPluginInterface pluginInterface, IPluginLog log)
+    public ConfigurationService(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
-        _log = log ?? throw new ArgumentNullException(nameof(log));
 
         var cfg = _pluginInterface.GetPluginConfig() as Configuration;
         if (cfg == null)
@@ -83,7 +80,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             ConfigWindowSize = Config.ConfigWindowSize
         });
 
-        _saveDebounceTimer = new System.Timers.Timer(500);
+        _saveDebounceTimer = new System.Timers.Timer(SaveDebounceMs);
         _saveDebounceTimer.Elapsed += OnDebounceTimerElapsed;
         _saveDebounceTimer.AutoReset = false;
 

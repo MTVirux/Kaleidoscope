@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -11,16 +10,13 @@ public sealed class StartupTestService : IRequiredService
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
-    private readonly IPluginLog _log;
 
     public StartupTestService(
         CurrencyTrackerService currencyTrackerService,
-        ConfigurationService configService,
-        IPluginLog log)
+        ConfigurationService configService)
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
-        _log = log;
 
         Task.Run(RunStartupTests);
     }

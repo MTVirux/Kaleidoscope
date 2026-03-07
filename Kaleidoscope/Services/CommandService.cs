@@ -13,13 +13,11 @@ public sealed class CommandService : IDisposable, IRequiredService
     private const string CommandFull = "/kaleidoscope";
 
     private readonly ICommandManager _commands;
-    private readonly IPluginLog _log;
     private readonly WindowService _windowService;
 
-    public CommandService(ICommandManager commands, IPluginLog log, WindowService windowService)
+    public CommandService(ICommandManager commands, WindowService windowService)
     {
         _commands = commands;
-        _log = log;
         _windowService = windowService;
 
         Register();

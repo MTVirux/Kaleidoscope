@@ -31,7 +31,6 @@ internal sealed class DeferredStartupService : IDisposable
     private readonly IActiveNotification _notification;
     private readonly int _totalServices;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
-    private readonly Random _random = Random.Shared;
     private readonly IDictionary _timersDictionary;
 
     private string _currentMessage;
@@ -53,12 +52,14 @@ internal sealed class DeferredStartupService : IDisposable
         var timersField = trackerType.GetField("_timers", BindingFlags.NonPublic | BindingFlags.Instance)!;
         _timersDictionary = (IDictionary)timersField.GetValue(services.Timers)!;
 
-        // Count all IService types — this is our total for the progress denominator.
-        _totalServices = pluginAssembly.ExportedTypes
-            .Count(t => t is { IsInterface: false, IsAbstract: false }
-                     && typeof(IService).IsAssignableFrom(t));
+        // Collect IService types once for both the progress denominator and the resolve loop.
+        var serviceTypes = pluginAssembly.ExportedTypes
+            .Where(t => t is { IsInterface: false, IsAbstract: false }
+                     && typeof(IService).IsAssignableFrom(t))
+            .ToArray();
+        _totalServices = serviceTypes.Length;
 
-        _currentMessage = FlavourText.GetRandom(_random, ProjectMessages);
+        _currentMessage = FlavourText.GetRandom(Random.Shared, ProjectMessages);
         _nextMessageTime = 0.5;
 
         _notification = _notificationManager.AddNotification(new Notification
@@ -72,12 +73,7 @@ internal sealed class DeferredStartupService : IDisposable
             Minimized       = false,
         });
 
-        // Resolve all services on a background thread so the game keeps rendering.
         var provider = services.Provider!;
-        var serviceTypes = pluginAssembly.ExportedTypes
-            .Where(t => t is { IsInterface: false, IsAbstract: false }
-                     && typeof(IService).IsAssignableFrom(t))
-            .ToArray();
 
         Task.Run(() =>
         {
@@ -148,7 +144,7 @@ internal sealed class DeferredStartupService : IDisposable
         var seconds = _elapsed.Elapsed.TotalSeconds;
         if (seconds >= _nextMessageTime)
         {
-            _currentMessage = FlavourText.GetRandom(_random, ProjectMessages);
+            _currentMessage = FlavourText.GetRandom(Random.Shared, ProjectMessages);
             _nextMessageTime = seconds + 1;
         }
 

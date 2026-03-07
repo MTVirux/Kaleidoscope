@@ -15,7 +15,6 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
     private readonly ITitleScreenMenu _titleScreenMenu;
     private readonly ITextureProvider _textureProvider;
     private readonly IDalamudPluginInterface _pluginInterface;
-    private readonly IPluginLog _log;
     private readonly WindowService _windowService;
 
     private IReadOnlyTitleScreenMenuEntry? _menuEntry;
@@ -24,13 +23,11 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
         ITitleScreenMenu titleScreenMenu,
         ITextureProvider textureProvider,
         IDalamudPluginInterface pluginInterface,
-        IPluginLog log,
         WindowService windowService)
     {
         _titleScreenMenu = titleScreenMenu;
         _textureProvider = textureProvider;
         _pluginInterface = pluginInterface;
-        _log = log;
         _windowService = windowService;
 
         CreateEntry();
