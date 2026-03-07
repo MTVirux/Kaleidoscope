@@ -30,6 +30,11 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     public int SortColumnIndex { get; set; } = 0;
     
     public bool SortAscending { get; set; } = true;
+
+    /// <summary>
+    /// Ordered list of sort columns for multi-column sorting.
+    /// </summary>
+    public List<SortColumnEntry> SortColumns { get; set; } = new();
     
     /// <summary>
     /// Whether to show the action buttons row (Add Item, Add Currency, Refresh).
@@ -211,6 +216,8 @@ public sealed class DataToolSettings :
     IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {
+    #region Shared Settings (Table + Graph)
+    
     public DataToolViewMode ViewMode { get; set; } = DataToolViewMode.Table;
     
     /// <summary>
@@ -225,6 +232,32 @@ public sealed class DataToolSettings :
     /// Whether to show the action buttons row (Add Item, Add Currency, Refresh, View Toggle).
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
+    
+    public bool HideZeroRows { get; set; } = false;
+    
+    /// <summary>
+    /// Whether to use multi-select character filtering (show only selected characters).
+    /// </summary>
+    public bool UseCharacterFilter { get; set; } = false;
+    
+    public List<ulong> SelectedCharacterIds { get; set; } = new();
+    
+    public TableGroupingMode GroupingMode { get; set; } = 
+        TableGroupingMode.Character;
+    
+    /// <summary>
+    /// Special grouping settings (AllCrystals element/tier filtering, AllGil merging).
+    /// </summary>
+    public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
+    
+    /// <summary>
+    /// Merged column groups with per-view visibility (<see cref="MergedColumnGroup.ShowInTable"/>/<see cref="MergedColumnGroup.ShowInGraph"/>).
+    /// </summary>
+    public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
+    
+    #endregion
+    
+    #region Number Format (explicit interface disambiguation)
     
     public NumberFormatConfig TableNumberFormat { get; set; } = new();
     
@@ -242,20 +275,9 @@ public sealed class DataToolSettings :
         set => GraphNumberFormat = value;
     }
     
-    /// <summary>
-    /// Whether to use multi-select character filtering (show only selected characters).
-    /// </summary>
-    public bool UseCharacterFilter { get; set; } = false;
+    #endregion
     
-    public List<ulong> SelectedCharacterIds { get; set; } = new();
-    
-    public TableGroupingMode GroupingMode { get; set; } = 
-        TableGroupingMode.Character;
-    
-    /// <summary>
-    /// Special grouping settings (AllCrystals element/tier filtering, AllGil merging).
-    /// </summary>
-    public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
+    #region Table Settings
     
     public bool ShowTotalRow { get; set; } = true;
     
@@ -271,41 +293,40 @@ public sealed class DataToolSettings :
     public int SortColumnIndex { get; set; } = 0;
     
     public bool SortAscending { get; set; } = true;
+
+    /// <summary>
+    /// Ordered list of sort columns for multi-column sorting.
+    /// </summary>
+    public List<SortColumnEntry> SortColumns { get; set; } = new();
     
+    // Table colors
     public System.Numerics.Vector4? HeaderColor { get; set; }
-    
     public System.Numerics.Vector4? EvenRowColor { get; set; }
-    
     public System.Numerics.Vector4? OddRowColor { get; set; }
     
+    // Column sizing
     public bool UseFullNameWidth { get; set; } = true;
-    
     public bool AutoSizeEqualColumns { get; set; } = false;
     
+    // Cell alignment
     public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Right;
-    
     public TableVerticalAlignment VerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
-    
     public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Left;
-    
     public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
-    
     public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Center;
-    
     public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
+    // Character visibility
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
-    
     public bool HideCharacterColumnInAllMode { get; set; } = false;
     
-    public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
-    
+    // Row merging
     public List<MergedRowGroup> MergedRowGroups { get; set; } = new();
     
     public TableTextColorMode TextColorMode { get; set; } = 
@@ -313,62 +334,54 @@ public sealed class DataToolSettings :
     
     /// <summary>
     /// Whether to show expandable retainer breakdown for characters with retainer data in table view.
-    /// When enabled, characters with retainers can be expanded to show per-retainer counts.
     /// </summary>
     public bool ShowRetainerBreakdown { get; set; } = true;
     
+    #endregion
+    
+    #region Graph Settings
+    
     /// <summary>
     /// Whether to show separate lines for each retainer in graph view.
-    /// When enabled, each retainer's inventory is shown as a separate series.
     /// </summary>
     public bool ShowRetainerBreakdownInGraph { get; set; } = false;
     
-    public bool HideZeroRows { get; set; } = false;
-    
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
+    // Legend
     /// <summary>Width of the scrollable legend panel.</summary>
     public float LegendWidth { get; set; } = 140f;
-    
     /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
-    
     public bool ShowLegend { get; set; } = true;
-    
     public bool LegendCollapsed { get; set; } = false;
-    
     public LegendPosition LegendPosition { get; set; } = 
         LegendPosition.InsideTopLeft;
     
+    // Plot appearance
     public GraphType GraphType { get; set; } = GraphType.Stairs;
-    
     public bool ShowXAxisTimestamps { get; set; } = true;
-    
     public bool ShowCrosshair { get; set; } = true;
-    
     public bool ShowGridLines { get; set; } = true;
-    
     public bool ShowCurrentPriceLine { get; set; } = true;
     
+    // Value label
     /// <summary>Whether to show a value label at the latest point.</summary>
     public bool ShowValueLabel { get; set; } = true;
-    
     public float ValueLabelOffsetX { get; set; } = 0f;
-    
     public float ValueLabelOffsetY { get; set; } = 0f;
     
+    // Auto-scroll
     public bool AutoScrollEnabled { get; set; } = false;
-    
     public int AutoScrollTimeValue { get; set; } = 1;
-    
     public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
-    
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
     
+    // Controls
     public bool ShowControlsDrawer { get; set; } = true;
-    
     public int TimeRangeValue { get; set; } = 7;
-    
     public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
+    
+    #endregion
 }
