@@ -103,6 +103,9 @@ public enum LogCategory
     /// <summary>Lifestream IPC integration.</summary>
     Lifestream = 1 << 13,
 
+    /// <summary>FFXIVMT API communication (Gilflux, etc.).</summary>
+    FFXIVMT = 1 << 14,
+
     /// <summary>All categories enabled.</summary>
     All = ~None
 }

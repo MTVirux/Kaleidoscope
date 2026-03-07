@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 
@@ -10,7 +9,6 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public sealed class FavoritesService : IService
 {
-    private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     
     /// <summary>
@@ -18,9 +16,8 @@ public sealed class FavoritesService : IService
     /// </summary>
     public event Action? OnFavoritesChanged;
 
-    public FavoritesService(IPluginLog log, ConfigurationService configService)
+    public FavoritesService(ConfigurationService configService)
     {
-        _log = log;
         _configService = configService;
     }
 

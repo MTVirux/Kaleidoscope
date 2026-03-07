@@ -209,7 +209,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                 {
                     // Universalis sends BSON, but we'll try to parse as JSON first
                     // since ClientWebSocket doesn't have built-in BSON support
-                    await ProcessMessageAsync(ms.ToArray());
+                    ProcessMessage(ms.ToArray());
                 }
                 else if (result.MessageType == WebSocketMessageType.Text)
                 {
@@ -263,11 +263,10 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         }
     }
 
-    private async Task ProcessMessageAsync(byte[] data)
+    private void ProcessMessage(byte[] data)
     {
         try
         {
-            // Parse BSON-encoded message (Universalis WebSocket protocol)
             var eventType = ParseEventType(data);
             if (string.IsNullOrEmpty(eventType))
             {
@@ -297,8 +296,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         {
             LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error processing message: {ex.Message}");
         }
-
-        await Task.CompletedTask;
     }
 
     private string? ParseEventType(byte[] data)
@@ -871,11 +868,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     /// </summary>
     public void ClearFeed()
     {
-        while (_liveFeed.TryDequeue(out _))
-        {
-            Interlocked.Decrement(ref _feedCount);
-        }
-        _feedCount = 0;
+        while (_liveFeed.TryDequeue(out _)) { }
+        Interlocked.Exchange(ref _feedCount, 0);
     }
 
     private void LogMessageCounts(object? state)

@@ -252,16 +252,16 @@ public sealed class ProfilerService : IDisposable, IService
 
         public void RecordSample(double drawTimeMs)
         {
-            // Update basic stats
             LastDrawTimeMs = drawTimeMs;
             if (drawTimeMs < MinDrawTimeMs) MinDrawTimeMs = drawTimeMs;
             if (drawTimeMs > MaxDrawTimeMs) MaxDrawTimeMs = drawTimeMs;
+
+            // Welford's online algorithm: compute delta against OLD mean before updating count
+            var oldMean = AverageDrawTimeMs;
             TotalDrawTimeMs += drawTimeMs;
             SampleCount++;
-
-            // Update Welford's algorithm for standard deviation
-            var delta = drawTimeMs - AverageDrawTimeMs;
-            _m2 += delta * (drawTimeMs - AverageDrawTimeMs);
+            var newMean = AverageDrawTimeMs;
+            _m2 += (drawTimeMs - oldMean) * (drawTimeMs - newMean);
 
             // Add to ring buffer
             _recentSamples[_ringIndex] = drawTimeMs;

@@ -39,7 +39,7 @@ public sealed class FFXIVMTService : IDisposable, IService
             PropertyNameCaseInsensitive = true
         };
 
-        LogService.Debug(LogCategory.Universalis, $"[FFXIVMTService] Initialized with rate limit of {MaxRequestsPerSecond} req/s");
+        LogService.Debug(LogCategory.FFXIVMT, $"[FFXIVMTService] Initialized with rate limit of {MaxRequestsPerSecond} req/s");
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public sealed class FFXIVMTService : IDisposable, IService
 
         if (waitTime > TimeSpan.Zero)
         {
-            LogService.Debug(LogCategory.Universalis, $"[FFXIVMTService] Rate limiting, waiting {waitTime.TotalMilliseconds:F0}ms");
+            LogService.Debug(LogCategory.FFXIVMT, $"[FFXIVMTService] Rate limiting, waiting {waitTime.TotalMilliseconds:F0}ms");
             await Task.Delay(waitTime, cancellationToken);
         }
 
@@ -177,7 +177,7 @@ public sealed class FFXIVMTService : IDisposable, IService
         }
         catch (JsonException ex)
         {
-            LogService.Error(LogCategory.Universalis, $"[FFXIVMTService] Failed to parse Gilflux data: {ex.Message}");
+            LogService.Error(LogCategory.FFXIVMT, $"[FFXIVMTService] Failed to parse Gilflux data: {ex.Message}");
             return null;
         }
     }
@@ -194,12 +194,12 @@ public sealed class FFXIVMTService : IDisposable, IService
         {
             await WaitForRateLimitAsync(cancellationToken);
 
-            LogService.Debug(LogCategory.Universalis, $"[FFXIVMTService] GET {url}");
+            LogService.Debug(LogCategory.FFXIVMT, $"[FFXIVMTService] GET {url}");
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                LogService.Warning(LogCategory.Universalis, $"[FFXIVMTService] Request failed with status {response.StatusCode} for {url}");
+                LogService.Warning(LogCategory.FFXIVMT, $"[FFXIVMTService] Request failed with status {response.StatusCode} for {url}");
                 return null;
             }
 
@@ -213,11 +213,11 @@ public sealed class FFXIVMTService : IDisposable, IService
                 if (jsonStart >= 0)
                 {
                     var jsonPart = json[jsonStart..];
-                    LogService.Warning(LogCategory.Universalis, $"[FFXIVMTService] Server returned HTML with embedded error for {url}: {jsonPart}");
+                    LogService.Warning(LogCategory.FFXIVMT, $"[FFXIVMTService] Server returned HTML with embedded error for {url}: {jsonPart}");
                 }
                 else
                 {
-                    LogService.Warning(LogCategory.Universalis, $"[FFXIVMTService] Server returned HTML instead of JSON for {url}");
+                    LogService.Warning(LogCategory.FFXIVMT, $"[FFXIVMTService] Server returned HTML instead of JSON for {url}");
                 }
                 return null;
             }
@@ -228,22 +228,22 @@ public sealed class FFXIVMTService : IDisposable, IService
         }
         catch (TaskCanceledException)
         {
-            LogService.Debug(LogCategory.Universalis, $"[FFXIVMTService] Request cancelled for {url}");
+            LogService.Debug(LogCategory.FFXIVMT, $"[FFXIVMTService] Request cancelled for {url}");
             return null;
         }
         catch (HttpRequestException ex)
         {
-            LogService.Warning(LogCategory.Universalis, $"[FFXIVMTService] HTTP error for {url}: {ex.Message}");
+            LogService.Warning(LogCategory.FFXIVMT, $"[FFXIVMTService] HTTP error for {url}: {ex.Message}");
             return null;
         }
         catch (JsonException ex)
         {
-            LogService.Error(LogCategory.Universalis, $"[FFXIVMTService] JSON parse error for {url}: {ex.Message}");
+            LogService.Error(LogCategory.FFXIVMT, $"[FFXIVMTService] JSON parse error for {url}: {ex.Message}");
             return null;
         }
         catch (Exception ex)
         {
-            LogService.Error(LogCategory.Universalis, $"[FFXIVMTService] Unexpected error for {url}: {ex.Message}");
+            LogService.Error(LogCategory.FFXIVMT, $"[FFXIVMTService] Unexpected error for {url}: {ex.Message}");
             return null;
         }
     }
@@ -255,6 +255,6 @@ public sealed class FFXIVMTService : IDisposable, IService
         try { _httpClient.Dispose(); }
         catch (Exception) { /* Ignore disposal errors */ }
 
-        LogService.Debug(LogCategory.Universalis, "[FFXIVMTService] Disposed");
+        LogService.Debug(LogCategory.FFXIVMT, "[FFXIVMTService] Disposed");
     }
 }

@@ -12,7 +12,6 @@ namespace Kaleidoscope.Services;
 public sealed class ItemDataService : IService
 {
     private readonly IDataManager _dataManager;
-    private readonly IPluginLog _log;
 
     // Cache for item names to avoid repeated Excel lookups
     private readonly ConcurrentDictionary<uint, string> _itemNameCache = new();
@@ -21,10 +20,9 @@ public sealed class ItemDataService : IService
     private HashSet<uint>? _craftableItemIds;
     private readonly object _craftableLock = new();
 
-    public ItemDataService(IDataManager dataManager, IPluginLog log)
+    public ItemDataService(IDataManager dataManager)
     {
         _dataManager = dataManager;
-        _log = log;
 
         LogService.Debug(LogCategory.Inventory, "[ItemDataService] Initialized");
     }

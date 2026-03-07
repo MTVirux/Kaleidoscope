@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 
@@ -11,7 +10,6 @@ namespace Kaleidoscope.Services;
 /// </summary>
 public sealed class TrackedDataRegistry : IRequiredService
 {
-    private readonly IPluginLog _log;
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
     
     private Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>? _byCategory;
@@ -24,9 +22,8 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// </summary>
     public IReadOnlyDictionary<TrackedDataType, TrackedDataDefinition> Definitions => _definitions;
 
-    public TrackedDataRegistry(IPluginLog log)
+    public TrackedDataRegistry()
     {
-        _log = log;
         RegisterAllTypes();
         BuildCaches();
     }

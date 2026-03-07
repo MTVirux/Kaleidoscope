@@ -614,8 +614,9 @@ public static class WindowToolRegistrar
                 ToolIds.GilFlux => CreateGilFluxTool(pos, ctx),
                 _ => null
             };
-            // Apply default colors for tools created inline (factory methods handle their own)
-            if (tool != null) ApplyDefaultColors(tool, ctx);
+            // Apply default colors only for tools created inline (factory methods handle their own)
+            if (tool != null && id is ToolIds.GettingStarted or ToolIds.ImPlotReference or ToolIds.Label)
+                ApplyDefaultColors(tool, ctx);
             return tool;
         }
         catch (Exception ex)

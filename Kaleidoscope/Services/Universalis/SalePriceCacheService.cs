@@ -26,7 +26,7 @@ namespace Kaleidoscope.Services.Universalis;
 public sealed class SalePriceCacheService : IService, IDisposable
 {
     private readonly IPluginLog _log;
-    private readonly KaleidoscopeDbService? _dbService;
+    private readonly KaleidoscopeDbService _dbService;
     
     // Cache for single-item lookups: (itemId, isHq) -> (price, timestamp)
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), SalePriceCacheEntry> _globalSaleCache = new();
@@ -48,10 +48,10 @@ public sealed class SalePriceCacheService : IService, IDisposable
     
     public int TtlSeconds { get; set; } = DefaultTtlSeconds;
     
-    public SalePriceCacheService(IPluginLog log, CurrencyTrackerService currencyTrackerService)
+    public SalePriceCacheService(IPluginLog log, KaleidoscopeDbService dbService)
     {
         _log = log;
-        _dbService = currencyTrackerService?.DbService;
+        _dbService = dbService;
         LogService.Debug(LogCategory.Cache, "[SalePriceCache] Service initialized");
     }
     
