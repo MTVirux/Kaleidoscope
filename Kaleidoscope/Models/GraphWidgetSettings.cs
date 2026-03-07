@@ -4,9 +4,6 @@ using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope.Models;
 
-/// <summary>
-/// Mode for determining series colors in the graph.
-/// </summary>
 public enum GraphColorMode
 {
     /// <summary>Don't use preferred colors - use custom series colors or default palette.</summary>
@@ -23,9 +20,6 @@ public enum GraphColorMode
 /// </summary>
 public interface IGraphWidgetSettings : IGraphSettings
 {
-    /// <summary>
-    /// Mode for determining series colors in the graph.
-    /// </summary>
     GraphColorMode ColorMode { get; set; }
 }
 
@@ -59,19 +53,10 @@ public sealed class GraphWidgetSettings : IGraphWidgetSettings
     public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    /// <summary>
-    /// Calculates the auto-scroll time range in seconds from value and unit.
-    /// </summary>
     public double GetAutoScrollTimeRangeSeconds() => TimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
     
-    /// <summary>
-    /// Gets the time span for the current time range settings.
-    /// </summary>
     public TimeSpan? GetTimeSpan() => TimeRangeSelectorWidget.GetTimeSpan(TimeRangeValue, TimeRangeUnit);
     
-    /// <summary>
-    /// Copies all graph settings from another IGraphWidgetSettings instance.
-    /// </summary>
     public void CopyFrom(IGraphWidgetSettings other)
     {
         ColorMode = other.ColorMode;

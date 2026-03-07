@@ -28,21 +28,14 @@ public sealed class SalePriceCacheService : IService, IDisposable
     private readonly IPluginLog _log;
     private readonly KaleidoscopeDbService _dbService;
     
-    // Cache for single-item lookups: (itemId, isHq) -> (price, timestamp)
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), SalePriceCacheEntry> _globalSaleCache = new();
-    
-    // Cache for world-specific lookups: (itemId, worldId, isHq) -> (price, timestamp)
     private readonly ConcurrentDictionary<(int ItemId, int WorldId, bool IsHq), SalePriceCacheEntry> _worldSaleCache = new();
-    
-    // Cache for batch lookups: (itemId) -> (lastSaleNq, lastSaleHq, timestamp)
     private readonly ConcurrentDictionary<int, BatchSalePriceCacheEntry> _batchSaleCache = new();
     
-    // Statistics
     private long _cacheHits;
     private long _cacheMisses;
     private long _dbFetches;
     
-    // Configuration
     private const int DefaultTtlSeconds = 30;
     private const int MaxCacheEntries = 20000;
     
@@ -244,9 +237,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         }
     }
     
-    /// <summary>
-    /// Clears all caches.
-    /// </summary>
     public void Clear()
     {
         _globalSaleCache.Clear();
@@ -255,9 +245,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[SalePriceCache] All caches cleared");
     }
     
-    /// <summary>
-    /// Invalidates cache entries for a specific item.
-    /// </summary>
     public void InvalidateItem(int itemId)
     {
         _globalSaleCache.TryRemove((itemId, false), out _);
@@ -272,9 +259,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         }
     }
     
-    /// <summary>
-    /// Gets cache statistics.
-    /// </summary>
     public SalePriceCacheStatistics GetStatistics()
     {
         return new SalePriceCacheStatistics
@@ -290,9 +274,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
         };
     }
     
-    /// <summary>
-    /// Resets statistics counters.
-    /// </summary>
     public void ResetStatistics()
     {
         Interlocked.Exchange(ref _cacheHits, 0);
@@ -336,9 +317,6 @@ public sealed class SalePriceCacheService : IService, IDisposable
     }
 }
 
-/// <summary>
-/// Cache entry for single sale price lookup.
-/// </summary>
 public sealed class SalePriceCacheEntry
 {
     public int Price { get; }
@@ -353,9 +331,6 @@ public sealed class SalePriceCacheEntry
     public bool IsExpired(int ttlSeconds) => (DateTime.UtcNow - Timestamp).TotalSeconds > ttlSeconds;
 }
 
-/// <summary>
-/// Cache entry for batch sale price lookup.
-/// </summary>
 public sealed class BatchSalePriceCacheEntry
 {
     public int LastSaleNq { get; }
@@ -372,9 +347,6 @@ public sealed class BatchSalePriceCacheEntry
     public bool IsExpired(int ttlSeconds) => (DateTime.UtcNow - Timestamp).TotalSeconds > ttlSeconds;
 }
 
-/// <summary>
-/// Statistics for the sale price cache.
-/// </summary>
 public record SalePriceCacheStatistics
 {
     public int GlobalCacheEntries { get; init; }

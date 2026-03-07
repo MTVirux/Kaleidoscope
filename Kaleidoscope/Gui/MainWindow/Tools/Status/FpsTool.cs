@@ -6,9 +6,6 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// Settings class for FpsTool with all configurable properties.
-/// </summary>
 public sealed class FpsToolSettings
 {
     public bool ShowFrameTime { get; set; } = true;
@@ -16,9 +13,6 @@ public sealed class FpsToolSettings
     public float BadThreshold { get; set; } = 15f;
 }
 
-/// <summary>
-/// A tool that displays the current frames per second.
-/// </summary>
 public sealed class FpsTool : ToolComponent
 {
     public override string ToolName => "FPS";
@@ -27,7 +21,6 @@ public sealed class FpsTool : ToolComponent
     private float _smoothedFps;
     private const float SmoothingFactor = 0.1f;
     
-    // Settings instance and schema
     private readonly FpsToolSettings _settings = new();
     
     private static readonly SettingsSchema<FpsToolSettings> Schema = SettingsSchema.For<FpsToolSettings>()
@@ -36,27 +29,18 @@ public sealed class FpsTool : ToolComponent
         .SliderFloat(s => s.WarningThreshold, "Warning FPS", 10f, 60f, "FPS below this value shows warning color", "%.0f", 30f)
         .SliderFloat(s => s.BadThreshold, "Critical FPS", 5f, 30f, "FPS below this value shows critical/red color", "%.0f", 15f);
 
-    /// <summary>
-    /// Whether to show the frame time in milliseconds.
-    /// </summary>
     public bool ShowFrameTime
     {
         get => _settings.ShowFrameTime;
         set => _settings.ShowFrameTime = value;
     }
 
-    /// <summary>
-    /// FPS threshold below which the color turns to warning.
-    /// </summary>
     public float WarningThreshold
     {
         get => _settings.WarningThreshold;
         set => _settings.WarningThreshold = value;
     }
 
-    /// <summary>
-    /// FPS threshold below which the color turns to bad/red.
-    /// </summary>
     public float BadThreshold
     {
         get => _settings.BadThreshold;
@@ -76,7 +60,6 @@ public sealed class FpsTool : ToolComponent
             var io = ImGui.GetIO();
             var currentFps = io.Framerate;
 
-            // Apply smoothing
             if (_smoothedFps <= 0)
                 _smoothedFps = currentFps;
             else
@@ -84,7 +67,6 @@ public sealed class FpsTool : ToolComponent
 
             var fpsColor = GetFpsColor(_smoothedFps);
 
-            // Display FPS
             ImGui.TextColored(UiColors.Info, "FPS:");
             ImGui.SameLine();
             ImGui.TextColored(fpsColor, $"{_smoothedFps:F1}");
@@ -118,17 +100,11 @@ public sealed class FpsTool : ToolComponent
     
     protected override object? GetToolSettingsObject() => _settings;
     
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
     public override Dictionary<string, object?>? ExportToolSettings()
     {
         return Schema.ToDictionary(_settings)!;
     }
     
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
     {
         Schema.FromDictionary(_settings, settings);

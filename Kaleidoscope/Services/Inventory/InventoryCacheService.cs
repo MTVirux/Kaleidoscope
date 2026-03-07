@@ -96,9 +96,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Initialized");
     }
     
-    /// <summary>
-    /// Pre-populates the inventory cache from the database on a background thread.
-    /// </summary>
     private void PopulateCacheAsync()
     {
         if (_cachePopulating) return;
@@ -553,9 +550,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Scans a single inventory container and adds items to the list.
-    /// </summary>
     private unsafe void ScanContainer(InventoryManager* im, InventoryType containerType, List<InventoryItemSnapshot> items)
     {
         try
@@ -618,9 +612,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         return new List<InventoryCacheEntry>();
     }
     
-    /// <summary>
-    /// Populates the cache for a specific character from the database on a background thread.
-    /// </summary>
     private void PopulateCharacterCacheAsync(ulong characterId)
     {
         Task.Run(() =>
@@ -647,10 +638,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         });
     }
     
-    /// <summary>
-    /// Gets all cached inventories for the current character.
-    /// Uses in-memory cache for efficiency.
-    /// </summary>
     public List<InventoryCacheEntry> GetCurrentCharacterInventories()
     {
         var characterId = GameStateService.PlayerContentId;
@@ -689,10 +676,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Gets the total count of a specific item across all caches for the current character.
-    /// Uses in-memory cache for efficiency.
-    /// </summary>
     public long GetTotalItemCount(uint itemId)
     {
         var characterId = GameStateService.PlayerContentId;
@@ -706,10 +689,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             .Sum(i => (long)i.Quantity);
     }
 
-    /// <summary>
-    /// Gets the total count of a specific item across all caches for all characters.
-    /// Uses in-memory cache for efficiency.
-    /// </summary>
     public long GetTotalItemCountAllCharacters(uint itemId)
     {
         // Use memory cache instead of DB call
@@ -720,9 +699,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
             .Sum(i => (long)i.Quantity);
     }
 
-    /// <summary>
-    /// Resets the retainer cache tracking so the next retainer will be re-cached.
-    /// </summary>
     public void ResetRetainerCacheTracking()
     {
         _lastCachedRetainerId = 0;
@@ -869,9 +845,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         return trackedItems;
     }
     
-    /// <summary>
-    /// Computes a simple hash of layout configuration to detect changes.
-    /// </summary>
     private int ComputeLayoutHash()
     {
         var hash = 17;
@@ -923,18 +896,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Flushed {samplesToSave.Count} pending item samples ({inserted} changed) ({reason})");
     }
 
-    /// <summary>
-    /// Gets the variable name used for storing item time-series data.
-    /// </summary>
-    /// <param name="itemId">The item ID.</param>
-    /// <returns>The variable name in format "Item_{itemId}".</returns>
     public static string GetItemVariableName(uint itemId) => $"Item_{itemId}";
-    
-    /// <summary>
-    /// Gets the variable name used for storing retainer item time-series data.
-    /// </summary>
-    /// <param name="itemId">The item ID.</param>
-    /// <returns>The variable name in format "ItemRetainer_{itemId}".</returns>
     public static string GetRetainerItemVariableName(uint itemId) => $"ItemRetainer_{itemId}";
 
     /// <summary>
@@ -969,9 +931,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Gets cache statistics for diagnostics.
-    /// </summary>
     public InventoryCacheStatistics GetCacheStatistics()
     {
         int characterCount;
@@ -1049,9 +1008,6 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     }
 }
 
-/// <summary>
-/// Statistics for InventoryCacheService diagnostics.
-/// </summary>
 public readonly struct InventoryCacheStatistics
 {
     public int CachedCharacterCount { get; init; }

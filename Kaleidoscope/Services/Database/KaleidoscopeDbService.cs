@@ -45,9 +45,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     /// </summary>
     private Timer? _checkpointTimer;
     
-    /// <summary>
-    /// Interval between periodic passive WAL checkpoints (5 minutes).
-    /// </summary>
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromMinutes(5);
 
     public string? DbPath => _dbPath;

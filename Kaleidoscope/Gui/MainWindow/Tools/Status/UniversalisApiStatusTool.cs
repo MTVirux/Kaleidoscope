@@ -6,9 +6,6 @@ using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// A tool that displays the Universalis REST API status and configuration.
-/// </summary>
 public sealed class UniversalisApiStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis API Status";
@@ -38,7 +35,6 @@ public sealed class UniversalisApiStatusTool : StatusToolBase
 
             if (ShowDetails)
             {
-                // Show configured query scope
                 var scope = _configService.Config.UniversalisQueryScope;
                 var scopeText = scope switch
                 {
@@ -49,7 +45,6 @@ public sealed class UniversalisApiStatusTool : StatusToolBase
                 };
                 ImGui.TextUnformatted($"  Query scope: {scopeText}");
 
-                // Show price tracking mode if available
                 if (_priceTrackingService != null)
                 {
                     var worldData = _priceTrackingService.WorldData;

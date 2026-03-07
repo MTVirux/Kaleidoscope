@@ -12,34 +12,16 @@ namespace Kaleidoscope;
 /// </summary>
 public sealed class ItemTableSettings : IItemTableWidgetSettings
 {
-    /// <summary>
-    /// List of column configurations for items/currencies to display.
-    /// </summary>
     public List<ItemColumnConfig> Columns { get; set; } = new();
     
-    /// <summary>
-    /// Whether to show a total row at the bottom summing all characters.
-    /// </summary>
     public bool ShowTotalRow { get; set; } = true;
     
-    /// <summary>
-    /// Whether to allow sorting by clicking column headers.
-    /// </summary>
     public bool Sortable { get; set; } = true;
     
-    /// <summary>
-    /// Whether to include retainer inventory in item counts.
-    /// </summary>
     public bool IncludeRetainers { get; set; } = true;
     
-    /// <summary>
-    /// Width of the character name column.
-    /// </summary>
     public float CharacterColumnWidth { get; set; } = 120f;
     
-    /// <summary>
-    /// Optional custom color for the character name column.
-    /// </summary>
     public System.Numerics.Vector4? CharacterColumnColor { get; set; }
     
     /// <summary>
@@ -47,9 +29,6 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     /// </summary>
     public int SortColumnIndex { get; set; } = 0;
     
-    /// <summary>
-    /// Whether to sort in ascending order.
-    /// </summary>
     public bool SortAscending { get; set; } = true;
     
     /// <summary>
@@ -57,24 +36,12 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
     
-    /// <summary>
-    /// Number format configuration for displaying values.
-    /// </summary>
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    /// <summary>
-    /// Optional custom color for the table header row.
-    /// </summary>
     public System.Numerics.Vector4? HeaderColor { get; set; }
     
-    /// <summary>
-    /// Optional custom color for even-numbered rows (0, 2, 4...).
-    /// </summary>
     public System.Numerics.Vector4? EvenRowColor { get; set; }
     
-    /// <summary>
-    /// Optional custom color for odd-numbered rows (1, 3, 5...).
-    /// </summary>
     public System.Numerics.Vector4? OddRowColor { get; set; }
     
     /// <summary>
@@ -89,45 +56,24 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     /// </summary>
     public bool AutoSizeEqualColumns { get; set; } = false;
     
-    /// <summary>
-    /// Horizontal alignment for data cell content.
-    /// </summary>
     public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Right;
     
-    /// <summary>
-    /// Vertical alignment for data cell content.
-    /// </summary>
     public TableVerticalAlignment VerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Horizontal alignment for character column content.
-    /// </summary>
     public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Left;
     
-    /// <summary>
-    /// Vertical alignment for character column content.
-    /// </summary>
     public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Horizontal alignment for header row content.
-    /// </summary>
     public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Center;
     
-    /// <summary>
-    /// Vertical alignment for header row content.
-    /// </summary>
     public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Set of character IDs that are hidden from the table.
-    /// </summary>
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
     
     /// <summary>
@@ -142,30 +88,15 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     /// </summary>
     public List<ulong> SelectedCharacterIds { get; set; } = new();
     
-    /// <summary>
-    /// Grouping mode for table rows (Character, World, DataCenter, Region, All).
-    /// </summary>
     public TableGroupingMode GroupingMode { get; set; } = 
         TableGroupingMode.Character;
     
-    /// <summary>
-    /// Whether to hide the character/group column when GroupingMode is All.
-    /// </summary>
     public bool HideCharacterColumnInAllMode { get; set; } = false;
     
-    /// <summary>
-    /// List of merged column groups. Each group combines multiple columns into one.
-    /// </summary>
     public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
     
-    /// <summary>
-    /// List of merged row groups. Each group combines multiple character rows into one.
-    /// </summary>
     public List<MergedRowGroup> MergedRowGroups { get; set; } = new();
     
-    /// <summary>
-    /// Mode for determining cell text colors.
-    /// </summary>
     public TableTextColorMode TextColorMode { get; set; } = 
         TableTextColorMode.DontUse;
     
@@ -175,9 +106,6 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
     /// </summary>
     public bool ShowRetainerBreakdown { get; set; } = true;
     
-    /// <summary>
-    /// Whether to hide rows where all column values are zero.
-    /// </summary>
     public bool HideZeroRows { get; set; } = false;
     
     /// <summary>
@@ -192,14 +120,8 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
 /// </summary>
 public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
 {
-    /// <summary>
-    /// List of series configurations for items/currencies to display as graph lines.
-    /// </summary>
     public List<ItemColumnConfig> Series { get; set; } = new();
     
-    /// <summary>
-    /// Whether to include retainer inventory in item counts.
-    /// </summary>
     public bool IncludeRetainers { get; set; } = true;
     
     /// <summary>
@@ -207,12 +129,8 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
     
-    /// <summary>
-    /// Number format configuration for displaying values.
-    /// </summary>
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    /// <summary>Mode for determining series colors in the graph.</summary>
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
     /// <summary>Width of the scrollable legend panel on the right side of the graph.</summary>
@@ -221,58 +139,42 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
     
-    /// <summary>Whether to show the legend panel.</summary>
     public bool ShowLegend { get; set; } = true;
     
-    /// <summary>Whether the legend is collapsed.</summary>
     public bool LegendCollapsed { get; set; } = false;
     
-    /// <summary>Position of the legend (inside or outside the graph).</summary>
     public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
     
-    /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
     public GraphType GraphType { get; set; } = GraphType.Area;
     
-    /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
     
-    /// <summary>Whether to show crosshair on hover.</summary>
     public bool ShowCrosshair { get; set; } = true;
     
-    /// <summary>Whether to show horizontal grid lines.</summary>
     public bool ShowGridLines { get; set; } = true;
     
-    /// <summary>Whether to show the current value line.</summary>
     public bool ShowCurrentPriceLine { get; set; } = true;
     
     /// <summary>Whether to show a value label at the latest point.</summary>
     public bool ShowValueLabel { get; set; } = false;
     
-    /// <summary>X offset for the value label.</summary>
     public float ValueLabelOffsetX { get; set; } = 0f;
     
-    /// <summary>Y offset for the value label.</summary>
     public float ValueLabelOffsetY { get; set; } = 0f;
     
-    /// <summary>Whether auto-scroll is enabled.</summary>
     public bool AutoScrollEnabled { get; set; } = false;
     
-    /// <summary>Numeric value for auto-scroll time range.</summary>
     public int AutoScrollTimeValue { get; set; } = 1;
     
-    /// <summary>Unit for auto-scroll time range.</summary>
     public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
     
-    /// <summary>Whether to show the controls drawer.</summary>
     public bool ShowControlsDrawer { get; set; } = true;
     
-    /// <summary>Numeric value for time range.</summary>
     public int TimeRangeValue { get; set; } = 7;
     
-    /// <summary>Unit for time range.</summary>
     public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     
     /// <summary>
@@ -309,9 +211,6 @@ public sealed class DataToolSettings :
     IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {
-    /// <summary>
-    /// Current view mode (Table or Graph).
-    /// </summary>
     public DataToolViewMode ViewMode { get; set; } = DataToolViewMode.Table;
     
     /// <summary>
@@ -320,9 +219,6 @@ public sealed class DataToolSettings :
     /// </summary>
     public List<ItemColumnConfig> Columns { get; set; } = new();
     
-    /// <summary>
-    /// Whether to include retainer inventory in item counts.
-    /// </summary>
     public bool IncludeRetainers { get; set; } = true;
     
     /// <summary>
@@ -330,14 +226,8 @@ public sealed class DataToolSettings :
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
     
-    /// <summary>
-    /// Number format configuration for the table view.
-    /// </summary>
     public NumberFormatConfig TableNumberFormat { get; set; } = new();
     
-    /// <summary>
-    /// Number format configuration for the graph view.
-    /// </summary>
     public NumberFormatConfig GraphNumberFormat { get; set; } = new();
     
     NumberFormatConfig IItemTableWidgetSettings.NumberFormat
@@ -357,14 +247,8 @@ public sealed class DataToolSettings :
     /// </summary>
     public bool UseCharacterFilter { get; set; } = false;
     
-    /// <summary>
-    /// List of selected character IDs when UseCharacterFilter is enabled.
-    /// </summary>
     public List<ulong> SelectedCharacterIds { get; set; } = new();
     
-    /// <summary>
-    /// Grouping mode (Character, World, DataCenter, Region, All).
-    /// </summary>
     public TableGroupingMode GroupingMode { get; set; } = 
         TableGroupingMode.Character;
     
@@ -373,24 +257,12 @@ public sealed class DataToolSettings :
     /// </summary>
     public Kaleidoscope.Models.SpecialGroupingSettings SpecialGrouping { get; set; } = new();
     
-    /// <summary>
-    /// Whether to show a total row at the bottom summing all characters.
-    /// </summary>
     public bool ShowTotalRow { get; set; } = true;
     
-    /// <summary>
-    /// Whether to allow sorting by clicking column headers.
-    /// </summary>
     public bool Sortable { get; set; } = true;
     
-    /// <summary>
-    /// Width of the character name column.
-    /// </summary>
     public float CharacterColumnWidth { get; set; } = 120f;
     
-    /// <summary>
-    /// Optional custom color for the character name column.
-    /// </summary>
     public System.Numerics.Vector4? CharacterColumnColor { get; set; }
     
     /// <summary>
@@ -398,95 +270,44 @@ public sealed class DataToolSettings :
     /// </summary>
     public int SortColumnIndex { get; set; } = 0;
     
-    /// <summary>
-    /// Whether to sort in ascending order.
-    /// </summary>
     public bool SortAscending { get; set; } = true;
     
-    /// <summary>
-    /// Optional custom color for the table header row.
-    /// </summary>
     public System.Numerics.Vector4? HeaderColor { get; set; }
     
-    /// <summary>
-    /// Optional custom color for even-numbered rows.
-    /// </summary>
     public System.Numerics.Vector4? EvenRowColor { get; set; }
     
-    /// <summary>
-    /// Optional custom color for odd-numbered rows.
-    /// </summary>
     public System.Numerics.Vector4? OddRowColor { get; set; }
     
-    /// <summary>
-    /// Whether to use the full character name width as the minimum column width.
-    /// </summary>
     public bool UseFullNameWidth { get; set; } = true;
     
-    /// <summary>
-    /// Whether to auto-size all data columns to equal widths.
-    /// </summary>
     public bool AutoSizeEqualColumns { get; set; } = false;
     
-    /// <summary>
-    /// Horizontal alignment for data cell content.
-    /// </summary>
     public TableHorizontalAlignment HorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Right;
     
-    /// <summary>
-    /// Vertical alignment for data cell content.
-    /// </summary>
     public TableVerticalAlignment VerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Horizontal alignment for character column content.
-    /// </summary>
     public TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Left;
     
-    /// <summary>
-    /// Vertical alignment for character column content.
-    /// </summary>
     public TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Horizontal alignment for header row content.
-    /// </summary>
     public TableHorizontalAlignment HeaderHorizontalAlignment { get; set; } = 
         TableHorizontalAlignment.Center;
     
-    /// <summary>
-    /// Vertical alignment for header row content.
-    /// </summary>
     public TableVerticalAlignment HeaderVerticalAlignment { get; set; } = 
         TableVerticalAlignment.Top;
     
-    /// <summary>
-    /// Set of character IDs that are hidden from the table.
-    /// </summary>
     public HashSet<ulong> HiddenCharacters { get; set; } = new();
     
-    /// <summary>
-    /// Whether to hide the character/group column when GroupingMode is All.
-    /// </summary>
     public bool HideCharacterColumnInAllMode { get; set; } = false;
     
-    /// <summary>
-    /// List of merged column groups.
-    /// </summary>
     public List<MergedColumnGroup> MergedColumnGroups { get; set; } = new();
     
-    /// <summary>
-    /// List of merged row groups.
-    /// </summary>
     public List<MergedRowGroup> MergedRowGroups { get; set; } = new();
     
-    /// <summary>
-    /// Mode for determining cell text colors.
-    /// </summary>
     public TableTextColorMode TextColorMode { get; set; } = 
         TableTextColorMode.PreferredItemColors;
     
@@ -502,12 +323,8 @@ public sealed class DataToolSettings :
     /// </summary>
     public bool ShowRetainerBreakdownInGraph { get; set; } = false;
     
-    /// <summary>
-    /// Whether to hide rows where all column values are zero.
-    /// </summary>
     public bool HideZeroRows { get; set; } = false;
     
-    /// <summary>Mode for determining series colors in the graph.</summary>
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
     /// <summary>Width of the scrollable legend panel.</summary>
@@ -516,58 +333,42 @@ public sealed class DataToolSettings :
     /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
     
-    /// <summary>Whether to show the legend panel.</summary>
     public bool ShowLegend { get; set; } = true;
     
-    /// <summary>Whether the legend is collapsed.</summary>
     public bool LegendCollapsed { get; set; } = false;
     
-    /// <summary>Position of the legend (inside or outside the graph).</summary>
     public LegendPosition LegendPosition { get; set; } = 
         LegendPosition.InsideTopLeft;
     
-    /// <summary>The type of graph to render (Area, Line, Stairs, Bars).</summary>
     public GraphType GraphType { get; set; } = GraphType.Stairs;
     
-    /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
     
-    /// <summary>Whether to show crosshair on hover.</summary>
     public bool ShowCrosshair { get; set; } = true;
     
-    /// <summary>Whether to show horizontal grid lines.</summary>
     public bool ShowGridLines { get; set; } = true;
     
-    /// <summary>Whether to show the current value line.</summary>
     public bool ShowCurrentPriceLine { get; set; } = true;
     
     /// <summary>Whether to show a value label at the latest point.</summary>
     public bool ShowValueLabel { get; set; } = true;
     
-    /// <summary>X offset for the value label.</summary>
     public float ValueLabelOffsetX { get; set; } = 0f;
     
-    /// <summary>Y offset for the value label.</summary>
     public float ValueLabelOffsetY { get; set; } = 0f;
     
-    /// <summary>Whether auto-scroll is enabled.</summary>
     public bool AutoScrollEnabled { get; set; } = false;
     
-    /// <summary>Numeric value for auto-scroll time range.</summary>
     public int AutoScrollTimeValue { get; set; } = 1;
     
-    /// <summary>Unit for auto-scroll time range.</summary>
     public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     
     /// <summary>Position of "now" on the X-axis when auto-scrolling (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
     
-    /// <summary>Whether to show the controls drawer.</summary>
     public bool ShowControlsDrawer { get; set; } = true;
     
-    /// <summary>Numeric value for time range.</summary>
     public int TimeRangeValue { get; set; } = 7;
     
-    /// <summary>Unit for time range.</summary>
     public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
 }

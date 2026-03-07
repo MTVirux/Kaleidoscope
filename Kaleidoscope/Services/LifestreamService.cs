@@ -91,17 +91,14 @@ public sealed class LifestreamService : IDisposable, IService
 
         try
         {
-            // Status
             _isBusy = _pluginInterface.GetIpcSubscriber<bool>("Lifestream.IsBusy");
             _abort = _pluginInterface.GetIpcSubscriber<object?>("Lifestream.Abort");
 
-            // World Travel
             _canVisitSameDC = _pluginInterface.GetIpcSubscriber<string, bool>("Lifestream.CanVisitSameDC");
             _canVisitCrossDC = _pluginInterface.GetIpcSubscriber<string, bool>("Lifestream.CanVisitCrossDC");
             _changeWorld = _pluginInterface.GetIpcSubscriber<string, bool>("Lifestream.ChangeWorld");
             _changeWorldById = _pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.ChangeWorldById");
 
-            // Teleport
             _teleport = _pluginInterface.GetIpcSubscriber<uint, byte, bool>("Lifestream.Teleport");
             _aethernetTeleport = _pluginInterface.GetIpcSubscriber<string, bool>("Lifestream.AethernetTeleport");
             _aethernetTeleportById = _pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportById");
@@ -112,31 +109,26 @@ public sealed class LifestreamService : IDisposable, IService
             _teleportToHome = _pluginInterface.GetIpcSubscriber<bool>("Lifestream.TeleportToHome");
             _teleportToApartment = _pluginInterface.GetIpcSubscriber<bool>("Lifestream.TeleportToApartment");
 
-            // Aetheryte State
             _getActiveAetheryte = _pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveAetheryte");
             _getActiveCustomAetheryte = _pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveCustomAetheryte");
             _getActiveResidentialAetheryte = _pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveResidentialAetheryte");
 
-            // Instance
             _canChangeInstance = _pluginInterface.GetIpcSubscriber<bool>("Lifestream.CanChangeInstance");
             _getNumberOfInstances = _pluginInterface.GetIpcSubscriber<int>("Lifestream.GetNumberOfInstances");
             _changeInstance = _pluginInterface.GetIpcSubscriber<int, object?>("Lifestream.ChangeInstance");
             _getCurrentInstance = _pluginInterface.GetIpcSubscriber<int>("Lifestream.GetCurrentInstance");
 
-            // Housing
             _hasApartment = _pluginInterface.GetIpcSubscriber<bool?>("Lifestream.HasApartment");
             _hasPrivateHouse = _pluginInterface.GetIpcSubscriber<bool?>("Lifestream.HasPrivateHouse");
             _hasFreeCompanyHouse = _pluginInterface.GetIpcSubscriber<bool?>("Lifestream.HasFreeCompanyHouse");
             _hasSharedEstate = _pluginInterface.GetIpcSubscriber<bool?>("Lifestream.HasSharedEstate");
 
-            // Character / Login
             _canAutoLogin = _pluginInterface.GetIpcSubscriber<bool>("Lifestream.CanAutoLogin");
             _changeCharacter = _pluginInterface.GetIpcSubscriber<string, string, int>("Lifestream.ChangeCharacter");
             _logout = _pluginInterface.GetIpcSubscriber<int>("Lifestream.Logout");
             _connectAndLogin = _pluginInterface.GetIpcSubscriber<string, string, bool>("Lifestream.ConnectAndLogin");
             _connectAndOpenCharaSelect = _pluginInterface.GetIpcSubscriber<string, string, bool>("Lifestream.ConnectAndOpenCharaSelect");
 
-            // Misc
             _executeCommand = _pluginInterface.GetIpcSubscriber<string, object?>("Lifestream.ExecuteCommand");
             _getRealTerritoryType = _pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetRealTerritoryType");
             _getWorldChangeAetheryteByTerritoryType = _pluginInterface.GetIpcSubscriber<uint, int?>("Lifestream.GetWorldChangeAetheryteByTerritoryType");

@@ -6,9 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    /// <summary>
-    /// Exports data to a CSV string.
-    /// </summary>
     public string ExportToCsv(string variable, ulong? characterId = null)
     {
         var sb = new StringBuilder();

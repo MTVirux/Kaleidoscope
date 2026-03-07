@@ -6,9 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    /// <summary>
-    /// Clears all data for a specific character and variable.
-    /// </summary>
     public bool ClearCharacterData(string variable, ulong characterId)
     {
         lock (_writeLock)
@@ -40,9 +37,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Clears all data for a variable across all characters.
-    /// </summary>
     public bool ClearAllData(string variable)
     {
         lock (_writeLock)
@@ -92,7 +86,6 @@ public sealed partial class KaleidoscopeDbService
                     using var cmd = _connection!.CreateCommand();
                     cmd.Transaction = tx;
 
-                    // Time-series data
                     cmd.CommandText = "DELETE FROM points";
                     cmd.ExecuteNonQuery();
 
@@ -102,28 +95,24 @@ public sealed partial class KaleidoscopeDbService
                     cmd.CommandText = "DELETE FROM character_names";
                     cmd.ExecuteNonQuery();
 
-                    // Inventory data
                     cmd.CommandText = "DELETE FROM inventory_items";
                     cmd.ExecuteNonQuery();
 
                     cmd.CommandText = "DELETE FROM inventory_cache";
                     cmd.ExecuteNonQuery();
 
-                    // Price data
                     cmd.CommandText = "DELETE FROM item_prices";
                     cmd.ExecuteNonQuery();
 
                     cmd.CommandText = "DELETE FROM price_history";
                     cmd.ExecuteNonQuery();
 
-                    // Inventory value history
                     cmd.CommandText = "DELETE FROM inventory_value_items";
                     cmd.ExecuteNonQuery();
 
                     cmd.CommandText = "DELETE FROM inventory_value_history";
                     cmd.ExecuteNonQuery();
 
-                    // Sale records
                     cmd.CommandText = "DELETE FROM sale_records";
                     cmd.ExecuteNonQuery();
 
@@ -416,7 +405,6 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Find character IDs with data but no name
                 var idsToRemove = new List<long>();
                 using (var selectCmd = _connection.CreateCommand())
                 {

@@ -31,11 +31,9 @@ public sealed class WebsocketFeedTool : ToolComponent
     private readonly CharacterDataService? _characterDataService;
     private readonly WebsocketFeedSettings _instanceSettings;
 
-    // World selection widget for filtering
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
-    // Item details popup for clicking on entries
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
@@ -66,7 +64,6 @@ public sealed class WebsocketFeedTool : ToolComponent
             MaxEntries = configService.Config.WebsocketFeed.MaxEntries
         };
 
-        // Create item details popup for viewing market data when clicking entries
         _itemDetailsPopup = new ItemDetailsPopup(
             _universalisService,
             _itemDataService,
@@ -83,18 +80,15 @@ public sealed class WebsocketFeedTool : ToolComponent
     {
         try
         {
-            // Connection status
             DrawConnectionStatus();
 
             ImGui.Separator();
 
-            // Feed list
             using (ProfilerService.BeginStaticChildScope("DrawFeed"))
             {
                 DrawFeed();
             }
 
-            // Draw item details popup (renders on top when open)
             _itemDetailsPopup.Draw();
         }
         catch (Exception ex)
@@ -108,7 +102,6 @@ public sealed class WebsocketFeedTool : ToolComponent
     {
         var isConnected = _webSocketService.IsConnected;
 
-        // Status indicator with ball
         var indicatorColor = isConnected ? UiColors.Connected : UiColors.Disconnected;
         var icon = isConnected ? "●" : "○";
         var statusText = isConnected ? "Connected" : "Disconnected";
@@ -129,7 +122,6 @@ public sealed class WebsocketFeedTool : ToolComponent
         var settings = Settings;
         var entries = _webSocketService.LiveFeed.ToList();
 
-        // Apply world filter based on scope mode
         if (settings.FilterScopeMode != PriceTrackingScopeMode.All)
         {
             var effectiveWorldIds = GetEffectiveFilterWorldIds();
@@ -139,7 +131,6 @@ public sealed class WebsocketFeedTool : ToolComponent
             }
         }
 
-        // Apply item filter
         if (settings.FilterItemId > 0)
         {
             entries = entries.Where(e => e.ItemId == settings.FilterItemId).ToList();
@@ -157,16 +148,13 @@ public sealed class WebsocketFeedTool : ToolComponent
             entries = entries.Where(e => e.EventType != "Sale").ToList();
         }
 
-        // Limit entries
         entries = entries.TakeLast(settings.MaxEntries).ToList();
 
-        // Reverse order if latest on top
         if (settings.LatestOnTop)
         {
             entries.Reverse();
         }
 
-        // Child window for scrolling
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         if (ImGui.BeginChild("##PriceFeed", new Vector2(0, availableHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
         {
@@ -176,7 +164,6 @@ public sealed class WebsocketFeedTool : ToolComponent
             }
             else
             {
-                // Auto-scroll to top if latest on top
                 if (settings.AutoScroll && settings.LatestOnTop)
                 {
                     ImGui.SetScrollY(0);
@@ -187,7 +174,6 @@ public sealed class WebsocketFeedTool : ToolComponent
                     DrawFeedEntry(entry);
                 }
 
-                // Auto-scroll to bottom if latest on bottom
                 if (settings.AutoScroll && !settings.LatestOnTop)
                 {
                     ImGui.SetScrollHereY(1.0f);
@@ -199,13 +185,10 @@ public sealed class WebsocketFeedTool : ToolComponent
 
     private void DrawFeedEntry(PriceFeedEntry entry)
     {
-        // Get world name
         var worldName = _priceTrackingService.WorldData?.GetWorldName(entry.WorldId) ?? $"World {entry.WorldId}";
         
-        // Get item name
         var itemName = _itemDataService.GetItemName(entry.ItemId);
         
-        // Event type color
         var eventColor = entry.EventType switch
         {
             "Listing Added" => UiColors.Good,      // Green for new listings

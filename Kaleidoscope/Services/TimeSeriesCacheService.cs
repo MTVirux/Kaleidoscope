@@ -46,29 +46,10 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// </summary>
     public long Version => Volatile.Read(ref _version);
 
-    /// <summary>
-    /// Gets the cache configuration.
-    /// </summary>
     public TimeSeriesCacheConfig CacheConfig => _configService.Config.TimeSeriesCacheConfig;
-
-    /// <summary>
-    /// Gets cache hit count for diagnostics.
-    /// </summary>
     public long CacheHits => _cacheHits;
-
-    /// <summary>
-    /// Gets cache miss count for diagnostics.
-    /// </summary>
     public long CacheMisses => _cacheMisses;
-
-    /// <summary>
-    /// Gets total number of cached series.
-    /// </summary>
     public int CachedSeriesCount => _cache.Count;
-
-    /// <summary>
-    /// Gets total cached points across all series.
-    /// </summary>
     public long TotalCachedPoints => _cache.Values.Sum(c => c.PointCount);
 
     public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, CharacterDataCacheService characterDataCache)
@@ -98,9 +79,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return Array.Empty<(DateTime, long)>();
     }
 
-    /// <summary>
-    /// Gets cached points filtered by time range.
-    /// </summary>
     public IReadOnlyList<(DateTime timestamp, long value)> GetCachedPoints(string variable, ulong characterId, DateTime since)
     {
         var key = new CacheKey(variable, characterId);
@@ -116,10 +94,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return Array.Empty<(DateTime, long)>();
     }
 
-    /// <summary>
-    /// Gets the last cached value for a variable/character combination.
-    /// Returns null if not cached.
-    /// </summary>
     public (DateTime timestamp, long value)? GetLastCachedPoint(string variable, ulong characterId)
     {
         var key = new CacheKey(variable, characterId);
@@ -130,9 +104,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return null;
     }
 
-    /// <summary>
-    /// Gets all cached points across all characters for a variable.
-    /// </summary>
     public IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> GetAllCachedPoints(string variable)
     {
         return GetAllCachedPoints(variable, null);
@@ -238,17 +209,11 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Checks if a variable/character combination is cached.
-    /// </summary>
     public bool IsCached(string variable, ulong characterId)
     {
         return _cache.ContainsKey(new CacheKey(variable, characterId));
     }
 
-    /// <summary>
-    /// Gets all available characters for a variable.
-    /// </summary>
     public IReadOnlyList<ulong> GetAvailableCharacters(string variable)
     {
         lock (_availableCharactersLock)
@@ -269,9 +234,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return _characterDataCache.GetCharacterName(characterId);
     }
 
-    /// <summary>
-    /// Gets a character's time series color from cache.
-    /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
     {
         return _characterDataCache.GetCharacterTimeSeriesColor(characterId);
@@ -431,9 +393,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Gets all cached variables that match a prefix.
-    /// </summary>
     public IReadOnlyList<string> GetVariablesWithPrefix(string prefix)
     {
         return _cache.Keys
@@ -443,9 +402,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             .ToList();
     }
 
-    /// <summary>
-    /// Checks if the cache has data for a variable (any character).
-    /// </summary>
     public bool HasDataForVariable(string variable)
     {
         return _cache.Keys.Any(k => k.Variable == variable);
@@ -518,9 +474,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Populates available characters from database.
-    /// </summary>
     public void PopulateAvailableCharacters(string variable, IEnumerable<ulong> characterIds)
     {
         lock (_availableCharactersLock)
@@ -537,49 +490,31 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Caches a character's game name (automatically detected from the game).
-    /// </summary>
     public void SetCharacterName(ulong characterId, string name)
     {
         _characterDataCache.SetCharacterName(characterId, name);
     }
 
-    /// <summary>
-    /// Caches a character's custom display name.
-    /// </summary>
     public void SetCharacterDisplayName(ulong characterId, string? displayName)
     {
         _characterDataCache.SetCharacterDisplayName(characterId, displayName);
     }
 
-    /// <summary>
-    /// Caches a character's time series color.
-    /// </summary>
     public void SetCharacterTimeSeriesColor(ulong characterId, uint? color)
     {
         _characterDataCache.SetCharacterTimeSeriesColor(characterId, color);
     }
 
-    /// <summary>
-    /// Populates character names from database (with game name, display name, and color).
-    /// </summary>
     public void PopulateCharacterNames(IEnumerable<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> names)
     {
         _characterDataCache.PopulateCharacterData(names);
     }
 
-    /// <summary>
-    /// Populates character names from database (simple version, treats name as game name).
-    /// </summary>
     public void PopulateCharacterNamesSimple(IEnumerable<(ulong characterId, string? name)> names)
     {
         _characterDataCache.PopulateCharacterNamesSimple(names);
     }
 
-    /// <summary>
-    /// Invalidates cache for a specific variable/character combination.
-    /// </summary>
     public void Invalidate(string variable, ulong characterId)
     {
         var key = new CacheKey(variable, characterId);
@@ -587,9 +522,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Invalidates all cache entries for a variable.
-    /// </summary>
     public void InvalidateVariable(string variable)
     {
         var keysToRemove = _cache.Keys.Where(k => k.Variable == variable).ToList();
@@ -608,9 +540,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Clears all cached data.
-    /// </summary>
     public void ClearAll()
     {
         _cache.Clear();
@@ -623,9 +552,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Removes data for a specific character from all variables.
-    /// </summary>
     public void RemoveCharacter(ulong characterId)
     {
         var keysToRemove = _cache.Keys.Where(k => k.CharacterId == characterId).ToList();
@@ -669,9 +595,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Gets cache statistics for diagnostics.
-    /// </summary>
     public CacheStatistics GetStatistics()
     {
         return new CacheStatistics
@@ -715,9 +638,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Updates the inventory value history cache with fresh data.
-    /// </summary>
     public void SetInventoryValueCache(
         List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data,
         long dbRecordCount, long? dbMaxTimestamp)
@@ -818,9 +738,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
     
-    /// <summary>
-    /// Checks if inventory value cache has data.
-    /// </summary>
     public bool HasInventoryValueCache
     {
         get
@@ -837,9 +754,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         ClearAll();
     }
 
-    /// <summary>
-    /// Cache key combining variable name and character ID.
-    /// </summary>
     private readonly record struct CacheKey(string Variable, ulong CharacterId);
 }
 
@@ -932,9 +846,6 @@ internal sealed class TimeSeriesCache
     }
 }
 
-/// <summary>
-/// Configuration for the time-series cache.
-/// </summary>
 public sealed class TimeSeriesCacheConfig
 {
     /// <summary>
@@ -950,9 +861,6 @@ public sealed class TimeSeriesCacheConfig
     /// </summary>
     public int MaxCacheHours { get; set; } = 168;
 
-    /// <summary>
-    /// Whether to pre-populate cache from database on startup.
-    /// </summary>
     public bool PrePopulateOnStartup { get; set; } = true;
 
     /// <summary>
@@ -963,9 +871,6 @@ public sealed class TimeSeriesCacheConfig
     public int StartupLoadHours { get; set; } = 24;
 }
 
-/// <summary>
-/// Cache statistics for diagnostics.
-/// </summary>
 public readonly struct CacheStatistics
 {
     public int SeriesCount { get; init; }

@@ -8,9 +8,6 @@ using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
-/// <summary>
-/// Manages the plugin's window system and lifecycle.
-/// </summary>
 public sealed class WindowService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
@@ -50,7 +47,6 @@ public sealed class WindowService : IDisposable, IRequiredService
         AttachEvents(uiBuilder);
         ApplyInitialWindowState();
         
-        // Subscribe to fullscreen state changes to update UI hide settings
         _stateService.OnFullscreenChanged += OnFullscreenChanged;
 
         LogService.Debug(LogCategory.UI, "WindowService initialized");

@@ -73,13 +73,11 @@ public sealed class UniversalisService : IDisposable, IService
             var now = DateTime.UtcNow;
             var windowStart = now.AddSeconds(-1);
             
-            // Remove timestamps older than 1 second
             while (_requestTimestamps.Count > 0 && _requestTimestamps.Peek() < windowStart)
             {
                 _requestTimestamps.Dequeue();
             }
             
-            // If we're at the limit, calculate wait time
             if (_requestTimestamps.Count >= MaxRequestsPerSecond)
             {
                 var oldestInWindow = _requestTimestamps.Peek();
@@ -98,7 +96,6 @@ public sealed class UniversalisService : IDisposable, IService
             await Task.Delay(waitTime, cancellationToken);
         }
         
-        // Record this request timestamp
         lock (_rateLimitLock)
         {
             _requestTimestamps.Enqueue(DateTime.UtcNow);
@@ -125,7 +122,6 @@ public sealed class UniversalisService : IDisposable, IService
         if (!string.IsNullOrWhiteSpace(Config.UniversalisWorldOverride))
             return Config.UniversalisWorldOverride;
 
-        // Use current character's world
         var player = _objectTable.LocalPlayer;
         var world = player?.CurrentWorld.Value;
         return world?.Name.ToString();
@@ -136,7 +132,6 @@ public sealed class UniversalisService : IDisposable, IService
         if (!string.IsNullOrWhiteSpace(Config.UniversalisDataCenterOverride))
             return Config.UniversalisDataCenterOverride;
 
-        // Use current character's data center
         var player = _objectTable.LocalPlayer;
         var world = player?.CurrentWorld.Value;
         if (world == null)
@@ -151,7 +146,6 @@ public sealed class UniversalisService : IDisposable, IService
         if (!string.IsNullOrWhiteSpace(Config.UniversalisRegionOverride))
             return Config.UniversalisRegionOverride;
 
-        // Use current character's region based on data center
         var player = _objectTable.LocalPlayer;
         var world = player?.CurrentWorld.Value;
         if (world == null)
@@ -162,7 +156,6 @@ public sealed class UniversalisService : IDisposable, IService
         if (string.IsNullOrEmpty(dcName))
             return null;
 
-        // Map DC to region
         return dcName switch
         {
             "Elemental" or "Gaia" or "Mana" or "Meteor" => "Japan",
@@ -679,7 +672,6 @@ public sealed class UniversalisService : IDisposable, IService
 /// </summary>
 public sealed class MarketBoardMultiData
 {
-    /// <summary>The item IDs that were requested.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("itemIDs")]
     public List<int>? ItemIds { get; set; }
 
@@ -687,15 +679,12 @@ public sealed class MarketBoardMultiData
     [System.Text.Json.Serialization.JsonPropertyName("items")]
     public Dictionary<string, MarketBoardData>? Items { get; set; }
 
-    /// <summary>The ID of the world requested, if applicable.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("worldID")]
     public int? WorldId { get; set; }
 
-    /// <summary>The name of the DC requested, if applicable.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("dcName")]
     public string? DcName { get; set; }
 
-    /// <summary>The name of the region requested, if applicable.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("regionName")]
     public string? RegionName { get; set; }
 
@@ -703,7 +692,6 @@ public sealed class MarketBoardMultiData
     [System.Text.Json.Serialization.JsonPropertyName("unresolvedItems")]
     public List<int>? UnresolvedItems { get; set; }
 
-    /// <summary>The name of the world requested, if applicable.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("worldName")]
     public string? WorldName { get; set; }
 

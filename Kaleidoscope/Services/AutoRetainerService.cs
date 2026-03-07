@@ -5,9 +5,6 @@ using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
-/// <summary>
-/// Retainer data from AutoRetainer.
-/// </summary>
 public record AutoRetainerRetainerData(
     string Name,
     long VentureEndsAt,
@@ -50,13 +47,11 @@ public sealed class AutoRetainerService : IDisposable, IService
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     
-    // Data access
     private ICallGateSubscriber<List<ulong>>? _getRegisteredCIDs;
     private ICallGateSubscriber<ulong, object?>? _getOfflineCharacterData;
     private ICallGateSubscriber<object?, object?>? _writeOfflineCharacterData;
     private ICallGateSubscriber<Dictionary<ulong, HashSet<string>>>? _getEnabledRetainers;
     
-    // Plugin state queries
     private ICallGateSubscriber<bool>? _isBusy;
     private ICallGateSubscriber<bool>? _getSuppressed;
     private ICallGateSubscriber<bool>? _getMultiModeEnabled;
@@ -65,7 +60,6 @@ public sealed class AutoRetainerService : IDisposable, IService
     private ICallGateSubscriber<bool>? _canAutoLogin;
     private ICallGateSubscriber<ulong, long?>? _getClosestRetainerVentureSecondsRemaining;
     
-    // Plugin control actions
     private ICallGateSubscriber<bool, object?>? _setSuppressed;
     private ICallGateSubscriber<bool, object?>? _setMultiModeEnabled;
     private ICallGateSubscriber<object?>? _abortAllTasks;
@@ -79,9 +73,6 @@ public sealed class AutoRetainerService : IDisposable, IService
 
     public bool IsAvailable { get; private set; } = false;
 
-    /// <summary>
-    /// Creates and initializes the AutoRetainer IPC service.
-    /// </summary>
     public AutoRetainerService(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
@@ -94,7 +85,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         
         try
         {
-            // Data access subscribers
             _getRegisteredCIDs = _pluginInterface.GetIpcSubscriber<List<ulong>>("AutoRetainer.GetRegisteredCIDs");
             _getOfflineCharacterData = _pluginInterface.GetIpcSubscriber<ulong, object?>("AutoRetainer.GetOfflineCharacterData");
             _writeOfflineCharacterData = _pluginInterface.GetIpcSubscriber<object?, object?>("AutoRetainer.WriteOfflineCharacterData");
@@ -119,7 +109,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             _enableMultiMode = _pluginInterface.GetIpcSubscriber<object?>("AutoRetainer.PluginState.EnableMultiMode");
             _relog = _pluginInterface.GetIpcSubscriber<string, bool>("AutoRetainer.PluginState.Relog");
             
-            // Test if AutoRetainer is available by trying to call the IPC
             try
             {
                 var cids = _getRegisteredCIDs.InvokeFunc();
@@ -201,9 +190,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Gets all registered character IDs from AutoRetainer.
-    /// </summary>
     public List<ulong>? GetRegisteredCharacterIds()
     {
         if (!IsAvailable || _getRegisteredCIDs == null) return null;
@@ -237,10 +223,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         return (fullData.Name, fullData.World, fullData.Gil, fullData.CID);
     }
 
-    /// <summary>
-    /// Gets full offline character data from AutoRetainer for a specific character,
-    /// including retainer information.
-    /// </summary>
     public AutoRetainerCharacterData? GetFullCharacterData(ulong cid)
     {
         if (!IsAvailable || _getOfflineCharacterData == null) return null;
@@ -269,7 +251,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             var retainers = new List<AutoRetainerRetainerData>();
             var vessels = new List<AutoRetainerVesselData>();
             
-            // Check if the data is a JObject (JSON)
             if (data is JObject jObject)
             {
                 name = jObject["Name"]?.Value<string>() ?? "";
@@ -286,7 +267,6 @@ public sealed class AutoRetainerService : IDisposable, IService
                     catch (Exception) { fcid = 0; } // FCID can be in various formats, default to 0 on parse failure
                 }
                 
-                // Parse retainer data
                 var retainerData = jObject["RetainerData"] as JArray;
                 if (retainerData != null)
                 {
@@ -305,7 +285,6 @@ public sealed class AutoRetainerService : IDisposable, IService
                     }
                 }
                 
-                // Parse vessel data (submersibles and airships)
                 ParseVesselsFromJArray(jObject["OfflineSubmarineData"] as JArray, vessels, isSubmersible: true);
                 ParseVesselsFromJArray(jObject["OfflineAirshipData"] as JArray, vessels, isSubmersible: false);
             }
@@ -333,7 +312,6 @@ public sealed class AutoRetainerService : IDisposable, IService
                 }
                 catch (Exception) { fcid = 0; } // FCID type may vary, default to 0 on conversion failure
                 
-                // Try to get retainer data via reflection
                 var retainerDataProp = type.GetProperty("RetainerData")?.GetValue(data);
                 if (retainerDataProp is System.Collections.IEnumerable retainerList)
                 {
@@ -357,7 +335,6 @@ public sealed class AutoRetainerService : IDisposable, IService
                     }
                 }
                 
-                // Parse vessel data via reflection (submersibles and airships)
                 ParseVesselsFromReflection(
                     type.GetProperty("OfflineSubmarineData")?.GetValue(data) as System.Collections.IEnumerable, 
                     vessels, 
@@ -384,9 +361,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Gets all character data from AutoRetainer.
-    /// </summary>
     public List<(string Name, string World, long Gil, ulong CID)> GetAllCharacterData()
     {
         return GetAllFullCharacterData()
@@ -394,9 +368,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             .ToList();
     }
 
-    /// <summary>
-    /// Gets all character data from AutoRetainer with full retainer information.
-    /// </summary>
     public List<AutoRetainerCharacterData> GetAllFullCharacterData()
     {
         var result = new List<AutoRetainerCharacterData>();
@@ -429,18 +400,12 @@ public sealed class AutoRetainerService : IDisposable, IService
         return result;
     }
 
-    /// <summary>
-    /// Refreshes the connection to AutoRetainer.
-    /// </summary>
     public void Refresh()
     {
         _initialized = false;
         Initialize();
     }
 
-    /// <summary>
-    /// Safely invokes an IPC function, returning null on failure.
-    /// </summary>
     private T? SafeInvoke<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : class
     {
         if (!IsAvailable || subscriber == null) return null;
@@ -458,9 +423,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Safely invokes an IPC function that returns a value type, returning null on failure.
-    /// </summary>
     private T? SafeInvokeValue<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : struct
     {
         if (!IsAvailable || subscriber == null) return null;
@@ -478,9 +440,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Safely invokes an IPC function with one argument, returning null on failure.
-    /// </summary>
     private TResult? SafeInvokeValue<TArg, TResult>(ICallGateSubscriber<TArg, TResult>? subscriber, TArg arg, string methodName) where TResult : struct
     {
         if (!IsAvailable || subscriber == null) return null;
@@ -498,9 +457,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Safely invokes an IPC function with one argument that already returns a nullable type.
-    /// </summary>
     private TResult? SafeInvokeNullable<TArg, TResult>(ICallGateSubscriber<TArg, TResult?>? subscriber, TArg arg, string methodName) where TResult : struct
     {
         if (!IsAvailable || subscriber == null) return null;
@@ -518,9 +474,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Parses vessel (submersible/airship) data from a JArray.
-    /// </summary>
     private static void ParseVesselsFromJArray(JArray? vesselArray, List<AutoRetainerVesselData> vessels, bool isSubmersible)
     {
         if (vesselArray == null) return;
@@ -537,9 +490,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Parses vessel (submersible/airship) data via reflection.
-    /// </summary>
     private static void ParseVesselsFromReflection(System.Collections.IEnumerable? vesselList, List<AutoRetainerVesselData> vessels, bool isSubmersible)
     {
         if (vesselList == null) return;
@@ -558,53 +508,19 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Checks if AutoRetainer is currently busy processing tasks.
-    /// </summary>
     public bool? IsBusy() => SafeInvokeValue(_isBusy, nameof(IsBusy));
-
-    /// <summary>
-    /// Checks if AutoRetainer is currently suppressed.
-    /// </summary>
     public bool? GetSuppressed() => SafeInvokeValue(_getSuppressed, nameof(GetSuppressed));
-
-    /// <summary>
-    /// Checks if Multi-Mode is currently enabled.
-    /// </summary>
     public bool? GetMultiModeEnabled() => SafeInvokeValue(_getMultiModeEnabled, nameof(GetMultiModeEnabled));
-
-    /// <summary>
-    /// Checks if any retainers are available for the current character.
-    /// </summary>
     public bool? AreAnyRetainersAvailable() => SafeInvokeValue(_areAnyRetainersAvailable, nameof(AreAnyRetainersAvailable));
-
-    /// <summary>
-    /// Gets the number of free inventory slots.
-    /// </summary>
     public int? GetInventoryFreeSlotCount() => SafeInvokeValue(_getInventoryFreeSlotCount, nameof(GetInventoryFreeSlotCount));
-
-    /// <summary>
-    /// Checks if auto-login is possible.
-    /// </summary>
     public bool? CanAutoLogin() => SafeInvokeValue(_canAutoLogin, nameof(CanAutoLogin));
 
-    /// <summary>
-    /// Gets the seconds remaining until the closest retainer venture completes.
-    /// </summary>
     public long? GetClosestRetainerVentureSecondsRemaining(ulong cid) 
         => SafeInvokeNullable(_getClosestRetainerVentureSecondsRemaining, cid, nameof(GetClosestRetainerVentureSecondsRemaining));
 
-    /// <summary>
-    /// Gets enabled retainers for all characters.
-    /// </summary>
     public Dictionary<ulong, HashSet<string>>? GetEnabledRetainers() 
         => SafeInvoke(_getEnabledRetainers, nameof(GetEnabledRetainers));
 
-    /// <summary>
-    /// Gets the set of enabled retainer names for a specific character.
-    /// </summary>
-    /// <param name="cid">Character content ID</param>
-    /// <returns>HashSet of enabled retainer names, or empty set if none/not available</returns>
     public HashSet<string> GetEnabledRetainersForCharacter(ulong cid)
     {
         var allEnabled = GetEnabledRetainers();
@@ -615,21 +531,12 @@ public sealed class AutoRetainerService : IDisposable, IService
         return new HashSet<string>();
     }
 
-    /// <summary>
-    /// Checks if a specific retainer is enabled for a character.
-    /// </summary>
-    /// <param name="cid">Character content ID</param>
-    /// <param name="retainerName">Retainer name</param>
-    /// <returns>True if the retainer is enabled</returns>
     public bool IsRetainerEnabled(ulong cid, string retainerName)
     {
         var enabledRetainers = GetEnabledRetainersForCharacter(cid);
         return enabledRetainers.Contains(retainerName);
     }
 
-    /// <summary>
-    /// Sets the suppressed state of AutoRetainer.
-    /// </summary>
     public bool SetSuppressed(bool suppressed)
     {
         if (!IsAvailable || _setSuppressed == null) return false;
@@ -651,9 +558,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Enables or disables Multi-Mode.
-    /// </summary>
     public bool SetMultiModeEnabled(bool enabled)
     {
         if (!IsAvailable || _setMultiModeEnabled == null) return false;
@@ -675,9 +579,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Aborts all pending tasks in AutoRetainer.
-    /// </summary>
     public bool AbortAllTasks()
     {
         if (!IsAvailable || _abortAllTasks == null) return false;
@@ -723,9 +624,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Enables Multi-Mode via command.
-    /// </summary>
     public bool EnableMultiMode()
     {
         if (!IsAvailable || _enableMultiMode == null) return false;
@@ -773,12 +671,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Sets whether a character is enabled for retainer multi-mode.
-    /// </summary>
-    /// <param name="cid">Character content ID</param>
-    /// <param name="enabled">Whether retainer multi-mode is enabled</param>
-    /// <returns>True if the setting was updated successfully</returns>
     public bool SetCharacterRetainersEnabled(ulong cid, bool enabled)
     {
         if (!IsAvailable || _getOfflineCharacterData == null || _writeOfflineCharacterData == null) return false;
@@ -788,7 +680,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             var data = _getOfflineCharacterData.InvokeFunc(cid);
             if (data == null) return false;
             
-            // Modify the Enabled property via reflection or JObject
             if (data is JObject jObject)
             {
                 jObject["Enabled"] = enabled;
@@ -823,12 +714,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Sets whether a character is enabled for deployables/workshop multi-mode.
-    /// </summary>
-    /// <param name="cid">Character content ID</param>
-    /// <param name="enabled">Whether deployables multi-mode is enabled</param>
-    /// <returns>True if the setting was updated successfully</returns>
     public bool SetCharacterDeployablesEnabled(ulong cid, bool enabled)
     {
         if (!IsAvailable || _getOfflineCharacterData == null || _writeOfflineCharacterData == null) return false;
@@ -838,7 +723,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             var data = _getOfflineCharacterData.InvokeFunc(cid);
             if (data == null) return false;
             
-            // Modify the WorkshopEnabled property via reflection or JObject
             if (data is JObject jObject)
             {
                 jObject["WorkshopEnabled"] = enabled;

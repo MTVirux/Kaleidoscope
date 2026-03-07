@@ -7,9 +7,6 @@ using Kaleidoscope.Services.Inventory;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// A tool that displays the current size of the inventory memory cache.
-/// </summary>
 public sealed class CacheSizeTool : StatusToolBase
 {
     public override string ToolName => "Cache Size";
@@ -38,7 +35,6 @@ public sealed class CacheSizeTool : StatusToolBase
         {
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
-            // Update cached values periodically
             var now = DateTime.UtcNow;
             if (now - _lastCacheCheck >= _cacheCheckInterval)
             {
@@ -46,7 +42,6 @@ public sealed class CacheSizeTool : StatusToolBase
                 _lastCacheCheck = now;
             }
 
-            // Size line (primary info)
             var sizeStr = FormatUtils.FormatByteSize(_estimatedBytes);
             ImGui.TextColored(UiColors.Info, "Size:");
             ImGui.SameLine();
@@ -56,10 +51,8 @@ public sealed class CacheSizeTool : StatusToolBase
             {
                 ImGui.Spacing();
 
-                // Character and entry count
                 ImGui.TextColored(UiColors.Info, $"  {_cachedCharacterCount} characters, {_cachedEntryCount} entries");
 
-                // Item count
                 ImGui.TextColored(UiColors.Info, $"  {_cachedItemCount:N0} items cached");
             }
 
@@ -75,7 +68,6 @@ public sealed class CacheSizeTool : StatusToolBase
     {
         try
         {
-            // Get all cached inventories to calculate stats
             var allInventories = _inventoryCacheService.GetAllInventories();
 
             _cachedCharacterCount = allInventories.Select(e => e.CharacterId).Distinct().Count();

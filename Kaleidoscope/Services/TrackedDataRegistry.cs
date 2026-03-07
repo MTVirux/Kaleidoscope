@@ -17,9 +17,6 @@ public sealed class TrackedDataRegistry : IRequiredService
     private List<TrackedDataType>? _allTypes;
     private List<TrackedDataDefinition>? _enabledByDefaultList;
 
-    /// <summary>
-    /// Gets all registered data type definitions.
-    /// </summary>
     public IReadOnlyDictionary<TrackedDataType, TrackedDataDefinition> Definitions => _definitions;
 
     public TrackedDataRegistry()
@@ -28,9 +25,6 @@ public sealed class TrackedDataRegistry : IRequiredService
         BuildCaches();
     }
     
-    /// <summary>
-    /// Builds lookup caches after all types are registered.
-    /// </summary>
     private void BuildCaches()
     {
         _byCategory = new Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>();
@@ -62,7 +56,6 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     private void RegisterAllTypes()
     {
-        // === Core Currencies ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.Gil,
@@ -75,7 +68,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "The primary currency in FFXIV."
         });
 
-        // === Tomestones ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.TomestonePoetics,
@@ -112,7 +104,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Uncapped tomestones for current expansion."
         });
 
-        // === Scrips ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.WhiteCraftersScrip,
@@ -197,7 +188,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Ishgardian Restoration scrips."
         });
 
-        // === Grand Company Seals ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.MaelstromSeals,
@@ -234,7 +224,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Immortal Flames grand company seals."
         });
 
-        // === PvP Currencies ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.WolfMarks,
@@ -259,7 +248,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "PvP currency for special rewards."
         });
 
-        // === Hunt Currencies ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.AlliedSeals,
@@ -296,7 +284,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "ShB/EW/DT hunt currency."
         });
 
-        // === Gold Saucer ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.MGP,
@@ -309,7 +296,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Gold Saucer currency."
         });
 
-        // === Tribal ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.BicolorGemstone,
@@ -322,7 +308,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "FATE currency for ShB/EW zones."
         });
 
-        // === Ventures ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.Ventures,
@@ -335,7 +320,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Retainer venture tokens."
         });
 
-        // === FC/Retainer ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.FreeCompanyGil,
@@ -372,7 +356,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Free Company credits earned from FC activities, used to purchase FC actions."
         });
 
-        // === Inventory Space (last) ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.InventoryFreeSlots,
@@ -384,7 +367,6 @@ public sealed class TrackedDataRegistry : IRequiredService
             Description = "Number of empty slots in main inventory."
         });
 
-        // === Universalis / Inventory Value (Calculated from market prices) ===
         RegisterTrackedType(new TrackedDataDefinition
         {
             Type = TrackedDataType.InventoryValueItems,

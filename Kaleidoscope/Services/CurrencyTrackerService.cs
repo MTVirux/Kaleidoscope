@@ -72,7 +72,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _cacheService.AddPoint(itemVariable, characterId, itemValue);
         _sampleQueue.Writer.TryWrite(new SampleWorkItem(characterId, itemVariable, itemValue, characterName));
 
-        // Cache character name if provided
         if (!string.IsNullOrEmpty(characterName))
         {
             _cacheService.SetCharacterName(characterId, characterName);

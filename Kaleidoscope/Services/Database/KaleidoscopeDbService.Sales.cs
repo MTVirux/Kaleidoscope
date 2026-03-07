@@ -6,9 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    /// <summary>
-    /// Saves an individual sale record to the database.
-    /// </summary>
     public void SaveSaleRecord(int itemId, int worldId, int pricePerUnit, int quantity, bool isHq, int total, string? buyerName = null)
     {
         lock (_writeLock)
@@ -129,10 +126,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets the most recent sale price for a specific item on a specific world.
-    /// Returns the latest price_per_unit or 0 if no sales exist.
-    /// </summary>
     public int GetMostRecentSalePriceForWorld(int itemId, int worldId, bool isHq)
     {
         lock (_readLock)
@@ -331,9 +324,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Gets sale records for an item, optionally filtering by world and time range.
-    /// </summary>
     public List<(long Id, int WorldId, int PricePerUnit, int Quantity, bool IsHq, int Total, DateTime Timestamp, string? BuyerName)> GetSaleRecords(
         int itemId,
         IEnumerable<int>? excludedWorldIds = null,
@@ -402,11 +392,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Deletes a specific sale record by ID.
-    /// </summary>
-    /// <param name="id">The ID of the sale record to delete.</param>
-    /// <returns>True if the record was deleted, false otherwise.</returns>
     public bool DeleteSaleRecord(long id)
     {
         lock (_writeLock)
@@ -570,9 +555,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets the count of sale records in the database.
-    /// </summary>
     public int GetSaleRecordCount()
     {
         lock (_readLock)
@@ -595,9 +577,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Cleans up old price history data based on retention settings.
-    /// </summary>
     public int CleanupOldPriceData(int retentionDays)
     {
         lock (_writeLock)
@@ -641,9 +620,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets the approximate size of price data in bytes.
-    /// </summary>
     public long GetPriceDataSize()
     {
         lock (_readLock)
@@ -673,9 +649,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Cleans up price data to fit within size limit.
-    /// </summary>
     public int CleanupPriceDataBySize(long maxSizeBytes)
     {
         var currentSize = GetPriceDataSize();

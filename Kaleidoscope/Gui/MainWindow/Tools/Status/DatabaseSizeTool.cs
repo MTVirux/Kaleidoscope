@@ -7,9 +7,6 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// A tool that displays the current size of the SQLite database file.
-/// </summary>
 public sealed class DatabaseSizeTool : StatusToolBase
 {
     public override string ToolName => "Database Size";
@@ -44,7 +41,6 @@ public sealed class DatabaseSizeTool : StatusToolBase
                 return;
             }
 
-            // Update cached size periodically
             var now = DateTime.UtcNow;
             if (now - _lastSizeCheck >= _sizeCheckInterval)
             {
@@ -69,7 +65,6 @@ public sealed class DatabaseSizeTool : StatusToolBase
                 {
                     ImGui.Spacing();
                     
-                    // Show raw bytes
                     ImGui.TextColored(UiColors.Info, $"  {_cachedFileSize:N0} bytes");
                 }
             }

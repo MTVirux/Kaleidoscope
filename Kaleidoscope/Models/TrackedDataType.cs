@@ -16,26 +16,16 @@ public enum TrackedDataType
     /// <summary>Allagan Tomestone (Uncapped) - current expansion uncapped tomestone.</summary>
     TomestoneUncapped = 102,
 
-    /// <summary>White Crafters' Scrip.</summary>
     WhiteCraftersScrip = 200,
-    /// <summary>Purple Crafters' Scrip.</summary>
     PurpleCraftersScrip = 201,
-    /// <summary>Orange Crafters' Scrip.</summary>
     OrangeCraftersScrip = 202,
-    /// <summary>White Gatherers' Scrip.</summary>
     WhiteGatherersScrip = 210,
-    /// <summary>Purple Gatherers' Scrip.</summary>
     PurpleGatherersScrip = 211,
-    /// <summary>Orange Gatherers' Scrip.</summary>
     OrangeGatherersScrip = 212,
-    /// <summary>Skybuilders' Scrip.</summary>
     SkybuildersScrip = 220,
 
-    /// <summary>Grand Company Seals (Maelstrom).</summary>
     MaelstromSeals = 300,
-    /// <summary>Grand Company Seals (Twin Adder).</summary>
     TwinAdderSeals = 301,
-    /// <summary>Grand Company Seals (Immortal Flames).</summary>
     ImmortalFlamesSeals = 302,
 
     /// <summary>Wolf Marks - PvP currency.</summary>
@@ -53,7 +43,6 @@ public enum TrackedDataType
     /// <summary>Manderville Gold Saucer Points.</summary>
     MGP = 600,
 
-    /// <summary>Bicolor Gemstones.</summary>
     BicolorGemstone = 700,
 
     /// <summary>Venture tokens for retainer ventures.</summary>
@@ -74,10 +63,8 @@ public enum TrackedDataType
     /// <summary>Water Crystals/Clusters/Shards total.</summary>
     WaterCrystals = 906,
 
-    /// <summary>Number of free inventory slots.</summary>
     InventoryFreeSlots = 1000,
 
-    /// <summary>Free Company gil (if applicable).</summary>
     FreeCompanyGil = 1100,
     /// <summary>Retainer gil (aggregate).</summary>
     RetainerGil = 1101,

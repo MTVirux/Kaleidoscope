@@ -31,7 +31,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private int _currentReconnectDelayMs = InitialReconnectDelayMs;
     private static Random JitterRng => Random.Shared;
 
-    // Subscribed channels
     private readonly HashSet<string> _subscribedChannels = new();
     private readonly object _channelLock = new();
 
@@ -39,7 +38,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     private readonly ConcurrentQueue<PriceFeedEntry> _liveFeed = new();
     private int _feedCount = 0;
 
-    // Message aggregation for logging
     private const int MessageLogIntervalMs = 5000;
     private System.Threading.Timer? _messageLogTimer;
     private int _listingsAddCount;
@@ -138,7 +136,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             return;
         }
         
-        // Rate limit connection attempts
         var now = DateTime.UtcNow;
         var msSinceLastAttempt = (now - _lastConnectAttempt).TotalMilliseconds;
         if (msSinceLastAttempt < _currentReconnectDelayMs)
@@ -166,10 +163,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Connected successfully");
             OnConnectionStateChanged?.Invoke(true);
 
-            // Re-subscribe to channels
             await ResubscribeChannelsAsync();
 
-            // Start receive loop
             _receiveTask = ReceiveLoopAsync(_cts.Token);
         }
         catch (Exception ex)
@@ -631,7 +626,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         _liveFeed.Enqueue(entry);
         Interlocked.Increment(ref _feedCount);
 
-        // Trim to max size
         while (_feedCount > MaxFeedEntries && _liveFeed.TryDequeue(out _))
         {
             Interlocked.Decrement(ref _feedCount);
@@ -650,7 +644,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         // Subscribe to events for configured scope, respecting channel settings
         var settings = Settings;
 
-        // Check if any channels are enabled
         if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
         {
             LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] No channels enabled, skipping subscription");
@@ -821,7 +814,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
 
         writer.Write(size);
 
-        // event field
         writer.Write((byte)0x02); // String type
         writer.Write(System.Text.Encoding.UTF8.GetBytes("event"));
         writer.Write((byte)0); // null terminator
@@ -829,7 +821,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         writer.Write(eventBytes);
         writer.Write((byte)0);
 
-        // channel field
         writer.Write((byte)0x02); // String type
         writer.Write(System.Text.Encoding.UTF8.GetBytes("channel"));
         writer.Write((byte)0); // null terminator
@@ -837,7 +828,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         writer.Write(channelBytes);
         writer.Write((byte)0);
 
-        // End marker
         writer.Write((byte)0);
 
         return ms.ToArray();
@@ -886,7 +876,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
         
         LogService.Verbose(LogCategory.Universalis, "[UniversalisWebSocket] Disposing service");
 
-        // Dispose the message log timer
         try
         {
             _messageLogTimer?.Dispose();
@@ -897,7 +886,6 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             LogService.Verbose(LogCategory.Universalis, $"[UniversalisWebSocket] Error disposing message log timer: {ex.Message}");
         }
 
-        // Cancel the token to stop the receive loop
         try
         {
             _cts?.Cancel();

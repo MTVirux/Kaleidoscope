@@ -34,45 +34,31 @@ public sealed class MainWindow : Window, IService, IDisposable
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
-    // Saved (non-fullscreen) position/size so we can restore after exiting fullscreen
     private Vector2 _savedPos = ConfigStatic.DefaultWindowPosition;
     private Vector2 _savedSize = ConfigStatic.DefaultWindowSize;
 
-    // Track last-saved (to Config) window position/size and throttle saves
     private Vector2 _lastSavedPos = ConfigStatic.DefaultWindowPosition;
     private Vector2 _lastSavedSize = ConfigStatic.DefaultWindowSize;
     private DateTime _lastSaveTime = DateTime.MinValue;
     private const int SaveThrottleMs = 500;
 
-    // Track previous frame's window position/size to detect main window move/resize
     private Vector2 _prevFramePos = Vector2.Zero;
     private Vector2 _prevFrameSize = Vector2.Zero;
     private bool _prevFrameInitialized;
 
-    // Flag to track if this is the first PreDraw call (used for initial positioning)
     private bool _firstPreDraw = true;
-
-    // Flag to apply restored windowed position/size on the next PreDraw after exiting fullscreen
     private bool _pendingWindowRestore;
-
-    // Suppress ESC-to-close until the ESC key is released after exiting fullscreen via ESC
     private bool _suppressEscClose;
-
-    // ESC pressed state captured during Framework.Update (before the game processes input)
-    // so we can still detect ESC for fullscreen exit after clearing the key buffer
     private bool _escPressedThisFrame;
-
-    // Fullscreen mode state - when true, window fills viewport with no decorations
     private bool _isFullscreenMode;
 
-    // Reference to WindowService for window coordination (set after construction due to circular dependency)
+    /// <summary>
+    /// Set after construction due to circular dependency with WindowService.
+    /// </summary>
     private WindowService? _windowService;
     
-    // Title bar buttons
     private TitleBarButton? _lockButton;
     private TitleBarButton? _fullscreenButton;
-    
-    // Quick access bar widget (appears when CTRL+ALT is held)
     private QuickAccessBarWidget? _quickAccessBar;
 
     /// <summary>

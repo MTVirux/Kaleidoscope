@@ -42,9 +42,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Service initialized");
     }
     
-    /// <summary>
-    /// Adds an (itemId, worldId) pair to both secondary indexes.
-    /// </summary>
     private void AddToIndexes(int itemId, int worldId)
     {
         lock (_indexLock)
@@ -65,9 +62,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         }
     }
     
-    /// <summary>
-    /// Removes an (itemId, worldId) pair from both secondary indexes.
-    /// </summary>
     private void RemoveFromIndexes(int itemId, int worldId)
     {
         lock (_indexLock)
@@ -153,18 +147,12 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return null;
     }
     
-    /// <summary>
-    /// Gets a cached price with freshness information.
-    /// </summary>
     public MarketPriceCacheEntry? GetPriceWithMetadata(int itemId, int worldId)
     {
         TryGetPrice(itemId, worldId, out var entry);
         return entry;
     }
     
-    /// <summary>
-    /// Sets or updates a price in the cache.
-    /// </summary>
     public void SetPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, 
         int lastSaleNq = 0, int lastSaleHq = 0, PriceSource source = PriceSource.Unknown)
     {
@@ -343,9 +331,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return result;
     }
     
-    /// <summary>
-    /// Batch retrieval of prices for multiple items.
-    /// </summary>
     public Dictionary<int, MarketPriceCacheEntry?> GetPricesBatch(IEnumerable<int> itemIds, int worldId)
     {
         var result = new Dictionary<int, MarketPriceCacheEntry?>();
@@ -357,9 +342,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return result;
     }
     
-    /// <summary>
-    /// Gets all stale entries that should be refreshed.
-    /// </summary>
     public IReadOnlyList<(int ItemId, int WorldId)> GetStaleEntries(int maxCount = 100)
     {
         return _priceCache
@@ -370,9 +352,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
             .ToList();
     }
     
-    /// <summary>
-    /// Gets all expired entries that should be evicted.
-    /// </summary>
     public IReadOnlyList<(int ItemId, int WorldId)> GetExpiredEntries()
     {
         return _priceCache
@@ -381,9 +360,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
             .ToList();
     }
     
-    /// <summary>
-    /// Removes a price from the cache.
-    /// </summary>
     public bool RemovePrice(int itemId, int worldId)
     {
         var removed = _priceCache.TryRemove((itemId, worldId), out _);
@@ -394,9 +370,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return removed;
     }
     
-    /// <summary>
-    /// Clears all price cache entries.
-    /// </summary>
     public void ClearPriceCache()
     {
         _priceCache.Clear();
@@ -430,27 +403,18 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Evicted {count} oldest entries");
     }
     
-    /// <summary>
-    /// Gets recent sales data for an item/world combination.
-    /// </summary>
     public RecentSalesCacheEntry? GetRecentSales(int itemId, int worldId)
     {
         _recentSalesCache.TryGetValue((itemId, worldId), out var entry);
         return entry;
     }
     
-    /// <summary>
-    /// Sets recent sales data for an item/world combination.
-    /// </summary>
     public void SetRecentSales(int itemId, int worldId, RecentSalesCacheEntry entry)
     {
         _recentSalesCache[(itemId, worldId)] = entry;
         Interlocked.Increment(ref _version);
     }
     
-    /// <summary>
-    /// Adds a sale price to the recent sales cache.
-    /// </summary>
     public void AddRecentSale(int itemId, int worldId, int price, bool isHq)
     {
         var key = (itemId, worldId);
@@ -475,9 +439,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return price;
     }
     
-    /// <summary>
-    /// Bulk loads recent sales data from database.
-    /// </summary>
     public void LoadRecentSalesFromDb(IReadOnlyDictionary<(int ItemId, int WorldId), (List<int> NqPrices, List<int> HqPrices)> data)
     {
         foreach (var (key, prices) in data)
@@ -495,9 +456,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Loaded {data.Count} recent sales entries from database");
     }
     
-    /// <summary>
-    /// Clears the recent sales cache.
-    /// </summary>
     public void ClearRecentSalesCache()
     {
         _recentSalesCache.Clear();
@@ -506,9 +464,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, "[MarketDataCache] Recent sales cache cleared");
     }
     
-    /// <summary>
-    /// Resets all statistics counters.
-    /// </summary>
     public void ResetStatistics()
     {
         Interlocked.Exchange(ref _cacheHits, 0);
@@ -518,9 +473,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         _lastEvictionTime = null;
     }
     
-    /// <summary>
-    /// Performs cache maintenance - removes expired entries.
-    /// </summary>
     public int PerformMaintenance()
     {
         var expired = GetExpiredEntries();
@@ -545,9 +497,6 @@ public sealed class MarketDataCacheService : IService, IDisposable
         return count;
     }
     
-    /// <summary>
-    /// Gets a summary of cache state for debugging/display.
-    /// </summary>
     public MarketCacheStatistics GetStatistics()
     {
         var now = DateTime.UtcNow;
@@ -606,16 +555,9 @@ public sealed class MarketPriceCacheEntry
     /// <summary>Threshold in minutes after which data is considered expired.</summary>
     public int StalenessThresholdMinutes { get; init; } = 60;
     
-    /// <summary>Age of the cache entry.</summary>
     public TimeSpan Age => DateTime.UtcNow - LastUpdated;
-    
-    /// <summary>Whether the data is still fresh (within TTL).</summary>
     public bool IsFresh => Age.TotalMinutes < TtlMinutes;
-    
-    /// <summary>Whether the data is stale but not expired.</summary>
     public bool IsStale => Age.TotalMinutes >= TtlMinutes && Age.TotalMinutes < StalenessThresholdMinutes;
-    
-    /// <summary>Whether the data is expired and should be evicted.</summary>
     public bool IsExpired => Age.TotalMinutes >= StalenessThresholdMinutes;
     
     /// <summary>Freshness indicator (0-1, where 1 is fresh and 0 is expired).</summary>
@@ -632,9 +574,6 @@ public sealed class MarketPriceCacheEntry
     }
 }
 
-/// <summary>
-/// Source of the price data.
-/// </summary>
 public enum PriceSource
 {
     Unknown,
@@ -745,9 +684,6 @@ public sealed class RecentSalesCacheEntry
     }
 }
 
-/// <summary>
-/// Summary statistics for the market data cache.
-/// </summary>
 public record MarketCacheStatistics
 {
     public int TotalPriceEntries { get; init; }

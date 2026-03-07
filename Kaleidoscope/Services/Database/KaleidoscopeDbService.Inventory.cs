@@ -293,9 +293,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Gets all inventory cache entries across all characters.
-    /// </summary>
     public List<Models.Inventory.InventoryCacheEntry> GetAllInventoryCachesAllCharacters()
     {
         var result = new List<Models.Inventory.InventoryCacheEntry>();
@@ -364,9 +361,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Deletes an inventory cache entry and its items.
-    /// </summary>
     public void DeleteInventoryCache(ulong characterId, Models.Inventory.InventorySourceType sourceType, ulong retainerId = 0)
     {
         lock (_writeLock)
@@ -391,10 +385,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets a summary of item counts across all caches (for a specific item or all items).
-    /// Returns dictionary of itemId -> total quantity across all caches.
-    /// </summary>
     public Dictionary<uint, long> GetItemCountSummary(ulong? characterId = null, uint? itemId = null)
     {
         var result = new Dictionary<uint, long>();

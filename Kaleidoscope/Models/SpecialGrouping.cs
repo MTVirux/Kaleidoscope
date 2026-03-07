@@ -9,7 +9,6 @@ namespace Kaleidoscope.Models;
 [Flags]
 public enum SpecialGroupingType
 {
-    /// <summary>No special grouping detected.</summary>
     None = 0,
     
     /// <summary>All 18 crystal types are selected (6 elements × 3 tiers).</summary>
@@ -19,19 +18,10 @@ public enum SpecialGroupingType
     AllGil = 1 << 1
 }
 
-/// <summary>
-/// Settings for special grouping filters when a special grouping is active.
-/// </summary>
 public sealed class SpecialGroupingSettings
 {
-    /// <summary>
-    /// Whether special grouping filters are currently enabled.
-    /// </summary>
     public bool Enabled { get; set; } = false;
     
-    /// <summary>
-    /// The type of special grouping currently active.
-    /// </summary>
     public SpecialGroupingType ActiveGrouping { get; set; } = SpecialGroupingType.None;
     
     /// <summary>
@@ -57,9 +47,6 @@ public sealed class SpecialGroupingSettings
         CrystalTier.Cluster
     };
     
-    /// <summary>
-    /// Whether the AllGil special grouping filter is enabled.
-    /// </summary>
     public bool AllGilEnabled { get; set; } = false;
     
     /// <summary>
@@ -68,15 +55,9 @@ public sealed class SpecialGroupingSettings
     /// </summary>
     public bool MergeGilCurrencies { get; set; } = false;
     
-    /// <summary>
-    /// Whether the AllCrystals special grouping filter is enabled.
-    /// </summary>
     public bool AllCrystalsEnabled { get; set; } = false;
 }
 
-/// <summary>
-/// Helper class for crystal-related calculations and special grouping detection.
-/// </summary>
 public static class SpecialGroupingHelper
 {
     /// <summary>
@@ -84,12 +65,6 @@ public static class SpecialGroupingHelper
     /// </summary>
     public const int TotalCrystalTypes = 18;
     
-    /// <summary>
-    /// Gets the item ID for a specific crystal element and tier.
-    /// </summary>
-    /// <param name="element">The crystal element.</param>
-    /// <param name="tier">The crystal tier.</param>
-    /// <returns>The game item ID for the crystal.</returns>
     public static uint GetCrystalItemId(CrystalElement element, CrystalTier tier)
     {
         // Base item ID is 2 (Fire Shard)
@@ -110,32 +85,18 @@ public static class SpecialGroupingHelper
                itemId < ConfigStatic.CrystalBaseItemId + TotalCrystalTypes;
     }
     
-    /// <summary>
-    /// Gets the element of a crystal item.
-    /// </summary>
-    /// <param name="itemId">The crystal item ID.</param>
-    /// <returns>The element, or null if not a crystal.</returns>
     public static CrystalElement? GetCrystalElement(uint itemId)
     {
         if (!IsCrystalItem(itemId)) return null;
         return (CrystalElement)((itemId - ConfigStatic.CrystalBaseItemId) % ConfigStatic.CrystalTierOffset);
     }
     
-    /// <summary>
-    /// Gets the tier of a crystal item.
-    /// </summary>
-    /// <param name="itemId">The crystal item ID.</param>
-    /// <returns>The tier, or null if not a crystal.</returns>
     public static CrystalTier? GetCrystalTier(uint itemId)
     {
         if (!IsCrystalItem(itemId)) return null;
         return (CrystalTier)((itemId - ConfigStatic.CrystalBaseItemId) / ConfigStatic.CrystalTierOffset);
     }
     
-    /// <summary>
-    /// Gets all 18 crystal item IDs.
-    /// </summary>
-    /// <returns>A hash set containing all crystal item IDs.</returns>
     public static HashSet<uint> GetAllCrystalItemIds()
     {
         var ids = new HashSet<uint>();
@@ -149,9 +110,6 @@ public static class SpecialGroupingHelper
         return ids;
     }
     
-    /// <summary>
-    /// The three gil currency types.
-    /// </summary>
     public static readonly TrackedDataType[] GilCurrencyTypes = new[]
     {
         TrackedDataType.Gil,
@@ -159,9 +117,6 @@ public static class SpecialGroupingHelper
         TrackedDataType.RetainerGil
     };
     
-    /// <summary>
-    /// Checks if all 3 gil currencies are present in the columns.
-    /// </summary>
     public static bool HasAllGilCurrencies(IEnumerable<Gui.Widgets.ItemColumnConfig> columns)
     {
         var currencyIds = columns
@@ -172,12 +127,6 @@ public static class SpecialGroupingHelper
         return GilCurrencyTypes.All(t => currencyIds.Contains((uint)t));
     }
     
-    /// <summary>
-    /// Detects which special groupings are available based on the selected item columns.
-    /// Returns flags for all detected groupings.
-    /// </summary>
-    /// <param name="columns">The list of column configurations.</param>
-    /// <returns>Flags indicating all detected special grouping types.</returns>
     public static SpecialGroupingType DetectSpecialGrouping(IEnumerable<Gui.Widgets.ItemColumnConfig> columns)
     {
         var result = SpecialGroupingType.None;
@@ -204,12 +153,6 @@ public static class SpecialGroupingHelper
         return result;
     }
     
-    /// <summary>
-    /// Filters a list of columns based on the special grouping settings.
-    /// </summary>
-    /// <param name="columns">The original list of columns.</param>
-    /// <param name="settings">The special grouping settings.</param>
-    /// <returns>A filtered list of columns to display.</returns>
     public static List<Gui.Widgets.ItemColumnConfig> ApplySpecialGroupingFilter(
         IEnumerable<Gui.Widgets.ItemColumnConfig> columns, 
         SpecialGroupingSettings settings)
@@ -250,18 +193,12 @@ public static class SpecialGroupingHelper
         }).ToList();
     }
     
-    /// <summary>
-    /// Checks if a currency type is one that should be merged into Gil.
-    /// </summary>
     public static bool IsGilMergeSource(TrackedDataType currencyType)
     {
         return currencyType == TrackedDataType.FreeCompanyGil || 
                currencyType == TrackedDataType.RetainerGil;
     }
     
-    /// <summary>
-    /// Gets the display name for a crystal element.
-    /// </summary>
     public static string GetElementName(CrystalElement element) => element switch
     {
         CrystalElement.Fire => "Fire",
@@ -273,9 +210,6 @@ public static class SpecialGroupingHelper
         _ => element.ToString()
     };
     
-    /// <summary>
-    /// Gets the display name for a crystal tier.
-    /// </summary>
     public static string GetTierName(CrystalTier tier) => tier switch
     {
         CrystalTier.Shard => "Shard",
@@ -284,9 +218,6 @@ public static class SpecialGroupingHelper
         _ => tier.ToString()
     };
     
-    /// <summary>
-    /// Gets a color associated with a crystal element.
-    /// </summary>
     public static Vector4 GetElementColor(CrystalElement element) => element switch
     {
         CrystalElement.Fire => new Vector4(1.0f, 0.4f, 0.2f, 1.0f),      // Orange-red

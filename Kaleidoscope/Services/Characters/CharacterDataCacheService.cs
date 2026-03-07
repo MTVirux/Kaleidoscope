@@ -34,7 +34,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     private long _cacheMisses;
     private long _version;
 
-    /// <summary>Event fired when character data is updated.</summary>
     public event Action<ulong>? OnCharacterUpdated;
 
     /// <summary>
@@ -43,16 +42,9 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
     /// </summary>
     public long Version => Volatile.Read(ref _version);
 
-    /// <summary>Gets cache hit count for diagnostics.</summary>
     public long CacheHits => _cacheHits;
-
-    /// <summary>Gets cache miss count for diagnostics.</summary>
     public long CacheMisses => _cacheMisses;
-
-    /// <summary>Gets total number of cached characters.</summary>
     public int CachedCharacterCount => _cache.Count;
-
-    /// <summary>Gets whether the cache has been initialized from DB.</summary>
     public bool IsInitialized => _initialized;
 
     public CharacterDataCacheService(IPluginLog log, ConfigurationService configService)
@@ -76,9 +68,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Initialized with {_cache.Count} characters from database");
     }
 
-    /// <summary>
-    /// Populates the cache from the database.
-    /// </summary>
     private void PopulateFromDatabase()
     {
         if (_dbService == null) return;
@@ -124,9 +113,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return null;
     }
 
-    /// <summary>
-    /// Gets the time series color for a character (null if not set).
-    /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
     {
         if (_cache.TryGetValue(characterId, out var entry))
@@ -139,17 +125,11 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return null;
     }
 
-    /// <summary>
-    /// Checks if a character exists in the cache.
-    /// </summary>
     public bool HasCharacter(ulong characterId)
     {
         return _cache.ContainsKey(characterId);
     }
 
-    /// <summary>
-    /// Gets all cached character IDs.
-    /// </summary>
     public IReadOnlyList<ulong> GetAllCharacterIds()
     {
         return _cache.Keys.ToList();
@@ -168,9 +148,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Gets all stored character name mappings with both game and display names.
-    /// </summary>
     public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
     {
         var result = new List<(ulong, string?, string?)>(_cache.Count);
@@ -181,9 +158,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Gets all stored character data including time series colors.
-    /// </summary>
     public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
     {
         var result = new List<(ulong, string?, string?, uint?)>(_cache.Count);
@@ -194,9 +168,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Gets all stored character name mappings as a dictionary (display_name if set, otherwise game name).
-    /// </summary>
     public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
     {
         var result = new Dictionary<ulong, string?>(_cache.Count);
@@ -260,10 +231,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         return result;
     }
 
-    /// <summary>
-    /// Formats a name according to the specified format.
-    /// Delegates to <see cref="CharacterNameFormatter.FormatName"/>.
-    /// </summary>
     public static string? FormatName(string? fullName, CharacterNameFormat format)
         => Libs.CharacterNameFormatter.FormatName(fullName, format);
 
@@ -368,9 +335,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
             Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Clears all cached data.
-    /// </summary>
     public void ClearAll()
     {
         _cache.Clear();
@@ -402,9 +366,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Populates character names from a simple name list.
-    /// </summary>
     public void PopulateCharacterNamesSimple(IEnumerable<(ulong characterId, string? name)> names)
     {
         foreach (var (cid, name) in names)
@@ -419,9 +380,6 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
         Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Gets cache statistics for diagnostics.
-    /// </summary>
     public CacheStatistics GetStatistics()
     {
         return new CacheStatistics

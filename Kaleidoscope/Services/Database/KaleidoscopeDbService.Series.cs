@@ -30,7 +30,6 @@ public sealed partial class KaleidoscopeDbService
                 if (result != null && result != DBNull.Value)
                     return (long)result;
 
-                // Create new series
                 cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
                 var newSeriesId = (long)cmd.ExecuteScalar()!;
 
@@ -51,9 +50,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets the last recorded value for the given series.
-    /// </summary>
     public long? GetLastValue(long seriesId)
     {
         lock (_readLock)
@@ -81,9 +77,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets the last recorded value for a character directly.
-    /// </summary>
     public long? GetLastValueForCharacter(string variable, ulong characterId)
     {
         lock (_readLock)
@@ -207,9 +200,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Inserts a new data point for the given series.
-    /// </summary>
     public bool InsertPoint(long seriesId, long value, DateTime? timestamp = null)
     {
         lock (_writeLock)
@@ -351,9 +341,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets all points for a character, optionally limited.
-    /// </summary>
     public List<(DateTime timestamp, long value)> GetPoints(string variable, ulong characterId, int? limit = null)
     {
         var result = new List<(DateTime, long)>();
@@ -439,10 +426,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Gets all points across all characters for a variable.
-    /// Uses the read connection for better concurrent performance.
-    /// </summary>
     public List<(ulong characterId, DateTime timestamp, long value)> GetAllPoints(string variable)
     {
         var result = new List<(ulong, DateTime, long)>();

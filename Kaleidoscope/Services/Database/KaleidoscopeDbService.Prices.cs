@@ -6,9 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    /// <summary>
-    /// Saves or updates the current price for an item on a world.
-    /// </summary>
     public void SaveItemPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, int avgPriceNq = 0, int avgPriceHq = 0, int lastSaleNq = 0, int lastSaleHq = 0, float saleVelocity = 0)
     {
         lock (_writeLock)
@@ -110,9 +107,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Saves a price history point for an item.
-    /// </summary>
     public void SavePriceHistory(int itemId, int worldId, int minPriceNq, int minPriceHq)
     {
         lock (_writeLock)
@@ -183,9 +177,6 @@ public sealed partial class KaleidoscopeDbService
         return null;
     }
 
-    /// <summary>
-    /// Gets the minimum price for an item across all tracked worlds.
-    /// </summary>
     public int? GetMinPrice(int itemId, bool preferHq = false)
     {
         lock (_readLock)
@@ -467,9 +458,6 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
-    /// <summary>
-    /// Gets inventory value history for a character.
-    /// </summary>
     public List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetInventoryValueHistory(ulong characterId, DateTime? since = null)
     {
         var result = new List<(DateTime, long, long, long)>();
@@ -517,9 +505,6 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
-    /// <summary>
-    /// Gets inventory value history for all characters.
-    /// </summary>
     public List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetAllInventoryValueHistory(DateTime? since = null)
     {
         var result = new List<(ulong, DateTime, long, long, long)>();
