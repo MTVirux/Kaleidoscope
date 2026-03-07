@@ -3,9 +3,9 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -194,7 +194,7 @@ public sealed partial class ItemTableWidget
         return result;
     }
     
-    private static string FormatNumber(long value, NumberFormatConfig? config) => MTTableHelpers.FormatNumber(value, config);
+    private static string FormatNumber(long value, NumberFormatConfig? config) => TableHelpers.FormatNumber(value, config);
     
     /// <summary>
     /// Draws text in a table cell with the specified alignment.
@@ -202,19 +202,19 @@ public sealed partial class ItemTableWidget
     private static void DrawAlignedCellText(
         string text, 
         Vector4? color, 
-        MTTableHorizontalAlignment hAlign, 
-        MTTableVerticalAlignment vAlign) => MTTableHelpers.DrawAlignedCellText(text, hAlign, vAlign, color);
+        TableHorizontalAlignment hAlign, 
+        TableVerticalAlignment vAlign) => TableHelpers.DrawAlignedCellText(text, hAlign, vAlign, color);
     
     /// <summary>
     /// Draws a header cell with alignment and sorting support.
     /// </summary>
     private static void DrawAlignedHeaderCell(
         string label,
-        MTTableHorizontalAlignment hAlign,
-        MTTableVerticalAlignment vAlign,
+        TableHorizontalAlignment hAlign,
+        TableVerticalAlignment vAlign,
         int columnIndex,
         bool sortable,
-        out bool rightClicked) => MTTableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable, out rightClicked);
+        out bool rightClicked) => TableHelpers.DrawAlignedHeaderCell(label, hAlign, vAlign, sortable, out rightClicked);
     
     /// <summary>
     /// Calculates the maximum data cell text width for a display column across all rows.
@@ -258,7 +258,7 @@ public sealed partial class ItemTableWidget
                 otherColumnsWidth += displayColumns[i].Width;
         }
         
-        return MTTableHelpers.CalculateFillWidthSingle(totalCols, effectiveCharWidth, otherColumnsWidth);
+        return TableHelpers.CalculateFillWidthSingle(totalCols, effectiveCharWidth, otherColumnsWidth);
     }
     
     /// <summary>

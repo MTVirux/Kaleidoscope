@@ -1,6 +1,6 @@
 using Kaleidoscope.Gui.Widgets;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope.Models;
 
@@ -19,9 +19,9 @@ public enum GraphColorMode
 
 /// <summary>
 /// Interface for settings classes that contain graph widget configuration.
-/// Implement this interface to enable automatic settings binding with MTGraphWidget.
+/// Implement this interface to enable automatic settings binding with GraphWidget.
 /// </summary>
-public interface IGraphWidgetSettings : IMTGraphSettings
+public interface IGraphWidgetSettings : IGraphSettings
 {
     /// <summary>
     /// Mode for determining series colors in the graph.
@@ -31,8 +31,8 @@ public interface IGraphWidgetSettings : IMTGraphSettings
 
 /// <summary>
 /// Shared settings for graph widget display configuration.
-/// Used by tools that embed an MTGraphWidget to avoid duplicating settings definitions.
-/// Implements IGraphWidgetSettings for automatic binding with MTGraphWidget.
+/// Used by tools that embed an GraphWidget to avoid duplicating settings definitions.
+/// Implements IGraphWidgetSettings for automatic binding with GraphWidget.
 /// </summary>
 public sealed class GraphWidgetSettings : IGraphWidgetSettings
 {
@@ -41,8 +41,8 @@ public sealed class GraphWidgetSettings : IGraphWidgetSettings
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
-    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
-    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public GraphType GraphType { get; set; } = GraphType.Area;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;
     public bool ShowGridLines { get; set; } = true;
@@ -52,17 +52,17 @@ public sealed class GraphWidgetSettings : IGraphWidgetSettings
     public float ValueLabelOffsetY { get; set; } = 0f;
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     public int TimeRangeValue { get; set; } = 7;
-    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
     /// <summary>
     /// Calculates the auto-scroll time range in seconds from value and unit.
     /// </summary>
-    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
+    public double GetAutoScrollTimeRangeSeconds() => TimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
     
     /// <summary>
     /// Gets the time span for the current time range settings.

@@ -4,9 +4,9 @@ using Dalamud.Interface.ImGuiNotification;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -15,14 +15,14 @@ public sealed partial class ItemTableWidget
 {
     
     /// <summary>
-    /// Delegates to <see cref="MTTableWidget{TRow}.HandleShiftSelection"/> for SHIFT+click/drag range selection.
+    /// Delegates to <see cref="TableWidget{TRow}.HandleShiftSelection"/> for SHIFT+click/drag range selection.
     /// </summary>
     private static bool HandleShiftSelection(
         int currentIdx,
         HashSet<int> selectedIndices,
         ref bool isSelecting,
         ref int selectionStart)
-        => MTTableWidget<int>.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
+        => TableWidget<int>.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
     
     /// <summary>
     /// Draws the item table.
@@ -150,7 +150,7 @@ public sealed partial class ItemTableWidget
                 {
                     var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
                     var totalCols = hideCharColumn ? preDisplayColumns.Count : preDisplayColumns.Count + 1;
-                    var fillWidth = MTTableHelpers.CalculateFillWidthEqual(totalCols, preDisplayColumns.Count, effectiveCharWidth);
+                    var fillWidth = TableHelpers.CalculateFillWidthEqual(totalCols, preDisplayColumns.Count, effectiveCharWidth);
                     foreach (var dispCol in preDisplayColumns)
                         ApplyColumnWidth(dispCol, columns, fillWidth);
                 }

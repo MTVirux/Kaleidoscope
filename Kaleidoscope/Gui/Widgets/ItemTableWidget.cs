@@ -3,9 +3,9 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -90,9 +90,9 @@ public sealed class ItemColumnConfig
 
 /// <summary>
 /// Represents a group of merged columns that display summed values.
-/// Extends MTGui's MTMergedColumnGroupBase with Kaleidoscope-specific visibility settings.
+/// Extends MergedColumnGroupBase with Kaleidoscope-specific visibility settings.
 /// </summary>
-public sealed class MergedColumnGroup : MTGui.Table.MTMergedColumnGroupBase
+public sealed class MergedColumnGroup : Kaleidoscope.Gui.Widgets.Table.MergedColumnGroupBase
 {
     /// <summary>
     /// Whether to show this merged group in table view.
@@ -231,32 +231,32 @@ public interface IItemTableWidgetSettings
     /// <summary>
     /// Horizontal alignment for data cell content.
     /// </summary>
-    MTTableHorizontalAlignment HorizontalAlignment { get; set; }
+    TableHorizontalAlignment HorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for data cell content.
     /// </summary>
-    MTTableVerticalAlignment VerticalAlignment { get; set; }
+    TableVerticalAlignment VerticalAlignment { get; set; }
     
     /// <summary>
     /// Horizontal alignment for character column content.
     /// </summary>
-    MTTableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; }
+    TableHorizontalAlignment CharacterColumnHorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for character column content.
     /// </summary>
-    MTTableVerticalAlignment CharacterColumnVerticalAlignment { get; set; }
+    TableVerticalAlignment CharacterColumnVerticalAlignment { get; set; }
     
     /// <summary>
     /// Horizontal alignment for header row content.
     /// </summary>
-    MTTableHorizontalAlignment HeaderHorizontalAlignment { get; set; }
+    TableHorizontalAlignment HeaderHorizontalAlignment { get; set; }
     
     /// <summary>
     /// Vertical alignment for header row content.
     /// </summary>
-    MTTableVerticalAlignment HeaderVerticalAlignment { get; set; }
+    TableVerticalAlignment HeaderVerticalAlignment { get; set; }
     
     /// <summary>
     /// Set of character IDs that are hidden from the table.

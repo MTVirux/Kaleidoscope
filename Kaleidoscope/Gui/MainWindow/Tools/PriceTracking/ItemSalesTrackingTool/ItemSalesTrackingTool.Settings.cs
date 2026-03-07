@@ -1,8 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
@@ -196,8 +196,8 @@ public sealed partial class ItemSalesTrackingTool
         Settings.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", Settings.LegendHeightPercent);
         Settings.ShowLegend = GetSetting(settings, "ShowLegend", Settings.ShowLegend);
         Settings.LegendCollapsed = GetSetting(settings, "LegendCollapsed", Settings.LegendCollapsed);
-        Settings.LegendPosition = (MTLegendPosition)GetSetting(settings, "LegendPosition", (int)Settings.LegendPosition);
-        Settings.GraphType = (MTGraphType)GetSetting(settings, "GraphType", (int)Settings.GraphType);
+        Settings.LegendPosition = (LegendPosition)GetSetting(settings, "LegendPosition", (int)Settings.LegendPosition);
+        Settings.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)Settings.GraphType);
         Settings.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", Settings.ShowXAxisTimestamps);
         Settings.ShowCrosshair = GetSetting(settings, "ShowCrosshair", Settings.ShowCrosshair);
         Settings.ShowGridLines = GetSetting(settings, "ShowGridLines", Settings.ShowGridLines);
@@ -207,11 +207,11 @@ public sealed partial class ItemSalesTrackingTool
         Settings.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", Settings.ValueLabelOffsetY);
         Settings.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", Settings.AutoScrollEnabled);
         Settings.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", Settings.AutoScrollTimeValue);
-        Settings.AutoScrollTimeUnit = (MTTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)Settings.AutoScrollTimeUnit);
+        Settings.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)Settings.AutoScrollTimeUnit);
         Settings.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", Settings.AutoScrollNowPosition);
         Settings.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", Settings.ShowControlsDrawer);
         Settings.TimeRangeValue = GetSetting(settings, "TimeRangeValue", Settings.TimeRangeValue);
-        Settings.TimeRangeUnit = (MTTimeUnit)GetSetting(settings, "TimeRangeUnit", (int)Settings.TimeRangeUnit);
+        Settings.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)Settings.TimeRangeUnit);
         
         if (settings.ContainsKey("NumberFormatStyle"))
         {
@@ -254,8 +254,8 @@ public sealed class ItemSalesTrackingSettings : IGraphWidgetSettings
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
-    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.InsideTopLeft;
-    public MTGraphType GraphType { get; set; } = MTGraphType.Line;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
+    public GraphType GraphType { get; set; } = GraphType.Line;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;
     public bool ShowGridLines { get; set; } = true;
@@ -265,10 +265,10 @@ public sealed class ItemSalesTrackingSettings : IGraphWidgetSettings
     public float ValueLabelOffsetY { get; set; } = 0f;
     public bool AutoScrollEnabled { get; set; } = true;
     public int AutoScrollTimeValue { get; set; } = 24;
-    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
     public int TimeRangeValue { get; set; } = 7;
-    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public NumberFormatConfig NumberFormat { get; set; } = new();
 }

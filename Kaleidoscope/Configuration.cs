@@ -3,8 +3,8 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope;
 
@@ -215,7 +215,7 @@ public sealed class Configuration : IPluginConfiguration
 
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
 
-    public MTGraphStyleConfig GraphStyle { get; set; } = new();
+    public GraphStyleConfig GraphStyle { get; set; } = new();
     
     /// <summary>
     /// Default number format for table widgets.

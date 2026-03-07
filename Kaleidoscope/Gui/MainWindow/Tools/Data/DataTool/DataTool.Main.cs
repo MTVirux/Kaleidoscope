@@ -7,7 +7,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Characters;
 using Kaleidoscope.Services.Database;
@@ -46,10 +46,10 @@ public sealed partial class DataTool : ToolComponent
     
     // Widgets
     private readonly ItemTableWidget _tableWidget;
-    private readonly MTGraphWidget _graphWidget;
-    private readonly MTItemComboDropdown? _itemCombo;
-    private readonly MTCurrencyComboDropdown? _currencyCombo;
-    private readonly MTCharacterCombo? _characterCombo;
+    private readonly GraphWidget _graphWidget;
+    private readonly ItemComboDropdown? _itemCombo;
+    private readonly CurrencyComboDropdown? _currencyCombo;
+    private readonly CharacterCombo? _characterCombo;
     
     // Instance-specific settings
     private readonly DataToolSettings _instanceSettings;
@@ -59,14 +59,14 @@ public sealed partial class DataTool : ToolComponent
     private DateTime _lastTableRefresh = DateTime.MinValue;
     private volatile bool _pendingTableRefresh = true;
     
-    // Graph view cached data (tuple format matching MTGraphWidget.RenderMultipleSeries)
+    // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries)
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
-    private List<MTGraphSeriesGroup>? _cachedSeriesGroups;
+    private List<GraphSeriesGroup>? _cachedSeriesGroups;
     private DateTime _lastGraphRefresh = DateTime.MinValue;
     private volatile bool _graphCacheIsDirty = true;
     private int _cachedSeriesCount;
     private int _cachedTimeRangeValue;
-    private MTTimeUnit _cachedTimeRangeUnit;
+    private TimeUnit _cachedTimeRangeUnit;
     private bool _cachedIncludeRetainers;
     private TableGroupingMode _cachedGroupingMode;
     
@@ -157,7 +157,7 @@ public sealed partial class DataTool : ToolComponent
             "Table Settings");
         
         // Create the graph widget (inherit global graph style from config)
-        _graphWidget = new MTGraphWidget(new MTGraphConfig
+        _graphWidget = new GraphWidget(new GraphConfig
         {
             PlotId = "DataToolGraph",
             MinValue = 0f,
@@ -178,7 +178,7 @@ public sealed partial class DataTool : ToolComponent
         // Create item combo
         if (_dataManager != null && _itemDataService != null && textureProvider != null && favoritesService != null)
         {
-            _itemCombo = new MTItemComboDropdown(
+            _itemCombo = new ItemComboDropdown(
                 textureProvider,
                 _dataManager,
                 favoritesService,
@@ -194,7 +194,7 @@ public sealed partial class DataTool : ToolComponent
         // Create currency combo
         if (textureProvider != null && trackedDataRegistry != null && favoritesService != null)
         {
-            _currencyCombo = new MTCurrencyComboDropdown(
+            _currencyCombo = new CurrencyComboDropdown(
                 textureProvider,
                 trackedDataRegistry,
                 favoritesService,
@@ -206,7 +206,7 @@ public sealed partial class DataTool : ToolComponent
         // Create character combo
         if (favoritesService != null)
         {
-            _characterCombo = new MTCharacterCombo(
+            _characterCombo = new CharacterCombo(
                 currencyTrackerService,
                 favoritesService,
                 configService,
@@ -504,7 +504,7 @@ public sealed partial class DataTool : ToolComponent
         }
     }
     
-    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, MTTimeUnit timeUnit, float nowPosition)
+    private void OnAutoScrollSettingsChanged(bool enabled, int timeValue, TimeUnit timeUnit, float nowPosition)
     {
         _instanceSettings.AutoScrollEnabled = enabled;
         _instanceSettings.AutoScrollTimeValue = timeValue;

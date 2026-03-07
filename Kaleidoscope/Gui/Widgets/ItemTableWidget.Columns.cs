@@ -3,9 +3,9 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;

@@ -5,7 +5,7 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using Kaleidoscope.Services.Characters;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;

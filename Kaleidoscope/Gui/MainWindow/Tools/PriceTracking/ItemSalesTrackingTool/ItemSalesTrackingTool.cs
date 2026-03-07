@@ -6,8 +6,8 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -34,8 +34,8 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
     private readonly ItemDataService _itemDataService;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly SalePriceCacheService _salePriceCacheService;
-    private readonly MTItemComboDropdown _itemCombo;
-    private readonly MTGraphWidget _graphWidget;
+    private readonly ItemComboDropdown _itemCombo;
+    private readonly GraphWidget _graphWidget;
 
     // World selection for filtering sales scope
     private WorldSelectionWidget? _worldSelectionWidget;
@@ -83,7 +83,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
             NumberFormat = configService.Config.DefaultGraphNumberFormat.Clone()
         };
 
-        _itemCombo = new MTItemComboDropdown(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,
@@ -97,22 +97,22 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
 
         _itemCombo.MultiSelectionChanged += OnItemSelectionChanged;
 
-        var graphConfig = new MTGraphConfig
+        var graphConfig = new GraphConfig
         {
             PlotId = "ItemSalesTrackingGraph",
             NoDataText = "Select items to track sales data.",
             ShowLegend = true,
-            LegendPosition = MTLegendPosition.InsideTopLeft,
-            GraphType = MTGraphType.Line,
+            LegendPosition = LegendPosition.InsideTopLeft,
+            GraphType = GraphType.Line,
             ShowCrosshair = true,
             ShowGridLines = true,
             AutoScrollEnabled = true,
             AutoScrollTimeValue = 24,
-            AutoScrollTimeUnit = MTTimeUnit.Hours,
+            AutoScrollTimeUnit = TimeUnit.Hours,
             SimulateRealTimeUpdates = false,
             Style = configService.Config.GraphStyle
         };
-        _graphWidget = new MTGraphWidget(graphConfig);
+        _graphWidget = new GraphWidget(graphConfig);
         
         _graphWidget.BindSettings(
             _instanceSettings,
@@ -290,7 +290,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
             return;
         }
 
-        using (ProfilerService.BeginStaticChildScope("MTGraph.RenderMultipleSeries"))
+        using (ProfilerService.BeginStaticChildScope("Graph.RenderMultipleSeries"))
         {
             _graphWidget.RenderMultipleSeries(_cachedSeriesData);
         }

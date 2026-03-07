@@ -4,9 +4,9 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Graph;
-using MTGui.Table;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
+using Kaleidoscope.Gui.Widgets.Table;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
@@ -436,12 +436,12 @@ public sealed partial class DataTool
         target.SortAscending = GetSetting(settings, "SortAscending", target.SortAscending);
         target.UseFullNameWidth = GetSetting(settings, "UseFullNameWidth", target.UseFullNameWidth);
         target.AutoSizeEqualColumns = GetSetting(settings, "AutoSizeEqualColumns", target.AutoSizeEqualColumns);
-        target.HorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
-        target.VerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
-        target.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
-        target.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
-        target.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
-        target.HeaderVerticalAlignment = (MTTableVerticalAlignment)GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
+        target.HorizontalAlignment = (TableHorizontalAlignment)GetSetting(settings, "HorizontalAlignment", (int)target.HorizontalAlignment);
+        target.VerticalAlignment = (TableVerticalAlignment)GetSetting(settings, "VerticalAlignment", (int)target.VerticalAlignment);
+        target.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)GetSetting(settings, "CharacterColumnHorizontalAlignment", (int)target.CharacterColumnHorizontalAlignment);
+        target.CharacterColumnVerticalAlignment = (TableVerticalAlignment)GetSetting(settings, "CharacterColumnVerticalAlignment", (int)target.CharacterColumnVerticalAlignment);
+        target.HeaderHorizontalAlignment = (TableHorizontalAlignment)GetSetting(settings, "HeaderHorizontalAlignment", (int)target.HeaderHorizontalAlignment);
+        target.HeaderVerticalAlignment = (TableVerticalAlignment)GetSetting(settings, "HeaderVerticalAlignment", (int)target.HeaderVerticalAlignment);
         target.HideCharacterColumnInAllMode = GetSetting(settings, "HideCharacterColumnInAllMode", target.HideCharacterColumnInAllMode);
         target.TextColorMode = (TableTextColorMode)GetSetting(settings, "TextColorMode", (int)target.TextColorMode);
         target.ShowRetainerBreakdown = GetSetting(settings, "ShowRetainerBreakdown", target.ShowRetainerBreakdown);
@@ -478,8 +478,8 @@ public sealed partial class DataTool
         target.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
         target.ShowLegend = GetSetting(settings, "ShowLegend", target.ShowLegend);
         target.LegendCollapsed = GetSetting(settings, "LegendCollapsed", target.LegendCollapsed);
-        target.LegendPosition = (MTLegendPosition)GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
-        target.GraphType = (MTGraphType)GetSetting(settings, "GraphType", (int)target.GraphType);
+        target.LegendPosition = (LegendPosition)GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
+        target.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)target.GraphType);
         target.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
         target.ShowCrosshair = GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
         target.ShowGridLines = GetSetting(settings, "ShowGridLines", target.ShowGridLines);
@@ -489,11 +489,11 @@ public sealed partial class DataTool
         target.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
         target.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
         target.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
-        target.AutoScrollTimeUnit = (MTTimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
+        target.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
         target.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
         target.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
         target.TimeRangeValue = GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
-        target.TimeRangeUnit = (MTTimeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        target.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
         
         // Update character combo
         if (_characterCombo != null)

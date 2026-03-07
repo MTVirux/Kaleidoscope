@@ -2,7 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
 
@@ -65,16 +65,16 @@ public sealed class UniversalisCategory
         ImGui.Spacing();
 
         // Query Settings in collapsible header
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Query Settings", true, DrawQuerySettings);
+        TreeHelpers.DrawCollapsingSectionWithContent("Query Settings", true, DrawQuerySettings);
 
         // Override Settings in collapsible header
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Override Settings", false, DrawOverrideSettings);
+        TreeHelpers.DrawCollapsingSectionWithContent("Override Settings", false, DrawOverrideSettings);
 
         // Price Tracking Section in collapsible header
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Price Tracking (WebSocket)", true, DrawPriceTrackingSection);
+        TreeHelpers.DrawCollapsingSectionWithContent("Price Tracking (WebSocket)", true, DrawPriceTrackingSection);
 
         // Data Management in collapsible header
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Data Management", false, DrawDataManagement);
+        TreeHelpers.DrawCollapsingSectionWithContent("Data Management", false, DrawDataManagement);
     }
 
     private void DrawWebSocketStatus()
@@ -249,10 +249,10 @@ public sealed class UniversalisCategory
         ImGui.Spacing();
 
         // Sub-sections as collapsible groups
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Connection & Channels", true, () => DrawConnectionAndChannels(settings));
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Tracking Scope", true, () => DrawTrackingScope(settings));
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Sale Filtering", false, () => DrawSaleFiltering(settings));
-        MTTreeHelpers.DrawCollapsingSectionWithContent("Inventory Value", true, () => DrawInventoryValue(settings));
+        TreeHelpers.DrawCollapsingSectionWithContent("Connection & Channels", true, () => DrawConnectionAndChannels(settings));
+        TreeHelpers.DrawCollapsingSectionWithContent("Tracking Scope", true, () => DrawTrackingScope(settings));
+        TreeHelpers.DrawCollapsingSectionWithContent("Sale Filtering", false, () => DrawSaleFiltering(settings));
+        TreeHelpers.DrawCollapsingSectionWithContent("Inventory Value", true, () => DrawInventoryValue(settings));
     }
 
     private void DrawConnectionAndChannels(PriceTrackingSettings settings)

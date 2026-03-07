@@ -7,7 +7,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using Kaleidoscope.Services.Characters;
 using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
@@ -52,7 +52,7 @@ public sealed partial class TopInventoryValueTool : ToolComponent
     private readonly ConfigurationService _configService;
     private readonly CharacterDataService _characterDataService;
     private readonly ItemDataService _itemDataService;
-    private readonly MTItemComboDropdown _itemCombo;
+    private readonly ItemComboDropdown _itemCombo;
     private readonly InventoryChangeService? _inventoryChangeService;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly ItemDetailsPopup _itemDetailsPopup;
@@ -111,7 +111,7 @@ public sealed partial class TopInventoryValueTool : ToolComponent
         _instanceSettings = new TopInventoryValueItemsSettings();
         
         // Create item combo for exclusion list (marketable only since we're dealing with prices)
-        _itemCombo = new MTItemComboDropdown(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,

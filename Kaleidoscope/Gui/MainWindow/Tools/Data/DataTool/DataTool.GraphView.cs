@@ -5,7 +5,7 @@ using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
@@ -185,7 +185,7 @@ public sealed partial class DataTool
         // Build groups for the legend (only when there are multiple items with multiple series each)
         if (!isSingleItem && seriesByItem.Count > 1)
         {
-            var groups = new List<MTGraphSeriesGroup>();
+            var groups = new List<GraphSeriesGroup>();
             foreach (var (itemName, seriesNames) in seriesByItem)
             {
                 // Only create a group if the item has multiple series
@@ -195,7 +195,7 @@ public sealed partial class DataTool
                         ? new Vector3(c.X, c.Y, c.Z) 
                         : new Vector3(0.6f, 0.6f, 0.6f);
                     
-                    groups.Add(new MTGraphSeriesGroup
+                    groups.Add(new GraphSeriesGroup
                     {
                         Name = itemName,
                         Color = color,

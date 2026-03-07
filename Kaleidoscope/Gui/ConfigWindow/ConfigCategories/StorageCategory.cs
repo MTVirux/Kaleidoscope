@@ -10,7 +10,7 @@ using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
-using MTGui.Widgets.DatePicker;
+using Kaleidoscope.Gui.Widgets.DatePicker;
 using OtterGui.Classes;
 using Kaleidoscope.Services.Universalis;
 
@@ -42,11 +42,11 @@ public sealed class StorageCategory : IDisposable
     
     // Data Cleanup Section state
     private CleanupDataMode _cleanupDataMode = CleanupDataMode.Currencies;
-    private MTCurrencyComboDropdown? _cleanupCurrencyCombo;
-    private MTItemComboDropdown? _cleanupItemCombo;
-    private MTCharacterCombo? _cleanupCharacterCombo;
-    private MTDatePickerWidget? _startDatePicker;
-    private MTDatePickerWidget? _endDatePicker;
+    private CurrencyComboDropdown? _cleanupCurrencyCombo;
+    private ItemComboDropdown? _cleanupItemCombo;
+    private CharacterCombo? _cleanupCharacterCombo;
+    private DatePickerWidget? _startDatePicker;
+    private DatePickerWidget? _endDatePicker;
     private List<(ulong characterId, DateTime timestamp, long value)> _previewPoints = new();
     private int _previewCurrentPage;
     private const int PreviewPageSize = 50;
@@ -118,7 +118,7 @@ public sealed class StorageCategory : IDisposable
     private void InitializeCleanupWidgets()
     {
         // Initialize currency combo
-        _cleanupCurrencyCombo = new MTCurrencyComboDropdown(
+        _cleanupCurrencyCombo = new CurrencyComboDropdown(
             _textureProvider,
             _currencyTrackerService.Registry,
             _favoritesService,
@@ -127,7 +127,7 @@ public sealed class StorageCategory : IDisposable
             false);
         
         // Initialize item combo
-        _cleanupItemCombo = new MTItemComboDropdown(
+        _cleanupItemCombo = new ItemComboDropdown(
             _textureProvider,
             _dataManager,
             _favoritesService,
@@ -140,7 +140,7 @@ public sealed class StorageCategory : IDisposable
             multiSelect: false);
         
         // Initialize character combo
-        _cleanupCharacterCombo = new MTCharacterCombo(
+        _cleanupCharacterCombo = new CharacterCombo(
             _currencyTrackerService,
             _favoritesService,
             _configService,
@@ -151,8 +151,8 @@ public sealed class StorageCategory : IDisposable
         
         // Initialize date pickers with default range (last 30 days to now)
         var now = DateTime.Now;
-        _startDatePicker = new MTDatePickerWidget("##cleanupStartDate", true, now.AddDays(-30));
-        _endDatePicker = new MTDatePickerWidget("##cleanupEndDate", true, now);
+        _startDatePicker = new DatePickerWidget("##cleanupStartDate", true, now.AddDays(-30));
+        _endDatePicker = new DatePickerWidget("##cleanupEndDate", true, now);
         
         // Subscribe to selection changes to refresh preview
         _cleanupCurrencyCombo.SelectionChanged += _ => RefreshPreview();

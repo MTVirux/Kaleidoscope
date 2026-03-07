@@ -30,9 +30,9 @@ public sealed class ItemsCategory
     private string _searchFilter = string.Empty;
     private string _trackedItemsSearchFilter = string.Empty;
     
-    private readonly MTItemComboDropdown? _itemCombo;
+    private readonly ItemComboDropdown? _itemCombo;
     
-    private readonly MTItemComboDropdown? _trackItemCombo;
+    private readonly ItemComboDropdown? _trackItemCombo;
     
     private readonly Dictionary<uint, string> _itemNameCache = new();
 
@@ -54,7 +54,7 @@ public sealed class ItemsCategory
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
         {
-            _itemCombo = new MTItemComboDropdown(
+            _itemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -65,7 +65,7 @@ public sealed class ItemsCategory
                 trackedDataRegistry: _currencyTrackerService?.Registry,
                 excludeCurrencies: true);
             
-            _trackItemCombo = new MTItemComboDropdown(
+            _trackItemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,

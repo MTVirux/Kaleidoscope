@@ -6,7 +6,7 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
@@ -24,7 +24,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
     private readonly ItemDataService _itemDataService;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly SalePriceCacheService _salePriceCacheService;
-    private readonly MTItemComboDropdown _itemCombo;
+    private readonly ItemComboDropdown _itemCombo;
 
     // State
     private MarketHistory? _currentHistory;
@@ -57,7 +57,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
         _currencyTrackerService = currencyTrackerService;
         _salePriceCacheService = salePriceCacheService;
 
-        _itemCombo = new MTItemComboDropdown(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,

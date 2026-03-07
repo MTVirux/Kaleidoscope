@@ -10,8 +10,8 @@ using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.FFXIVMT;
 using Kaleidoscope.Services.Universalis;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.FFXIVMT;
@@ -82,7 +82,7 @@ public sealed class GilFluxTool : ToolComponent
     private bool _worldSelectorInitialized;
 
     // Item picker for filtering to specific items
-    private readonly MTItemComboDropdown? _itemPicker;
+    private readonly ItemComboDropdown? _itemPicker;
 
     private static readonly SettingsSchema<GilFluxToolSettings> Schema = SettingsSchema.For<GilFluxToolSettings>()
         .Checkbox(s => s.CraftedOnly, "Crafted Only", "Only show crafted items", true)
@@ -163,7 +163,7 @@ public sealed class GilFluxTool : ToolComponent
         // Create item picker if all required services are available
         if (textureProvider != null && dataManager != null && favoritesService != null)
         {
-            _itemPicker = new MTItemComboDropdown(
+            _itemPicker = new ItemComboDropdown(
                 textureProvider, dataManager, favoritesService, priceTrackingService,
                 "gilflux_items", marketableOnly: true, configService: configService,
                 multiSelect: true, emptySelectionText: "All Items",
@@ -828,12 +828,12 @@ public sealed class GilFluxTool : ToolComponent
         }
 
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Row Colors"))
+        if (TreeHelpers.DrawSection("Row Colors"))
         {
-            changed |= MTTableHelpers.DrawColorOption("Header", _settings.HeaderColor, c => _settings.HeaderColor = c);
-            changed |= MTTableHelpers.DrawColorOption("Even Rows", _settings.EvenRowColor, c => _settings.EvenRowColor = c);
-            changed |= MTTableHelpers.DrawColorOption("Odd Rows", _settings.OddRowColor, c => _settings.OddRowColor = c);
-            MTTreeHelpers.EndSection();
+            changed |= TableHelpers.DrawColorOption("Header", _settings.HeaderColor, c => _settings.HeaderColor = c);
+            changed |= TableHelpers.DrawColorOption("Even Rows", _settings.EvenRowColor, c => _settings.EvenRowColor = c);
+            changed |= TableHelpers.DrawColorOption("Odd Rows", _settings.OddRowColor, c => _settings.OddRowColor = c);
+            TreeHelpers.EndSection();
         }
 
         // Ignored items management

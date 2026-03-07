@@ -1,7 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using System.Diagnostics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -144,7 +144,7 @@ public sealed class TestsCategory
 
     private void DrawDatabaseTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Database Tests", true))
+        if (TreeHelpers.DrawCollapsingSection("Database Tests", true))
         {
             ImGui.Indent();
 
@@ -180,10 +180,10 @@ public sealed class TestsCategory
             DrawTestStatus(_dbSanityTested, "DB Sanity Check");
 
             // DB Stats
-            if (MTTreeHelpers.DrawSection("Database Statistics"))
+            if (TreeHelpers.DrawSection("Database Statistics"))
             {
                 DrawDbStats();
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
 
             ImGui.Unindent();
@@ -192,7 +192,7 @@ public sealed class TestsCategory
 
     private void DrawIntegrationTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Integration Tests", true))
+        if (TreeHelpers.DrawCollapsingSection("Integration Tests", true))
         {
             ImGui.Indent();
 
@@ -244,7 +244,7 @@ public sealed class TestsCategory
 
     private void DrawServiceTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Service Tests", false))
+        if (TreeHelpers.DrawCollapsingSection("Service Tests", false))
         {
             ImGui.Indent();
 
@@ -287,7 +287,7 @@ public sealed class TestsCategory
 
     private void DrawCacheArchitectureTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Cache Architecture Tests", false))
+        if (TreeHelpers.DrawCollapsingSection("Cache Architecture Tests", false))
         {
             ImGui.Indent();
 
@@ -515,10 +515,10 @@ public sealed class TestsCategory
             ImGui.Spacing();
             
             // Cache Statistics Display
-            if (MTTreeHelpers.DrawSection("Cache Statistics"))
+            if (TreeHelpers.DrawSection("Cache Statistics"))
             {
                 DrawCacheStats();
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
 
             ImGui.Unindent();

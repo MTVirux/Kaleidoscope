@@ -1,8 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.MainWindow;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -704,7 +704,7 @@ public sealed class CustomizationCategory
             config.MainWindowBackgroundColor = DefaultBackgroundColor;
             config.FullscreenBackgroundColor = DefaultBackgroundColor;
             config.UIColors.ResetToDefaults();
-            config.GraphStyle = new MTGraphStyleConfig();
+            config.GraphStyle = new GraphStyleConfig();
             saveConfig();
         }
         if (ImGui.IsItemHovered())

@@ -4,7 +4,7 @@ using System.Reflection;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using Microsoft.Extensions.DependencyInjection;
-using MTGui.Common;
+using Kaleidoscope.Gui.Widgets.Common;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Core;
@@ -16,7 +16,7 @@ namespace Kaleidoscope.Core;
 /// </summary>
 internal sealed class DeferredStartupService : IDisposable
 {
-    /// <summary> Project-specific messages that augment the shared MTFlavourText pool. </summary>
+    /// <summary> Project-specific messages that augment the shared FlavourText pool. </summary>
     private static readonly string[] ProjectMessages =
     [
         "Consulting mtvirux.app",
@@ -58,7 +58,7 @@ internal sealed class DeferredStartupService : IDisposable
             .Count(t => t is { IsInterface: false, IsAbstract: false }
                      && typeof(IService).IsAssignableFrom(t));
 
-        _currentMessage = MTFlavourText.GetRandom(_random, ProjectMessages);
+        _currentMessage = FlavourText.GetRandom(_random, ProjectMessages);
         _nextMessageTime = 0.5;
 
         _notification = _notificationManager.AddNotification(new Notification
@@ -148,7 +148,7 @@ internal sealed class DeferredStartupService : IDisposable
         var seconds = _elapsed.Elapsed.TotalSeconds;
         if (seconds >= _nextMessageTime)
         {
-            _currentMessage = MTFlavourText.GetRandom(_random, ProjectMessages);
+            _currentMessage = FlavourText.GetRandom(_random, ProjectMessages);
             _nextMessageTime = seconds + 1;
         }
 

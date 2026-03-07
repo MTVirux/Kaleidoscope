@@ -1,5 +1,5 @@
 using Dalamud.Bindings.ImGui;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -12,8 +12,8 @@ public static class GraphTypeSelectorWidget
     /// <summary>Display names for graph types.</summary>
     private static readonly string[] GraphTypeNames = { "Stairs", "Stairs Area" };
     
-    /// <summary>Mapping from combo index to MTGraphType.</summary>
-    private static readonly MTGraphType[] GraphTypeValues = { MTGraphType.Stairs, MTGraphType.StairsArea };
+    /// <summary>Mapping from combo index to GraphType.</summary>
+    private static readonly GraphType[] GraphTypeValues = { GraphType.Stairs, GraphType.StairsArea };
 
     /// <summary>
     /// Draws a graph type selector dropdown.
@@ -22,7 +22,7 @@ public static class GraphTypeSelectorWidget
     /// <param name="graphType">Reference to the graph type value.</param>
     /// <param name="width">Width of the dropdown.</param>
     /// <returns>True if the selection changed.</returns>
-    public static bool Draw(string label, ref MTGraphType graphType, float width = 150f)
+    public static bool Draw(string label, ref GraphType graphType, float width = 150f)
     {
         bool changed = false;
 
@@ -45,7 +45,7 @@ public static class GraphTypeSelectorWidget
     /// <param name="graphType">Reference to the graph type value.</param>
     /// <param name="width">Width of the dropdown.</param>
     /// <returns>True if the selection changed.</returns>
-    public static bool DrawWithTooltip(string label, ref MTGraphType graphType, float width = 150f)
+    public static bool DrawWithTooltip(string label, ref GraphType graphType, float width = 150f)
     {
         var changed = Draw(label, ref graphType, width);
 
@@ -69,12 +69,12 @@ public static class GraphTypeSelectorWidget
     /// </summary>
     /// <param name="graphType">The graph type.</param>
     /// <returns>Human-readable description.</returns>
-    public static string GetDescription(MTGraphType graphType)
+    public static string GetDescription(GraphType graphType)
     {
         return graphType switch
         {
-            MTGraphType.Stairs => "Step chart showing discrete value changes",
-            MTGraphType.StairsArea => "Step chart with filled area below",
+            GraphType.Stairs => "Step chart showing discrete value changes",
+            GraphType.StairsArea => "Step chart with filled area below",
             _ => "Unknown graph type"
         };
     }

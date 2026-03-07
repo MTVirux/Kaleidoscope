@@ -3,9 +3,9 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Table;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Table;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -85,7 +85,7 @@ public sealed partial class ItemTableWidget
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Column Sizing", true))
+        if (TreeHelpers.DrawSection("Column Sizing", true))
         {
             var useFullNameWidth = settings.UseFullNameWidth;
         if (ImGui.Checkbox("Fit character column to name width", ref useFullNameWidth))
@@ -108,11 +108,11 @@ public sealed partial class ItemTableWidget
             {
                 ImGui.SetTooltip("Automatically size all data columns to equal widths.\nCharacter column width takes priority.");
             }
-            MTTreeHelpers.EndSection();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Alignment"))
+        if (TreeHelpers.DrawSection("Alignment"))
         {
             // Data column alignment
             ImGui.TextDisabled("Data Columns");
@@ -122,7 +122,7 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##data", ref hAlign, "Left\0Center\0Right\0"))
             {
-                settings.HorizontalAlignment = (MTTableHorizontalAlignment)hAlign;
+                settings.HorizontalAlignment = (TableHorizontalAlignment)hAlign;
                 changed = true;
             }
         
@@ -131,7 +131,7 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##data", ref vAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.VerticalAlignment = (MTTableVerticalAlignment)vAlign;
+                settings.VerticalAlignment = (TableVerticalAlignment)vAlign;
                 changed = true;
             }
             
@@ -143,7 +143,7 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##char", ref charHAlign, "Left\0Center\0Right\0"))
             {
-                settings.CharacterColumnHorizontalAlignment = (MTTableHorizontalAlignment)charHAlign;
+                settings.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)charHAlign;
                 changed = true;
             }
         
@@ -152,7 +152,7 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##char", ref charVAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.CharacterColumnVerticalAlignment = (MTTableVerticalAlignment)charVAlign;
+                settings.CharacterColumnVerticalAlignment = (TableVerticalAlignment)charVAlign;
                 changed = true;
             }
             
@@ -164,7 +164,7 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Horizontal##header", ref headerHAlign, "Left\0Center\0Right\0"))
             {
-                settings.HeaderHorizontalAlignment = (MTTableHorizontalAlignment)headerHAlign;
+                settings.HeaderHorizontalAlignment = (TableHorizontalAlignment)headerHAlign;
                 changed = true;
             }
         
@@ -173,14 +173,14 @@ public sealed partial class ItemTableWidget
             ImGui.SetNextItemWidth(100);
             if (ImGui.Combo("Vertical##header", ref headerVAlign, "Top\0Center\0Bottom\0"))
             {
-                settings.HeaderVerticalAlignment = (MTTableVerticalAlignment)headerVAlign;
+                settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
                 changed = true;
             }
-            MTTreeHelpers.EndSection();
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Character Column"))
+        if (TreeHelpers.DrawSection("Character Column"))
         {
             var charWidth = settings.CharacterColumnWidth;
             if (ImGui.SliderFloat("Min Width", ref charWidth, 60f, 200f, "%.0f"))
@@ -194,22 +194,22 @@ public sealed partial class ItemTableWidget
             }
         
             // Character column color
-            changed |= MTTableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
-            MTTreeHelpers.EndSection();
+            changed |= TableHelpers.DrawColorOption("Text Color", settings.CharacterColumnColor, c => settings.CharacterColumnColor = c);
+            TreeHelpers.EndSection();
         }
         
         ImGui.Spacing();
-        if (MTTreeHelpers.DrawSection("Row Colors"))
+        if (TreeHelpers.DrawSection("Row Colors"))
         {
             // Header color
-            changed |= MTTableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
+            changed |= TableHelpers.DrawColorOption("Header", settings.HeaderColor, c => settings.HeaderColor = c);
         
             // Even row color
-            changed |= MTTableHelpers.DrawColorOption("Even Rows", settings.EvenRowColor, c => settings.EvenRowColor = c);
+            changed |= TableHelpers.DrawColorOption("Even Rows", settings.EvenRowColor, c => settings.EvenRowColor = c);
         
             // Odd row color
-            changed |= MTTableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
-            MTTreeHelpers.EndSection();
+            changed |= TableHelpers.DrawColorOption("Odd Rows", settings.OddRowColor, c => settings.OddRowColor = c);
+            TreeHelpers.EndSection();
         }
         
         // Merged rows section
@@ -217,7 +217,7 @@ public sealed partial class ItemTableWidget
         {
             ImGui.Spacing();
             
-            if (MTTreeHelpers.DrawSection($"Merged Rows ({settings.MergedRowGroups.Count})", false, "MergedRows"))
+            if (TreeHelpers.DrawSection($"Merged Rows ({settings.MergedRowGroups.Count})", false, "MergedRows"))
             {
                 ImGui.TextDisabled("Hold SHIFT and click/drag on character names to select, then right-click to merge.");
                 ImGui.Spacing();
@@ -279,7 +279,7 @@ public sealed partial class ItemTableWidget
                     settings.MergedRowGroups.Clear();
                     changed = true;
                 }
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
         }
         else
@@ -293,7 +293,7 @@ public sealed partial class ItemTableWidget
         {
             ImGui.Spacing();
             
-            if (MTTreeHelpers.DrawSection($"Hidden Characters ({settings.HiddenCharacters.Count})", false, "HiddenChars"))
+            if (TreeHelpers.DrawSection($"Hidden Characters ({settings.HiddenCharacters.Count})", false, "HiddenChars"))
             {
                 // Show each hidden character with unhide button
                 ulong? characterToUnhide = null;
@@ -329,7 +329,7 @@ public sealed partial class ItemTableWidget
                 {
                     ImGui.SetTooltip("Unhide all hidden characters");
                 }
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
         }
         else
