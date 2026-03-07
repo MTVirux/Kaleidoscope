@@ -8,14 +8,7 @@ using MTGui.Graph;
 
 namespace Kaleidoscope;
 
-/// <summary>
-/// Main plugin configuration. Implements IPluginConfiguration for Dalamud persistence.
-/// Related types are split into separate files:
-/// - Configuration.Enums.cs - Enum definitions
-/// - Configuration.Settings.cs - Tool settings classes
-/// - Configuration.Layout.cs - Layout persistence classes
-/// </summary>
-public class Configuration : IPluginConfiguration
+public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
 
@@ -30,9 +23,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShowDuringCutscenes { get; set; } = true;
 
-    /// <summary>
-    /// Whether profiling is enabled for draw time tracking.
-    /// </summary>
     public bool ProfilerEnabled { get; set; } = false;
 
     public bool ProfilerLogSlowOperations { get; set; } = true;

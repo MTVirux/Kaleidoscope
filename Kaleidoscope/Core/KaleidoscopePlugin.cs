@@ -14,7 +14,7 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
 {
     public static readonly Logger Log = new();
 
-    private readonly ServiceManager _services;
+    private readonly ServiceManager? _services;
 
     /// <summary>
     /// Deferred startup state. Non-null while services are still being loaded,
