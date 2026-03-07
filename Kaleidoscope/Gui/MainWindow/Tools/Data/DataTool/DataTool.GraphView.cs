@@ -1,7 +1,5 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Kaleidoscope.Gui.Common;
-using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
@@ -77,7 +75,6 @@ public sealed partial class DataTool
     {
         var settings = Settings;
         
-        _lastGraphRefresh = DateTime.UtcNow;
         _cachedSeriesCount = settings.Columns.Count;
         _cachedTimeRangeValue = settings.TimeRangeValue;
         _cachedTimeRangeUnit = settings.TimeRangeUnit;

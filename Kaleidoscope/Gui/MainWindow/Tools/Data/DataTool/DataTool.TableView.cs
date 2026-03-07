@@ -54,7 +54,6 @@ public sealed partial class DataTool
                     Rows = Array.Empty<ItemTableCharacterRow>(),
                     Columns = columns
                 };
-                _lastTableRefresh = DateTime.UtcNow;
                 _pendingTableRefresh = false;
                 return;
             }
@@ -176,7 +175,6 @@ public sealed partial class DataTool
                 Columns = columns
             };
             
-            _lastTableRefresh = DateTime.UtcNow;
             _pendingTableRefresh = false;
         }
         catch (Exception ex)
@@ -237,9 +235,7 @@ public sealed partial class DataTool
                         .Where(i => i.ItemId == column.Id)
                         .Sum(i => (long)i.Quantity);
                     
-                    // Initialize ItemCounts if needed
-                    if (!row.ItemCounts.ContainsKey(column.Id))
-                        row.ItemCounts[column.Id] = 0;
+                    row.ItemCounts.TryAdd(column.Id, 0);
                     
                     if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Player)
                     {
@@ -250,8 +246,7 @@ public sealed partial class DataTool
                         if (showRetainerBreakdown)
                         {
                             row.PlayerItemCounts ??= new Dictionary<uint, long>();
-                            if (!row.PlayerItemCounts.ContainsKey(column.Id))
-                                row.PlayerItemCounts[column.Id] = 0;
+                            row.PlayerItemCounts.TryAdd(column.Id, 0);
                             row.PlayerItemCounts[column.Id] += count;
                         }
                     }
@@ -275,8 +270,7 @@ public sealed partial class DataTool
                                 row.RetainerBreakdown[retainerKey] = retainerCounts;
                             }
                             
-                            if (!retainerCounts.ContainsKey(column.Id))
-                                retainerCounts[column.Id] = 0;
+                            retainerCounts.TryAdd(column.Id, 0);
                             retainerCounts[column.Id] += count;
                         }
                     }

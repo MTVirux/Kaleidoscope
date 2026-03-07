@@ -10,7 +10,6 @@ using Kaleidoscope.Services;
 using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Characters;
-using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 
@@ -41,8 +40,6 @@ public sealed partial class DataTool : ToolComponent
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly FavoritesService? _favoritesService;
     private readonly ITextureProvider? _textureProvider;
-    private readonly LifestreamService? _lifestreamService;
-    private readonly INotificationManager? _notificationManager;
     
     // Widgets
     private readonly ItemTableWidget _tableWidget;
@@ -56,13 +53,11 @@ public sealed partial class DataTool : ToolComponent
     
     // Table view cached data
     private PreparedItemTableData? _cachedTableData;
-    private DateTime _lastTableRefresh = DateTime.MinValue;
     private volatile bool _pendingTableRefresh = true;
     
     // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries)
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
     private List<GraphSeriesGroup>? _cachedSeriesGroups;
-    private DateTime _lastGraphRefresh = DateTime.MinValue;
     private volatile bool _graphCacheIsDirty = true;
     private int _cachedSeriesCount;
     private int _cachedTimeRangeValue;
@@ -90,7 +85,6 @@ public sealed partial class DataTool : ToolComponent
     public string? PresetName { get; set; }
     
     private DataToolSettings Settings => _instanceSettings;
-    private KaleidoscopeDbService DbService => _currencyTrackerService.DbService;
     private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
     private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
     
@@ -118,8 +112,7 @@ public sealed partial class DataTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _favoritesService = favoritesService;
         _textureProvider = textureProvider;
-        _lifestreamService = lifestreamService;
-        _notificationManager = notificationManager;
+
         
         // Initialize instance-specific settings with global defaults
         var uiColors = configService.Config.UIColors;
