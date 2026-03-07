@@ -835,7 +835,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public void Dispose()
     {
         ClearAll();
-        GC.SuppressFinalize(this);
     }
 
     /// <summary>

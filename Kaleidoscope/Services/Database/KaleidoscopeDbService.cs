@@ -70,9 +70,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Generates parameterized IN clause placeholders for long values.
-    /// </summary>
     private static string AddParameterizedInClause(SqliteCommand cmd, IList<long> values, string prefix = "$p")
     {
         var sb = new StringBuilder();
@@ -143,11 +140,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         }
     }
 
-    /// <summary>
-    /// Creates a new database service using configured settings.
-    /// </summary>
-    /// <param name="filenames">Service providing file paths.</param>
-    /// <param name="configService">Configuration service for cache size settings.</param>
     public KaleidoscopeDbService(FilenameService filenames, ConfigurationService configService)
     {
         _dbPath = filenames.DatabasePath;
@@ -211,7 +203,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
 
                 EnsureSchema();
                 
-                // Initialize read-only connection for concurrent reads
                 EnsureReadConnection();
                 
                 // Start periodic passive checkpoints to keep WAL small
@@ -249,7 +240,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
             _readConnection = new SqliteConnection(csb.ToString());
             _readConnection.Open();
 
-            // Set read connection cache size (same as write connection)
             using (var cacheCmd = _readConnection.CreateCommand())
             {
                 cacheCmd.CommandText = $"PRAGMA cache_size = -{_cacheSizeKb}";
@@ -399,7 +389,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 ";
         cmd.ExecuteNonQuery();
 
-        // Run migrations for existing databases
         RunMigrations();
     }
 
@@ -418,14 +407,12 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
         try
         {
-            // Ensure schema_version table exists
             using (var createCmd = _connection.CreateCommand())
             {
                 createCmd.CommandText = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
                 createCmd.ExecuteNonQuery();
             }
 
-            // Read current version
             int currentVersion = 0;
             using (var readCmd = _connection.CreateCommand())
             {
@@ -443,13 +430,11 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
             LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Running migrations from version {currentVersion} to {CurrentSchemaVersion}");
 
-            // Run only migrations that haven't been applied yet
             if (currentVersion < 2) MigrateAddLastSaleColumns();
             if (currentVersion < 3) MigrateAddInventoryValueItemsTable();
             if (currentVersion < 4) MigrateAddDisplayNameColumn();
             if (currentVersion < 5) MigrateAddTimeSeriesColorColumn();
 
-            // Update version
             using (var updateCmd = _connection.CreateCommand())
             {
                 updateCmd.CommandText = currentVersion == 0
@@ -466,14 +451,10 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
     }
 
-    /// <summary>
-    /// Adds last_sale_nq and last_sale_hq columns to item_prices table if they don't exist.
-    /// </summary>
     private void MigrateAddLastSaleColumns()
     {
         if (_connection == null) return;
 
-        // Check if columns exist
         using var checkCmd = _connection.CreateCommand();
         checkCmd.CommandText = "PRAGMA table_info(item_prices)";
         
@@ -490,7 +471,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             }
         }
 
-        // Add missing columns
         if (!hasLastSaleNq)
         {
             using var alterCmd = _connection.CreateCommand();
@@ -508,9 +488,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
     }
 
-    /// <summary>
-    /// Creates the inventory_value_items table if it doesn't exist.
-    /// </summary>
     private void MigrateAddInventoryValueItemsTable()
     {
         if (_connection == null) return;
@@ -603,7 +580,6 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     public void Dispose()
     {
-        // Stop the periodic checkpoint timer first
         _checkpointTimer?.Dispose();
         _checkpointTimer = null;
 
@@ -633,7 +609,5 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             _readConnection?.Dispose();
             _readConnection = null;
         }
-        
-        GC.SuppressFinalize(this);
     }
 }
