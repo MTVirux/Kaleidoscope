@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
