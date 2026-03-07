@@ -1,8 +1,5 @@
 namespace Kaleidoscope.Interfaces;
 
-/// <summary>
-/// Tracks UI mode states: fullscreen, edit, locked, and drag states.
-/// </summary>
 public interface IStateService
 {
     bool IsFullscreen { get; set; }

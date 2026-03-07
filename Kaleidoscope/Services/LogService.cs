@@ -42,14 +42,8 @@ public static class LogService
 
     public static bool IsInitialized => _log != null;
 
-    /// <summary>
-    /// Gets whether file logging is currently active (main file or split files).
-    /// </summary>
     public static bool IsFileLoggingActive => _fileWriter != null || _categoryWriters.Count > 0 || _characterWriters.Count > 0;
 
-    /// <summary>
-    /// Gets the current main log file path, if file logging is enabled.
-    /// </summary>
     public static string? LogFilePath => _logFilePath;
 
     public static int ActiveCategoryWriters => _categoryWriters.Count;
@@ -84,9 +78,6 @@ public static class LogService
         _currentCharacterContext.Value = characterName;
     }
 
-    /// <summary>
-    /// Gets the current character name for logging context.
-    /// </summary>
     public static string? CurrentCharacterName => _currentCharacterContext.Value;
 
     /// <summary>
@@ -141,9 +132,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Enables file logging to the specified path.
-    /// </summary>
     private static void EnableFileLogging(string filePath)
     {
         try
@@ -179,9 +167,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Closes the main file writer.
-    /// </summary>
     private static void CloseMainWriter()
     {
         try
@@ -205,9 +190,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Closes all split writers (category and character).
-    /// </summary>
     private static void CloseAllSplitWriters()
     {
         foreach (var writer in _categoryWriters.Values)
@@ -223,18 +205,12 @@ public static class LogService
         _characterWriters.Clear();
     }
 
-    /// <summary>
-    /// Disables all file logging and closes all files.
-    /// </summary>
     private static void DisableAllFileLogging()
     {
         CloseMainWriter();
         CloseAllSplitWriters();
     }
 
-    /// <summary>
-    /// Writes a message to the main log file if file logging is enabled.
-    /// </summary>
     private static void WriteToMainFile(string level, string message)
     {
         if (_fileWriter == null || _config == null) return;
@@ -303,36 +279,24 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Writes to a category-specific log file.
-    /// </summary>
     private static void WriteToCategoryFile(string level, string message, LogCategory category)
     {
         var writer = GetOrCreateCategoryWriter(category);
         writer?.WriteLine(level, message, _config);
     }
 
-    /// <summary>
-    /// Writes to a character-specific log file.
-    /// </summary>
     private static void WriteToCharacterFile(string level, string message, string characterName)
     {
         var writer = GetOrCreateCharacterWriter(characterName, null);
         writer?.WriteLine(level, message, _config);
     }
 
-    /// <summary>
-    /// Writes to a character + category specific log file.
-    /// </summary>
     private static void WriteToCharacterCategoryFile(string level, string message, string characterName, LogCategory category)
     {
         var writer = GetOrCreateCharacterWriter(characterName, category);
         writer?.WriteLine(level, message, _config);
     }
 
-    /// <summary>
-    /// Gets or creates a category-specific log writer.
-    /// </summary>
     private static CategoryLogWriter? GetOrCreateCategoryWriter(LogCategory category)
     {
         if (_categoryWriters.TryGetValue(category, out var existing))
@@ -350,9 +314,6 @@ public static class LogService
         return _categoryWriters.TryGetValue(category, out existing) ? existing : null;
     }
 
-    /// <summary>
-    /// Gets or creates a character-specific log writer.
-    /// </summary>
     private static CharacterLogWriter? GetOrCreateCharacterWriter(string characterName, LogCategory? category)
     {
         var key = category.HasValue ? $"{characterName}_{category.Value}" : characterName;
@@ -381,9 +342,6 @@ public static class LogService
         return _characterWriters.TryGetValue(key, out existing) ? existing : null;
     }
 
-    /// <summary>
-    /// Formats a log line with optional timestamp.
-    /// </summary>
     private static string FormatLogLine(string level, string message)
     {
         if (_config?.FileLoggingIncludeTimestamps == true)
@@ -451,9 +409,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Checks if logging is enabled for the specified category.
-    /// </summary>
     public static bool IsCategoryEnabled(LogCategory category)
     {
         if (_config == null || !_config.LogCategoryFilteringEnabled)
@@ -509,9 +464,6 @@ public static class LogService
 
     // Category-aware logging methods
     
-    /// <summary>
-    /// Logs a verbose message if the specified category is enabled.
-    /// </summary>
     public static void Verbose(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
@@ -536,9 +488,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs an info message if the specified category is enabled.
-    /// </summary>
     public static void Info(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
@@ -549,7 +498,6 @@ public static class LogService
     }
 
     /// <summary>
-    /// Logs an info message if the specified category is enabled.
     /// Uses deferred evaluation to avoid string interpolation cost when the category is disabled.
     /// </summary>
     public static void Info(LogCategory category, Func<string> messageFactory)
@@ -562,9 +510,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs a debug message if the specified category is enabled.
-    /// </summary>
     public static void Debug(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
@@ -575,7 +520,6 @@ public static class LogService
     }
 
     /// <summary>
-    /// Logs a debug message if the specified category is enabled.
     /// Uses deferred evaluation to avoid string interpolation cost when the category is disabled.
     /// </summary>
     public static void Debug(LogCategory category, Func<string> messageFactory)
@@ -588,9 +532,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs a warning message if the specified category is enabled.
-    /// </summary>
     public static void Warning(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
@@ -600,10 +541,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs an error message if the specified category is enabled.
-    /// Note: Errors are typically always logged, but this allows filtering if desired.
-    /// </summary>
     public static void Error(LogCategory category, string message)
     {
         if (IsCategoryEnabled(category))
@@ -613,9 +550,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs an error message with exception if the specified category is enabled.
-    /// </summary>
     public static void Error(LogCategory category, string message, Exception ex)
     {
         if (IsCategoryEnabled(category))
@@ -628,9 +562,6 @@ public static class LogService
 
     // Character-aware logging methods
 
-    /// <summary>
-    /// Logs a debug message for a specific character.
-    /// </summary>
     public static void Debug(LogCategory category, string characterName, string message)
     {
         if (IsCategoryEnabled(category))
@@ -640,9 +571,6 @@ public static class LogService
         }
     }
 
-    /// <summary>
-    /// Logs an info message for a specific character.
-    /// </summary>
     public static void Info(LogCategory category, string characterName, string message)
     {
         if (IsCategoryEnabled(category))

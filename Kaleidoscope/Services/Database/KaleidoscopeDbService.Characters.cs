@@ -6,9 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    /// <summary>
-    /// Gets all character IDs that have data for a variable.
-    /// </summary>
     public List<ulong> GetAvailableCharacters(string variable)
     {
         var result = new List<ulong>();
@@ -141,7 +138,6 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = _connection.CreateCommand();
-                // Update only the display_name column, or insert if not exists
                 cmd.CommandText = @"
                     INSERT INTO character_names(character_id, name, display_name) 
                     VALUES($c, NULL, $d)
@@ -176,7 +172,6 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = _connection.CreateCommand();
-                // Update only the time_series_color column, or insert if not exists
                 cmd.CommandText = @"
                     INSERT INTO character_names(character_id, name, display_name, time_series_color) 
                     VALUES($c, NULL, NULL, $col)
