@@ -190,7 +190,6 @@ public sealed class StateService : IStateService, IService
         }
         
         IsFullscreen = true;
-        LogService.Debug(LogCategory.UI, "Entered fullscreen");
     }
 
     /// <inheritdoc />
@@ -198,7 +197,6 @@ public sealed class StateService : IStateService, IService
     {
         if (!_isFullscreen) return;
         IsFullscreen = false;
-        LogService.Debug(LogCategory.UI, "Exited fullscreen");
     }
 
 }
