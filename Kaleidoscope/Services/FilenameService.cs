@@ -6,10 +6,6 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Provides commonly used file paths for the plugin.
 /// </summary>
-/// <remarks>
-/// Follows the Glamourer pattern for centralized file path management.
-/// All paths are computed once at construction for consistency.
-/// </remarks>
 public sealed class FilenameService : IService, IDisposable
 {
     /// <summary>

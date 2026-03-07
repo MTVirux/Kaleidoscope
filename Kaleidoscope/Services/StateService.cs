@@ -7,10 +7,6 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Tracks UI mode states: fullscreen, edit, locked, and drag states.
 /// </summary>
-/// <remarks>
-/// This service is the central source of truth for all UI state in the plugin.
-/// It follows the Glamourer/InventoryTools pattern of using event-based state changes.
-/// </remarks>
 public sealed class StateService : IStateService, IService
 {
     private readonly IPluginLog _log;

@@ -1,5 +1,3 @@
-// Global using directives for the Kaleidoscope project
-
 global using System;
 global using System.Collections.Generic;
 global using System.Collections.Concurrent;

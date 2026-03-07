@@ -19,10 +19,6 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// <summary>
 /// Main plugin window containing the HUD layout.
 /// </summary>
-/// <remarks>
-/// This window follows the Glamourer pattern for complex plugin windows with
-/// title bar buttons, content containers, and state management.
-/// </remarks>
 public sealed class MainWindow : Window, IService, IDisposable
 {
     private readonly IPluginLog _log;

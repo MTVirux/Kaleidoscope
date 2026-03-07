@@ -11,10 +11,6 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Manages the plugin's window system and lifecycle.
 /// </summary>
-/// <remarks>
-/// This follows the Glamourer pattern for window management, using Dalamud's
-/// WindowSystem with event-based drawing and state management.
-/// </remarks>
 public sealed class WindowService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;

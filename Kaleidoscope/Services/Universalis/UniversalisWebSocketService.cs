@@ -797,16 +797,10 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     }
 
     private byte[] CreateSubscribeMessage(string channel)
-    {
-        // Create BSON message: { event: "subscribe", channel: "<channel>" }
-        return CreateBsonMessage("subscribe", channel);
-    }
+        => CreateBsonMessage("subscribe", channel);
 
     private byte[] CreateUnsubscribeMessage(string channel)
-    {
-        // Create BSON message: { event: "unsubscribe", channel: "<channel>" }
-        return CreateBsonMessage("unsubscribe", channel);
-    }
+        => CreateBsonMessage("unsubscribe", channel);
 
     private byte[] CreateBsonMessage(string eventType, string channel)
     {

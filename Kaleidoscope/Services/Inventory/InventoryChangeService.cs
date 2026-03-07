@@ -12,11 +12,6 @@ namespace Kaleidoscope.Services.Inventory;
 /// - IGameInventory events for item/crystal changes (immediate notification)
 /// - Periodic value comparison on IFramework.Update (catches all changes reliably)
 /// </summary>
-/// <remarks>
-/// This follows the pattern used by popular Dalamud plugins: direct InventoryManager reads
-/// with value caching to detect changes, supplemented by Dalamud's inventory events for
-/// immediate notification of item changes.
-/// </remarks>
 public sealed class InventoryChangeService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;

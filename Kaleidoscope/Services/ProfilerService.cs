@@ -197,9 +197,6 @@ public sealed class ProfilerService : IDisposable, IService
             }
         }
 
-        /// <summary>
-        /// Gets recent samples as a copy for histogram display.
-        /// </summary>
         public double[] GetRecentSamples()
         {
             var result = new double[_ringCount];
@@ -280,9 +277,6 @@ public sealed class ProfilerService : IDisposable, IService
 
     private Configuration Config => _configService.Config;
 
-    /// <summary>
-    /// Gets or sets whether profiling is enabled.
-    /// </summary>
     public bool IsEnabled
     {
         get => Config.ProfilerEnabled;
@@ -301,19 +295,10 @@ public sealed class ProfilerService : IDisposable, IService
         LogService.Debug(LogCategory.UI, "ProfilerService initialized");
     }
 
-    /// <summary>
-    /// Gets the main window profile stats.
-    /// </summary>
     public ProfileStats MainWindowStats => _mainWindowStats;
 
-    /// <summary>
-    /// Gets the fullscreen window profile stats.
-    /// </summary>
     public ProfileStats FullscreenWindowStats => _fullscreenWindowStats;
 
-    /// <summary>
-    /// Gets all tool profile stats.
-    /// </summary>
     public IReadOnlyDictionary<string, ProfileStats> ToolStats
     {
         get
@@ -325,27 +310,18 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Records a draw time sample for the main window.
-    /// </summary>
     public void RecordMainWindowDraw(double drawTimeMs)
     {
         if (!IsEnabled) return;
         _mainWindowStats.RecordSample(drawTimeMs);
     }
 
-    /// <summary>
-    /// Records a draw time sample for the fullscreen window.
-    /// </summary>
     public void RecordFullscreenWindowDraw(double drawTimeMs)
     {
         if (!IsEnabled) return;
         _fullscreenWindowStats.RecordSample(drawTimeMs);
     }
 
-    /// <summary>
-    /// Records a draw time sample for a specific tool.
-    /// </summary>
     public void RecordToolDraw(string toolId, string toolName, double drawTimeMs)
     {
         if (!IsEnabled) return;
@@ -361,9 +337,6 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Resets all profiling statistics.
-    /// </summary>
     public void ResetAll()
     {
         _mainWindowStats.Reset();
@@ -380,9 +353,6 @@ public sealed class ProfilerService : IDisposable, IService
         LogService.Debug(LogCategory.UI, "ProfilerService: All stats reset");
     }
 
-    /// <summary>
-    /// Resets statistics for a specific tool.
-    /// </summary>
     public void ResetTool(string toolId)
     {
         lock (_lock)
@@ -394,9 +364,6 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Clears all tool statistics (removes all entries).
-    /// </summary>
     public void ClearToolStats()
     {
         lock (_lock)
@@ -405,19 +372,10 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginMainWindowScope() => new(this, ProfileTargetType.MainWindow, string.Empty, string.Empty);
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginFullscreenWindowScope() => new(this, ProfileTargetType.FullscreenWindow, string.Empty, string.Empty);
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginToolScope(string toolId, string toolName) => new(this, ProfileTargetType.Tool, toolId, toolName);
 
     /// <summary>
@@ -468,9 +426,6 @@ public sealed class ProfilerService : IDisposable, IService
     public (int gen0, int gen1, int gen2) GetGcCollectionCounts() =>
         (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
 
-    /// <summary>
-    /// Gets the total managed memory in bytes.
-    /// </summary>
     public long GetTotalManagedMemory() => GC.GetTotalMemory(forceFullCollection: false);
 
     public void Dispose()

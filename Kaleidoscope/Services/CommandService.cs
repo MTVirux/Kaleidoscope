@@ -7,10 +7,6 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Handles plugin chat commands.
 /// </summary>
-/// <remarks>
-/// Follows the Glamourer pattern for command handling with separate handlers for
-/// main and config commands.
-/// </remarks>
 public sealed class CommandService : IDisposable, IRequiredService
 {
     private const string CommandMain = "/kld";
