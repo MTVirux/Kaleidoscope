@@ -20,11 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
-    <ProjectReference Include="..\MTGui\MTGui.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="7.0.0" />
+    <Reference Include="Dalamud.Bindings.ImGui" Private="false" />
   </ItemGroup>
 
 </Project>
