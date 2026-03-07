@@ -200,6 +200,12 @@ public interface IItemTableWidgetSettings
     /// Whether to sort in ascending order.
     /// </summary>
     bool SortAscending { get; set; }
+
+    /// <summary>
+    /// Ordered list of sort columns for multi-column sorting.
+    /// Priority is left-to-right (first entry is the primary sort).
+    /// </summary>
+    List<SortColumnEntry> SortColumns { get; set; }
     
     /// <summary>
     /// Optional custom color for the table header row.
@@ -388,12 +394,17 @@ public sealed partial class ItemTableWidget : ISettingsProvider
     private readonly LifestreamService? _lifestreamService;
     private readonly INotificationManager? _notificationManager;
     
+    /// <summary>
+    /// Shared table infrastructure for resize, selection, header rendering, etc.
+    /// </summary>
+    private readonly TableCore _core;
+    
     // Settings binding
     private IItemTableWidgetSettings? _boundSettings;
     
-    // Column selection state (for shift+click/drag selection)
-    private readonly HashSet<int> _selectedColumnIndices = new();
-    private readonly HashSet<int> _selectedDisplayColumnIndices = new(); // Tracks display column indices (can include merged)
+    // Column selection state — delegates to _core for SHIFT+click/drag selection
+    // These tracked display-level indices are separate from _core's raw column indices
+    private readonly HashSet<int> _selectedDisplayColumnIndices = new();
     private bool _isSelectingColumns = false;
     private int _selectionStartDisplayColumn = -1;
     
@@ -416,23 +427,12 @@ public sealed partial class ItemTableWidget : ISettingsProvider
     // Cached display columns for merge operations (refreshed each frame)
     private List<DisplayColumn> _cachedDisplayColumns = new();
     
-    // Frame counter to skip ImGui's auto-fit queue (3 frames) before capturing widths
-    private int _columnWidthsInitFrames = 0;
-    
-    // Track if we just processed a merge action (to skip click handling for one frame)
-    private bool _skipNextClick = false;
     
     // Track which character rows are expanded to show retainer breakdown
     private readonly HashSet<ulong> _expandedCharacterIds = new();
     
     // Track which grouped rows (by name) are expanded to show retainer breakdown (for World/DC/Region/All modes)
     private readonly HashSet<string> _expandedGroupNames = new();
-    
-    // Column resize actions requested via right-click context menu
-    private MTColumnResizeAction _pendingResizeAction = MTColumnResizeAction.None;
-    private int _resizeTargetDisplayColumn = -1; // -1 means "all data columns"
-    private int _contextMenuDisplayColumn = -1; // Which display column the context menu was opened for
-    private int _tableIdSuffix; // Incremented to force ImGui table state reset after resize
     
     /// <summary>
     /// Configuration for this table widget instance.
@@ -472,6 +472,7 @@ public sealed partial class ItemTableWidget : ISettingsProvider
         INotificationManager? notificationManager = null)
     {
         _config = config ?? new TableConfig();
+        _core = new TableCore(_config.TableId);
         _itemDataService = itemDataService;
         _trackedDataRegistry = trackedDataRegistry;
         _configuration = configuration;
@@ -488,8 +489,7 @@ public sealed partial class ItemTableWidget : ISettingsProvider
     /// </summary>
     public void ResetColumnWidthState()
     {
-        _columnWidthsInitFrames = 0;
-        _tableIdSuffix++;
+        _core.ResetColumnWidthState();
     }
 
     /// <summary>

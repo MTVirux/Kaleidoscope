@@ -3,6 +3,22 @@ using Kaleidoscope.Gui.Widgets.Common;
 namespace Kaleidoscope.Gui.Widgets.Table;
 
 /// <summary>
+/// Represents a single sort column entry for multi-column sorting.
+/// </summary>
+public sealed class SortColumnEntry
+{
+    /// <summary>
+    /// The column index to sort by.
+    /// </summary>
+    public int ColumnIndex { get; set; }
+
+    /// <summary>
+    /// Whether this column sorts in ascending order.
+    /// </summary>
+    public bool Ascending { get; set; }
+}
+
+/// <summary>
 /// Settings interface for the generic table widget.
 /// Implement this interface in your settings class to enable automatic settings binding.
 /// </summary>
@@ -22,6 +38,12 @@ public interface ITableSettings
     /// Whether to sort in ascending order.
     /// </summary>
     bool SortAscending { get; set; }
+
+    /// <summary>
+    /// Ordered list of sort columns for multi-column sorting.
+    /// Priority is left-to-right (first entry is the primary sort).
+    /// </summary>
+    List<SortColumnEntry> SortColumns { get; set; }
     
     /// <summary>
     /// Optional custom color for the table header row background.
@@ -93,6 +115,9 @@ public class MTTableSettings : ITableSettings
     
     /// <inheritdoc/>
     public bool SortAscending { get; set; } = true;
+
+    /// <inheritdoc/>
+    public List<SortColumnEntry> SortColumns { get; set; } = new();
     
     /// <inheritdoc/>
     public Vector4? HeaderColor { get; set; }

@@ -72,47 +72,89 @@ public sealed partial class ItemTableWidget
         
         // Check for sort specs - update settings when user clicks a column header
         var sortSpecs = ImGui.TableGetSortSpecs();
-        if (sortSpecs.SpecsDirty && sortSpecs.SpecsCount > 0)
+        if (sortSpecs.SpecsDirty)
         {
-            var spec = sortSpecs.Specs;
-            settings.SortColumnIndex = spec.ColumnIndex;
-            settings.SortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
-            _onSettingsChanged?.Invoke();
+            if (sortSpecs.SpecsCount > 0)
+            {
+                // Read all sort specs for multi-column sorting
+                var newSortColumns = new List<SortColumnEntry>();
+                for (int i = 0; i < sortSpecs.SpecsCount; i++)
+                {
+                    var spec = sortSpecs.Specs[i];
+                    newSortColumns.Add(new SortColumnEntry
+                    {
+                        ColumnIndex = spec.ColumnIndex,
+                        Ascending = spec.SortDirection == ImGuiSortDirection.Ascending
+                    });
+                }
+                settings.SortColumns = newSortColumns;
+
+                // Keep legacy fields in sync with primary sort
+                if (newSortColumns.Count > 0)
+                {
+                    settings.SortColumnIndex = newSortColumns[0].ColumnIndex;
+                    settings.SortAscending = newSortColumns[0].Ascending;
+                }
+                _onSettingsChanged?.Invoke();
+            }
+            else
+            {
+                // User cleared all sort columns (SortTristate)
+                settings.SortColumns = new List<SortColumnEntry>();
+                _onSettingsChanged?.Invoke();
+            }
             sortSpecs.SpecsDirty = false;
         }
         
-        var sortColumnIndex = settings.SortColumnIndex;
-        var sortAscending = settings.SortAscending;
+        // Build sort columns list (prefer SortColumns, fall back to legacy fields)
+        var sortColumns = settings.SortColumns.Count > 0
+            ? settings.SortColumns
+            : new List<SortColumnEntry> { new() { ColumnIndex = settings.SortColumnIndex, Ascending = settings.SortAscending } };
         
-        // When the character column is hidden, ImGui column 0 is the first data column.
-        // When visible, ImGui column 0 is the character column and data columns start at 1.
-        var isCharacterSort = hideCharColumn ? false : sortColumnIndex == 0;
-        var displayColIdx = hideCharColumn ? sortColumnIndex : sortColumnIndex - 1;
+        // If no sort columns at all, preserve caller order
+        if (sortColumns.Count == 0)
+            return rows.ToList();
         
-        // Sort the rows
-        IEnumerable<ItemTableCharacterRow> sorted;
-        if (isCharacterSort)
+        // Sort the rows with multi-column support (left-to-right priority)
+        var sorted = rows.ToList();
+        sorted.Sort((a, b) =>
         {
-            // Sort by character name column - preserve the order from caller (already sorted by config)
-            // If descending, reverse the pre-sorted order to maintain AR/alphabetical order in reverse
-            sorted = sortAscending 
-                ? rows // Preserve order from caller (already sorted by CharacterSortHelper)
-                : rows.Reverse(); // Reverse the configured order (could be AR order, alphabetical, etc.)
-        }
-        else if (displayColIdx >= 0 && displayColIdx < displayColumns.Count)
-        {
-            // Sort by display column (may be a single column or a merged group)
-            var displayCol = displayColumns[displayColIdx];
-            sorted = sortAscending
-                ? rows.OrderBy(r => GetDisplayColumnValue(displayCol, r, columns))
-                : rows.OrderByDescending(r => GetDisplayColumnValue(displayCol, r, columns));
-        }
-        else
-        {
-            sorted = rows; // Preserve order from caller
-        }
+            foreach (var sc in sortColumns)
+            {
+                var sortColumnIndex = sc.ColumnIndex;
+                var sortAscending = sc.Ascending;
+                
+                // When the character column is hidden, ImGui column 0 is the first data column.
+                // When visible, ImGui column 0 is the character column and data columns start at 1.
+                var isCharacterSort = hideCharColumn ? false : sortColumnIndex == 0;
+                var displayColIdx = hideCharColumn ? sortColumnIndex : sortColumnIndex - 1;
+                
+                int result;
+                if (isCharacterSort)
+                {
+                    // Sort by character name
+                    result = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+                    if (!sortAscending) result = -result;
+                }
+                else if (displayColIdx >= 0 && displayColIdx < displayColumns.Count)
+                {
+                    var displayCol = displayColumns[displayColIdx];
+                    var valA = GetDisplayColumnValue(displayCol, a, columns);
+                    var valB = GetDisplayColumnValue(displayCol, b, columns);
+                    result = valA.CompareTo(valB);
+                    if (!sortAscending) result = -result;
+                }
+                else
+                {
+                    result = 0;
+                }
+                
+                if (result != 0) return result;
+            }
+            return 0;
+        });
         
-        return sorted.ToList();
+        return sorted;
     }
     
     /// <summary>

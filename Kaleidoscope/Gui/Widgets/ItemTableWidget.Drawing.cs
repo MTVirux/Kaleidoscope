@@ -15,14 +15,14 @@ public sealed partial class ItemTableWidget
 {
     
     /// <summary>
-    /// Delegates to <see cref="TableWidget{TRow}.HandleShiftSelection"/> for SHIFT+click/drag range selection.
+    /// Delegates to <see cref="TableCore.HandleShiftSelection"/> for SHIFT+click/drag range selection.
     /// </summary>
     private static bool HandleShiftSelection(
         int currentIdx,
         HashSet<int> selectedIndices,
         ref bool isSelecting,
         ref int selectionStart)
-        => TableWidget<int>.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
+        => TableCore.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
     
     /// <summary>
     /// Draws the item table.
@@ -46,15 +46,14 @@ public sealed partial class ItemTableWidget
         var isPopupOpen = ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId);
         
         // Skip click processing if we just handled a merge action
-        if (_skipNextClick)
+        if (_core.SkipNextClick)
         {
-            _skipNextClick = false;
+            _core.SkipNextClick = false;
         }
         // Clear selection when clicking without SHIFT (but not when a popup is open)
         // We keep selection when SHIFT is released so user can right-click to merge
         else if (!isShiftHeld && !isPopupOpen && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
-            _selectedColumnIndices.Clear();
             _selectedDisplayColumnIndices.Clear();
             _isSelectingColumns = false;
             _selectionStartDisplayColumn = -1;
@@ -103,64 +102,7 @@ public sealed partial class ItemTableWidget
         }
         
         // Handle pending column resize actions from context menu
-        // We still update the config widths here so they persist and are used by BuildDisplayColumns.
-        if (_pendingResizeAction != MTColumnResizeAction.None && columns.Count > 0)
-        {
-            var action = _pendingResizeAction;
-            var targetDispCol = _resizeTargetDisplayColumn;
-            _pendingResizeAction = MTColumnResizeAction.None;
-            _resizeTargetDisplayColumn = -1;
-            
-            // Build display columns first so we can reference them
-            var preDisplayColumns = BuildDisplayColumns(columns, settings, 0f);
-            var cellPadding = ImGui.GetStyle().CellPadding.X * 2;
-            
-            if (targetDispCol >= 0 && targetDispCol < preDisplayColumns.Count)
-            {
-                // Single column resize
-                var dispCol = preDisplayColumns[targetDispCol];
-                float newWidth = action switch
-                {
-                    MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
-                    MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
-                    MTColumnResizeAction.FillSpace => CalculateFillWidth(preDisplayColumns, targetDispCol, hideCharColumn, charColumnWidth),
-                    _ => 0f
-                };
-                if (newWidth > 0f)
-                {
-                    ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
-                    _onSettingsChanged?.Invoke();
-                }
-            }
-            else if (targetDispCol == -1)
-            {
-                // All data columns resize
-                foreach (var dispCol in preDisplayColumns)
-                {
-                    float newWidth = action switch
-                    {
-                        MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
-                        MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
-                        _ => 0f
-                    };
-                    if (newWidth > 0f)
-                        ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
-                }
-                if (action == MTColumnResizeAction.FillSpace)
-                {
-                    var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
-                    var totalCols = hideCharColumn ? preDisplayColumns.Count : preDisplayColumns.Count + 1;
-                    var fillWidth = TableHelpers.CalculateFillWidthEqual(totalCols, preDisplayColumns.Count, effectiveCharWidth);
-                    foreach (var dispCol in preDisplayColumns)
-                        ApplyColumnWidth(dispCol, columns, fillWidth);
-                }
-                _onSettingsChanged?.Invoke();
-            }
-            
-            // Force fresh table ID so ImGui picks up new init widths
-            _columnWidthsInitFrames = 0;
-            _tableIdSuffix++;
-        }
+        HandlePendingColumnResize(columns, rows, settings, hideCharColumn, charColumnWidth);
         
         // Calculate equal width for data columns if AutoSizeEqualColumns is enabled
         float dataColumnWidth = 0f;
@@ -179,27 +121,33 @@ public sealed partial class ItemTableWidget
         var displayColumnCount = hideCharColumn ? displayColumns.Count : 1 + displayColumns.Count;
         
         var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingFixedFit;
-        if (settings.Sortable) flags |= ImGuiTableFlags.Sortable;
+        if (settings.Sortable) flags |= ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti | ImGuiTableFlags.SortTristate;
         
-        // Append _tableIdSuffix to force ImGui to reset column state after resize actions
-        var tableId = _tableIdSuffix > 0 ? $"{_config.TableId}_{_tableIdSuffix}" : _config.TableId;
+        // Use core's effective table ID (includes suffix for forced resets)
+        var tableId = _core.GetEffectiveTableId();
         if (!ImGui.BeginTable(tableId, displayColumnCount, flags))
             return;
         
         try
         {
-            // Setup columns - apply DefaultSort flag to the saved sort column
-            // PreferSortDescending makes first click sort descending (more useful for quantities)
-            // For the default sort column, only use PreferSortDescending if saved state is descending
-            // This ensures the arrow direction matches the actual sort order on reload
-            var sortColIdx = settings.SortColumnIndex;
-            var savedIsDescending = !settings.SortAscending;
+            // Setup columns - apply DefaultSort flag to saved sort columns
+            // Build a lookup of sort column indices → ascending for multi-sort
+            var sortColumnSet = new Dictionary<int, bool>(); // colIndex → ascending
+            if (settings.SortColumns.Count > 0)
+            {
+                foreach (var sc in settings.SortColumns)
+                    sortColumnSet[sc.ColumnIndex] = sc.Ascending;
+            }
+            else
+            {
+                sortColumnSet[settings.SortColumnIndex] = settings.SortAscending;
+            }
             
             var charFlags = ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize;
-            if (sortColIdx == 0)
+            if (sortColumnSet.TryGetValue(0, out var charAscending))
             {
                 charFlags = ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize
-                    | (savedIsDescending 
+                    | (!charAscending 
                         ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
                         : ImGuiTableColumnFlags.DefaultSort);
             }
@@ -212,17 +160,18 @@ public sealed partial class ItemTableWidget
             
             // During first 3 frames after table recreation, apply NoResize to prevent
             // ImGui's auto-fit queue from overwriting our init_widths.
-            var isInitializing = _columnWidthsInitFrames <= 3;
+            var isInitializing = _core.IsInitializing;
             for (int i = 0; i < displayColumns.Count; i++)
             {
                 var displayCol = displayColumns[i];
+                var colIdx = hideCharColumn ? i : i + 1;
                 var colFlags = ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.WidthFixed;
                 if (isInitializing)
                     colFlags |= ImGuiTableColumnFlags.NoResize;
-                if (sortColIdx == i + 1)
+                if (sortColumnSet.TryGetValue(colIdx, out var colAscending))
                 {
                     colFlags = ImGuiTableColumnFlags.WidthFixed
-                        | (savedIsDescending
+                        | (!colAscending
                             ? ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending
                             : ImGuiTableColumnFlags.DefaultSort);
                     if (isInitializing)
@@ -301,162 +250,15 @@ public sealed partial class ItemTableWidget
                 // The rightClicked flag covers the full header interaction area including resize grips.
                 if (colRightClicked)
                 {
-                    _contextMenuDisplayColumn = dispIdx;
-                    ImGui.OpenPopup(headerPopupId);
+                    _core.OpenContextMenu(dispIdx, headerPopupId);
                 }
             }
             
-            // Render the data column context menu (shared popup, content based on _contextMenuDisplayColumn)
-            if (ImGui.BeginPopup(headerPopupId))
-            {
-                var ctxDispIdx = _contextMenuDisplayColumn;
-                var ctxHeader = ctxDispIdx >= 0 && ctxDispIdx < displayColumns.Count
-                    ? displayColumns[ctxDispIdx].Header
-                    : "Column";
-                
-                ImGui.TextDisabled(ctxHeader);
-                ImGui.Separator();
-                
-                if (ImGui.MenuItem("Resize to header width"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.HeaderWidth;
-                    _resizeTargetDisplayColumn = ctxDispIdx;
-                }
-                if (ImGui.MenuItem("Resize to data width"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.DataWidth;
-                    _resizeTargetDisplayColumn = ctxDispIdx;
-                }
-                if (ImGui.MenuItem("Resize to fill space"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.FillSpace;
-                    _resizeTargetDisplayColumn = ctxDispIdx;
-                }
-                
-                ImGui.Spacing();
-                ImGui.Separator();
-                
-                if (ImGui.MenuItem("Resize all data columns to header width"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.HeaderWidth;
-                    _resizeTargetDisplayColumn = -1;
-                }
-                if (ImGui.MenuItem("Resize all data columns to data width"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.DataWidth;
-                    _resizeTargetDisplayColumn = -1;
-                }
-                if (ImGui.MenuItem("Resize all data columns to fill space"))
-                {
-                    _pendingResizeAction = MTColumnResizeAction.FillSpace;
-                    _resizeTargetDisplayColumn = -1;
-                }
-                
-                if (_selectedDisplayColumnIndices.Count >= 2)
-                {
-                    ImGui.Spacing();
-                    ImGui.Separator();
-                    ImGui.TextDisabled($"{_selectedDisplayColumnIndices.Count} columns selected");
-                    
-                    if (ImGui.MenuItem("Merge Selected Columns"))
-                    {
-                        var allSourceIndices = new HashSet<int>();
-                        var mergedGroupsToRemove = new List<MergedColumnGroup>();
-                        
-                        foreach (var selIdx in _selectedDisplayColumnIndices)
-                        {
-                            if (selIdx >= 0 && selIdx < displayColumns.Count)
-                            {
-                                var selCol = displayColumns[selIdx];
-                                foreach (var srcIdx in selCol.SourceColumnIndices)
-                                    allSourceIndices.Add(srcIdx);
-                                if (selCol.IsMerged && selCol.MergedGroup != null)
-                                    mergedGroupsToRemove.Add(selCol.MergedGroup);
-                            }
-                        }
-                        
-                        foreach (var oldGroup in mergedGroupsToRemove)
-                            settings.MergedColumnGroups.Remove(oldGroup);
-                        
-                        settings.MergedColumnGroups.Add(new MergedColumnGroup
-                        {
-                            Name = "Merged",
-                            ColumnIndices = allSourceIndices.OrderBy(x => x).ToList(),
-                            Width = 80f
-                        });
-                        _selectedDisplayColumnIndices.Clear();
-                        _selectedColumnIndices.Clear();
-                        _skipNextClick = true;
-                        _onSettingsChanged?.Invoke();
-                    }
-                }
-                
-                ImGui.EndPopup();
-            }
+            // Render the data column context menu (shared popup, content based on _core.ContextMenuColumn)
+            DrawHeaderContextMenu(headerPopupId, displayColumns, settings);
             
             // Right-click context menu for row merging (when display rows are selected)
-            if (_selectedDisplayRowIndices.Count >= 2)
-            {
-                var rowPopupId = $"MergeRowsPopup_{_config.TableId}";
-                
-                if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
-                {
-                    ImGui.OpenPopup(rowPopupId);
-                }
-                
-                if (ImGui.BeginPopup(rowPopupId))
-                {
-                    ImGui.TextDisabled($"{_selectedDisplayRowIndices.Count} rows selected");
-                    ImGui.Separator();
-                    
-                    if (ImGui.MenuItem("Merge Selected Rows"))
-                    {
-                        // Collect all source character IDs from selected display rows
-                        // This flattens any existing merged groups
-                        var allCharacterIds = new HashSet<ulong>();
-                        var mergedGroupsToRemove = new List<MergedRowGroup>();
-                        
-                        foreach (var dispRowIdx in _selectedDisplayRowIndices)
-                        {
-                            if (dispRowIdx >= 0 && dispRowIdx < _cachedDisplayRows.Count)
-                            {
-                                var displayRow = _cachedDisplayRows[dispRowIdx];
-                                foreach (var cid in displayRow.SourceCharacterIds)
-                                {
-                                    allCharacterIds.Add(cid);
-                                }
-                                
-                                // Track merged groups that need to be removed
-                                if (displayRow.IsMerged && displayRow.MergedGroup != null)
-                                {
-                                    mergedGroupsToRemove.Add(displayRow.MergedGroup);
-                                }
-                            }
-                        }
-                        
-                        // Remove old merged groups that were consumed
-                        foreach (var oldGroup in mergedGroupsToRemove)
-                        {
-                            settings.MergedRowGroups.Remove(oldGroup);
-                        }
-                        
-                        // Create a new merged row group with all character IDs
-                        var mergedGroup = new MergedRowGroup
-                        {
-                            Name = "Merged",
-                            CharacterIds = allCharacterIds.OrderBy(x => x).ToList()
-                        };
-                        
-                        settings.MergedRowGroups.Add(mergedGroup);
-                        _selectedDisplayRowIndices.Clear();
-                        _selectedRowIds.Clear();
-                        _skipNextClick = true; // Prevent click from selecting row underneath
-                        _onSettingsChanged?.Invoke();
-                    }
-                    
-                    ImGui.EndPopup();
-                }
-            }
+            DrawRowMergeContextMenu(settings);
             
             if (settings.HeaderColor.HasValue)
             {
@@ -609,86 +411,7 @@ public sealed partial class ItemTableWidget
                     // Right-click context menu on character name (only in Character mode for non-merged rows)
                     if (isRevealedHidden)
                         ImGui.PopStyleVar();
-                    if (showCharContextMenu && !dispRow.IsMerged && ImGui.BeginPopupContextItem($"CharContext_{primaryCid}"))
-                    {
-                        if (ImGui.Selectable(dispRow.Name))
-                        {
-                            ImGui.SetClipboardText(dispRow.Name);
-                            _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                            {
-                                Content = $"Copied \"{dispRow.Name}\" to clipboard.",
-                                Type = NotificationType.Info,
-                                Minimized = true,
-                                InitialDuration = TimeSpan.FromSeconds(2),
-                            });
-                        }
-                        ImGui.Separator();
-                        
-                        // Relog to character via Lifestream (only if Lifestream is available and this isn't the current character)
-                        if (_lifestreamService != null && _lifestreamService.IsAvailable)
-                        {
-                            var currentCid = GameStateService.PlayerContentId;
-                            if (primaryCid != 0 && primaryCid != currentCid)
-                            {
-                                // Look up world name from cached rows
-                                var worldName = _cachedRows?
-                                    .FirstOrDefault(r => r.CharacterId == primaryCid)?.WorldName;
-                                
-                                if (!string.IsNullOrEmpty(worldName))
-                                {
-                                    // Use game name (full "Firstname Lastname") for Lifestream IPC, not the display name
-                                    var gameName = _cachedRows?
-                                        .FirstOrDefault(r => r.CharacterId == primaryCid)?.GameName;
-                                    var nameForRelog = !string.IsNullOrEmpty(gameName) ? gameName : dispRow.Name;
-                                    
-                                    if (ImGui.MenuItem("Relog to Character"))
-                                    {
-                                        _lifestreamService.ChangeCharacter(nameForRelog, worldName);
-                                        _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                                        {
-                                            Content = $"Relogging to {nameForRelog} ({worldName})...",
-                                            Type = NotificationType.Info,
-                                            Minimized = true,
-                                            InitialDuration = TimeSpan.FromSeconds(2),
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if (isRevealedHidden)
-                        {
-                            if (ImGui.MenuItem("Unhide Character"))
-                            {
-                                settings.HiddenCharacters.Remove(primaryCid);
-                                _onSettingsChanged?.Invoke();
-                                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                                {
-                                    Content = $"\"{dispRow.Name}\" is no longer hidden.",
-                                    Type = NotificationType.Info,
-                                    Minimized = true,
-                                    InitialDuration = TimeSpan.FromSeconds(2),
-                                });
-                            }
-                        }
-                        else
-                        {
-                            if (ImGui.MenuItem("Hide Character"))
-                            {
-                                settings.HiddenCharacters.Add(primaryCid);
-                                _onSettingsChanged?.Invoke();
-                                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                                {
-                                    Content = $"\"{dispRow.Name}\" is now hidden.",
-                                    Type = NotificationType.Info,
-                                    Minimized = true,
-                                    InitialDuration = TimeSpan.FromSeconds(2),
-                                });
-                            }
-                        }
-                        
-                        ImGui.EndPopup();
-                    }
+                    DrawCharacterContextMenu(dispRow, primaryCid, isRevealedHidden, showCharContextMenu, settings);
                     
                     ImGui.PopID();
                 }
@@ -743,170 +466,480 @@ public sealed partial class ItemTableWidget
                 }
                 
                 // Draw retainer sub-rows if this character is expanded
-                if (settings.ShowRetainerBreakdown && !dispRow.IsMerged && dispRow.HasRetainerData)
-                {
-                    var primaryCidForExpand = dispRow.SourceCharacterIds.FirstOrDefault();
-                    var isExpandedForSubRows = settings.GroupingMode == TableGroupingMode.Character
-                        ? _expandedCharacterIds.Contains(primaryCidForExpand)
-                        : _expandedGroupNames.Contains(dispRow.Name);
-                    if (isExpandedForSubRows)
-                    {
-                        // Draw retainer rows (player inventory is shown in the main row when expanded)
-                        var retainerList = dispRow.RetainerBreakdown!.ToList();
-                        for (int retIdx = 0; retIdx < retainerList.Count; retIdx++)
-                        {
-                            var (retainerKey, retainerCounts) = retainerList[retIdx];
-                            var isLastRetainer = retIdx == retainerList.Count - 1;
-                            rowIndex++;
-                            
-                            ImGui.TableNextRow();
-                            
-                            // Slightly darker background for sub-rows
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(UiColors.SubRowBackground));
-                            
-                            if (!hideCharColumn)
-                            {
-                                ImGui.TableNextColumn();
-                                ImGui.Indent(16f);
-                                var prefix = isLastRetainer ? "└ " : "├ ";
-                                DrawAlignedCellText(
-                                    $"{prefix}{retainerKey.Name}",
-                                    UiColors.Info,
-                                    settings.CharacterColumnHorizontalAlignment,
-                                    settings.CharacterColumnVerticalAlignment);
-                                ImGui.Unindent(16f);
-                            }
-                            
-                            // Data columns for retainer
-                            for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
-                            {
-                                ImGui.TableNextColumn();
-                                var displayCol = displayColumns[dispIdx];
-                                var subValue = GetDisplayValueFromCounts(displayCol, retainerCounts, columns);
-                                
-                                var subSourceColIdx = displayCol.SourceColumnIndices.FirstOrDefault(-1);
-                                var subSourceCol = subSourceColIdx >= 0 && subSourceColIdx < columns.Count ? columns[subSourceColIdx] : null;
-                                Vector4? subTextColor = GetEffectiveColumnColor(subSourceCol, displayCol, settings, columns);
-                                
-                                DrawAlignedCellText(
-                                    FormatNumber(subValue, numberFormat),
-                                    subTextColor,
-                                    settings.HorizontalAlignment,
-                                    settings.VerticalAlignment);
-                            }
-                        }
-                    }
-                }
+                DrawRetainerSubRows(dispRow, displayColumns, columns, settings, hideCharColumn, numberFormat, ref rowIndex);
             }
             
-            // Total row (only show if there are multiple display rows and not in All mode)
-            // In All mode, the single row already shows the total
-            if (settings.ShowTotalRow && finalDisplayRows.Count > 1 && settings.GroupingMode != TableGroupingMode.All)
-            {
-                ImGui.TableNextRow();
-                ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_config.TotalRowColor));
-                
-                if (!hideCharColumn)
-                {
-                    ImGui.TableNextColumn();
-                    DrawAlignedCellText(
-                        "TOTAL", 
-                        null, 
-                        settings.CharacterColumnHorizontalAlignment, 
-                        settings.CharacterColumnVerticalAlignment);
-                }
-                
-                for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
-                {
-                    ImGui.TableNextColumn();
-                    var displayCol = displayColumns[dispIdx];
-                    var sum = finalDisplayRows.Sum(r => GetDisplayValue(displayCol, r, columns));
-                    
-                    // Apply selection styling to total row as well
-                    var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
-                    if (isColumnSelected)
-                    {
-                        ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(UiColors.SelectionHighlight));
-                    }
-                    
-                    // Use preferred item colors for total row as well
-                    var totalSourceColIdx = displayCol.SourceColumnIndices.FirstOrDefault(-1);
-                    var totalSourceCol = totalSourceColIdx >= 0 && totalSourceColIdx < columns.Count ? columns[totalSourceColIdx] : null;
-                    Vector4? textColor = GetEffectiveColumnColor(totalSourceCol, displayCol, settings, columns);
-                    if (isColumnSelected)
-                    {
-                        var baseColor = textColor ?? _config.DefaultTextColor;
-                        textColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
-                    }
-                    
-                    DrawAlignedCellText(
-                        FormatNumber(sum, numberFormat), 
-                        textColor, 
-                        settings.HorizontalAlignment, 
-                        settings.VerticalAlignment);
-                }
-            }
+            // Total row
+            DrawTotalRow(finalDisplayRows, displayColumns, columns, settings, hideCharColumn, numberFormat);
             
-            // Capture column widths after ImGui's auto-fit queue settles (3 frames)
-            _columnWidthsInitFrames++;
-            if (_columnWidthsInitFrames > 3)
-            {
-                var widthsChanged = false;
-                
-                // Get column widths by navigating to each column and reading content region
-                // This works because we're still inside the table context
-                
-                // Check character column width (column 0) - only if not hidden
-                if (!hideCharColumn)
-                {
-                    ImGui.TableSetColumnIndex(0);
-                    var currentCharWidth = ImGui.GetContentRegionAvail().X;
-                    if (Math.Abs(currentCharWidth - settings.CharacterColumnWidth) > 1f)
-                    {
-                        settings.CharacterColumnWidth = currentCharWidth;
-                        widthsChanged = true;
-                    }
-                }
-                
-                // Check display column widths (includes merged columns)
-                var dataColOffset = hideCharColumn ? 0 : 1;
-                for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
-                {
-                    ImGui.TableSetColumnIndex(dispIdx + dataColOffset);
-                    var currentWidth = ImGui.GetContentRegionAvail().X;
-                    
-                    var displayCol = displayColumns[dispIdx];
-                    if (displayCol.IsMerged && displayCol.MergedGroup != null)
-                    {
-                        // Update merged group width
-                        if (Math.Abs(currentWidth - displayCol.MergedGroup.Width) > 1f)
-                        {
-                            displayCol.MergedGroup.Width = currentWidth;
-                            widthsChanged = true;
-                        }
-                    }
-                    else if (!displayCol.IsMerged && displayCol.SourceColumnIndices.Count == 1)
-                    {
-                        // Update regular column width
-                        var colIdx = displayCol.SourceColumnIndices[0];
-                        if (colIdx >= 0 && colIdx < columns.Count && Math.Abs(currentWidth - columns[colIdx].Width) > 1f)
-                        {
-                            columns[colIdx].Width = currentWidth;
-                            widthsChanged = true;
-                        }
-                    }
-                }
-                
-                if (widthsChanged)
-                {
-                    _onSettingsChanged?.Invoke();
-                }
-            }
+            // Capture column widths
+            CaptureDisplayColumnWidths(displayColumns, columns, settings, hideCharColumn);
         }
         finally
         {
             ImGui.EndTable();
         }
     }
+    
+    #region Extracted Draw Helpers
+    
+    /// <summary>
+    /// Handles pending column resize actions queued from the header context menu.
+    /// </summary>
+    private void HandlePendingColumnResize(
+        IReadOnlyList<ItemColumnConfig> columns,
+        IReadOnlyList<ItemTableCharacterRow> rows,
+        IItemTableWidgetSettings settings,
+        bool hideCharColumn,
+        float charColumnWidth)
+    {
+        if (!_core.HasPendingResize || columns.Count == 0)
+            return;
+        
+        _core.ConsumePendingResize(out var action, out var targetDispCol);
+        
+        var preDisplayColumns = BuildDisplayColumns(columns, settings, 0f);
+        var cellPadding = ImGui.GetStyle().CellPadding.X * 2;
+        
+        if (targetDispCol >= 0 && targetDispCol < preDisplayColumns.Count)
+        {
+            var dispCol = preDisplayColumns[targetDispCol];
+            float newWidth = action switch
+            {
+                MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                MTColumnResizeAction.FillSpace => CalculateFillWidth(preDisplayColumns, targetDispCol, hideCharColumn, charColumnWidth),
+                _ => 0f
+            };
+            if (newWidth > 0f)
+            {
+                ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
+                _onSettingsChanged?.Invoke();
+            }
+        }
+        else if (targetDispCol == -1)
+        {
+            foreach (var dispCol in preDisplayColumns)
+            {
+                float newWidth = action switch
+                {
+                    MTColumnResizeAction.HeaderWidth => ImGui.CalcTextSize(dispCol.Header).X + cellPadding + 4f,
+                    MTColumnResizeAction.DataWidth => CalculateMaxDataWidth(dispCol, rows, columns, settings) + cellPadding,
+                    _ => 0f
+                };
+                if (newWidth > 0f)
+                    ApplyColumnWidth(dispCol, columns, Math.Max(30f, newWidth));
+            }
+            if (action == MTColumnResizeAction.FillSpace)
+            {
+                var effectiveCharWidth = hideCharColumn ? 0f : charColumnWidth;
+                var totalCols = hideCharColumn ? preDisplayColumns.Count : preDisplayColumns.Count + 1;
+                var fillWidth = TableHelpers.CalculateFillWidthEqual(totalCols, preDisplayColumns.Count, effectiveCharWidth);
+                foreach (var dispCol in preDisplayColumns)
+                    ApplyColumnWidth(dispCol, columns, fillWidth);
+            }
+            _onSettingsChanged?.Invoke();
+        }
+        
+        _core.ResetColumnWidthState();
+    }
+    
+    /// <summary>
+    /// Draws the header column context menu (resize options + merge columns).
+    /// </summary>
+    private void DrawHeaderContextMenu(
+        string headerPopupId,
+        List<DisplayColumn> displayColumns,
+        IItemTableWidgetSettings settings)
+    {
+        if (!ImGui.BeginPopup(headerPopupId))
+            return;
+        
+        var ctxDispIdx = _core.ContextMenuColumn;
+        var ctxHeader = ctxDispIdx >= 0 && ctxDispIdx < displayColumns.Count
+            ? displayColumns[ctxDispIdx].Header
+            : "Column";
+        
+        ImGui.TextDisabled(ctxHeader);
+        ImGui.Separator();
+        
+        if (ImGui.MenuItem("Resize to header width"))
+            _core.QueueResize(MTColumnResizeAction.HeaderWidth, ctxDispIdx);
+        if (ImGui.MenuItem("Resize to data width"))
+            _core.QueueResize(MTColumnResizeAction.DataWidth, ctxDispIdx);
+        if (ImGui.MenuItem("Resize to fill space"))
+            _core.QueueResize(MTColumnResizeAction.FillSpace, ctxDispIdx);
+        
+        ImGui.Spacing();
+        ImGui.Separator();
+        
+        if (ImGui.MenuItem("Resize all data columns to header width"))
+            _core.QueueResize(MTColumnResizeAction.HeaderWidth, -1);
+        if (ImGui.MenuItem("Resize all data columns to data width"))
+            _core.QueueResize(MTColumnResizeAction.DataWidth, -1);
+        if (ImGui.MenuItem("Resize all data columns to fill space"))
+            _core.QueueResize(MTColumnResizeAction.FillSpace, -1);
+        
+        if (_selectedDisplayColumnIndices.Count >= 2)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextDisabled($"{_selectedDisplayColumnIndices.Count} columns selected");
+            
+            if (ImGui.MenuItem("Merge Selected Columns"))
+            {
+                var allSourceIndices = new HashSet<int>();
+                var mergedGroupsToRemove = new List<MergedColumnGroup>();
+                
+                foreach (var selIdx in _selectedDisplayColumnIndices)
+                {
+                    if (selIdx >= 0 && selIdx < displayColumns.Count)
+                    {
+                        var selCol = displayColumns[selIdx];
+                        foreach (var srcIdx in selCol.SourceColumnIndices)
+                            allSourceIndices.Add(srcIdx);
+                        if (selCol.IsMerged && selCol.MergedGroup != null)
+                            mergedGroupsToRemove.Add(selCol.MergedGroup);
+                    }
+                }
+                
+                foreach (var oldGroup in mergedGroupsToRemove)
+                    settings.MergedColumnGroups.Remove(oldGroup);
+                
+                settings.MergedColumnGroups.Add(new MergedColumnGroup
+                {
+                    Name = "Merged",
+                    ColumnIndices = allSourceIndices.OrderBy(x => x).ToList(),
+                    Width = 80f
+                });
+                _selectedDisplayColumnIndices.Clear();
+                _core.SkipNextClick = true;
+                _onSettingsChanged?.Invoke();
+            }
+        }
+        
+        ImGui.EndPopup();
+    }
+    
+    /// <summary>
+    /// Draws the row merge context menu when multiple display rows are selected.
+    /// </summary>
+    private void DrawRowMergeContextMenu(IItemTableWidgetSettings settings)
+    {
+        if (_selectedDisplayRowIndices.Count < 2)
+            return;
+        
+        var rowPopupId = $"MergeRowsPopup_{_config.TableId}";
+        
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Right) && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
+            ImGui.OpenPopup(rowPopupId);
+        
+        if (!ImGui.BeginPopup(rowPopupId))
+            return;
+        
+        ImGui.TextDisabled($"{_selectedDisplayRowIndices.Count} rows selected");
+        ImGui.Separator();
+        
+        if (ImGui.MenuItem("Merge Selected Rows"))
+        {
+            var allCharacterIds = new HashSet<ulong>();
+            var mergedGroupsToRemove = new List<MergedRowGroup>();
+            
+            foreach (var dispRowIdx in _selectedDisplayRowIndices)
+            {
+                if (dispRowIdx >= 0 && dispRowIdx < _cachedDisplayRows.Count)
+                {
+                    var displayRow = _cachedDisplayRows[dispRowIdx];
+                    foreach (var cid in displayRow.SourceCharacterIds)
+                        allCharacterIds.Add(cid);
+                    if (displayRow.IsMerged && displayRow.MergedGroup != null)
+                        mergedGroupsToRemove.Add(displayRow.MergedGroup);
+                }
+            }
+            
+            foreach (var oldGroup in mergedGroupsToRemove)
+                settings.MergedRowGroups.Remove(oldGroup);
+            
+            settings.MergedRowGroups.Add(new MergedRowGroup
+            {
+                Name = "Merged",
+                CharacterIds = allCharacterIds.OrderBy(x => x).ToList()
+            });
+            _selectedDisplayRowIndices.Clear();
+            _selectedRowIds.Clear();
+            _core.SkipNextClick = true;
+            _onSettingsChanged?.Invoke();
+        }
+        
+        ImGui.EndPopup();
+    }
+    
+    /// <summary>
+    /// Draws the right-click context menu for a character name cell.
+    /// </summary>
+    private void DrawCharacterContextMenu(
+        DisplayRow dispRow,
+        ulong primaryCid,
+        bool isRevealedHidden,
+        bool showCharContextMenu,
+        IItemTableWidgetSettings settings)
+    {
+        if (!showCharContextMenu || dispRow.IsMerged)
+            return;
+        if (!ImGui.BeginPopupContextItem($"CharContext_{primaryCid}"))
+            return;
+        
+        if (ImGui.Selectable(dispRow.Name))
+        {
+            ImGui.SetClipboardText(dispRow.Name);
+            _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+            {
+                Content = $"Copied \"{dispRow.Name}\" to clipboard.",
+                Type = NotificationType.Info,
+                Minimized = true,
+                InitialDuration = TimeSpan.FromSeconds(2),
+            });
+        }
+        ImGui.Separator();
+        
+        // Relog to character via Lifestream
+        if (_lifestreamService != null && _lifestreamService.IsAvailable)
+        {
+            var currentCid = GameStateService.PlayerContentId;
+            if (primaryCid != 0 && primaryCid != currentCid)
+            {
+                var worldName = _cachedRows?
+                    .FirstOrDefault(r => r.CharacterId == primaryCid)?.WorldName;
+                
+                if (!string.IsNullOrEmpty(worldName))
+                {
+                    var gameName = _cachedRows?
+                        .FirstOrDefault(r => r.CharacterId == primaryCid)?.GameName;
+                    var nameForRelog = !string.IsNullOrEmpty(gameName) ? gameName : dispRow.Name;
+                    
+                    if (ImGui.MenuItem("Relog to Character"))
+                    {
+                        _lifestreamService.ChangeCharacter(nameForRelog, worldName);
+                        _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                        {
+                            Content = $"Relogging to {nameForRelog} ({worldName})...",
+                            Type = NotificationType.Info,
+                            Minimized = true,
+                            InitialDuration = TimeSpan.FromSeconds(2),
+                        });
+                    }
+                }
+            }
+        }
+        
+        if (isRevealedHidden)
+        {
+            if (ImGui.MenuItem("Unhide Character"))
+            {
+                settings.HiddenCharacters.Remove(primaryCid);
+                _onSettingsChanged?.Invoke();
+                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                {
+                    Content = $"\"{dispRow.Name}\" is no longer hidden.",
+                    Type = NotificationType.Info,
+                    Minimized = true,
+                    InitialDuration = TimeSpan.FromSeconds(2),
+                });
+            }
+        }
+        else
+        {
+            if (ImGui.MenuItem("Hide Character"))
+            {
+                settings.HiddenCharacters.Add(primaryCid);
+                _onSettingsChanged?.Invoke();
+                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+                {
+                    Content = $"\"{dispRow.Name}\" is now hidden.",
+                    Type = NotificationType.Info,
+                    Minimized = true,
+                    InitialDuration = TimeSpan.FromSeconds(2),
+                });
+            }
+        }
+        
+        ImGui.EndPopup();
+    }
+    
+    /// <summary>
+    /// Draws retainer sub-rows for an expanded character row.
+    /// </summary>
+    private void DrawRetainerSubRows(
+        DisplayRow dispRow,
+        List<DisplayColumn> displayColumns,
+        IReadOnlyList<ItemColumnConfig> columns,
+        IItemTableWidgetSettings settings,
+        bool hideCharColumn,
+        NumberFormatConfig numberFormat,
+        ref int rowIndex)
+    {
+        if (!settings.ShowRetainerBreakdown || dispRow.IsMerged || !dispRow.HasRetainerData)
+            return;
+        
+        var primaryCidForExpand = dispRow.SourceCharacterIds.FirstOrDefault();
+        var isExpanded = settings.GroupingMode == TableGroupingMode.Character
+            ? _expandedCharacterIds.Contains(primaryCidForExpand)
+            : _expandedGroupNames.Contains(dispRow.Name);
+        if (!isExpanded)
+            return;
+        
+        var retainerList = dispRow.RetainerBreakdown!.ToList();
+        for (int retIdx = 0; retIdx < retainerList.Count; retIdx++)
+        {
+            var (retainerKey, retainerCounts) = retainerList[retIdx];
+            var isLastRetainer = retIdx == retainerList.Count - 1;
+            rowIndex++;
+            
+            ImGui.TableNextRow();
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(UiColors.SubRowBackground));
+            
+            if (!hideCharColumn)
+            {
+                ImGui.TableNextColumn();
+                ImGui.Indent(16f);
+                var prefix = isLastRetainer ? "└ " : "├ ";
+                DrawAlignedCellText(
+                    $"{prefix}{retainerKey.Name}",
+                    UiColors.Info,
+                    settings.CharacterColumnHorizontalAlignment,
+                    settings.CharacterColumnVerticalAlignment);
+                ImGui.Unindent(16f);
+            }
+            
+            for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
+            {
+                ImGui.TableNextColumn();
+                var displayCol = displayColumns[dispIdx];
+                var subValue = GetDisplayValueFromCounts(displayCol, retainerCounts, columns);
+                
+                var subSourceColIdx = displayCol.SourceColumnIndices.FirstOrDefault(-1);
+                var subSourceCol = subSourceColIdx >= 0 && subSourceColIdx < columns.Count ? columns[subSourceColIdx] : null;
+                Vector4? subTextColor = GetEffectiveColumnColor(subSourceCol, displayCol, settings, columns);
+                
+                DrawAlignedCellText(
+                    FormatNumber(subValue, numberFormat),
+                    subTextColor,
+                    settings.HorizontalAlignment,
+                    settings.VerticalAlignment);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Draws the total row at the bottom of the table.
+    /// </summary>
+    private void DrawTotalRow(
+        List<DisplayRow> finalDisplayRows,
+        List<DisplayColumn> displayColumns,
+        IReadOnlyList<ItemColumnConfig> columns,
+        IItemTableWidgetSettings settings,
+        bool hideCharColumn,
+        NumberFormatConfig numberFormat)
+    {
+        if (!settings.ShowTotalRow || finalDisplayRows.Count <= 1 || settings.GroupingMode == TableGroupingMode.All)
+            return;
+        
+        ImGui.TableNextRow();
+        ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_config.TotalRowColor));
+        
+        if (!hideCharColumn)
+        {
+            ImGui.TableNextColumn();
+            DrawAlignedCellText(
+                "TOTAL",
+                null,
+                settings.CharacterColumnHorizontalAlignment,
+                settings.CharacterColumnVerticalAlignment);
+        }
+        
+        for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
+        {
+            ImGui.TableNextColumn();
+            var displayCol = displayColumns[dispIdx];
+            var sum = finalDisplayRows.Sum(r => GetDisplayValue(displayCol, r, columns));
+            
+            var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
+            if (isColumnSelected)
+                ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.GetColorU32(UiColors.SelectionHighlight));
+            
+            var totalSourceColIdx = displayCol.SourceColumnIndices.FirstOrDefault(-1);
+            var totalSourceCol = totalSourceColIdx >= 0 && totalSourceColIdx < columns.Count ? columns[totalSourceColIdx] : null;
+            Vector4? textColor = GetEffectiveColumnColor(totalSourceCol, displayCol, settings, columns);
+            if (isColumnSelected)
+            {
+                var baseColor = textColor ?? _config.DefaultTextColor;
+                textColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
+            }
+            
+            DrawAlignedCellText(
+                FormatNumber(sum, numberFormat),
+                textColor,
+                settings.HorizontalAlignment,
+                settings.VerticalAlignment);
+        }
+    }
+    
+    /// <summary>
+    /// Captures actual column widths from ImGui after the init settling period.
+    /// </summary>
+    private void CaptureDisplayColumnWidths(
+        List<DisplayColumn> displayColumns,
+        IReadOnlyList<ItemColumnConfig> columns,
+        IItemTableWidgetSettings settings,
+        bool hideCharColumn)
+    {
+        _core.TickInitFrame();
+        if (_core.IsInitializing)
+            return;
+        
+        var widthsChanged = false;
+        
+        if (!hideCharColumn)
+        {
+            ImGui.TableSetColumnIndex(0);
+            var currentCharWidth = ImGui.GetContentRegionAvail().X;
+            if (Math.Abs(currentCharWidth - settings.CharacterColumnWidth) > 1f)
+            {
+                settings.CharacterColumnWidth = currentCharWidth;
+                widthsChanged = true;
+            }
+        }
+        
+        var dataColOffset = hideCharColumn ? 0 : 1;
+        for (int dispIdx = 0; dispIdx < displayColumns.Count; dispIdx++)
+        {
+            ImGui.TableSetColumnIndex(dispIdx + dataColOffset);
+            var currentWidth = ImGui.GetContentRegionAvail().X;
+            
+            var displayCol = displayColumns[dispIdx];
+            if (displayCol.IsMerged && displayCol.MergedGroup != null)
+            {
+                if (Math.Abs(currentWidth - displayCol.MergedGroup.Width) > 1f)
+                {
+                    displayCol.MergedGroup.Width = currentWidth;
+                    widthsChanged = true;
+                }
+            }
+            else if (!displayCol.IsMerged && displayCol.SourceColumnIndices.Count == 1)
+            {
+                var colIdx = displayCol.SourceColumnIndices[0];
+                if (colIdx >= 0 && colIdx < columns.Count && Math.Abs(currentWidth - columns[colIdx].Width) > 1f)
+                {
+                    columns[colIdx].Width = currentWidth;
+                    widthsChanged = true;
+                }
+            }
+        }
+        
+        if (widthsChanged)
+            _onSettingsChanged?.Invoke();
+    }
+    
+    #endregion
     
 }

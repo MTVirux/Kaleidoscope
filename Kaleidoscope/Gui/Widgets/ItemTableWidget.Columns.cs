@@ -316,7 +316,7 @@ public sealed partial class ItemTableWidget
     /// <summary>
     /// Gets the set of currently selected column indices (data columns only, 0-indexed).
     /// </summary>
-    public IReadOnlySet<int> SelectedColumnIndices => _selectedColumnIndices;
+    public IReadOnlySet<int> SelectedColumnIndices => _selectedDisplayColumnIndices;
     
     /// <summary>
     /// Gets the set of currently selected row character IDs.
