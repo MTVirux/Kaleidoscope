@@ -259,14 +259,6 @@ public static class WindowToolRegistrar
         tool.BackgroundColor = colors.ToolBackground;
     }
 
-    private static string GetCategoryPath(TrackedDataCategory category)
-    {
-        // All data tracker tools are graphs - category path is just "Graph"
-        // The TrackedDataCategory is used for grouping within the tool's data selection,
-        // not for the top-level tool type categorization
-        return "Graph";
-    }
-
     private static ToolComponent? CreateDataToolGraph(Vector2 pos, ToolCreationContext ctx)
     {
         try

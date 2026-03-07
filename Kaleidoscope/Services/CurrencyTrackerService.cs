@@ -29,25 +29,9 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     private readonly TimeSeriesCacheService _cacheService;
     private readonly CharacterDataCacheService _characterDataCache;
 
-    // Background thread for database writes
     private readonly Channel<SampleWorkItem> _sampleQueue;
     private readonly Task _backgroundWorker;
     private readonly CancellationTokenSource _cts = new();
-
-    /// <summary>
-    /// Gets whether currency tracking is enabled. Always returns true as tracking cannot be disabled.
-    /// </summary>
-    public bool Enabled => true;
-
-    /// <summary>
-    /// Gets the effective sampling interval in milliseconds.
-    /// This is controlled by InventoryChangeService's polling interval.
-    /// </summary>
-    public int IntervalMs
-    {
-        get => 1000; // InventoryChangeService polls every 1s
-        set { /* Interval is now controlled by InventoryChangeService */ }
-    }
 
     public KaleidoscopeDbService DbService => _dbService;
 
@@ -694,16 +678,13 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 
     public void Dispose()
     {
-        // Unsubscribe from inventory change events
         _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
 
-        // Signal background worker to stop and wait for it to finish
         _cts.Cancel();
         _sampleQueue.Writer.Complete();
 
         try
         {
-            // Wait for background worker to finish processing (with timeout)
             _backgroundWorker.Wait(TimeSpan.FromSeconds(2));
         }
         catch (AggregateException) { /* Expected if task was canceled */ }
@@ -713,9 +694,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
 
         _cts.Dispose();
-        // Note: Do NOT dispose _dbService here — it is a shared singleton owned by the DI container.
-        // Disposing it prematurely causes a heavy WAL checkpoint and breaks other services still flushing.
-        GC.SuppressFinalize(this);
     }
 }
 
