@@ -721,18 +721,7 @@ public sealed class StorageCategory : IDisposable
     }
 
     private static void DrawHelpMarker(string description)
-    {
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 25.0f);
-            ImGui.TextUnformatted(description);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HelpMarker(description, sameLine: true, wrapMultiplier: 25f);
 
     private void DrawDataCleanupSection()
     {

@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -232,15 +233,5 @@ public sealed class GeneralCategory
     }
 
     private static void HelpMarker(string desc)
-    {
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 20.0f);
-            ImGui.TextUnformatted(desc);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HelpMarker(desc);
 }

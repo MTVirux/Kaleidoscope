@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Interfaces;
@@ -248,26 +249,7 @@ public abstract class ToolComponent : IDisposable
     }
 
     protected void ShowSettingTooltip(string description, string defaultText)
-    {
-        try
-        {
-            if (!ImGui.IsItemHovered()) return;
-
-            ImGui.BeginTooltip();
-            if (!string.IsNullOrEmpty(description))
-                ImGui.TextUnformatted(description);
-            if (!string.IsNullOrEmpty(defaultText))
-            {
-                ImGui.Separator();
-                ImGui.TextUnformatted($"Default: {defaultText}");
-            }
-            ImGui.EndTooltip();
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.UI, $"Tooltip error: {ex.Message}");
-        }
-    }
+        => ImGuiHelpers.SettingTooltip(description, defaultText);
     
     protected void LogDebug(string message) => LogService.Debug(LogCategory.UI, $"[{GetType().Name}] {message}");
     
@@ -371,48 +353,10 @@ public abstract class ToolComponent : IDisposable
     
     /// <summary>
     /// Imports a Vector4 color from a float array format [R, G, B, A].
-    /// Returns null if the key is not found or invalid.
-    /// Usage: target.CharacterColumnColor = ImportColorArray(settings, "CharacterColumnColor");
+    /// Delegates to <see cref="SettingsImportHelper.ImportColor"/>.
     /// </summary>
     protected static Vector4? ImportColorArray(Dictionary<string, object?>? settings, string key)
-    {
-        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
-            return null;
-
-        try
-        {
-            // Handle Newtonsoft.Json JArray (used by ConfigManager)
-            if (value is Newtonsoft.Json.Linq.JArray jArray && jArray.Count >= 4)
-            {
-                return new Vector4(
-                    jArray[0].ToObject<float>(),
-                    jArray[1].ToObject<float>(),
-                    jArray[2].ToObject<float>(),
-                    jArray[3].ToObject<float>());
-            }
-
-            // Handle System.Text.Json.JsonElement
-            if (value is System.Text.Json.JsonElement jsonElement &&
-                jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                var arr = jsonElement.EnumerateArray().Select(v => v.GetSingle()).ToArray();
-                if (arr.Length >= 4)
-                    return new Vector4(arr[0], arr[1], arr[2], arr[3]);
-            }
-
-            // Handle in-memory float[] (from direct ExportToolSettings)
-            if (value is float[] floatArr && floatArr.Length >= 4)
-            {
-                return new Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
-            }
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportColorArray failed for key '{key}': {ex.Message}");
-        }
-
-        return null;
-    }
+        => SettingsImportHelper.ImportColor(settings, key);
     
     /// <summary>
     /// Imports a List of values from various serialized formats.
@@ -466,62 +410,8 @@ public abstract class ToolComponent : IDisposable
     
     /// <summary>
     /// Converts an object to a Dictionary from various serialized formats.
-    /// Handles Newtonsoft.Json JObject, System.Text.Json.JsonElement, and raw dictionaries.
-    /// Usage: var nested = ConvertToDictionary(settings["NestedObject"]);
+    /// Delegates to <see cref="SettingsImportHelper.ConvertToDictionary"/>.
     /// </summary>
     protected static Dictionary<string, object?>? ConvertToDictionary(object? obj)
-    {
-        if (obj == null) return null;
-        
-        try
-        {
-            // Handle Newtonsoft.Json JObject
-            if (obj is Newtonsoft.Json.Linq.JObject jObj)
-            {
-                var result = new Dictionary<string, object?>();
-                foreach (var prop in jObj.Properties())
-                {
-                    result[prop.Name] = prop.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null 
-                        ? null 
-                        : prop.Value;
-                }
-                return result;
-            }
-            
-            // Handle System.Text.Json.JsonElement
-            if (obj is System.Text.Json.JsonElement jsonElement && 
-                jsonElement.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                var result = new Dictionary<string, object?>();
-                foreach (var prop in jsonElement.EnumerateObject())
-                {
-                    result[prop.Name] = prop.Value;
-                }
-                return result;
-            }
-            
-            // Handle IDictionary<string, object?>
-            if (obj is IDictionary<string, object?> dict)
-            {
-                return new Dictionary<string, object?>(dict);
-            }
-            
-            // Handle Dictionary<string, object>
-            if (obj is Dictionary<string, object> rawDict)
-            {
-                var result = new Dictionary<string, object?>();
-                foreach (var kvp in rawDict)
-                {
-                    result[kvp.Key] = kvp.Value;
-                }
-                return result;
-            }
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.UI, $"[ToolComponent] ConvertToDictionary failed: {ex.Message}");
-        }
-        
-        return null;
-    }
+        => SettingsImportHelper.ConvertToDictionary(obj);
 }

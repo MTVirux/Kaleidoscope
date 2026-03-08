@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
@@ -658,15 +659,5 @@ public sealed class UniversalisCategory
     }
 
     private static void HelpMarker(string desc)
-    {
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 20.0f);
-            ImGui.TextUnformatted(desc);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HelpMarker(desc);
 }
