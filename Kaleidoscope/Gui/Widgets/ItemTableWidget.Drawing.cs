@@ -15,14 +15,18 @@ public sealed partial class ItemTableWidget
 {
     
     /// <summary>
-    /// Delegates to <see cref="TableCore.HandleShiftSelection"/> for SHIFT+click/drag range selection.
+    /// Shows a brief info notification to the user.
     /// </summary>
-    private static bool HandleShiftSelection(
-        int currentIdx,
-        HashSet<int> selectedIndices,
-        ref bool isSelecting,
-        ref int selectionStart)
-        => TableCore.HandleShiftSelection(currentIdx, selectedIndices, ref isSelecting, ref selectionStart);
+    private void ShowInfoNotification(string content)
+    {
+        _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
+        {
+            Content = content,
+            Type = NotificationType.Info,
+            Minimized = true,
+            InitialDuration = TimeSpan.FromSeconds(2),
+        });
+    }
     
     /// <summary>
     /// Draws the item table.
@@ -229,7 +233,7 @@ public sealed partial class ItemTableWidget
                 var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
                 if (isShiftHeld && !isPopupOpen)
                 {
-                    isColumnSelected = HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
+                    isColumnSelected = TableCore.HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
                 }
                 
                 // Apply highlight background for selected headers
@@ -347,7 +351,7 @@ public sealed partial class ItemTableWidget
                     // Handle row selection with SHIFT+click/drag on character column
                     if (isShiftHeld && !isPopupOpen)
                     {
-                        isRowSelected = HandleShiftSelection(dispRowIdx, _selectedDisplayRowIndices, ref _isSelectingRows, ref _selectionStartDisplayRow);
+                        isRowSelected = TableCore.HandleShiftSelection(dispRowIdx, _selectedDisplayRowIndices, ref _isSelectingRows, ref _selectionStartDisplayRow);
                     }
                     
                     // Determine text color - use preferred character colors if enabled
@@ -438,7 +442,7 @@ public sealed partial class ItemTableWidget
                     var isColumnSelected = _selectedDisplayColumnIndices.Contains(dispIdx);
                     if (isShiftHeld && !isPopupOpen)
                     {
-                        isColumnSelected = HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
+                        isColumnSelected = TableCore.HandleShiftSelection(dispIdx, _selectedDisplayColumnIndices, ref _isSelectingColumns, ref _selectionStartDisplayColumn);
                     }
                     
                     // Apply inverted background color for selected columns
@@ -692,13 +696,7 @@ public sealed partial class ItemTableWidget
         if (ImGui.Selectable(dispRow.Name))
         {
             ImGui.SetClipboardText(dispRow.Name);
-            _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-            {
-                Content = $"Copied \"{dispRow.Name}\" to clipboard.",
-                Type = NotificationType.Info,
-                Minimized = true,
-                InitialDuration = TimeSpan.FromSeconds(2),
-            });
+            ShowInfoNotification($"Copied \"{dispRow.Name}\" to clipboard.");
         }
         ImGui.Separator();
         
@@ -720,13 +718,7 @@ public sealed partial class ItemTableWidget
                     if (ImGui.MenuItem("Relog to Character"))
                     {
                         _lifestreamService.ChangeCharacter(nameForRelog, worldName);
-                        _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                        {
-                            Content = $"Relogging to {nameForRelog} ({worldName})...",
-                            Type = NotificationType.Info,
-                            Minimized = true,
-                            InitialDuration = TimeSpan.FromSeconds(2),
-                        });
+                        ShowInfoNotification($"Relogging to {nameForRelog} ({worldName})...");
                     }
                 }
             }
@@ -738,13 +730,7 @@ public sealed partial class ItemTableWidget
             {
                 settings.HiddenCharacters.Remove(primaryCid);
                 _onSettingsChanged?.Invoke();
-                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                {
-                    Content = $"\"{dispRow.Name}\" is no longer hidden.",
-                    Type = NotificationType.Info,
-                    Minimized = true,
-                    InitialDuration = TimeSpan.FromSeconds(2),
-                });
+                ShowInfoNotification($"\"{dispRow.Name}\" is no longer hidden.");
             }
         }
         else
@@ -753,13 +739,7 @@ public sealed partial class ItemTableWidget
             {
                 settings.HiddenCharacters.Add(primaryCid);
                 _onSettingsChanged?.Invoke();
-                _notificationManager?.AddNotification(new Dalamud.Interface.ImGuiNotification.Notification
-                {
-                    Content = $"\"{dispRow.Name}\" is now hidden.",
-                    Type = NotificationType.Info,
-                    Minimized = true,
-                    InitialDuration = TimeSpan.FromSeconds(2),
-                });
+                ShowInfoNotification($"\"{dispRow.Name}\" is now hidden.");
             }
         }
         

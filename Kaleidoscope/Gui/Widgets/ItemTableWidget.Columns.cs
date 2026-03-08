@@ -144,142 +144,104 @@ public sealed partial class ItemTableWidget
     /// </summary>
     private List<DisplayRow> BuildDisplayRows(IReadOnlyList<ItemTableCharacterRow> rows, IItemTableWidgetSettings settings, IReadOnlyList<ItemColumnConfig> columns)
     {
-        var displayRows = new List<DisplayRow>();
         var groupingMode = settings.GroupingMode;
         var isCharacterMode = groupingMode == TableGroupingMode.Character;
         
+        // Abstraction delegates — same algorithm, different key types
+        // Character mode: key = CharacterId (ulong), merge items = group.CharacterIds
+        // Grouped mode:   key = Name (string),       merge items = group.GroupKeys
         if (isCharacterMode)
         {
-            // Character mode: merge by CharacterIds
-            var mergedCharacterIds = new HashSet<ulong>();
-            
-            // First, collect all character IDs that are part of a merged group (only Character-mode groups)
-            foreach (var group in settings.MergedRowGroups.Where(g => g.GroupingMode == TableGroupingMode.Character))
-            {
-                foreach (var cid in group.CharacterIds)
-                {
-                    mergedCharacterIds.Add(cid);
-                }
-            }
-            
-            // Track which merged groups we've already added
-            var addedMergedGroups = new HashSet<MergedRowGroup>();
-            
-            // Iterate through all rows in order
-            foreach (var row in rows)
-            {
-                if (mergedCharacterIds.Contains(row.CharacterId))
-                {
-                    // This row is part of a merged group - find which one
-                    var group = settings.MergedRowGroups.FirstOrDefault(g => 
-                        g.GroupingMode == TableGroupingMode.Character && g.CharacterIds.Contains(row.CharacterId));
-                    if (group != null && !addedMergedGroups.Contains(group))
-                    {
-                        addedMergedGroups.Add(group);
-                        
-                        // Aggregate item counts from all characters in this merged group
-                        var aggregatedCounts = new Dictionary<uint, long>();
-                        foreach (var cid in group.CharacterIds)
-                        {
-                            var sourceRow = rows.FirstOrDefault(r => r.CharacterId == cid);
-                            if (sourceRow != null)
-                                MergeDictionaryAdditive(aggregatedCounts, sourceRow.ItemCounts);
-                        }
-                        
-                        displayRows.Add(new DisplayRow
-                        {
-                            IsMerged = true,
-                            Name = group.Name,
-                            Color = group.Color,
-                            SourceCharacterIds = group.CharacterIds.ToList(),
-                            MergedGroup = group,
-                            ItemCounts = aggregatedCounts
-                        });
-                    }
-                    // Skip other rows in the same merged group
-                }
-                else
-                {
-                    // Regular row (not merged)
-                    displayRows.Add(new DisplayRow
-                    {
-                        IsMerged = false,
-                        Name = row.Name,
-                        Color = null,
-                        SourceCharacterIds = new List<ulong> { row.CharacterId },
-                        MergedGroup = null,
-                        ItemCounts = row.ItemCounts,
-                        PlayerItemCounts = row.PlayerItemCounts,
-                        RetainerBreakdown = row.RetainerBreakdown
-                    });
-                }
-            }
+            return BuildDisplayRowsCore(
+                rows, settings.MergedRowGroups, groupingMode,
+                row => row.CharacterId,
+                group => group.CharacterIds.Cast<object>(),
+                (row, key) => row.CharacterId.Equals(key),
+                group => group.CharacterIds.Select(c => c).ToList(),
+                isCharacterMode: true);
         }
         else
         {
-            // Grouped mode (World/DC/Region/All): merge by GroupKeys (row.Name)
-            var mergedGroupKeys = new HashSet<string>();
-            
-            // Collect all group keys that are part of a merged group (matching current mode)
-            foreach (var group in settings.MergedRowGroups.Where(g => g.GroupingMode == groupingMode))
+            return BuildDisplayRowsCore(
+                rows, settings.MergedRowGroups, groupingMode,
+                row => row.Name,
+                group => group.GroupKeys.Cast<object>(),
+                (row, key) => row.Name == (string)key,
+                _ => new List<ulong>(),
+                isCharacterMode: false);
+        }
+    }
+    
+    /// <summary>
+    /// Core implementation for building display rows with merge support.
+    /// Abstracts over Character-mode (ulong keys) and Grouped-mode (string keys).
+    /// </summary>
+    private List<DisplayRow> BuildDisplayRowsCore<TKey>(
+        IReadOnlyList<ItemTableCharacterRow> rows,
+        List<MergedRowGroup> mergedRowGroups,
+        TableGroupingMode groupingMode,
+        Func<ItemTableCharacterRow, TKey> getRowKey,
+        Func<MergedRowGroup, IEnumerable<object>> getMergeKeys,
+        Func<ItemTableCharacterRow, object, bool> rowMatchesKey,
+        Func<MergedRowGroup, List<ulong>> getSourceCharacterIds,
+        bool isCharacterMode)
+        where TKey : notnull
+    {
+        var displayRows = new List<DisplayRow>();
+        
+        // Build set of merged keys
+        var mergedKeys = new HashSet<TKey>();
+        foreach (var group in mergedRowGroups.Where(g => g.GroupingMode == groupingMode))
+            foreach (var key in getMergeKeys(group))
+                mergedKeys.Add((TKey)key);
+        
+        var addedMergedGroups = new HashSet<MergedRowGroup>();
+        
+        foreach (var row in rows)
+        {
+            var rowKey = getRowKey(row);
+            if (mergedKeys.Contains(rowKey))
             {
-                foreach (var key in group.GroupKeys)
+                // Find which merged group this row belongs to
+                var group = mergedRowGroups.FirstOrDefault(g =>
+                    g.GroupingMode == groupingMode && getMergeKeys(g).Any(k => k.Equals(rowKey)));
+                if (group != null && !addedMergedGroups.Contains(group))
                 {
-                    mergedGroupKeys.Add(key);
-                }
-            }
-            
-            // Track which merged groups we've already added
-            var addedMergedGroups = new HashSet<MergedRowGroup>();
-            
-            // Iterate through all rows in order
-            foreach (var row in rows)
-            {
-                if (mergedGroupKeys.Contains(row.Name))
-                {
-                    // This row is part of a merged group - find which one
-                    var group = settings.MergedRowGroups.FirstOrDefault(g => 
-                        g.GroupingMode == groupingMode && g.GroupKeys.Contains(row.Name));
-                    if (group != null && !addedMergedGroups.Contains(group))
+                    addedMergedGroups.Add(group);
+                    
+                    // Aggregate item counts from all members of this merged group
+                    var aggregatedCounts = new Dictionary<uint, long>();
+                    foreach (var key in getMergeKeys(group))
                     {
-                        addedMergedGroups.Add(group);
-                        
-                        // Aggregate item counts from all group keys in this merged group
-                        var aggregatedCounts = new Dictionary<uint, long>();
-                        foreach (var key in group.GroupKeys)
-                        {
-                            var sourceRow = rows.FirstOrDefault(r => r.Name == key);
-                            if (sourceRow != null)
-                                MergeDictionaryAdditive(aggregatedCounts, sourceRow.ItemCounts);
-                        }
-                        
-                        displayRows.Add(new DisplayRow
-                        {
-                            IsMerged = true,
-                            Name = group.Name,
-                            Color = group.Color,
-                            SourceCharacterIds = new List<ulong>(), // No individual char IDs in grouped mode
-                            MergedGroup = group,
-                            ItemCounts = aggregatedCounts
-                        });
+                        var sourceRow = rows.FirstOrDefault(r => rowMatchesKey(r, key));
+                        if (sourceRow != null)
+                            MergeDictionaryAdditive(aggregatedCounts, sourceRow.ItemCounts);
                     }
-                    // Skip other rows in the same merged group
-                }
-                else
-                {
-                    // Regular row (not merged)
+                    
                     displayRows.Add(new DisplayRow
                     {
-                        IsMerged = false,
-                        Name = row.Name,
-                        Color = null,
-                        SourceCharacterIds = new List<ulong>(),
-                        MergedGroup = null,
-                        ItemCounts = row.ItemCounts,
-                        PlayerItemCounts = row.PlayerItemCounts,
-                        RetainerBreakdown = row.RetainerBreakdown
+                        IsMerged = true,
+                        Name = group.Name,
+                        Color = group.Color,
+                        SourceCharacterIds = getSourceCharacterIds(group),
+                        MergedGroup = group,
+                        ItemCounts = aggregatedCounts
                     });
                 }
+            }
+            else
+            {
+                displayRows.Add(new DisplayRow
+                {
+                    IsMerged = false,
+                    Name = row.Name,
+                    Color = null,
+                    SourceCharacterIds = isCharacterMode ? new List<ulong> { row.CharacterId } : new List<ulong>(),
+                    MergedGroup = null,
+                    ItemCounts = row.ItemCounts,
+                    PlayerItemCounts = row.PlayerItemCounts,
+                    RetainerBreakdown = row.RetainerBreakdown
+                });
             }
         }
         

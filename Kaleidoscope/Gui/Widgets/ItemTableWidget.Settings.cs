@@ -114,68 +114,19 @@ public sealed partial class ItemTableWidget
         ImGui.Spacing();
         if (TreeHelpers.DrawSection("Alignment"))
         {
-            // Data column alignment
             ImGui.TextDisabled("Data Columns");
-            
-            // Data horizontal alignment
-            var hAlign = (int)settings.HorizontalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Horizontal##data", ref hAlign, "Left\0Center\0Right\0"))
-            {
-                settings.HorizontalAlignment = (TableHorizontalAlignment)hAlign;
-                changed = true;
-            }
-        
-            // Data vertical alignment
-            var vAlign = (int)settings.VerticalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Vertical##data", ref vAlign, "Top\0Center\0Bottom\0"))
-            {
-                settings.VerticalAlignment = (TableVerticalAlignment)vAlign;
-                changed = true;
-            }
+            changed |= DrawAlignmentCombo("Horizontal##data", settings.HorizontalAlignment, v => settings.HorizontalAlignment = v);
+            changed |= DrawAlignmentCombo("Vertical##data", settings.VerticalAlignment, v => settings.VerticalAlignment = v);
             
             ImGui.Spacing();
             ImGui.TextDisabled("Character Column");
-            
-            // Character column horizontal alignment
-            var charHAlign = (int)settings.CharacterColumnHorizontalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Horizontal##char", ref charHAlign, "Left\0Center\0Right\0"))
-            {
-                settings.CharacterColumnHorizontalAlignment = (TableHorizontalAlignment)charHAlign;
-                changed = true;
-            }
-        
-            // Character column vertical alignment
-            var charVAlign = (int)settings.CharacterColumnVerticalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Vertical##char", ref charVAlign, "Top\0Center\0Bottom\0"))
-            {
-                settings.CharacterColumnVerticalAlignment = (TableVerticalAlignment)charVAlign;
-                changed = true;
-            }
+            changed |= DrawAlignmentCombo("Horizontal##char", settings.CharacterColumnHorizontalAlignment, v => settings.CharacterColumnHorizontalAlignment = v);
+            changed |= DrawAlignmentCombo("Vertical##char", settings.CharacterColumnVerticalAlignment, v => settings.CharacterColumnVerticalAlignment = v);
             
             ImGui.Spacing();
             ImGui.TextDisabled("Header Row");
-            
-            // Header horizontal alignment
-            var headerHAlign = (int)settings.HeaderHorizontalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Horizontal##header", ref headerHAlign, "Left\0Center\0Right\0"))
-            {
-                settings.HeaderHorizontalAlignment = (TableHorizontalAlignment)headerHAlign;
-                changed = true;
-            }
-        
-            // Header vertical alignment
-            var headerVAlign = (int)settings.HeaderVerticalAlignment;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.Combo("Vertical##header", ref headerVAlign, "Top\0Center\0Bottom\0"))
-            {
-                settings.HeaderVerticalAlignment = (TableVerticalAlignment)headerVAlign;
-                changed = true;
-            }
+            changed |= DrawAlignmentCombo("Horizontal##header", settings.HeaderHorizontalAlignment, v => settings.HeaderHorizontalAlignment = v);
+            changed |= DrawAlignmentCombo("Vertical##header", settings.HeaderVerticalAlignment, v => settings.HeaderVerticalAlignment = v);
             TreeHelpers.EndSection();
         }
         
@@ -344,6 +295,23 @@ public sealed partial class ItemTableWidget
         }
         
         return changed;
+    }
+    
+    /// <summary>
+    /// Draws an alignment combo (works for both horizontal and vertical alignment enums).
+    /// </summary>
+    private static bool DrawAlignmentCombo<T>(string label, T current, Action<T> setter) where T : struct, Enum
+    {
+        var value = Convert.ToInt32(current);
+        var isHorizontal = typeof(T) == typeof(TableHorizontalAlignment);
+        var options = isHorizontal ? "Left\0Center\0Right\0" : "Top\0Center\0Bottom\0";
+        ImGui.SetNextItemWidth(100);
+        if (ImGui.Combo(label, ref value, options))
+        {
+            setter((T)(object)value);
+            return true;
+        }
+        return false;
     }
     
 }
