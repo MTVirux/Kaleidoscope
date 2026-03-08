@@ -103,11 +103,6 @@ public sealed class Configuration : IPluginConfiguration
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;
 
     public CharacterSortOrder CharacterSortOrder { get; set; } = CharacterSortOrder.Alphabetical;
-    
-    /// <summary>
-    /// Sort order for item lists in item pickers (alphabetical or by ID).
-    /// </summary>
-    public Gui.Widgets.ItemSortOrder ItemPickerSortOrder { get; set; } = Gui.Widgets.ItemSortOrder.Alphabetical;
 
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
