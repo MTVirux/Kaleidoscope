@@ -42,29 +42,14 @@ public class NumberFormatConfig
     }
     
     /// <summary>
-    /// Default configuration (Compact with 2 decimal places). Immutable — do not cast to mutate.
-    /// </summary>
-    public static readonly NumberFormatConfig Default = new FrozenNumberFormatConfig();
-    
-    /// <summary>
     /// Compact configuration with 2 decimal places. Immutable — do not cast to mutate.
     /// </summary>
     public static readonly NumberFormatConfig Compact = new FrozenNumberFormatConfig();
     
     /// <summary>
-    /// Standard configuration with thousands separators. Immutable — do not cast to mutate.
+    /// Default configuration — alias for <see cref="Compact"/>. Immutable — do not cast to mutate.
     /// </summary>
-    public static readonly NumberFormatConfig Standard = new FrozenNumberFormatConfig { _style = NumberFormatStyle.Standard };
-    
-    /// <summary>
-    /// Compact configuration with no decimal places. Immutable — do not cast to mutate.
-    /// </summary>
-    public static readonly NumberFormatConfig CompactNoDecimals = new FrozenNumberFormatConfig { _decimalPlaces = 0 };
-    
-    /// <summary>
-    /// Compact configuration with 1 decimal place. Immutable — do not cast to mutate.
-    /// </summary>
-    public static readonly NumberFormatConfig CompactOneDecimal = new FrozenNumberFormatConfig { _decimalPlaces = 1 };
+    public static readonly NumberFormatConfig Default = Compact;
 }
 
 /// <summary>

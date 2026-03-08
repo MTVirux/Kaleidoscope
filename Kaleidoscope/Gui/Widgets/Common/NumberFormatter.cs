@@ -95,33 +95,6 @@ public static class NumberFormatter
     }
     
     /// <summary>
-    /// Formats a percentage value.
-    /// </summary>
-    /// <param name="value">The percentage value (0-100 scale).</param>
-    /// <param name="decimals">Number of decimal places.</param>
-    /// <returns>Formatted string like "45.5%".</returns>
-    public static string FormatPercentage(double value, int decimals = 1)
-    {
-        return $"{value.ToString($"F{decimals}", InvariantCulture)}%";
-    }
-    
-    /// <summary>
-    /// Formats a time duration in a human-readable way.
-    /// </summary>
-    /// <param name="duration">The duration to format.</param>
-    /// <returns>Formatted string like "2h 30m" or "5d 12h".</returns>
-    public static string FormatDuration(TimeSpan duration)
-    {
-        if (duration.TotalDays >= 1)
-            return $"{(int)duration.TotalDays}d {duration.Hours}h";
-        if (duration.TotalHours >= 1)
-            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
-        if (duration.TotalMinutes >= 1)
-            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
-        return $"{duration.Seconds}s";
-    }
-    
-    /// <summary>
     /// Gets the decimal format string for the specified number of decimal places.
     /// </summary>
     private static string GetDecimalFormat(int decimals) => decimals switch
