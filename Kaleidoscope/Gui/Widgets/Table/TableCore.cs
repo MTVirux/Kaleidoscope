@@ -218,62 +218,6 @@ public sealed class TableCore
         }
     }
     
-    /// <summary>
-    /// Sets up a single ImGui column with proper flags.
-    /// Useful when the consumer builds columns one at a time (e.g., mixing fixed and data columns).
-    /// </summary>
-    /// <param name="header">Column header text.</param>
-    /// <param name="width">Column width.</param>
-    /// <param name="columnIndex">The column's logical index (for sort flag lookup).</param>
-    /// <param name="sortColumns">Current sort column entries.</param>
-    /// <param name="fallbackSortIndex">Fallback sort column index if sortColumns is empty.</param>
-    /// <param name="fallbackSortAscending">Fallback sort ascending if sortColumns is empty.</param>
-    /// <param name="preferSortDescending">Whether this column prefers descending sort on first click.</param>
-    /// <param name="noResize">Whether this column should never be resizable.</param>
-    /// <param name="stretch">Whether this column should stretch.</param>
-    public void SetupColumn(
-        string header,
-        float width,
-        int columnIndex,
-        IReadOnlyList<SortColumnEntry> sortColumns,
-        int fallbackSortIndex,
-        bool fallbackSortAscending,
-        bool preferSortDescending = true,
-        bool noResize = false,
-        bool stretch = false)
-    {
-        var sortColumnSet = BuildSortColumnSet(sortColumns, fallbackSortIndex, fallbackSortAscending);
-        var isInitializing = IsInitializing;
-        
-        var colFlags = ImGuiTableColumnFlags.None;
-        
-        // Apply default sort to saved sort columns
-        if (sortColumnSet.TryGetValue(columnIndex, out var ascending))
-        {
-            colFlags |= ascending 
-                ? ImGuiTableColumnFlags.DefaultSort 
-                : ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending;
-        }
-        else if (preferSortDescending)
-        {
-            colFlags |= ImGuiTableColumnFlags.PreferSortDescending;
-        }
-        
-        // Apply width flags
-        colFlags |= stretch ? ImGuiTableColumnFlags.WidthStretch : ImGuiTableColumnFlags.WidthFixed;
-        
-        // Apply resize flags
-        if (noResize || _noResizeColumns.Contains(columnIndex))
-        {
-            colFlags |= ImGuiTableColumnFlags.NoResize;
-        }
-        else if (isInitializing)
-        {
-            colFlags |= ImGuiTableColumnFlags.NoResize;
-        }
-        
-        ImGui.TableSetupColumn(header, colFlags, width);
-    }
     
     #endregion
     
@@ -716,33 +660,18 @@ public sealed class TableCore
     
     /// <summary>
     /// Captures actual column widths from ImGui after the auto-fit queue settles (3 frames).
+    /// Delegates to <see cref="CaptureColumnWidthsCustom"/>.
     /// </summary>
     /// <param name="columns">Column definitions whose Width property will be updated.</param>
     /// <param name="onSettingsChanged">Callback when widths change.</param>
     public void CaptureColumnWidths(IReadOnlyList<TableColumn> columns, Action? onSettingsChanged)
     {
-        _columnWidthsInitFrames++;
-        if (_columnWidthsInitFrames <= 3)
-            return;
-        
-        var widthsChanged = false;
-        
-        for (int i = 0; i < columns.Count; i++)
+        CaptureColumnWidthsCustom(columns.Count, 0, (i, w) =>
         {
-            ImGui.TableSetColumnIndex(i);
-            var currentWidth = ImGui.GetContentRegionAvail().X;
-            
-            if (Math.Abs(currentWidth - columns[i].Width) > 1f)
-            {
-                columns[i].Width = currentWidth;
-                widthsChanged = true;
-            }
-        }
-        
-        if (widthsChanged)
-        {
-            onSettingsChanged?.Invoke();
-        }
+            if (Math.Abs(w - columns[i].Width) <= 1f) return false;
+            columns[i].Width = w;
+            return true;
+        }, onSettingsChanged);
     }
     
     /// <summary>

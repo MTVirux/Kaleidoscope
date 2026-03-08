@@ -1,6 +1,5 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Widgets.Common;
-using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Widgets.Table;
