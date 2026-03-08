@@ -115,6 +115,11 @@ public sealed partial class ItemTableWidget
         if (sortColumns.Count == 0)
             return rows.ToList();
         
+        // Build input-order index map so character column sorts preserve caller order (AR/config ordering)
+        var inputOrder = new Dictionary<ItemTableCharacterRow, int>(rows.Count);
+        for (int i = 0; i < rows.Count; i++)
+            inputOrder[rows[i]] = i;
+        
         // Sort the rows with multi-column support (left-to-right priority)
         var sorted = rows.ToList();
         sorted.Sort((a, b) =>
@@ -132,8 +137,8 @@ public sealed partial class ItemTableWidget
                 int result;
                 if (isCharacterSort)
                 {
-                    // Sort by character name
-                    result = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+                    // Preserve caller order (already sorted by CharacterSortHelper / AutoRetainer config)
+                    result = inputOrder[a].CompareTo(inputOrder[b]);
                     if (!sortAscending) result = -result;
                 }
                 else if (displayColIdx >= 0 && displayColIdx < displayColumns.Count)
