@@ -243,7 +243,23 @@ public class ComboWidget<TItem, TId>
     {
         EnsureSorted();
         
-        return _config.MultiSelect ? DrawMultiSelect(width) : DrawSingleSelect(width);
+        var preview = _config.MultiSelect
+            ? BuildMultiSelectPreview()
+            : (SelectedItem != null ? FormatItemName(SelectedItem) : _config.Placeholder);
+        
+        ImGui.SetNextItemWidth(width);
+        
+        var popupWidth = _config.PopupMaxWidth > 0 ? _config.PopupMaxWidth : (width > 0 ? Math.Max(width, 200) : 300);
+        var popupMaxHeight = _config.ListHeight > 0 ? _config.ListHeight + 80 : 400;
+        ImGui.SetNextWindowSizeConstraints(new Vector2(popupWidth, 0), new Vector2(popupWidth, popupMaxHeight));
+        
+        if (!ImGui.BeginCombo($"##{_config.ComboId}", preview, ImGuiComboFlags.HeightLarge))
+            return false;
+        
+        var changed = DrawContent();
+        ImGui.EndCombo();
+        
+        return changed;
     }
     
     /// <summary>
@@ -263,46 +279,6 @@ public class ComboWidget<TItem, TId>
             changed = DrawContent();
         }
         ImGui.EndChild();
-        
-        return changed;
-    }
-    
-    private bool DrawSingleSelect(float width)
-    {
-        var preview = SelectedItem != null ? FormatItemName(SelectedItem) : _config.Placeholder;
-        
-        ImGui.SetNextItemWidth(width);
-        
-        // Constrain popup width if configured
-        var popupWidth = _config.PopupMaxWidth > 0 ? _config.PopupMaxWidth : (width > 0 ? Math.Max(width, 200) : 300);
-        var popupMaxHeight = _config.ListHeight > 0 ? _config.ListHeight + 80 : 400; // +80 for search bar and controls
-        ImGui.SetNextWindowSizeConstraints(new Vector2(popupWidth, 0), new Vector2(popupWidth, popupMaxHeight));
-        
-        if (!ImGui.BeginCombo($"##{_config.ComboId}", preview, ImGuiComboFlags.HeightLarge))
-            return false;
-        
-        var changed = DrawContent();
-        ImGui.EndCombo();
-        
-        return changed;
-    }
-    
-    private bool DrawMultiSelect(float width)
-    {
-        var preview = BuildMultiSelectPreview();
-        
-        ImGui.SetNextItemWidth(width);
-        
-        // Constrain popup width if configured
-        var popupWidth = _config.PopupMaxWidth > 0 ? _config.PopupMaxWidth : (width > 0 ? Math.Max(width, 200) : 300);
-        var popupMaxHeight = _config.ListHeight > 0 ? _config.ListHeight + 80 : 400; // +80 for search bar and controls
-        ImGui.SetNextWindowSizeConstraints(new Vector2(popupWidth, 0), new Vector2(popupWidth, popupMaxHeight));
-        
-        if (!ImGui.BeginCombo($"##{_config.ComboId}", preview, ImGuiComboFlags.HeightLarge))
-            return false;
-        
-        var changed = DrawContent();
-        ImGui.EndCombo();
         
         return changed;
     }
@@ -568,33 +544,54 @@ public class ComboWidget<TItem, TId>
         return changed;
     }
     
+    /// <summary>
+    /// Ordered array of group key providers for recursive grouping.
+    /// </summary>
+    private Func<TItem, string?>?[] GroupKeyProviders =>
+        [_groupKeyProvider, _subGroupKeyProvider, _tertiaryGroupKeyProvider];
+    
     private bool DrawGroupedItems(List<TItem> items)
+        => DrawGroupLevel(0, items);
+    
+    /// <summary>
+    /// Recursively draws grouped items at the specified nesting level.
+    /// Level 0 uses CollapsingHeader + Indent; deeper levels use TreeNodeEx + TreePop.
+    /// </summary>
+    private bool DrawGroupLevel(int level, List<TItem> items)
     {
-        var changed = false;
+        var providers = GroupKeyProviders;
+        if (level >= providers.Length || providers[level] == null)
+        {
+            var changed = false;
+            foreach (var item in items)
+                changed |= DrawItemRow(item);
+            return changed;
+        }
         
-        // Group by primary key
+        var keyProvider = providers[level]!;
         var grouped = items
-            .GroupBy(i => _groupKeyProvider!(i) ?? "Other")
+            .GroupBy(i => keyProvider(i) ?? "Other")
             .OrderBy(g => g.Key);
+        
+        var result = false;
         
         foreach (var group in grouped)
         {
             var groupItems = group.ToList();
-            var groupSelectedCount = groupItems.Count(i => _state.SelectedIds.Contains(i.Id));
-            var allSelected = groupSelectedCount == groupItems.Count && groupItems.Count > 0;
-            var partialSelected = groupSelectedCount > 0 && !allSelected;
+            var selectedCount = groupItems.Count(i => _state.SelectedIds.Contains(i.Id));
+            var allSelected = selectedCount == groupItems.Count && groupItems.Count > 0;
+            var partialSelected = selectedCount > 0 && !allSelected;
             
             ImGui.PushID(group.Key);
             
             if (_config.MultiSelect)
             {
-                // Checkbox for group selection
                 ImGui.PushStyleColor(ImGuiCol.CheckMark, partialSelected ? ComboStyles.PartialCheckmark : ComboStyles.FullCheckmark);
-                var groupCheck = allSelected || partialSelected;
-                if (ImGui.Checkbox($"##grp", ref groupCheck))
+                var check = allSelected || partialSelected;
+                if (ImGui.Checkbox($"##lvl{level}", ref check))
                 {
-                    changed = true;
-                    if (groupCheck)
+                    result = true;
+                    if (check)
                     {
                         foreach (var i in groupItems)
                             _state.SelectedIds.Add(i.Id);
@@ -613,158 +610,32 @@ public class ComboWidget<TItem, TId>
                 ImGui.SameLine();
             }
             
-            // Group header - starts collapsed
-            if (ImGui.CollapsingHeader(group.Key))
+            // Level 0 uses CollapsingHeader + manual indent; deeper levels use TreeNodeEx + TreePop
+            bool opened;
+            if (level == 0)
             {
-                ImGui.Indent();
+                opened = ImGui.CollapsingHeader(group.Key);
+                if (opened) ImGui.Indent();
+            }
+            else
+            {
+                opened = ImGui.TreeNodeEx(group.Key);
+            }
+            
+            if (opened)
+            {
+                result |= DrawGroupLevel(level + 1, groupItems);
                 
-                // Check for sub-grouping
-                if (_subGroupKeyProvider != null)
-                {
-                    changed |= DrawSubGroupedItems(groupItems);
-                }
+                if (level == 0)
+                    ImGui.Unindent();
                 else
-                {
-                    foreach (var item in groupItems)
-                    {
-                        changed |= DrawItemRow(item);
-                    }
-                }
-                
-                ImGui.Unindent();
+                    ImGui.TreePop();
             }
             
             ImGui.PopID();
         }
         
-        return changed;
-    }
-    
-    private bool DrawSubGroupedItems(List<TItem> items)
-    {
-        var changed = false;
-        
-        var subGrouped = items
-            .GroupBy(i => _subGroupKeyProvider!(i) ?? "Other")
-            .OrderBy(g => g.Key);
-        
-        foreach (var subGroup in subGrouped)
-        {
-            var subItems = subGroup.ToList();
-            var subSelectedCount = subItems.Count(i => _state.SelectedIds.Contains(i.Id));
-            var allSelected = subSelectedCount == subItems.Count && subItems.Count > 0;
-            var partialSelected = subSelectedCount > 0 && !allSelected;
-            
-            ImGui.PushID(subGroup.Key);
-            
-            if (_config.MultiSelect)
-            {
-                ImGui.PushStyleColor(ImGuiCol.CheckMark, partialSelected ? ComboStyles.PartialCheckmark : ComboStyles.FullCheckmark);
-                var subCheck = allSelected || partialSelected;
-                if (ImGui.Checkbox($"##sub", ref subCheck))
-                {
-                    changed = true;
-                    if (subCheck)
-                    {
-                        foreach (var i in subItems)
-                            _state.SelectedIds.Add(i.Id);
-                        _state.AllSelected = false;
-                    }
-                    else
-                    {
-                        foreach (var i in subItems)
-                            _state.SelectedIds.Remove(i.Id);
-                        if (_state.SelectedIds.Count == 0 && _config.ShowAllOption)
-                            _state.AllSelected = true;
-                    }
-                    MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                }
-                ImGui.PopStyleColor();
-                ImGui.SameLine();
-            }
-            
-            // Sub-group header - starts collapsed
-            if (ImGui.TreeNodeEx(subGroup.Key))
-            {
-                // Tertiary grouping or items
-                if (_tertiaryGroupKeyProvider != null)
-                {
-                    changed |= DrawTertiaryGroupedItems(subItems);
-                }
-                else
-                {
-                    foreach (var item in subItems)
-                    {
-                        changed |= DrawItemRow(item);
-                    }
-                }
-                
-                ImGui.TreePop();
-            }
-            
-            ImGui.PopID();
-        }
-        
-        return changed;
-    }
-    
-    private bool DrawTertiaryGroupedItems(List<TItem> items)
-    {
-        var changed = false;
-        
-        var tertGrouped = items
-            .GroupBy(i => _tertiaryGroupKeyProvider!(i) ?? "Other")
-            .OrderBy(g => g.Key);
-        
-        foreach (var tertGroup in tertGrouped)
-        {
-            var tertItems = tertGroup.ToList();
-            var tertSelectedCount = tertItems.Count(i => _state.SelectedIds.Contains(i.Id));
-            var allSelected = tertSelectedCount == tertItems.Count && tertItems.Count > 0;
-            var partialSelected = tertSelectedCount > 0 && !allSelected;
-            
-            ImGui.PushID(tertGroup.Key);
-            
-            if (_config.MultiSelect)
-            {
-                ImGui.PushStyleColor(ImGuiCol.CheckMark, partialSelected ? ComboStyles.PartialCheckmark : ComboStyles.FullCheckmark);
-                var tertCheck = allSelected || partialSelected;
-                if (ImGui.Checkbox($"##tert", ref tertCheck))
-                {
-                    changed = true;
-                    if (tertCheck)
-                    {
-                        foreach (var i in tertItems)
-                            _state.SelectedIds.Add(i.Id);
-                        _state.AllSelected = false;
-                    }
-                    else
-                    {
-                        foreach (var i in tertItems)
-                            _state.SelectedIds.Remove(i.Id);
-                        if (_state.SelectedIds.Count == 0 && _config.ShowAllOption)
-                            _state.AllSelected = true;
-                    }
-                    MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                }
-                ImGui.PopStyleColor();
-                ImGui.SameLine();
-            }
-            
-            // Tertiary group header - starts collapsed
-            if (ImGui.TreeNodeEx(tertGroup.Key))
-            {
-                foreach (var item in tertItems)
-                {
-                    changed |= DrawItemRow(item);
-                }
-                ImGui.TreePop();
-            }
-            
-            ImGui.PopID();
-        }
-        
-        return changed;
+        return result;
     }
     
     private bool DrawItemRow(TItem item)
@@ -804,19 +675,8 @@ public class ComboWidget<TItem, TId>
             var selected = isSelected;
             if (ImGui.Checkbox($"##sel", ref selected))
             {
-                if (selected)
-                {
-                    _state.SelectedIds.Add(item.Id);
-                    _state.AllSelected = false;
-                }
-                else
-                {
-                    _state.SelectedIds.Remove(item.Id);
-                    if (_state.SelectedIds.Count == 0 && _config.ShowAllOption)
-                        _state.AllSelected = true;
-                }
+                ToggleMultiSelectItem(item.Id);
                 changed = true;
-                MultiSelectionChanged?.Invoke(_state.SelectedIds);
             }
             ImGui.SameLine();
         }
@@ -838,15 +698,8 @@ public class ComboWidget<TItem, TId>
             // Allow clicking row to toggle
             if (ImGui.IsItemClicked())
             {
-                if (_state.SelectedIds.Contains(item.Id))
-                    _state.SelectedIds.Remove(item.Id);
-                else
-                {
-                    _state.SelectedIds.Add(item.Id);
-                    _state.AllSelected = false;
-                }
+                ToggleMultiSelectItem(item.Id);
                 changed = true;
-                MultiSelectionChanged?.Invoke(_state.SelectedIds);
             }
         }
         else
@@ -876,6 +729,25 @@ public class ComboWidget<TItem, TId>
         ImGui.PopID();
         
         return changed;
+    }
+    
+    /// <summary>
+    /// Toggles an item's multi-select state and fires the change event.
+    /// </summary>
+    private void ToggleMultiSelectItem(TId id)
+    {
+        if (_state.SelectedIds.Contains(id))
+        {
+            _state.SelectedIds.Remove(id);
+            if (_state.SelectedIds.Count == 0 && _config.ShowAllOption)
+                _state.AllSelected = true;
+        }
+        else
+        {
+            _state.SelectedIds.Add(id);
+            _state.AllSelected = false;
+        }
+        MultiSelectionChanged?.Invoke(_state.SelectedIds);
     }
     
     private bool DrawFavoriteStar(TId id)

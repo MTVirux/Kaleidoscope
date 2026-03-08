@@ -35,36 +35,9 @@ public static class ComboStyles
     // === Text Colors (uint ABGR format) ===
     
     /// <summary>Dimmed/secondary text color (gray) - ABGR format.</summary>
-    public const uint TextDimmed = 0xFF808080;
-    
-    /// <summary>Secondary info color (e.g., world name, category) - ABGR format.</summary>
     public const uint SecondaryText = 0xFF808080;
     
     // === Helper Methods ===
-    
-    /// <summary>
-    /// Converts ABGR uint to Vector4 (RGBA float format for ImGui.ColorEdit).
-    /// </summary>
-    public static Vector4 ToVector4(uint abgr)
-    {
-        var r = (abgr & 0xFF) / 255f;
-        var g = ((abgr >> 8) & 0xFF) / 255f;
-        var b = ((abgr >> 16) & 0xFF) / 255f;
-        var a = ((abgr >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-    
-    /// <summary>
-    /// Converts Vector4 (RGBA float) to ABGR uint format.
-    /// </summary>
-    public static uint FromVector4(Vector4 rgba)
-    {
-        var r = (uint)(rgba.X * 255) & 0xFF;
-        var g = (uint)(rgba.Y * 255) & 0xFF;
-        var b = (uint)(rgba.Z * 255) & 0xFF;
-        var a = (uint)(rgba.W * 255) & 0xFF;
-        return r | (g << 8) | (b << 16) | (a << 24);
-    }
     
     /// <summary>
     /// Gets the favorite star color based on state.
@@ -77,18 +50,4 @@ public static class ComboStyles
         if (isHovered) return FavoriteStarHovered;
         return isFavorite ? FavoriteStarOn : FavoriteStarOff;
     }
-    
-    // === Vector4 versions for ImGui styling ===
-    
-    /// <summary>Favorite star on color as Vector4.</summary>
-    public static readonly Vector4 FavoriteStarOnVec4 = ToVector4(FavoriteStarOn);
-    
-    /// <summary>Favorite star off color as Vector4.</summary>
-    public static readonly Vector4 FavoriteStarOffVec4 = ToVector4(FavoriteStarOff);
-    
-    /// <summary>Favorite star hovered color as Vector4.</summary>
-    public static readonly Vector4 FavoriteStarHoveredVec4 = ToVector4(FavoriteStarHovered);
-    
-    /// <summary>Secondary text color as Vector4.</summary>
-    public static readonly Vector4 SecondaryTextVec4 = ToVector4(SecondaryText);
 }
