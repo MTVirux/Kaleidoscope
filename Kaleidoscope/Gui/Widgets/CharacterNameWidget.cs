@@ -50,59 +50,7 @@ public sealed class CharacterNameWidget
     /// <param name="characterName">The character name to display.</param>
     /// <param name="contextId">Optional unique context ID for the popup. If null, uses the character ID.</param>
     public void Draw(ulong characterId, string characterName, string? contextId = null)
-    {
-        contextId ??= $"CharNameWidget_{characterId}";
-        
-        // Calculate text size and rectangle bounds
-        var textSize = ImGui.CalcTextSize(characterName);
-        var rectMin = ImGui.GetCursorScreenPos();
-        var rectMax = new Vector2(
-            rectMin.X + textSize.X + (Padding.X * 2),
-            rectMin.Y + textSize.Y + (Padding.Y * 2));
-        
-        // Draw hover background if enabled
-        var isHovered = ImGui.IsMouseHoveringRect(rectMin, rectMax);
-        if (ShowHoverBackground && isHovered)
-        {
-            var drawList = ImGui.GetWindowDrawList();
-            drawList.AddRectFilled(rectMin, rectMax, ImGui.GetColorU32(HoverBackgroundColor));
-        }
-        
-        // Position cursor with padding
-        var cursorPos = ImGui.GetCursorPos();
-        ImGui.SetCursorPos(new Vector2(cursorPos.X + Padding.X, cursorPos.Y + Padding.Y));
-        
-        // Draw the text
-        if (TextColor.HasValue)
-        {
-            ImGui.TextColored(TextColor.Value, characterName);
-        }
-        else
-        {
-            ImGui.TextUnformatted(characterName);
-        }
-        
-        // Create an invisible button over the entire area for right-click detection
-        ImGui.SetCursorScreenPos(rectMin);
-        ImGui.InvisibleButton($"##CharNameBtn_{characterId}", new Vector2(textSize.X + (Padding.X * 2), textSize.Y + (Padding.Y * 2)));
-        
-        // Right-click context menu
-        if (ImGui.BeginPopupContextItem(contextId))
-        {
-            ImGui.TextDisabled(characterName);
-            ImGui.Separator();
-            
-            if (ImGui.MenuItem("Hide Character"))
-            {
-                OnHideCharacter?.Invoke(characterId);
-            }
-            
-            ImGui.EndPopup();
-        }
-        
-        // Restore cursor position after the widget (move to next line)
-        ImGui.SetCursorScreenPos(new Vector2(rectMin.X, rectMax.Y));
-    }
+        => DrawCore(characterId, characterName, contextId, inline: false);
     
     /// <summary>
     /// Draws the character name widget inline (on the same line) with right-click context menu support.
@@ -112,6 +60,12 @@ public sealed class CharacterNameWidget
     /// <param name="characterName">The character name to display.</param>
     /// <param name="contextId">Optional unique context ID for the popup. If null, uses the character ID.</param>
     public void DrawInline(ulong characterId, string characterName, string? contextId = null)
+        => DrawCore(characterId, characterName, contextId, inline: true);
+
+    /// <summary>
+    /// Core rendering logic shared by <see cref="Draw"/> and <see cref="DrawInline"/>.
+    /// </summary>
+    private void DrawCore(ulong characterId, string characterName, string? contextId, bool inline)
     {
         contextId ??= $"CharNameWidget_{characterId}";
         
@@ -136,13 +90,9 @@ public sealed class CharacterNameWidget
         
         // Draw the text
         if (TextColor.HasValue)
-        {
             ImGui.TextColored(TextColor.Value, characterName);
-        }
         else
-        {
             ImGui.TextUnformatted(characterName);
-        }
         
         // Create an invisible button over the entire area for right-click detection
         ImGui.SetCursorScreenPos(rectMin);
@@ -155,14 +105,14 @@ public sealed class CharacterNameWidget
             ImGui.Separator();
             
             if (ImGui.MenuItem("Hide Character"))
-            {
                 OnHideCharacter?.Invoke(characterId);
-            }
             
             ImGui.EndPopup();
         }
         
-        // Restore cursor position to continue on the same line
-        ImGui.SetCursorScreenPos(new Vector2(rectMax.X, rectMin.Y));
+        // Restore cursor: next line for Draw, same line for DrawInline
+        ImGui.SetCursorScreenPos(inline
+            ? new Vector2(rectMax.X, rectMin.Y)
+            : new Vector2(rectMin.X, rectMax.Y));
     }
 }

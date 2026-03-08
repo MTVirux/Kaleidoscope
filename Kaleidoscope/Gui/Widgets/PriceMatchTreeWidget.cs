@@ -15,9 +15,6 @@ public sealed class PriceMatchTreeWidget
     private readonly UniversalisWorldData _worldData;
     private readonly string _id;
 
-    /// <summary>Width of the widget.</summary>
-    public float Width { get; set; } = 400f;
-
     /// <summary>
     /// Reference to the settings being edited. Changes are applied directly to this object.
     /// </summary>
@@ -436,15 +433,5 @@ public sealed class PriceMatchTreeWidget
     }
 
     private static void HelpMarker(string desc)
-    {
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 25.0f);
-            ImGui.TextUnformatted(desc);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HelpMarker(desc, wrapMultiplier: 25f);
 }

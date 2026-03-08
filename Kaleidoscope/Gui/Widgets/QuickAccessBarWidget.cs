@@ -70,15 +70,6 @@ public sealed class QuickAccessBarWidget
     private bool _wasVisible = false;
 
     /// <summary>
-    /// Whether the bar is pinned (stays visible without holding CTRL+ALT).
-    /// </summary>
-    public bool IsPinned
-    {
-        get => _isPinned;
-        set => _isPinned = value;
-    }
-
-    /// <summary>
     /// Creates a new quick access bar widget.
     /// </summary>
     /// <param name="stateService">State service for edit/lock/fullscreen state.</param>
@@ -483,7 +474,7 @@ public sealed class QuickAccessBarWidget
         if (bgColor != 0)
             dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
 
-        var icon = _isPinned ? FontAwesomeIcon.Thumbtack : FontAwesomeIcon.Thumbtack;
+        var icon = FontAwesomeIcon.Thumbtack;
         var iconText = icon.ToIconString();
         ImGui.PushFont(UiBuilder.IconFont);
         try
@@ -577,15 +568,7 @@ public sealed class QuickAccessBarWidget
             
         var fps = _frameLimiterService.TargetFramerate;
         
-        // Check if it's a preset value
-        if (_configurationService?.Config.FrameLimiterUseCustom == true)
-            return $"FPS: {fps}";
-            
-        return fps switch
-        {
-            240 or 144 or 90 or 75 or 60 or 30 => $"FPS: {fps}",
-            _ => $"FPS: {fps}"
-        };
+        return $"FPS: {fps}";
     }
     
     /// <summary>

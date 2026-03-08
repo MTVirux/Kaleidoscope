@@ -496,14 +496,6 @@ public sealed class WorldSelectionWidget
     }
 
     /// <summary>
-    /// Checks if a specific world ID is selected (directly or via DC/region).
-    /// </summary>
-    public bool IsWorldSelected(int worldId)
-    {
-        return GetEffectiveWorldIds().Contains(worldId);
-    }
-
-    /// <summary>
     /// Draws a simple single-world selector dropdown.
     /// </summary>
     /// <param name="worldData">World data from Universalis.</param>
