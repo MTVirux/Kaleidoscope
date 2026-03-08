@@ -19,15 +19,12 @@ public static class ImGuiHelpers
     /// <summary>
     /// Default horizontal padding added to each side of button text.
     /// </summary>
-    public const float DefaultButtonPadding = 12f;
+    private const float DefaultButtonPadding = 12f;
     
     /// <summary>
     /// Calculates the width of a button based on its text content plus padding.
     /// </summary>
-    /// <param name="text">The button text (can include ## for ID suffix).</param>
-    /// <param name="padding">Horizontal padding added to each side. Defaults to DefaultButtonPadding.</param>
-    /// <returns>The calculated button width.</returns>
-    public static float CalcButtonWidth(string text, float padding = DefaultButtonPadding)
+    private static float CalcButtonWidth(string text, float padding = DefaultButtonPadding)
     {
         // Strip ## ID suffix if present
         var displayText = text;
@@ -66,9 +63,9 @@ public static class ImGuiHelpers
     }
     
     /// <summary>
-    /// Default color used when no color is set or when cleared.
+    /// Default color used when no color is set or when cleared — alias for <see cref="UiColors.Muted"/>.
     /// </summary>
-    public static readonly Vector4 DefaultColor = new(0.5f, 0.5f, 0.5f, 1f);
+    public static readonly Vector4 DefaultColor = UiColors.Muted;
     
     /// <summary>
     /// Color picker with right-click to clear functionality.
@@ -373,129 +370,63 @@ public static class ImGuiHelpers
         return false;
     }
     
-    /// <summary>Standard danger button color (red).</summary>
-    public static readonly Vector4 DangerButtonColor = new(0.6f, 0.2f, 0.2f, 1f);
-    /// <summary>Standard danger button hover color.</summary>
-    public static readonly Vector4 DangerButtonHoveredColor = new(0.8f, 0.3f, 0.3f, 1f);
-    /// <summary>Standard danger button active color.</summary>
-    public static readonly Vector4 DangerButtonActiveColor = new(0.9f, 0.2f, 0.2f, 1f);
+    private static readonly Vector4 DangerButtonColor = new(0.6f, 0.2f, 0.2f, 1f);
+    private static readonly Vector4 DangerButtonHoveredColor = new(0.8f, 0.3f, 0.3f, 1f);
+    private static readonly Vector4 DangerButtonActiveColor = new(0.9f, 0.2f, 0.2f, 1f);
     
-    /// <summary>Standard success button color (green).</summary>
-    public static readonly Vector4 SuccessButtonColor = new(0.2f, 0.5f, 0.3f, 1f);
-    /// <summary>Standard success button hover color.</summary>
-    public static readonly Vector4 SuccessButtonHoveredColor = new(0.3f, 0.6f, 0.4f, 1f);
-    /// <summary>Standard success button active color.</summary>
-    public static readonly Vector4 SuccessButtonActiveColor = new(0.2f, 0.7f, 0.4f, 1f);
+    private static readonly Vector4 SuccessButtonColor = new(0.2f, 0.5f, 0.3f, 1f);
+    private static readonly Vector4 SuccessButtonHoveredColor = new(0.3f, 0.6f, 0.4f, 1f);
+    private static readonly Vector4 SuccessButtonActiveColor = new(0.2f, 0.7f, 0.4f, 1f);
     
-    /// <summary>Standard primary button color (blue-purple).</summary>
-    public static readonly Vector4 PrimaryButtonColor = new(0.3f, 0.3f, 0.5f, 1f);
-    /// <summary>Standard primary button hover color.</summary>
-    public static readonly Vector4 PrimaryButtonHoveredColor = new(0.4f, 0.4f, 0.6f, 1f);
-    /// <summary>Standard primary button active color.</summary>
-    public static readonly Vector4 PrimaryButtonActiveColor = new(0.35f, 0.35f, 0.7f, 1f);
+    private static readonly Vector4 PrimaryButtonColor = new(0.3f, 0.3f, 0.5f, 1f);
+    private static readonly Vector4 PrimaryButtonHoveredColor = new(0.4f, 0.4f, 0.6f, 1f);
+    private static readonly Vector4 PrimaryButtonActiveColor = new(0.35f, 0.35f, 0.7f, 1f);
     
     /// <summary>
-    /// Creates a danger-styled button (red).
+    /// Core helper: pushes 3 button style colors, invokes <paramref name="buttonFunc"/>, then pops.
     /// </summary>
-    /// <param name="label">Button label.</param>
-    /// <returns>True if clicked.</returns>
+    private static bool StyledButton(Vector4 normal, Vector4 hovered, Vector4 active, Func<bool> buttonFunc)
+    {
+        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, normal);
+        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, hovered);
+        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, active);
+        var clicked = buttonFunc();
+        ImGui.PopStyleColor(3);
+        return clicked;
+    }
+
+    /// <summary>Creates a danger-styled button (red).</summary>
     public static bool DangerButton(string label)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, DangerButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, DangerButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, DangerButtonActiveColor);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a danger-styled small button (red).
-    /// </summary>
+        => StyledButton(DangerButtonColor, DangerButtonHoveredColor, DangerButtonActiveColor, () => ImGui.Button(label));
+
+    /// <summary>Creates a danger-styled small button (red).</summary>
     public static bool DangerSmallButton(string label)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, DangerButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, DangerButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, DangerButtonActiveColor);
-        var clicked = ImGui.SmallButton(label);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a danger-styled button (red) with specified size.
-    /// </summary>
+        => StyledButton(DangerButtonColor, DangerButtonHoveredColor, DangerButtonActiveColor, () => ImGui.SmallButton(label));
+
+    /// <summary>Creates a danger-styled button (red) with specified size.</summary>
     public static bool DangerButton(string label, Vector2 size)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, DangerButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, DangerButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, DangerButtonActiveColor);
-        var clicked = ImGui.Button(label, size);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a success-styled button (green).
-    /// </summary>
+        => StyledButton(DangerButtonColor, DangerButtonHoveredColor, DangerButtonActiveColor, () => ImGui.Button(label, size));
+
+    /// <summary>Creates a success-styled button (green).</summary>
     public static bool SuccessButton(string label)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, SuccessButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, SuccessButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, SuccessButtonActiveColor);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a success-styled button (green) with specified size.
-    /// </summary>
+        => StyledButton(SuccessButtonColor, SuccessButtonHoveredColor, SuccessButtonActiveColor, () => ImGui.Button(label));
+
+    /// <summary>Creates a success-styled button (green) with specified size.</summary>
     public static bool SuccessButton(string label, Vector2 size)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, SuccessButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, SuccessButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, SuccessButtonActiveColor);
-        var clicked = ImGui.Button(label, size);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a primary-styled button (blue-purple).
-    /// </summary>
+        => StyledButton(SuccessButtonColor, SuccessButtonHoveredColor, SuccessButtonActiveColor, () => ImGui.Button(label, size));
+
+    /// <summary>Creates a primary-styled button (blue-purple).</summary>
     public static bool PrimaryButton(string label)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, PrimaryButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, PrimaryButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, PrimaryButtonActiveColor);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
-    
-    /// <summary>
-    /// Creates a primary-styled button (blue-purple) with specified size.
-    /// </summary>
+        => StyledButton(PrimaryButtonColor, PrimaryButtonHoveredColor, PrimaryButtonActiveColor, () => ImGui.Button(label));
+
+    /// <summary>Creates a primary-styled button (blue-purple) with specified size.</summary>
     public static bool PrimaryButton(string label, Vector2 size)
-    {
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.Button, PrimaryButtonColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonHovered, PrimaryButtonHoveredColor);
-        ImGui.PushStyleColor(Dalamud.Bindings.ImGui.ImGuiCol.ButtonActive, PrimaryButtonActiveColor);
-        var clicked = ImGui.Button(label, size);
-        ImGui.PopStyleColor(3);
-        return clicked;
-    }
+        => StyledButton(PrimaryButtonColor, PrimaryButtonHoveredColor, PrimaryButtonActiveColor, () => ImGui.Button(label, size));
     
     /// <summary>
-    /// Standard color for stat/info labels.
+    /// Standard color for stat/info values — alias for <see cref="UiColors.Value"/>.
     /// </summary>
-    public static readonly Vector4 StatLabelColor = new(0.7f, 0.7f, 0.7f, 1f);
-    
-    /// <summary>
-    /// Standard color for stat/info values.
-    /// </summary>
-    public static readonly Vector4 StatValueColor = new(0.9f, 0.9f, 0.9f, 1f);
+    public static readonly Vector4 StatValueColor = UiColors.Value;
     
     /// <summary>
     /// Dimmed color for secondary stat values.
@@ -517,29 +448,41 @@ public static class ImGuiHelpers
     }
     
     /// <summary>
-    /// Shows a simple tooltip if the previous item is hovered.
+    /// Shows a "(?) " help marker with a hover tooltip (word-wrapped).
+    /// Canonical implementation — replaces per-file copies in ConfigCategories and Widgets.
     /// </summary>
-    /// <param name="text">The tooltip text to display.</param>
-    public static void Tooltip(string text)
+    /// <param name="desc">Tooltip description text.</param>
+    /// <param name="sameLine">If true, calls <c>ImGui.SameLine()</c> before the marker.</param>
+    /// <param name="wrapMultiplier">Font-size multiplier for text wrap width (default 20).</param>
+    public static void HelpMarker(string desc, bool sameLine = false, float wrapMultiplier = 20f)
     {
+        if (sameLine) ImGui.SameLine();
+        ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(text);
+        {
+            ImGui.BeginTooltip();
+            ImGui.PushTextWrapPos(ImGui.GetFontSize() * wrapMultiplier);
+            ImGui.TextUnformatted(desc);
+            ImGui.PopTextWrapPos();
+            ImGui.EndTooltip();
+        }
     }
-    
+
     /// <summary>
-    /// Shows a multi-line tooltip if the previous item is hovered.
+    /// Shows a hover tooltip with text wrapping for the previously drawn item.
     /// </summary>
-    /// <param name="lines">Lines of text to display in the tooltip.</param>
-    public static void TooltipMultiline(params string[] lines)
+    /// <param name="desc">Tooltip text.</param>
+    /// <param name="wrapMultiplier">Font-size multiplier for text wrap width (default 20).</param>
+    public static void HoverTooltip(string desc, float wrapMultiplier = 20f)
     {
         if (!ImGui.IsItemHovered()) return;
-        
         ImGui.BeginTooltip();
-        foreach (var line in lines)
-            ImGui.TextUnformatted(line);
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * wrapMultiplier);
+        ImGui.TextUnformatted(desc);
+        ImGui.PopTextWrapPos();
         ImGui.EndTooltip();
     }
-    
+
     /// <summary>
     /// Shows a tooltip with a description and default value info.
     /// </summary>

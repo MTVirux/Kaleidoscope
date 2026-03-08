@@ -14,31 +14,6 @@ namespace Kaleidoscope.Gui.Common;
 /// </remarks>
 public static class UiColors
 {
-    // === Favorite Star Colors (uint ABGR format for ImGui native) ===
-    
-    /// <summary>Active favorite star color (yellow-gold) - ABGR format.</summary>
-    public const uint FavoriteStarOn = 0xFF00CFFF;
-    
-    /// <summary>Inactive favorite star color (dim white) - ABGR format.</summary>
-    public const uint FavoriteStarOff = 0x40FFFFFF;
-    
-    /// <summary>Hovered favorite star color (bright gold) - ABGR format.</summary>
-    public const uint FavoriteStarHovered = 0xFF40DFFF;
-    
-    // === Selection Colors (uint ABGR format) ===
-    
-    /// <summary>Selected item background color (dim green) - ABGR format.</summary>
-    public const uint SelectedBackground = 0x40008000;
-    
-    /// <summary>Dimmed/secondary text color (gray) - ABGR format.</summary>
-    public const uint TextDimmed = 0xFF808080;
-    
-    /// <summary>World/datacenter name color (dim gray) - ABGR format.</summary>
-    public const uint WorldColor = 0xFF808080;
-    
-    /// <summary>Category label color (dim gray) - ABGR format.</summary>
-    public const uint CategoryColor = 0xFF808080;
-    
     // Status colors (Vector4 format for ImGui styling)
     /// <summary>Connected/Success status - green.</summary>
     public static readonly Vector4 Connected = new(0.2f, 0.8f, 0.2f, 1f);

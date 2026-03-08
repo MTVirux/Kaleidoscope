@@ -35,29 +35,4 @@ public static class ColorUtils
         var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
         return r | (g << 8) | (b << 16) | (a << 24);
     }
-
-    /// <summary>
-    /// Creates a Vector4 color from RGB byte values with full opacity.
-    /// </summary>
-    /// <param name="r">Red component (0-255).</param>
-    /// <param name="g">Green component (0-255).</param>
-    /// <param name="b">Blue component (0-255).</param>
-    /// <returns>A Vector4 with the specified color and alpha = 1.</returns>
-    public static Vector4 FromRgb(byte r, byte g, byte b)
-    {
-        return new Vector4(r / 255f, g / 255f, b / 255f, 1f);
-    }
-
-    /// <summary>
-    /// Creates a Vector4 color from RGBA byte values.
-    /// </summary>
-    /// <param name="r">Red component (0-255).</param>
-    /// <param name="g">Green component (0-255).</param>
-    /// <param name="b">Blue component (0-255).</param>
-    /// <param name="a">Alpha component (0-255).</param>
-    /// <returns>A Vector4 with the specified color.</returns>
-    public static Vector4 FromRgba(byte r, byte g, byte b, byte a)
-    {
-        return new Vector4(r / 255f, g / 255f, b / 255f, a / 255f);
-    }
 }
