@@ -38,28 +38,4 @@ public static class AutoRetainerIpcHelper
 
         return characterWorlds;
     }
-
-    /// <summary>
-    /// Safely executes an AutoRetainer IPC call, returning a default value on failure.
-    /// </summary>
-    /// <typeparam name="T">The return type.</typeparam>
-    /// <param name="autoRetainerService">The AutoRetainer IPC service (may be null).</param>
-    /// <param name="action">The action to execute.</param>
-    /// <param name="defaultValue">The default value to return on failure.</param>
-    /// <returns>The result of the action, or the default value on failure.</returns>
-    public static T SafeCall<T>(AutoRetainerService? autoRetainerService, Func<AutoRetainerService, T> action, T defaultValue)
-    {
-        if (autoRetainerService == null || !autoRetainerService.IsAvailable)
-            return defaultValue;
-
-        try
-        {
-            return action(autoRetainerService);
-        }
-        catch (Exception)
-        {
-            // AutoRetainer IPC not available, returning default value
-            return defaultValue;
-        }
-    }
 }

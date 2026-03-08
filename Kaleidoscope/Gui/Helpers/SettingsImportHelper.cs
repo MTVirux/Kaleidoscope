@@ -113,23 +113,6 @@ public static class SettingsImportHelper
     }
 
     /// <summary>
-    /// Imports a HashSet of ulong values from various serialized formats.
-    /// </summary>
-    public static HashSet<ulong>? ImportUlongHashSet(Dictionary<string, object?>? settings, string key)
-    {
-        var list = ImportList<ulong>(settings, key, ConvertToUlong);
-        return list != null ? new HashSet<ulong>(list) : null;
-    }
-
-    /// <summary>
-    /// Imports a List of ulong values from various serialized formats.
-    /// </summary>
-    public static List<ulong>? ImportUlongList(Dictionary<string, object?>? settings, string key)
-    {
-        return ImportList<ulong>(settings, key, ConvertToUlong);
-    }
-
-    /// <summary>
     /// Imports a List of int values from various serialized formats.
     /// </summary>
     public static List<int>? ImportIntList(Dictionary<string, object?>? settings, string key)
@@ -139,17 +122,6 @@ public static class SettingsImportHelper
 
     /// <summary>
     /// Converts an object to ulong, handling various numeric types and Newtonsoft.Json tokens.
-    /// </summary>
-    private static ulong? ConvertToUlong(object item)
-    {
-        if (item is ulong ul) return ul;
-        if (item is long l) return (ulong)l;
-        if (item is int i) return (ulong)i;
-        if (item is Newtonsoft.Json.Linq.JValue jv) return jv.ToObject<ulong>();
-        if (ulong.TryParse(item.ToString(), out var parsed)) return parsed;
-        return null;
-    }
-
     /// <summary>
     /// Converts an object to int, handling various numeric types and Newtonsoft.Json tokens.
     /// </summary>
