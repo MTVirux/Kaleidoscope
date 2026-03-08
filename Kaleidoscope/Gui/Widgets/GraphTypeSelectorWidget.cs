@@ -37,45 +37,4 @@ public static class GraphTypeSelectorWidget
 
         return changed;
     }
-
-    /// <summary>
-    /// Draws a graph type selector with tooltip.
-    /// </summary>
-    /// <param name="label">Label for the dropdown.</param>
-    /// <param name="graphType">Reference to the graph type value.</param>
-    /// <param name="width">Width of the dropdown.</param>
-    /// <returns>True if the selection changed.</returns>
-    public static bool DrawWithTooltip(string label, ref GraphType graphType, float width = 150f)
-    {
-        var changed = Draw(label, ref graphType, width);
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 20.0f);
-            ImGui.TextUnformatted(
-                "Graph visualization style:\n" +
-                "• Stairs: Step chart showing discrete changes\n" +
-                "• Stairs Area: Step chart with filled area below");
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-
-        return changed;
-    }
-
-    /// <summary>
-    /// Gets a description of the graph type.
-    /// </summary>
-    /// <param name="graphType">The graph type.</param>
-    /// <returns>Human-readable description.</returns>
-    public static string GetDescription(GraphType graphType)
-    {
-        return graphType switch
-        {
-            GraphType.Stairs => "Step chart showing discrete value changes",
-            GraphType.StairsArea => "Step chart with filled area below",
-            _ => "Unknown graph type"
-        };
-    }
 }

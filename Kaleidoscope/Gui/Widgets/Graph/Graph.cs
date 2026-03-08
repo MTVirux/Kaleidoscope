@@ -60,10 +60,8 @@ public class GraphRenderer : IDisposable
     
     // === PreparedGraphData caching ===
     private PreparedGraphData? _cachedPreparedData;
-    private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)>? _lastSeriesData;
-    private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _lastSeriesDataWithColors;
+    private IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _lastSeriesData;
     private int _lastSeriesDataCount;
-    private int _lastSeriesDataWithColorsCount;
     private int _lastHiddenSeriesHash;
     private bool _lastAutoScrollEnabled;
     private DateTime _lastPreparedDataTime;
@@ -164,9 +162,17 @@ public class GraphRenderer : IDisposable
     
     /// <summary>
     /// Renders multiple data series overlaid on the same graph with time-aligned data.
+    /// Projects 2-tuple series to 3-tuple with null colors and delegates.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
     public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+        => RenderMultipleSeries(series.Select(s => (s.name, s.samples, (Vector4?)null)).ToList());
+    
+    /// <summary>
+    /// Renders multiple data series with optional custom colors.
+    /// </summary>
+    /// <param name="series">List of data series with names, timestamped values, and optional colors.</param>
+    public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
     {
         if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
         {
@@ -183,47 +189,6 @@ public class GraphRenderer : IDisposable
             _cachedPreparedData = data;
             _lastSeriesData = series;
             _lastSeriesDataCount = series.Count;
-            _lastHiddenSeriesHash = ComputeHiddenSeriesHash();
-            _lastAutoScrollEnabled = _config.AutoScrollEnabled;
-            _lastPreparedDataTime = DateTime.UtcNow;
-        }
-        else
-        {
-            data = _cachedPreparedData!;
-        }
-        
-        // Always update real-time limits when SimulateRealTimeUpdates is enabled
-        // This extends the last data point to "now" for continuous visualization
-        if (_config.SimulateRealTimeUpdates || _config.AutoScrollEnabled)
-        {
-            UpdateRealTimeLimits(data);
-        }
-        
-        DrawGraph(data);
-    }
-    
-    /// <summary>
-    /// Renders multiple data series with custom colors.
-    /// </summary>
-    /// <param name="series">List of data series with names, timestamped values, and optional colors.</param>
-    public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
-    {
-        if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
-        {
-            DrawNoDataMessage();
-            return;
-        }
-        
-        PreparedGraphData data;
-        var needsRecompute = NeedsPreparedDataRecomputeWithColors(series);
-        
-        if (needsRecompute)
-        {
-            data = PrepareTimeBasedDataWithColors(series);
-            _cachedPreparedData = data;
-            _lastSeriesDataWithColors = series;
-            _lastSeriesDataWithColorsCount = series.Count;
-            _lastSeriesData = null;
             _lastHiddenSeriesHash = ComputeHiddenSeriesHash();
             _lastAutoScrollEnabled = _config.AutoScrollEnabled;
             _lastPreparedDataTime = DateTime.UtcNow;
@@ -354,7 +319,6 @@ public class GraphRenderer : IDisposable
     {
         _cachedPreparedData = null;
         _lastSeriesData = null;
-        _lastSeriesDataWithColors = null;
     }
     
     #endregion
@@ -917,66 +881,11 @@ public class GraphRenderer : IDisposable
     /// <summary>
     /// Prepares time-based multi-series data for rendering.
     /// </summary>
-    private PreparedGraphData PrepareTimeBasedData(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> seriesData)
-    {
-        var (globalMinTime, totalTimeSpan) = CalculateTimeRange(seriesData);
-        var colors = ChartColors.GetSeriesColors(seriesData.Count, _config.Style.Colors);
-        
-        var series = new List<GraphSeriesData>();
-        for (var i = 0; i < seriesData.Count; i++)
-        {
-            var (name, samples) = seriesData[i];
-            if (samples == null || samples.Count == 0) continue;
-            
-            var pointCount = samples.Count + 1;
-            var xValues = GetOrCreatePooledArray(_pooledXArrays, name, pointCount);
-            var yValues = GetOrCreatePooledArray(_pooledYArrays, name, pointCount);
-            
-            for (var j = 0; j < samples.Count; j++)
-            {
-                xValues[j] = (samples[j].ts - globalMinTime).TotalSeconds;
-                yValues[j] = samples[j].value;
-            }
-            
-            xValues[samples.Count] = totalTimeSpan;
-            yValues[samples.Count] = samples[^1].value;
-            
-            series.Add(new GraphSeriesData
-            {
-                Name = name,
-                XValues = xValues,
-                YValues = yValues,
-                PointCount = pointCount,
-                Color = colors[i],
-                Visible = !_hiddenSeries.Contains(name),
-                GroupNames = GetGroupNamesForSeries(name)
-            });
-        }
-        
-        var (xMin, xMax) = CalculateXLimits(totalTimeSpan);
-        var (yMin, yMax) = CalculateYBounds(series, xMin, xMax);
-        
-        var result = new PreparedGraphData
-        {
-            Series = series,
-            Groups = _groups,
-            XMin = xMin,
-            XMax = xMax,
-            YMin = yMin,
-            YMax = yMax,
-            IsTimeBased = true,
-            StartTime = globalMinTime,
-            TotalTimeSpan = totalTimeSpan
-        };
-        result.UpdateVisibleSeriesCount();
-        return result;
-    }
-    
     /// <summary>
-    /// Prepares time-based multi-series data with custom colors.
+    /// Prepares time-based multi-series data with optional custom colors.
+    /// When a series has no custom color, a default palette color is assigned.
     /// </summary>
-    private PreparedGraphData PrepareTimeBasedDataWithColors(
+    private PreparedGraphData PrepareTimeBasedData(
         IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> seriesData)
     {
         var globalMinTime = DateTime.MaxValue;
@@ -1031,47 +940,28 @@ public class GraphRenderer : IDisposable
             });
         }
         
-        var (xMinC, xMaxC) = CalculateXLimits(totalTimeSpan);
-        var (yMinC, yMaxC) = CalculateYBounds(series, xMinC, xMaxC);
+        var (xMin, xMax) = CalculateXLimits(totalTimeSpan);
+        var (yMin, yMax) = CalculateYBounds(series, xMin, xMax);
         
-        var resultC = new PreparedGraphData
+        var result = new PreparedGraphData
         {
             Series = series,
             Groups = _groups,
-            XMin = xMinC,
-            XMax = xMaxC,
-            YMin = yMinC,
-            YMax = yMaxC,
+            XMin = xMin,
+            XMax = xMax,
+            YMin = yMin,
+            YMax = yMax,
             IsTimeBased = true,
             StartTime = globalMinTime,
             TotalTimeSpan = totalTimeSpan
         };
-        resultC.UpdateVisibleSeriesCount();
-        return resultC;
+        result.UpdateVisibleSeriesCount();
+        return result;
     }
     
     #endregion
     
     #region Helper Methods
-    
-    private (DateTime globalMinTime, double totalTimeSpan) CalculateTimeRange(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> seriesData)
-    {
-        var globalMinTime = DateTime.MaxValue;
-        var globalMaxTime = DateTime.UtcNow;
-        
-        foreach (var (_, samples) in seriesData)
-        {
-            if (samples == null || samples.Count == 0) continue;
-            if (samples[0].ts < globalMinTime) globalMinTime = samples[0].ts;
-        }
-        
-        if (globalMinTime == DateTime.MaxValue)
-            globalMinTime = DateTime.UtcNow.AddHours(-1);
-        
-        var totalTimeSpan = Math.Max(1, (globalMaxTime - globalMinTime).TotalSeconds);
-        return (globalMinTime, totalTimeSpan);
-    }
     
     /// <summary>
     /// Gets the list of group names that a series belongs to, based on the configured groups.
@@ -1202,7 +1092,7 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
     }
     
     private bool NeedsPreparedDataRecompute(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
+        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
     {
         if (_cachedPreparedData == null || _lastSeriesData == null)
             return true;
@@ -1212,29 +1102,6 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
         
         // Secondary check: detect in-place mutations via count change
         if (series.Count != _lastSeriesDataCount)
-            return true;
-        
-        var currentHiddenHash = ComputeHiddenSeriesHash();
-        if (currentHiddenHash != _lastHiddenSeriesHash)
-            return true;
-        
-        if (_config.AutoScrollEnabled != _lastAutoScrollEnabled)
-            return true;
-        
-        return false;
-    }
-    
-    private bool NeedsPreparedDataRecomputeWithColors(
-        IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
-    {
-        if (_cachedPreparedData == null || _lastSeriesDataWithColors == null)
-            return true;
-        
-        if (!ReferenceEquals(series, _lastSeriesDataWithColors))
-            return true;
-        
-        // Secondary check: detect in-place mutations via count change
-        if (series.Count != _lastSeriesDataWithColorsCount)
             return true;
         
         var currentHiddenHash = ComputeHiddenSeriesHash();
@@ -1318,7 +1185,6 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
         _pooledYArrays.Clear();
         _cachedPreparedData = null;
         _lastSeriesData = null;
-        _lastSeriesDataWithColors = null;
     }
     
     #endregion

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models;
 using Kaleidoscope.Gui.Widgets.Common;
@@ -531,14 +532,5 @@ public sealed class GraphWidget : ISettingsProvider
     /// Shows a tooltip for a settings control when hovered.
     /// </summary>
     private static void ShowSettingsTooltip(string tooltip)
-    {
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 20f);
-            ImGui.TextUnformatted(tooltip);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HoverTooltip(tooltip);
 }

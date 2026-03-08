@@ -47,57 +47,6 @@ public static class GraphLegend
     
     /// <summary>
     /// Draws a scrollable legend panel outside the plot area using ImGui child window.
-    /// </summary>
-    /// <param name="plotId">Unique identifier for the plot (used for child window ID).</param>
-    /// <param name="series">The series data to display in the legend.</param>
-    /// <param name="hiddenSeries">Set of hidden series names.</param>
-    /// <param name="width">Width of the legend panel.</param>
-    /// <param name="height">Height of the legend panel.</param>
-    /// <param name="onToggleSeries">Callback when a series visibility is toggled.</param>
-    /// <param name="style">Optional style configuration.</param>
-    public static void DrawScrollableLegend(
-        string plotId,
-        IReadOnlyList<GraphSeriesData> series,
-        HashSet<string> hiddenSeries,
-        float width,
-        float height,
-        Action<string>? onToggleSeries = null,
-        GraphStyleConfig? style = null)
-    {
-        DrawScrollableLegend(plotId, series, null, hiddenSeries, null, width, height, false, onToggleSeries, null, null, style);
-    }
-    
-    /// <summary>
-    /// Draws a scrollable legend panel outside the plot area using ImGui child window.
-    /// Supports both series and group toggling.
-    /// </summary>
-    /// <param name="plotId">Unique identifier for the plot (used for child window ID).</param>
-    /// <param name="series">The series data to display in the legend.</param>
-    /// <param name="groups">Optional groups to display in the legend (shown before series).</param>
-    /// <param name="hiddenSeries">Set of hidden series names.</param>
-    /// <param name="hiddenGroups">Set of hidden group names.</param>
-    /// <param name="width">Width of the legend panel.</param>
-    /// <param name="height">Height of the legend panel.</param>
-    /// <param name="onToggleSeries">Callback when a series visibility is toggled.</param>
-    /// <param name="onToggleGroup">Callback when a group visibility is toggled.</param>
-    /// <param name="style">Optional style configuration.</param>
-    public static void DrawScrollableLegend(
-        string plotId,
-        IReadOnlyList<GraphSeriesData> series,
-        IReadOnlyList<GraphSeriesGroup>? groups,
-        HashSet<string> hiddenSeries,
-        HashSet<string>? hiddenGroups,
-        float width,
-        float height,
-        Action<string>? onToggleSeries = null,
-        Action<string>? onToggleGroup = null,
-        GraphStyleConfig? style = null)
-    {
-        DrawScrollableLegend(plotId, series, groups, hiddenSeries, hiddenGroups, width, height, false, onToggleSeries, onToggleGroup, null, style);
-    }
-    
-    /// <summary>
-    /// Draws a scrollable legend panel outside the plot area using ImGui child window.
     /// Supports both series and group toggling and collapsible mode.
     /// </summary>
     /// <param name="plotId">Unique identifier for the plot (used for child window ID).</param>
@@ -120,7 +69,7 @@ public static class GraphLegend
         HashSet<string>? hiddenGroups,
         float width,
         float height,
-        bool isCollapsed,
+        bool isCollapsed = false,
         Action<string>? onToggleSeries = null,
         Action<string>? onToggleGroup = null,
         Action? onToggleCollapse = null,
@@ -346,57 +295,6 @@ public static class GraphLegend
     
     /// <summary>
     /// Draws an interactive legend inside the plot area using ImPlot's draw list.
-    /// </summary>
-    /// <param name="data">Prepared graph data containing series.</param>
-    /// <param name="hiddenSeries">Set of hidden series names.</param>
-    /// <param name="position">Legend position within the plot.</param>
-    /// <param name="legendHeightPercent">Maximum legend height as percentage of plot height (10-80).</param>
-    /// <param name="scrollOffset">Current scroll offset (pass result back on next frame).</param>
-    /// <param name="onToggleSeries">Callback when a series visibility is toggled.</param>
-    /// <param name="style">Optional style configuration.</param>
-    /// <returns>Result containing legend bounds and updated scroll offset.</returns>
-    public static InsideLegendResult DrawInsideLegend(
-        PreparedGraphData data,
-        HashSet<string> hiddenSeries,
-        LegendPosition position,
-        float legendHeightPercent,
-        float scrollOffset,
-        Action<string>? onToggleSeries = null,
-        GraphStyleConfig? style = null)
-    {
-        return DrawInsideLegend(data, hiddenSeries, null, position, legendHeightPercent, scrollOffset, false, onToggleSeries, null, null, style);
-    }
-    
-    /// <summary>
-    /// Draws an interactive legend inside the plot area using ImPlot's draw list.
-    /// Supports both series and group toggling.
-    /// </summary>
-    /// <param name="data">Prepared graph data containing series and groups.</param>
-    /// <param name="hiddenSeries">Set of hidden series names.</param>
-    /// <param name="hiddenGroups">Set of hidden group names.</param>
-    /// <param name="position">Legend position within the plot.</param>
-    /// <param name="legendHeightPercent">Maximum legend height as percentage of plot height (10-80).</param>
-    /// <param name="scrollOffset">Current scroll offset (pass result back on next frame).</param>
-    /// <param name="onToggleSeries">Callback when a series visibility is toggled.</param>
-    /// <param name="onToggleGroup">Callback when a group visibility is toggled.</param>
-    /// <param name="style">Optional style configuration.</param>
-    /// <returns>Result containing legend bounds and updated scroll offset.</returns>
-    public static InsideLegendResult DrawInsideLegend(
-        PreparedGraphData data,
-        HashSet<string> hiddenSeries,
-        HashSet<string>? hiddenGroups,
-        LegendPosition position,
-        float legendHeightPercent,
-        float scrollOffset,
-        Action<string>? onToggleSeries = null,
-        Action<string>? onToggleGroup = null,
-        GraphStyleConfig? style = null)
-    {
-        return DrawInsideLegend(data, hiddenSeries, hiddenGroups, position, legendHeightPercent, scrollOffset, false, onToggleSeries, onToggleGroup, null, style);
-    }
-    
-    /// <summary>
-    /// Draws an interactive legend inside the plot area using ImPlot's draw list.
     /// Supports both series and group toggling, and collapsible mode.
     /// </summary>
     /// <param name="data">Prepared graph data containing series and groups.</param>
@@ -414,11 +312,11 @@ public static class GraphLegend
     public static InsideLegendResult DrawInsideLegend(
         PreparedGraphData data,
         HashSet<string> hiddenSeries,
-        HashSet<string>? hiddenGroups,
-        LegendPosition position,
-        float legendHeightPercent,
-        float scrollOffset,
-        bool isCollapsed,
+        HashSet<string>? hiddenGroups = null,
+        LegendPosition position = LegendPosition.InsideTopRight,
+        float legendHeightPercent = 50f,
+        float scrollOffset = 0f,
+        bool isCollapsed = false,
         Action<string>? onToggleSeries = null,
         Action<string>? onToggleGroup = null,
         Action? onToggleCollapse = null,
