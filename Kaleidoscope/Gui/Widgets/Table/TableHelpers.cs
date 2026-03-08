@@ -115,36 +115,76 @@ public static class TableHelpers
             _ => 0f
         };
         
-        // Store original cursor position for text rendering
-        var startCursorPos = ImGui.GetCursorPos();
+        // Capture screen position before TableHeader for draw list text rendering.
+        // GetCursorScreenPos converts local cursor to absolute screen coords.
+        var startScreenPos = ImGui.GetCursorScreenPos();
         
-        // Render TableHeader with empty label for sort arrow and click handling
+        // Pass the real label to TableHeader so ImGui's internal sort logic can fire.
+        // TableHeader("") with an empty string does NOT trigger sort spec updates.
+        // Make ImGui's own label text invisible by setting text color to transparent,
+        // then render the aligned text via draw list afterward.
         ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
-        ImGui.TableHeader(string.Empty);
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0, 0, 0, 0));
+        ImGui.TableHeader(label);
+        ImGui.PopStyleColor();
         ImGui.PopStyleVar();
         
         // Check right-click immediately after TableHeader while it's still the "last item".
         // This covers the full header interaction area including resize grips.
         rightClicked = ImGui.IsItemClicked(ImGuiMouseButton.Right);
         
-        // Go back and render aligned text on top
-        ImGui.SameLine();
-        var afterHeaderCursor = ImGui.GetCursorPos();
-        ImGui.SetCursorPos(new Vector2(
-            startCursorPos.X + Math.Max(0f, offsetX),
-            startCursorPos.Y + offsetY));
+        // Render aligned text via the draw list so it doesn't create an ImGui item
+        // that would interfere with TableHeader's click/drag handling for sorting.
+        // No SameLine() or cursor manipulation — just draw at the pre-calculated screen position.
+        var textScreenPos = new Vector2(
+            startScreenPos.X + Math.Max(0f, offsetX),
+            startScreenPos.Y + offsetY);
+        var drawList = ImGui.GetWindowDrawList();
+        var textColor = color.HasValue
+            ? ImGui.GetColorU32(color.Value)
+            : ImGui.GetColorU32(ImGuiCol.Text);
+        drawList.AddText(textScreenPos, textColor, label);
         
-        if (color.HasValue)
+        // Draw sort direction arrow manually since transparent text also hides ImGui's built-in arrow.
+        var sortSpecs = ImGui.TableGetSortSpecs();
+        if (sortSpecs.SpecsCount > 0)
         {
-            ImGui.TextColored(color.Value, label);
+            var currentCol = ImGui.TableGetColumnIndex();
+            for (var i = 0; i < sortSpecs.SpecsCount; i++)
+            {
+                var spec = sortSpecs.Specs[i];
+                if (spec.ColumnIndex != currentCol)
+                    continue;
+                
+                var arrowSize = 7f * ImGui.GetIO().FontGlobalScale;
+                var arrowPadding = 4f;
+                var lineHeight = ImGui.GetTextLineHeight();
+                var arrowX = startScreenPos.X + cellWidth - arrowSize - arrowPadding;
+                var arrowCenterY = startScreenPos.Y + lineHeight * 0.5f;
+                var arrowHalf = arrowSize * 0.35f;
+                var arrowColor = ImGui.GetColorU32(ImGuiCol.Text);
+                
+                if (spec.SortDirection == ImGuiSortDirection.Ascending)
+                {
+                    // Up arrow ▲
+                    drawList.AddTriangleFilled(
+                        new Vector2(arrowX + arrowSize * 0.5f, arrowCenterY - arrowHalf),
+                        new Vector2(arrowX, arrowCenterY + arrowHalf),
+                        new Vector2(arrowX + arrowSize, arrowCenterY + arrowHalf),
+                        arrowColor);
+                }
+                else
+                {
+                    // Down arrow ▼
+                    drawList.AddTriangleFilled(
+                        new Vector2(arrowX, arrowCenterY - arrowHalf),
+                        new Vector2(arrowX + arrowSize, arrowCenterY - arrowHalf),
+                        new Vector2(arrowX + arrowSize * 0.5f, arrowCenterY + arrowHalf),
+                        arrowColor);
+                }
+                break;
+            }
         }
-        else
-        {
-            ImGui.TextUnformatted(label);
-        }
-        
-        // Restore cursor to after header for proper layout
-        ImGui.SetCursorPos(afterHeaderCursor);
     }
     
     /// <summary>
