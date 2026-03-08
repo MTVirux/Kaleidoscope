@@ -26,11 +26,6 @@ public sealed class DatePickerWidget
     private int _minute;
 
     /// <summary>
-    /// Gets whether the popup is currently open.
-    /// </summary>
-    public bool IsPopupOpen { get; private set; }
-
-    /// <summary>
     /// Gets the currently selected date and time.
     /// </summary>
     public DateTime SelectedDateTime
@@ -91,7 +86,6 @@ public sealed class DatePickerWidget
         if (ImGui.Button($"{displayText}##{_id}"))
         {
             ImGui.OpenPopup(popupId);
-            IsPopupOpen = true;
             _displayedMonth = new DateTime(_selectedDate.Year, _selectedDate.Month, 1);
         }
 
@@ -101,21 +95,8 @@ public sealed class DatePickerWidget
             changed = DrawCalendarPopup();
             ImGui.EndPopup();
         }
-        else
-        {
-            IsPopupOpen = false;
-        }
 
         return changed;
-    }
-
-    /// <summary>
-    /// Draws an inline version without popup (always visible calendar).
-    /// </summary>
-    /// <returns>True if the date changed this frame.</returns>
-    public bool DrawInline()
-    {
-        return DrawCalendarContent();
     }
 
     private bool DrawCalendarPopup()
@@ -139,7 +120,7 @@ public sealed class DatePickerWidget
         var changed = false;
 
         // Month/Year navigation header
-        changed |= DrawNavigationHeader();
+        DrawNavigationHeader();
 
         ImGui.Spacing();
 
@@ -161,10 +142,8 @@ public sealed class DatePickerWidget
         return changed;
     }
 
-    private bool DrawNavigationHeader()
+    private void DrawNavigationHeader()
     {
-        var changed = false;
-
         // Previous year
         if (ImGui.ArrowButton($"{_id}_prevYear", ImGuiDir.Left))
         {
@@ -210,8 +189,6 @@ public sealed class DatePickerWidget
         {
             _displayedMonth = _displayedMonth.AddYears(1);
         }
-
-        return changed;
     }
 
     private void DrawDayNamesHeader()
@@ -270,16 +247,9 @@ public sealed class DatePickerWidget
                     var currentDate = new DateTime(_displayedMonth.Year, _displayedMonth.Month, day);
                     var isSelected = currentDate == _selectedDate;
                     var isToday = currentDate == today;
-                    var isDisabled = (MinDate.HasValue && currentDate < MinDate.Value.Date) ||
-                                    (MaxDate.HasValue && currentDate > MaxDate.Value.Date);
 
                     // Style the button
-                    if (isDisabled)
-                    {
-                        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.5f, 0.5f, 0.5f, 0.5f));
-                        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.2f, 0.2f, 0.2f));
-                    }
-                    else if (isSelected)
+                    if (isSelected)
                     {
                         // Highlight selected date with a distinct color
                         ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.26f, 0.59f, 0.98f, 0.80f)); // Blue
@@ -290,24 +260,14 @@ public sealed class DatePickerWidget
                         ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.26f, 0.59f, 0.98f, 0.40f));
                     }
 
-                    if (isDisabled)
-                    {
-                        ImGui.BeginDisabled();
-                    }
-                    
-                    if (ImGui.Button($"{day}##{_id}_{day}", cellSize) && !isDisabled)
+                    if (ImGui.Button($"{day}##{_id}_{day}", cellSize))
                     {
                         _selectedDate = currentDate;
                         changed = true;
                         DateTimeChanged?.Invoke(SelectedDateTime);
                     }
-                    
-                    if (isDisabled)
-                    {
-                        ImGui.EndDisabled();
-                        ImGui.PopStyleColor(2);
-                    }
-                    else if (isSelected || isToday)
+
+                    if (isSelected || isToday)
                     {
                         ImGui.PopStyleColor();
                     }
@@ -367,34 +327,22 @@ public sealed class DatePickerWidget
         ImGui.SameLine();
         ImGui.Spacing();
         ImGui.SameLine();
-
-        if (ImGui.SmallButton($"00:00##{_id}_midnight"))
-        {
-            _hour = 0;
-            _minute = 0;
-            changed = true;
-            DateTimeChanged?.Invoke(SelectedDateTime);
-        }
+        changed |= DrawTimePresetButton("00:00", "midnight", 0, 0);
         ImGui.SameLine();
-
-        if (ImGui.SmallButton($"12:00##{_id}_noon"))
-        {
-            _hour = 12;
-            _minute = 0;
-            changed = true;
-            DateTimeChanged?.Invoke(SelectedDateTime);
-        }
+        changed |= DrawTimePresetButton("12:00", "noon", 12, 0);
         ImGui.SameLine();
-
-        if (ImGui.SmallButton($"23:59##{_id}_endofday"))
-        {
-            _hour = 23;
-            _minute = 59;
-            changed = true;
-            DateTimeChanged?.Invoke(SelectedDateTime);
-        }
+        changed |= DrawTimePresetButton("23:59", "endofday", 23, 59);
 
         return changed;
+    }
+
+    private bool DrawTimePresetButton(string label, string id, int hour, int minute)
+    {
+        if (!ImGui.SmallButton($"{label}##{_id}_{id}")) return false;
+        _hour = hour;
+        _minute = minute;
+        DateTimeChanged?.Invoke(SelectedDateTime);
+        return true;
     }
 
     private float GetCellWidth()
@@ -403,25 +351,6 @@ public sealed class DatePickerWidget
         var availWidth = ImGui.GetContentRegionAvail().X;
         var spacing = ImGui.GetStyle().ItemSpacing.X * 6;
         return Math.Max(24f, (availWidth - spacing) / 7f);
-    }
-
-    /// <summary>
-    /// Sets the minimum selectable date.
-    /// </summary>
-    public DateTime? MinDate { get; set; }
-
-    /// <summary>
-    /// Sets the maximum selectable date.
-    /// </summary>
-    public DateTime? MaxDate { get; set; }
-
-    /// <summary>
-    /// Navigates the calendar to show the specified date's month.
-    /// </summary>
-    /// <param name="date">The date to navigate to.</param>
-    public void NavigateTo(DateTime date)
-    {
-        _displayedMonth = new DateTime(date.Year, date.Month, 1);
     }
 
     /// <summary>
