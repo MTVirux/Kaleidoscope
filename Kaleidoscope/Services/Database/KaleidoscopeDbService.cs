@@ -198,6 +198,20 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
                     cacheCmd.ExecuteNonQuery();
                 }
 
+                // Keep temp tables/indexes in memory — benefits CTE/window-function-heavy queries
+                using (var tempCmd = _connection.CreateCommand())
+                {
+                    tempCmd.CommandText = "PRAGMA temp_store = MEMORY";
+                    tempCmd.ExecuteNonQuery();
+                }
+
+                // Safety net: if SQLite-level lock contention occurs despite C# locks, wait instead of failing
+                using (var busyCmd = _connection.CreateCommand())
+                {
+                    busyCmd.CommandText = "PRAGMA busy_timeout = 5000";
+                    busyCmd.ExecuteNonQuery();
+                }
+
                 EnsureSchema();
                 
                 EnsureReadConnection();
@@ -241,6 +255,20 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
             {
                 cacheCmd.CommandText = $"PRAGMA cache_size = -{_cacheSizeKb}";
                 cacheCmd.ExecuteNonQuery();
+            }
+
+            // Keep temp tables/indexes in memory for CTE/window-function queries
+            using (var tempCmd = _readConnection.CreateCommand())
+            {
+                tempCmd.CommandText = "PRAGMA temp_store = MEMORY";
+                tempCmd.ExecuteNonQuery();
+            }
+
+            // Safety net for SQLite-level lock contention
+            using (var busyCmd = _readConnection.CreateCommand())
+            {
+                busyCmd.CommandText = "PRAGMA busy_timeout = 5000";
+                busyCmd.ExecuteNonQuery();
             }
         }
         catch (Exception ex)
