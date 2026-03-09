@@ -6,7 +6,7 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// Manages JSON configuration files in the plugin config directory.
 /// </summary>
-public class ConfigManager
+public sealed class ConfigManager
 {
     private readonly string _folder;
 
@@ -33,7 +33,7 @@ public class ConfigManager
         }
         catch (Exception ex)
         {
-            LogService.Warning($"Failed to load config '{fileName}', using default: {ex.Message}");
+            LogService.Warning(LogCategory.Config, $"Failed to load config '{fileName}', using default: {ex.Message}");
         }
 
         var defaultValue = factory();
@@ -46,12 +46,17 @@ public class ConfigManager
         try
         {
             var filePath = FilePath(fileName);
+            var tempPath = filePath + ".tmp";
             var text = JsonConvert.SerializeObject(obj, Formatting.Indented);
-            File.WriteAllText(filePath, text);
+            
+            // Write to temp file first, then atomically replace the target.
+            // This prevents corruption if the process crashes mid-write.
+            File.WriteAllText(tempPath, text);
+            File.Move(tempPath, filePath, overwrite: true);
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save config '{fileName}': {ex.Message}", ex);
+            LogService.Error(LogCategory.Config, $"Failed to save config '{fileName}': {ex.Message}", ex);
         }
     }
 }

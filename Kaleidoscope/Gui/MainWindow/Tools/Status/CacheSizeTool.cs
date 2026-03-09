@@ -3,13 +3,11 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Inventory;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// A tool that displays the current size of the inventory memory cache.
-/// </summary>
-public class CacheSizeTool : StatusToolBase
+public sealed class CacheSizeTool : StatusToolBase
 {
     public override string ToolName => "Cache Size";
     
@@ -37,7 +35,6 @@ public class CacheSizeTool : StatusToolBase
         {
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
-            // Update cached values periodically
             var now = DateTime.UtcNow;
             if (now - _lastCacheCheck >= _cacheCheckInterval)
             {
@@ -45,7 +42,6 @@ public class CacheSizeTool : StatusToolBase
                 _lastCacheCheck = now;
             }
 
-            // Size line (primary info)
             var sizeStr = FormatUtils.FormatByteSize(_estimatedBytes);
             ImGui.TextColored(UiColors.Info, "Size:");
             ImGui.SameLine();
@@ -55,10 +51,8 @@ public class CacheSizeTool : StatusToolBase
             {
                 ImGui.Spacing();
 
-                // Character and entry count
                 ImGui.TextColored(UiColors.Info, $"  {_cachedCharacterCount} characters, {_cachedEntryCount} entries");
 
-                // Item count
                 ImGui.TextColored(UiColors.Info, $"  {_cachedItemCount:N0} items cached");
             }
 
@@ -66,7 +60,7 @@ public class CacheSizeTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CacheSizeTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -74,7 +68,6 @@ public class CacheSizeTool : StatusToolBase
     {
         try
         {
-            // Get all cached inventories to calculate stats
             var allInventories = _inventoryCacheService.GetAllInventories();
 
             _cachedCharacterCount = allInventories.Select(e => e.CharacterId).Distinct().Count();
@@ -83,15 +76,15 @@ public class CacheSizeTool : StatusToolBase
 
             // Estimate memory usage:
             // - InventoryCacheEntry: ~100 bytes base (strings, timestamps, etc.)
-            // - InventoryItemSnapshot: ~60 bytes each (uint, long, flags, etc.)
+            // - InventoryItemSnapshot: ~24 bytes each (readonly record struct, stored inline in List<T> array)
             // - Dictionary overhead per character: ~50 bytes
             _estimatedBytes = (_cachedCharacterCount * 50L) +
                               (_cachedEntryCount * 100L) +
-                              (_cachedItemCount * 60L);
+                              (_cachedItemCount * 24L);
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[CacheSizeTool] Failed to update cache stats: {ex.Message}");
+            LogDebug($"Failed to update cache stats: {ex.Message}");
             _cachedCharacterCount = 0;
             _cachedEntryCount = 0;
             _cachedItemCount = 0;

@@ -260,7 +260,7 @@ public sealed class LayoutsCategory
                 }
             }
         }
-        catch (Exception ex) { LogService.Debug($"[LayoutsCategory] Import JSON failed: {ex.Message}"); }
+        catch (Exception ex) { LogService.Debug(LogCategory.Layout, $"[LayoutsCategory] Import JSON failed: {ex.Message}"); }
     }
 
     private void CreateNewLayout(LayoutType layoutType)
@@ -298,7 +298,7 @@ public sealed class LayoutsCategory
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[LayoutsCategory] Create layout failed: {ex.Message}");
+            LogService.Debug(LogCategory.Layout, $"[LayoutsCategory] Create layout failed: {ex.Message}");
         }
     }
 }

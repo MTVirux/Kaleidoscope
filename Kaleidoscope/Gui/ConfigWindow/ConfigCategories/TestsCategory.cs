@@ -1,9 +1,10 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using System.Diagnostics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
@@ -15,13 +16,14 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 public sealed class TestsCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly AutoRetainerIpcService _arIpcService;
+    private readonly AutoRetainerService _arIpcService;
     private readonly UniversalisService _universalisService;
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly ConfigurationService _configService;
     private readonly MarketDataCacheService _marketDataCacheService;
 
     // Test results storage
+    private readonly object _testResultsLock = new();
     private readonly List<TestResult> _testResults = new();
     private bool _isRunningTests = false;
     private string _currentTestName = "";
@@ -29,9 +31,15 @@ public sealed class TestsCategory
     // Individual test state
     private bool _dbConnectionTested = false;
     private bool _dbReadWriteTested = false;
+    private bool _dbSanityTested = false;
     private bool _arIpcTested = false;
     private bool _universalisTested = false;
     private bool _webSocketTested = false;
+    
+    // Service test state
+    private bool _cacheServiceTested = false;
+    private bool _registryTested = false;
+    private bool _configServiceTested = false;
     
     // Cache architecture test state
     private bool _cacheInitTested = false;
@@ -67,7 +75,7 @@ public sealed class TestsCategory
 
     public TestsCategory(
         CurrencyTrackerService currencyTrackerService,
-        AutoRetainerIpcService arIpcService,
+        AutoRetainerService arIpcService,
         UniversalisService universalisService,
         UniversalisWebSocketService webSocketService,
         ConfigurationService configService,
@@ -94,7 +102,7 @@ public sealed class TestsCategory
         // Run all tests button
         if (ImGui.Button("Run All Tests") && !_isRunningTests)
         {
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
             RunAllTestsAsync();
         }
 
@@ -102,7 +110,7 @@ public sealed class TestsCategory
 
         if (ImGui.Button("Clear Results"))
         {
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
             _dbConnectionTested = false;
             _dbReadWriteTested = false;
             _arIpcTested = false;
@@ -136,7 +144,7 @@ public sealed class TestsCategory
 
     private void DrawDatabaseTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Database Tests", true))
+        if (TreeHelpers.DrawCollapsingSection("Database Tests", true))
         {
             ImGui.Indent();
 
@@ -164,15 +172,18 @@ public sealed class TestsCategory
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Run DB Sanity Check"))
             {
+                _dbSanityTested = true;
                 RunSingleTest("DB Sanity Check", TestDbSanity);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_dbSanityTested, "DB Sanity Check");
 
             // DB Stats
-            if (MTTreeHelpers.DrawSection("Database Statistics"))
+            if (TreeHelpers.DrawSection("Database Statistics"))
             {
                 DrawDbStats();
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
 
             ImGui.Unindent();
@@ -181,7 +192,7 @@ public sealed class TestsCategory
 
     private void DrawIntegrationTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Integration Tests", true))
+        if (TreeHelpers.DrawCollapsingSection("Integration Tests", true))
         {
             ImGui.Indent();
 
@@ -233,7 +244,7 @@ public sealed class TestsCategory
 
     private void DrawServiceTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Service Tests", false))
+        if (TreeHelpers.DrawCollapsingSection("Service Tests", false))
         {
             ImGui.Indent();
 
@@ -241,25 +252,34 @@ public sealed class TestsCategory
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Cache Service"))
             {
+                _cacheServiceTested = true;
                 RunSingleTest("Cache Service", TestCacheService);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_cacheServiceTested, "Cache Service");
 
             // Registry Test
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Tracked Data Registry"))
             {
+                _registryTested = true;
                 RunSingleTest("Tracked Data Registry", TestRegistry);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_registryTested, "Tracked Data Registry");
 
             // Config Service Test
             ImGui.BeginDisabled(_isRunningTests);
             if (ImGui.Button("Test Config Service"))
             {
+                _configServiceTested = true;
                 RunSingleTest("Config Service", TestConfigService);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            DrawTestStatus(_configServiceTested, "Config Service");
 
             ImGui.Unindent();
         }
@@ -267,7 +287,7 @@ public sealed class TestsCategory
 
     private void DrawCacheArchitectureTests()
     {
-        if (MTTreeHelpers.DrawCollapsingSection("Cache Architecture Tests", false))
+        if (TreeHelpers.DrawCollapsingSection("Cache Architecture Tests", false))
         {
             ImGui.Indent();
 
@@ -495,10 +515,10 @@ public sealed class TestsCategory
             ImGui.Spacing();
             
             // Cache Statistics Display
-            if (MTTreeHelpers.DrawSection("Cache Statistics"))
+            if (TreeHelpers.DrawSection("Cache Statistics"))
             {
                 DrawCacheStats();
-                MTTreeHelpers.EndSection();
+                TreeHelpers.EndSection();
             }
 
             ImGui.Unindent();
@@ -577,23 +597,25 @@ public sealed class TestsCategory
 
     private void DrawTestResults()
     {
-        if (_testResults.Count == 0) return;
+        List<TestResult> resultsSnapshot;
+        lock (_testResultsLock)
+        {
+            if (_testResults.Count == 0) return;
+            resultsSnapshot = _testResults.ToList();
+        }
 
         ImGui.Separator();
         ImGui.TextUnformatted("Test Results");
         ImGui.Separator();
 
         // Summary
-        var passed = _testResults.Count(r => r.Passed);
-        var failed = _testResults.Count(r => !r.Passed);
+        var passed = resultsSnapshot.Count(r => r.Passed);
+        var failed = resultsSnapshot.Count(r => !r.Passed);
         var summaryColor = failed == 0 
             ? new System.Numerics.Vector4(0.5f, 1f, 0.5f, 1f) 
             : new System.Numerics.Vector4(1f, 0.5f, 0.5f, 1f);
         ImGui.TextColored(summaryColor, $"Passed: {passed} | Failed: {failed}");
         ImGui.Spacing();
-
-        // Take a snapshot to avoid concurrent modification during iteration
-        var resultsSnapshot = _testResults.ToList();
 
         // Individual results in scrollable area
         var availHeight = Math.Min(200f, resultsSnapshot.Count * 25f + 10f);
@@ -631,7 +653,8 @@ public sealed class TestsCategory
             return;
         }
 
-        var result = _testResults.LastOrDefault(r => r.Name.Contains(testName));
+        TestResult? result;
+        lock (_testResultsLock) { result = _testResults.LastOrDefault(r => r.Name.Contains(testName)); }
         if (result == null)
         {
             ImGui.TextColored(new System.Numerics.Vector4(0.5f, 0.5f, 0.5f, 1f), "Not run");
@@ -678,7 +701,7 @@ public sealed class TestsCategory
             try
             {
                 var result = test();
-                _testResults.Add(result);
+                lock (_testResultsLock) { _testResults.Add(result); }
                 
                 // Update specific test status flags
                 if (name.Contains("DB Connection")) _dbConnectionTested = true;
@@ -689,7 +712,7 @@ public sealed class TestsCategory
             }
             catch (Exception ex)
             {
-                _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message));
+                lock (_testResultsLock) { _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message)); }
             }
             finally
             {
@@ -704,7 +727,7 @@ public sealed class TestsCategory
         try
         {
             _isRunningTests = true;
-            _testResults.Clear();
+            lock (_testResultsLock) { _testResults.Clear(); }
 
             var tests = new List<(string Name, Func<TestResult> Test)>
         {
@@ -749,11 +772,11 @@ public sealed class TestsCategory
             try
             {
                 var result = await Task.Run(test);
-                _testResults.Add(result);
+                lock (_testResultsLock) { _testResults.Add(result); }
             }
             catch (Exception ex)
             {
-                _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message));
+                lock (_testResultsLock) { _testResults.Add(new TestResult(name, false, "Exception thrown", ex.Message)); }
             }
 
             // Small delay between tests
@@ -762,9 +785,14 @@ public sealed class TestsCategory
 
         _dbConnectionTested = true;
         _dbReadWriteTested = true;
+        _dbSanityTested = true;
         _arIpcTested = true;
         _universalisTested = true;
         _webSocketTested = true;
+        // Service tests
+        _cacheServiceTested = true;
+        _registryTested = true;
+        _configServiceTested = true;
         // Cache architecture tests
         _cacheInitTested = true;
         _cacheReadsTested = true;
@@ -792,8 +820,8 @@ public sealed class TestsCategory
         }
         catch (Exception ex)
         {
-            LogService.Error($"RunAllTestsAsync failed: {ex.Message}");
-            _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message));
+            LogService.Error(LogCategory.UI, $"RunAllTestsAsync failed: {ex.Message}");
+            lock (_testResultsLock) { _testResults.Add(new TestResult("Test Runner", false, "Test runner crashed", ex.Message)); }
         }
         finally
         {

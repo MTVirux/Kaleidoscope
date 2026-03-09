@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Newtonsoft.Json;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -9,7 +10,7 @@ namespace Kaleidoscope.Gui.Widgets;
 /// <summary>
 /// A collapsible widget for displaying and editing a single layout entry.
 /// </summary>
-public class LayoutItemWidget
+public sealed class LayoutItemWidget
 {
     private static int _nextInstanceId;
     private readonly int _instanceId;
@@ -125,16 +126,14 @@ public class LayoutItemWidget
                         }
                         catch (Exception ex)
                         {
-                            LogService.Debug($"[LayoutItemWidget] Export failed: {ex.Message}");
+                            LogService.Debug(LogCategory.UI, $"[LayoutItemWidget] Export failed: {ex.Message}");
                         }
                     }
                     
                     ImGui.SameLine();
                     
                     // Delete button (with confirmation via double-click or shift+click)
-                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.6f, 0.2f, 0.2f, 1f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.3f, 0.3f, 1f));
-                    if (ImGui.Button("Delete"))
+                    if (ImGuiHelpers.DangerButton("Delete"))
                     {
                         var io = ImGui.GetIO();
                         if (io.KeyShift)
@@ -147,7 +146,6 @@ public class LayoutItemWidget
                             ImGui.OpenPopup("confirm_delete");
                         }
                     }
-                    ImGui.PopStyleColor(2);
                     
                     if (ImGui.IsItemHovered() && !deleted)
                     {

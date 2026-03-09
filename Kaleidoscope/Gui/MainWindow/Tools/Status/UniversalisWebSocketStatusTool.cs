@@ -2,13 +2,14 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
 /// <summary>
 /// A tool that displays the Universalis WebSocket connection status.
 /// </summary>
-public class UniversalisWebSocketStatusTool : StatusToolBase
+public sealed class UniversalisWebSocketStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis WebSocket Status";
     
@@ -69,7 +70,7 @@ public class UniversalisWebSocketStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[UniversalisWebSocketStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

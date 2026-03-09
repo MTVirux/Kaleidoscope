@@ -1,0 +1,415 @@
+using System.Collections.Concurrent;
+using Dalamud.Plugin.Services;
+using Kaleidoscope.Models;
+using OtterGui.Services;
+using Kaleidoscope.Services.Database;
+
+namespace Kaleidoscope.Services.Characters;
+
+/// <summary>
+/// Centralized cache service for all character-related data (names, display names, colors, metadata).
+/// Provides instant read access while managing write-through persistence to the database.
+/// </summary>
+/// <remarks>
+/// Key design principles:
+/// 1. All reads come from memory cache (no DB queries after initialization)
+/// 2. Writes update cache immediately, then persist to DB
+/// 3. Cache is populated from DB on startup
+/// 4. Single source of truth for character metadata across all UI components
+/// </remarks>
+public sealed class CharacterDataCacheService : IDisposable, IRequiredService
+{
+    private readonly IPluginLog _log;
+    private readonly ConfigurationService _configService;
+
+    // Main cache: characterId -> character data
+    private readonly ConcurrentDictionary<ulong, CharacterCacheEntry> _cache = new();
+
+    // DB service reference for persistence (set after construction due to circular dependency)
+    private KaleidoscopeDbService? _dbService;
+    private volatile bool _initialized;
+
+    // Cache statistics for monitoring
+    private long _cacheHits;
+    private long _cacheMisses;
+    private long _version;
+
+    public event Action<ulong>? OnCharacterUpdated;
+
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
+    /// </summary>
+    public long Version => Volatile.Read(ref _version);
+
+    public long CacheHits => _cacheHits;
+    public long CacheMisses => _cacheMisses;
+    public int CachedCharacterCount => _cache.Count;
+    public bool IsInitialized => _initialized;
+
+    public CharacterDataCacheService(IPluginLog log, ConfigurationService configService)
+    {
+        _log = log;
+        _configService = configService;
+        LogService.Debug(LogCategory.Character, "[CharacterDataCacheService] Initialized (awaiting DB connection)");
+    }
+
+    /// <summary>
+    /// Sets the database service reference and populates the cache.
+    /// Called by CurrencyTrackerService after DbService is created.
+    /// </summary>
+    public void Initialize(KaleidoscopeDbService dbService)
+    {
+        if (_initialized) return;
+
+        _dbService = dbService;
+        PopulateFromDatabase();
+        _initialized = true;
+        LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Initialized with {_cache.Count} characters from database");
+    }
+
+    private void PopulateFromDatabase()
+    {
+        if (_dbService == null) return;
+
+        try
+        {
+            var allData = _dbService.GetAllCharacterDataExtended();
+            foreach (var (characterId, gameName, displayName, timeSeriesColor) in allData)
+            {
+                _cache[characterId] = new CharacterCacheEntry(characterId, gameName, displayName, timeSeriesColor);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.Character, $"[CharacterDataCacheService] Failed to populate from database: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Forces a refresh of the cache from the database.
+    /// Use sparingly - normally cache should be self-maintaining.
+    /// </summary>
+    public void RefreshFromDatabase()
+    {
+        _cache.Clear();
+        PopulateFromDatabase();
+        Interlocked.Increment(ref _version);
+        LogService.Debug(LogCategory.Character, $"[CharacterDataCacheService] Refreshed cache with {_cache.Count} characters");
+    }
+
+    /// <summary>
+    /// Gets the effective display name for a character (custom display name if set, otherwise game name).
+    /// </summary>
+    public string? GetCharacterName(ulong characterId)
+    {
+        if (_cache.TryGetValue(characterId, out var entry))
+        {
+            Interlocked.Increment(ref _cacheHits);
+            return entry.DisplayName ?? entry.GameName;
+        }
+
+        Interlocked.Increment(ref _cacheMisses);
+        return null;
+    }
+
+    public uint? GetCharacterTimeSeriesColor(ulong characterId)
+    {
+        if (_cache.TryGetValue(characterId, out var entry))
+        {
+            Interlocked.Increment(ref _cacheHits);
+            return entry.TimeSeriesColor;
+        }
+
+        Interlocked.Increment(ref _cacheMisses);
+        return null;
+    }
+
+    public bool HasCharacter(ulong characterId)
+    {
+        return _cache.ContainsKey(characterId);
+    }
+
+    public IReadOnlyList<ulong> GetAllCharacterIds()
+    {
+        return _cache.Keys.ToList();
+    }
+
+    /// <summary>
+    /// Gets all stored character name mappings (display_name if set, otherwise game name).
+    /// </summary>
+    public List<(ulong characterId, string? name)> GetAllCharacterNames()
+    {
+        var result = new List<(ulong, string?)>(_cache.Count);
+        foreach (var kvp in _cache)
+        {
+            result.Add((kvp.Key, kvp.Value.DisplayName ?? kvp.Value.GameName));
+        }
+        return result;
+    }
+
+    public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
+    {
+        var result = new List<(ulong, string?, string?)>(_cache.Count);
+        foreach (var kvp in _cache)
+        {
+            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName));
+        }
+        return result;
+    }
+
+    public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
+    {
+        var result = new List<(ulong, string?, string?, uint?)>(_cache.Count);
+        foreach (var kvp in _cache)
+        {
+            result.Add((kvp.Key, kvp.Value.GameName, kvp.Value.DisplayName, kvp.Value.TimeSeriesColor));
+        }
+        return result;
+    }
+
+    public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
+    {
+        var result = new Dictionary<ulong, string?>(_cache.Count);
+        foreach (var kvp in _cache)
+        {
+            result[kvp.Key] = kvp.Value.DisplayName ?? kvp.Value.GameName;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Gets a formatted character name based on the current name format setting.
+    /// Returns display_name if set (unformatted), otherwise formats the game name.
+    /// </summary>
+    public string? GetFormattedCharacterName(ulong characterId)
+    {
+        if (!_cache.TryGetValue(characterId, out var entry))
+            return null;
+
+        // If a custom display name is set, use it as-is (user's choice)
+        if (!string.IsNullOrEmpty(entry.DisplayName))
+            return entry.DisplayName;
+
+        // Format the game name according to setting
+        return FormatName(entry.GameName, _configService.Config.CharacterNameFormat);
+    }
+
+    /// <summary>
+    /// Gets disambiguated display names for a set of character IDs.
+    /// When multiple characters have the same formatted name, appends a short identifier.
+    /// </summary>
+    public Dictionary<ulong, string> GetDisambiguatedNames(IEnumerable<ulong> characterIds)
+    {
+        var idList = characterIds.ToList();
+        var result = new Dictionary<ulong, string>();
+
+        // First pass: get all base names
+        var baseNames = new Dictionary<ulong, string>();
+        foreach (var cid in idList)
+        {
+            var name = GetFormattedCharacterName(cid) ?? $"...{cid % 1_000_000:D6}";
+            baseNames[cid] = name;
+        }
+
+        // Detect collisions
+        var nameCounts = baseNames.Values.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+
+        // Second pass: disambiguate where needed
+        foreach (var (cid, baseName) in baseNames)
+        {
+            if (nameCounts.Contains(baseName))
+            {
+                result[cid] = $"{baseName} (#{cid % 10000:D4})";
+            }
+            else
+            {
+                result[cid] = baseName;
+            }
+        }
+
+        return result;
+    }
+
+    public static string? FormatName(string? fullName, CharacterNameFormat format)
+        => Libs.CharacterNameFormatter.FormatName(fullName, format);
+
+    /// <summary>
+    /// Sets a character's game name (automatically detected from the game).
+    /// Updates cache immediately and persists to DB only if the name has changed.
+    /// </summary>
+    public void SetCharacterName(ulong characterId, string name)
+    {
+        if (string.IsNullOrEmpty(name) || characterId == 0) return;
+
+        var updated = false;
+        _cache.AddOrUpdate(
+            characterId,
+            _ => { updated = true; return new CharacterCacheEntry(characterId, GameName: name); },
+            (_, existing) =>
+            {
+                if (string.Equals(existing.GameName, name, StringComparison.Ordinal))
+                    return existing; // No change
+                updated = true;
+                return existing with { GameName = name };
+            });
+
+        if (!updated) return;
+
+        Interlocked.Increment(ref _version);
+
+        // Persist to DB (only when name actually changed)
+        _dbService?.SaveCharacterName(characterId, name);
+
+        OnCharacterUpdated?.Invoke(characterId);
+    }
+
+    /// <summary>
+    /// Sets a character's custom display name.
+    /// Updates cache immediately and persists to DB.
+    /// </summary>
+    public void SetCharacterDisplayName(ulong characterId, string? displayName)
+    {
+        if (characterId == 0) return;
+
+        _cache.AddOrUpdate(
+            characterId,
+            _ => new CharacterCacheEntry(characterId, DisplayName: displayName),
+            (_, existing) => existing with { DisplayName = displayName });
+
+        Interlocked.Increment(ref _version);
+
+        // Persist to DB
+        _dbService?.SaveCharacterDisplayName(characterId, displayName);
+
+        OnCharacterUpdated?.Invoke(characterId);
+    }
+
+    /// <summary>
+    /// Sets a character's time series color.
+    /// Updates cache immediately and persists to DB.
+    /// </summary>
+    public void SetCharacterTimeSeriesColor(ulong characterId, uint? color)
+    {
+        if (characterId == 0) return;
+
+        _cache.AddOrUpdate(
+            characterId,
+            _ => new CharacterCacheEntry(characterId, TimeSeriesColor: color),
+            (_, existing) => existing with { TimeSeriesColor = color });
+
+        Interlocked.Increment(ref _version);
+
+        // Persist to DB
+        _dbService?.SaveCharacterTimeSeriesColor(characterId, color);
+
+        OnCharacterUpdated?.Invoke(characterId);
+    }
+
+    /// <summary>
+    /// Ensures a character exists in the cache with the given name.
+    /// Used when discovering new characters from game data.
+    /// </summary>
+    public void EnsureCharacter(ulong characterId, string? gameName = null)
+    {
+        if (characterId == 0) return;
+
+        if (!string.IsNullOrEmpty(gameName))
+        {
+            SetCharacterName(characterId, gameName);
+        }
+        else if (!_cache.ContainsKey(characterId))
+        {
+            if (_cache.TryAdd(characterId, new CharacterCacheEntry(characterId)))
+                Interlocked.Increment(ref _version);
+        }
+    }
+
+    /// <summary>
+    /// Removes a character from the cache.
+    /// Note: This does NOT delete the character from the database.
+    /// </summary>
+    public void RemoveCharacter(ulong characterId)
+    {
+        if (_cache.TryRemove(characterId, out _))
+            Interlocked.Increment(ref _version);
+    }
+
+    public void ClearAll()
+    {
+        _cache.Clear();
+        _cacheHits = 0;
+        _cacheMisses = 0;
+        Interlocked.Increment(ref _version);
+    }
+
+    /// <summary>
+    /// Populates the cache with character data from an external source.
+    /// Used during initialization or when syncing from external data.
+    /// </summary>
+    public void PopulateCharacterData(IEnumerable<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> data)
+    {
+        foreach (var (cid, gameName, displayName, color) in data)
+        {
+            if (cid == 0) continue;
+
+            _cache.AddOrUpdate(
+                cid,
+                _ => new CharacterCacheEntry(cid, gameName, displayName, color),
+                (_, existing) => existing with
+                {
+                    GameName = !string.IsNullOrEmpty(gameName) ? gameName : existing.GameName,
+                    DisplayName = !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
+                    TimeSeriesColor = color ?? existing.TimeSeriesColor
+                });
+        }
+        Interlocked.Increment(ref _version);
+    }
+
+    public void PopulateCharacterNamesSimple(IEnumerable<(ulong characterId, string? name)> names)
+    {
+        foreach (var (cid, name) in names)
+        {
+            if (cid == 0 || string.IsNullOrEmpty(name)) continue;
+
+            _cache.AddOrUpdate(
+                cid,
+                _ => new CharacterCacheEntry(cid, GameName: name),
+                (_, existing) => existing with { GameName = name });
+        }
+        Interlocked.Increment(ref _version);
+    }
+
+    public CacheStatistics GetStatistics()
+    {
+        return new CacheStatistics
+        {
+            SeriesCount = 0,
+            TotalPoints = 0,
+            CharacterCount = _cache.Count,
+            CacheHits = _cacheHits,
+            CacheMisses = _cacheMisses,
+            HitRate = _cacheHits + _cacheMisses > 0
+                ? (double)_cacheHits / (_cacheHits + _cacheMisses)
+                : 0.0
+        };
+    }
+
+    public void Dispose()
+    {
+        _cache.Clear();
+        LogService.Debug(LogCategory.Character, "[CharacterDataCacheService] Disposed");
+    }
+}
+
+/// <summary>
+/// Immutable cache entry for a single character's data.
+/// Used with ConcurrentDictionary for thread-safe atomic replacement.
+/// </summary>
+public sealed record CharacterCacheEntry(
+    ulong CharacterId,
+    string? GameName = null,
+    string? DisplayName = null,
+    uint? TimeSeriesColor = null,
+    string? WorldName = null,
+    string? DataCenterName = null);

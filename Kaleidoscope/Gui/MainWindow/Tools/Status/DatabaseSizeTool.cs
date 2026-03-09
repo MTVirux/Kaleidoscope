@@ -1,24 +1,13 @@
+using System.Diagnostics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
-using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// Settings class for DatabaseSizeTool.
-/// </summary>
-public class DatabaseSizeToolSettings
-{
-    public bool ShowDetails { get; set; } = true;
-}
-
-/// <summary>
-/// A tool that displays the current size of the SQLite database file.
-/// </summary>
-public class DatabaseSizeTool : ToolComponent
+public sealed class DatabaseSizeTool : StatusToolBase
 {
     public override string ToolName => "Database Size";
     
@@ -28,25 +17,10 @@ public class DatabaseSizeTool : ToolComponent
     private long _cachedFileSize;
     private DateTime _lastSizeCheck = DateTime.MinValue;
     private readonly TimeSpan _sizeCheckInterval = TimeSpan.FromSeconds(5);
-    
-    // Settings instance and schema
-    private readonly DatabaseSizeToolSettings _settings = new();
-    
-    private static readonly SettingsSchema<DatabaseSizeToolSettings> Schema = SettingsSchema.For<DatabaseSizeToolSettings>()
-        .Checkbox(s => s.ShowDetails, "Show Details", "Show additional details like raw byte count and size warnings", defaultValue: true);
 
-    /// <summary>
-    /// Whether to show extra details beyond the size.
-    /// </summary>
-    public bool ShowDetails
+    public DatabaseSizeTool(CurrencyTrackerService currencyTrackerService)
     {
-        get => _settings.ShowDetails;
-        set => _settings.ShowDetails = value;
-    }
-
-    public DatabaseSizeTool(CurrencyTrackerService CurrencyTrackerService)
-    {
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
 
         Title = "Database Size";
         Size = new Vector2(220, 90);
@@ -67,7 +41,6 @@ public class DatabaseSizeTool : ToolComponent
                 return;
             }
 
-            // Update cached size periodically
             var now = DateTime.UtcNow;
             if (now - _lastSizeCheck >= _sizeCheckInterval)
             {
@@ -92,14 +65,7 @@ public class DatabaseSizeTool : ToolComponent
                 {
                     ImGui.Spacing();
                     
-                    // Show raw bytes
                     ImGui.TextColored(UiColors.Info, $"  {_cachedFileSize:N0} bytes");
-                    
-                    // Show size tier info
-                    if (_cachedFileSize > 100 * 1024 * 1024) // > 100 MB
-                    {
-                        ImGui.TextColored(UiColors.Warning, "  Consider pruning old data");
-                    }
                 }
             }
 
@@ -112,7 +78,7 @@ public class DatabaseSizeTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[DatabaseSizeTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -144,26 +110,41 @@ public class DatabaseSizeTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
-    protected override bool HasToolSettings => true;
-    
-    protected override object? GetToolSettingsSchema() => Schema;
-    
-    protected override object? GetToolSettingsObject() => _settings;
-    
-    /// <summary>
-    /// Exports tool-specific settings for layout persistence.
-    /// </summary>
-    public override Dictionary<string, object?>? ExportToolSettings()
+    private static void OpenDatabaseDirectory(string dbPath)
     {
-        return Schema.ToDictionary(_settings)!;
+        try
+        {
+            var directory = Path.GetDirectoryName(dbPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = directory,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.UI, $"[DatabaseSizeTool] Failed to open directory: {ex.Message}");
+        }
     }
-    
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
-    public override void ImportToolSettings(Dictionary<string, object?>? settings)
+
+    public override IReadOnlyList<ToolContextMenuOption>? GetContextMenuOptions()
     {
-        Schema.FromDictionary(_settings, settings);
+        var dbPath = _currencyTrackerService.DbService?.DbPath;
+        if (string.IsNullOrEmpty(dbPath))
+            return null;
+        
+        return new[]
+        {
+            new ToolContextMenuOption
+            {
+                Label = "Open DB Directory",
+                OnClick = () => OpenDatabaseDirectory(dbPath),
+                Tooltip = "Open the folder containing the database file"
+            }
+        };
     }
+
 }

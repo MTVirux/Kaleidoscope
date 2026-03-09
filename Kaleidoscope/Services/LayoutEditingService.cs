@@ -30,10 +30,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     private readonly ConfigurationService _configService;
     private readonly FilenameService _filenameService;
 
-    private bool _isDirty;
+    private volatile bool _isDirty;
     private List<ToolLayoutState>? _workingLayout;
     private LayoutGridSettings? _workingGridSettings;
-    private string _currentLayoutName = string.Empty;
+    private volatile string _currentLayoutName = string.Empty;
     private LayoutType _currentLayoutType = LayoutType.Windowed;
     private PendingLayoutAction? _pendingAction;
     private bool _showUnsavedChangesDialog;
@@ -42,6 +42,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     private System.Timers.Timer? _snapshotDebounceTimer;
     private readonly object _snapshotLock = new();
     private const int SnapshotDebounceMs = 1000; // Wait 1s before writing snapshot
+    
+    // Debounced auto-save: avoids synchronous disk I/O on every MarkDirty call
+    private System.Timers.Timer? _autoSaveDebounceTimer;
+    private const int AutoSaveDebounceMs = 500;
     
     // Phase 6: Tool lookup cache
     private Dictionary<string, ToolLayoutState>? _toolByNameCache;
@@ -84,13 +88,16 @@ public sealed class LayoutEditingService : IDisposable, IService
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _filenameService = filenameService ?? throw new ArgumentNullException(nameof(filenameService));
 
-        // Initialize debounce timer for snapshot saves
         _snapshotDebounceTimer = new System.Timers.Timer(SnapshotDebounceMs);
         _snapshotDebounceTimer.Elapsed += OnSnapshotDebounceElapsed;
         _snapshotDebounceTimer.AutoReset = false;
 
+        _autoSaveDebounceTimer = new System.Timers.Timer(AutoSaveDebounceMs);
+        _autoSaveDebounceTimer.Elapsed += OnAutoSaveDebounceElapsed;
+        _autoSaveDebounceTimer.AutoReset = false;
+
         TryRestoreDirtySnapshot();
-        _log.Debug("LayoutEditingService initialized with debounced snapshot saves");
+        LogService.Debug(LogCategory.Layout, "LayoutEditingService initialized with debounced snapshot saves");
     }
 
     private void OnSnapshotDebounceElapsed(object? sender, ElapsedEventArgs e)
@@ -104,6 +111,24 @@ public sealed class LayoutEditingService : IDisposable, IService
         }
     }
 
+    private void OnAutoSaveDebounceElapsed(object? sender, ElapsedEventArgs e)
+    {
+        if (_isDirty)
+        {
+            Save();
+            LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
+        }
+    }
+
+    /// <summary>
+    /// Schedules a debounced auto-save.
+    /// </summary>
+    private void ScheduleAutoSave()
+    {
+        _autoSaveDebounceTimer?.Stop();
+        _autoSaveDebounceTimer?.Start();
+    }
+
     /// <summary>
     /// Initializes the working layout from persisted state.
     /// </summary>
@@ -112,7 +137,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         // Keep restored dirty state if present
         if (_isDirty && _workingLayout != null)
         {
-            _log.Debug($"Keeping restored dirty state for '{_currentLayoutName}'");
+            LogService.Debug(LogCategory.Layout, $"Keeping restored dirty state for '{_currentLayoutName}'");
             return;
         }
 
@@ -122,7 +147,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         _workingGridSettings = gridSettings?.Clone();
         _isDirty = false;
 
-        _log.Debug($"Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
+        LogService.Debug(LogCategory.Layout, $"Initialized from persisted layout '{layoutName}' ({_workingLayout.Count} tools)");
     }
 
     /// <summary>
@@ -131,24 +156,27 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
     {
-        _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
-        _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+        lock (_snapshotLock)
+        {
+            _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
+            _workingGridSettings = currentGridSettings?.Clone() ?? _workingGridSettings;
+        }
 
-        // Auto-save if enabled
+        // Auto-save if enabled: use debounce to avoid disk I/O on every change
         if (_configService.Config.AutoSaveLayoutChanges)
         {
-            // Temporarily set dirty to allow Save() to work
-            var wasDirty = _isDirty;
             _isDirty = true;
-            Save();
-            _log.Debug($"Layout auto-saved for '{_currentLayoutName}'");
+            Interlocked.Increment(ref _dirtyMarkCount);
+            InvalidateToolCache();
+            InvalidateGridCache();
+            ScheduleAutoSave();
             return;
         }
 
         if (!_isDirty)
         {
             _isDirty = true;
-            _log.Debug($"Layout marked dirty for '{_currentLayoutName}'");
+            LogService.Debug(LogCategory.Layout, $"Layout marked dirty for '{_currentLayoutName}'");
             OnDirtyStateChanged?.Invoke(true);
         }
 
@@ -163,8 +191,11 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void UpdateWorkingLayout(List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
     {
-        _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
-        _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
+        lock (_snapshotLock)
+        {
+            _workingLayout = tools != null ? CloneToolList(tools) : _workingLayout;
+            _workingGridSettings = gridSettings?.Clone() ?? _workingGridSettings;
+        }
         InvalidateToolCache();
         InvalidateGridCache();
 
@@ -179,7 +210,7 @@ public sealed class LayoutEditingService : IDisposable, IService
     {
         if (!_isDirty)
         {
-            _log.Debug("Save called but layout is not dirty");
+            LogService.Debug(LogCategory.Layout, "Save called but layout is not dirty");
             return;
         }
 
@@ -197,29 +228,40 @@ public sealed class LayoutEditingService : IDisposable, IService
             existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
             _workingGridSettings?.ApplyToLayoutState(existing);
 
+            // For windowed layouts, persist the current window position/size
+            if (_currentLayoutType == LayoutType.Windowed)
+            {
+                existing.WindowedPos = _configService.Config.MainWindowPos;
+                existing.WindowedSize = _configService.Config.MainWindowSize;
+            }
+
             // Update active layout name
             if (_currentLayoutType == LayoutType.Windowed)
-                _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
-                else
-                    _configService.Config.ActiveFullscreenLayoutName = _currentLayoutName;
-                
-                _configService.Save();
-                _configService.SaveLayouts();
-                
-                _isDirty = false;
-                ClearDirtySnapshot();
-                
-                Interlocked.Increment(ref _saveCount);
-                _lastSaveTime = DateTime.UtcNow;
-                
-                _log.Information($"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
-                OnDirtyStateChanged?.Invoke(false);
-            }
-            catch (Exception ex)
             {
-                _log.Error($"LayoutEditingService: Failed to save layout: {ex.Message}");
+                _configService.Config.ActiveWindowedLayoutName = _currentLayoutName;
             }
+            else
+            {
+                _configService.Config.ActiveFullscreenLayoutName = _currentLayoutName;
+            }
+                
+            _configService.Save();
+            _configService.SaveLayouts();
+            
+            _isDirty = false;
+            ClearDirtySnapshot();
+            
+            Interlocked.Increment(ref _saveCount);
+            _lastSaveTime = DateTime.UtcNow;
+            
+            LogService.Info(LogCategory.Layout, $"LayoutEditingService: Saved layout '{_currentLayoutName}' ({existing.Tools.Count} tools)");
+            OnDirtyStateChanged?.Invoke(false);
         }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to save layout: {ex.Message}");
+        }
+    }
         
         /// <summary>
         /// Discards unsaved changes and reverts to the persisted layout.
@@ -228,7 +270,7 @@ public sealed class LayoutEditingService : IDisposable, IService
         {
             if (!_isDirty)
             {
-                _log.Debug("LayoutEditingService: DiscardChanges called but layout is not dirty");
+                LogService.Debug(LogCategory.Layout, "LayoutEditingService: DiscardChanges called but layout is not dirty");
                 return;
             }
             
@@ -254,13 +296,13 @@ public sealed class LayoutEditingService : IDisposable, IService
                 _isDirty = false;
                 ClearDirtySnapshot();
                 
-                _log.Information($"LayoutEditingService: Discarded changes, reverted to persisted layout '{_currentLayoutName}'");
+                LogService.Info(LogCategory.Layout, $"LayoutEditingService: Discarded changes, reverted to persisted layout '{_currentLayoutName}'");
                 OnDirtyStateChanged?.Invoke(false);
                 OnLayoutReverted?.Invoke();
             }
             catch (Exception ex)
             {
-                _log.Error($"LayoutEditingService: Failed to discard changes: {ex.Message}");
+                LogService.Error(LogCategory.Layout, $"LayoutEditingService: Failed to discard changes: {ex.Message}");
             }
         }
         
@@ -269,6 +311,10 @@ public sealed class LayoutEditingService : IDisposable, IService
         /// If dirty, blocks the action and shows the unsaved changes dialog.
         /// Returns true if the action proceeded immediately (not dirty).
         /// </summary>
+        /// <remarks>
+        /// If a pending action already exists (re-entrant call), the previous
+        /// pending action's cancel callback is invoked before being replaced.
+        /// </remarks>
         public bool TryPerformDestructiveAction(string description, Action continueAction, Action? cancelAction = null)
         {
             if (!_isDirty)
@@ -276,6 +322,13 @@ public sealed class LayoutEditingService : IDisposable, IService
                 // Not dirty, invoke action immediately and return true
                 continueAction();
                 return true;
+            }
+            
+            // Cancel any previously pending action before replacing it
+            if (_pendingAction != null)
+            {
+                LogService.Debug(LogCategory.Layout, $"LayoutEditingService: Cancelling previous pending action '{_pendingAction.Description}' due to new action '{description}'");
+                _pendingAction.CancelAction?.Invoke();
             }
             
             // Block the action and show dialog
@@ -288,7 +341,7 @@ public sealed class LayoutEditingService : IDisposable, IService
             _showUnsavedChangesDialog = true;
             OnShowUnsavedChangesDialog?.Invoke();
             
-            _log.Debug($"LayoutEditingService: Blocked destructive action '{description}' due to unsaved changes");
+            LogService.Debug(LogCategory.Layout, $"LayoutEditingService: Blocked destructive action '{description}' due to unsaved changes");
             return false;
         }
         
@@ -306,18 +359,18 @@ public sealed class LayoutEditingService : IDisposable, IService
                 case UnsavedChangesChoice.Save:
                     Save();
                     pending?.ContinueAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Save, continuing action");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Save, continuing action");
                     break;
                     
                 case UnsavedChangesChoice.Discard:
                     DiscardChanges();
                     pending?.ContinueAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Discard, continuing action");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Discard, continuing action");
                     break;
                     
                 case UnsavedChangesChoice.Cancel:
                     pending?.CancelAction?.Invoke();
-                    _log.Debug("LayoutEditingService: User chose Cancel, action aborted");
+                    LogService.Debug(LogCategory.Layout, "LayoutEditingService: User chose Cancel, action aborted");
                     break;
             }
         }
@@ -361,9 +414,7 @@ public sealed class LayoutEditingService : IDisposable, IService
             );
         }
         
-        #region Dirty Snapshot Persistence
-        
-        private class DirtySnapshot
+        private sealed class DirtySnapshot
         {
             public string LayoutName { get; set; } = string.Empty;
             public LayoutType LayoutType { get; set; } = LayoutType.Windowed;
@@ -403,25 +454,31 @@ public sealed class LayoutEditingService : IDisposable, IService
         {
             try
             {
+                // Clone the working layout so we serialize a stable copy, not the live reference
+                // that could be mutated by the main thread concurrently.
+                var toolsCopy = _workingLayout != null ? CloneToolList(_workingLayout) : null;
+                var gridCopy = _workingGridSettings?.Clone();
                 var snapshot = new DirtySnapshot
                 {
                     LayoutName = _currentLayoutName,
                     LayoutType = _currentLayoutType,
-                    Tools = _workingLayout,
-                    GridSettings = _workingGridSettings
+                    Tools = toolsCopy,
+                    GridSettings = gridCopy
                 };
                 
                 var json = JsonConvert.SerializeObject(snapshot, Formatting.Indented);
-                File.WriteAllText(DirtySnapshotPath, json);
+                var tempPath = DirtySnapshotPath + ".tmp";
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, DirtySnapshotPath, overwrite: true);
                 
                 Interlocked.Increment(ref _snapshotWriteCount);
                 _lastSnapshotTime = DateTime.UtcNow;
                 
-                _log.Verbose("LayoutEditingService: Saved dirty snapshot");
+                LogService.Verbose(LogCategory.Layout, "LayoutEditingService: Saved dirty snapshot");
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to save dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to save dirty snapshot: {ex.Message}");
             }
         }
         
@@ -432,12 +489,12 @@ public sealed class LayoutEditingService : IDisposable, IService
                 if (File.Exists(DirtySnapshotPath))
                 {
                     File.Delete(DirtySnapshotPath);
-                    _log.Verbose("LayoutEditingService: Cleared dirty snapshot");
+                    LogService.Verbose(LogCategory.Layout, "LayoutEditingService: Cleared dirty snapshot");
                 }
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to clear dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to clear dirty snapshot: {ex.Message}");
             }
         }
         
@@ -453,26 +510,34 @@ public sealed class LayoutEditingService : IDisposable, IService
                 
                 if (snapshot != null && !string.IsNullOrWhiteSpace(snapshot.LayoutName))
                 {
+                    // Verify the snapshot's layout still exists in the configuration.
+                    // If it was deleted between sessions, discard the snapshot to avoid
+                    // restoring state for a non-existent layout.
+                    var layouts = _configService.Config.Layouts ?? new List<ContentLayoutState>();
+                    var layoutExists = layouts.Any(x => x.Name == snapshot.LayoutName && x.Type == snapshot.LayoutType);
+                    if (!layoutExists)
+                    {
+                        LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Snapshot references deleted layout '{snapshot.LayoutName}', discarding");
+                        ClearDirtySnapshot();
+                        return;
+                    }
+                    
                     _currentLayoutName = snapshot.LayoutName;
                     _currentLayoutType = snapshot.LayoutType;
                     _workingLayout = snapshot.Tools;
                     _workingGridSettings = snapshot.GridSettings;
                     _isDirty = true;
                     
-                    _log.Information($"LayoutEditingService: Restored dirty snapshot for layout '{_currentLayoutName}'");
+                    LogService.Info(LogCategory.Layout, $"LayoutEditingService: Restored dirty snapshot for layout '{_currentLayoutName}'");
                 }
             }
             catch (Exception ex)
             {
-                _log.Warning($"LayoutEditingService: Failed to restore dirty snapshot: {ex.Message}");
+                LogService.Warning(LogCategory.Layout, $"LayoutEditingService: Failed to restore dirty snapshot: {ex.Message}");
                 // Clean up corrupt snapshot
                 ClearDirtySnapshot();
             }
         }
-        
-        #endregion
-        
-        #region Helpers
         
         private static List<ToolLayoutState> CloneToolList(List<ToolLayoutState> source)
         {
@@ -480,10 +545,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             var json = JsonConvert.SerializeObject(source);
             return JsonConvert.DeserializeObject<List<ToolLayoutState>>(json) ?? new List<ToolLayoutState>();
         }
-        
-        #endregion
-        
-        #region Tool Lookup Cache
         
         /// <summary>
         /// Gets a tool by name from the working layout using a cached lookup.
@@ -541,10 +602,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             _toolByNameCache = null;
         }
         
-        #endregion
-        
-        #region Grid Dimensions Cache
-        
         /// <summary>
         /// Gets the effective grid dimensions (cached).
         /// </summary>
@@ -570,37 +627,22 @@ public sealed class LayoutEditingService : IDisposable, IService
             _cachedGridDimensions = null;
         }
         
-        #endregion
-        
-        #region Statistics
-        
-        /// <summary>Number of layout saves performed.</summary>
         public long SaveCount => Interlocked.Read(ref _saveCount);
         
-        /// <summary>Number of times changes were discarded.</summary>
         public long DiscardCount => Interlocked.Read(ref _discardCount);
         
-        /// <summary>Number of dirty snapshots written to disk.</summary>
         public long SnapshotWriteCount => Interlocked.Read(ref _snapshotWriteCount);
         
-        /// <summary>Number of snapshot writes skipped due to debouncing.</summary>
         public long SnapshotSkippedCount => Interlocked.Read(ref _snapshotSkippedCount);
         
-        /// <summary>Number of times MarkDirty was called.</summary>
         public long DirtyMarkCount => Interlocked.Read(ref _dirtyMarkCount);
         
-        /// <summary>Last time the layout was saved.</summary>
         public DateTime? LastSaveTime => _lastSaveTime;
         
-        /// <summary>Last time a dirty snapshot was written.</summary>
         public DateTime? LastSnapshotTime => _lastSnapshotTime;
         
-        /// <summary>Number of tools in the current working layout.</summary>
         public int ToolCount => _workingLayout?.Count ?? 0;
         
-        /// <summary>
-        /// Resets all statistics counters.
-        /// </summary>
         public void ResetStatistics()
         {
             Interlocked.Exchange(ref _saveCount, 0);
@@ -612,9 +654,6 @@ public sealed class LayoutEditingService : IDisposable, IService
             _lastSnapshotTime = null;
         }
         
-        /// <summary>
-        /// Gets a summary of layout editing statistics.
-        /// </summary>
         public LayoutEditingStatistics GetStatistics()
         {
             return new LayoutEditingStatistics
@@ -636,15 +675,16 @@ public sealed class LayoutEditingService : IDisposable, IService
             };
         }
         
-        #endregion
-        
-        #region IDisposable
-        
         /// <summary>
         /// Clears event handlers and flushes pending snapshots.
         /// </summary>
         public void Dispose()
         {
+            // Stop auto-save timer
+            _autoSaveDebounceTimer?.Stop();
+            _autoSaveDebounceTimer?.Dispose();
+            _autoSaveDebounceTimer = null;
+            
             // Flush any pending snapshot
             lock (_snapshotLock)
             {
@@ -661,10 +701,8 @@ public sealed class LayoutEditingService : IDisposable, IService
             OnDirtyStateChanged = null;
             OnShowUnsavedChangesDialog = null;
             OnLayoutReverted = null;
-            _log.Debug("LayoutEditingService disposed");
+            LogService.Debug(LogCategory.Layout, "LayoutEditingService disposed");
         }
-        
-        #endregion
     }
     
 /// <summary>

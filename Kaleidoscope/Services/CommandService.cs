@@ -7,23 +7,17 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Handles plugin chat commands.
 /// </summary>
-/// <remarks>
-/// Follows the Glamourer pattern for command handling with separate handlers for
-/// main and config commands.
-/// </remarks>
 public sealed class CommandService : IDisposable, IRequiredService
 {
     private const string CommandMain = "/kld";
     private const string CommandFull = "/kaleidoscope";
 
     private readonly ICommandManager _commands;
-    private readonly IPluginLog _log;
     private readonly WindowService _windowService;
 
-    public CommandService(ICommandManager commands, IPluginLog log, WindowService windowService)
+    public CommandService(ICommandManager commands, WindowService windowService)
     {
         _commands = commands;
-        _log = log;
         _windowService = windowService;
 
         Register();
@@ -45,11 +39,11 @@ public sealed class CommandService : IDisposable, IRequiredService
                 ShowInHelp = true
             });
 
-            _log.Debug($"Registered commands: {CommandMain}, {CommandFull}");
+            LogService.Debug(LogCategory.UI, $"Registered commands: {CommandMain}, {CommandFull}");
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to register commands: {ex.Message}");
+            LogService.Error(LogCategory.UI, $"Failed to register commands: {ex.Message}");
         }
     }
 
@@ -78,7 +72,7 @@ public sealed class CommandService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Warning($"Failed to unregister commands: {ex.Message}");
+            LogService.Warning(LogCategory.UI, $"Failed to unregister commands: {ex.Message}");
         }
     }
 }

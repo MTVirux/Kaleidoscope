@@ -2,6 +2,7 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 using System.Collections.Concurrent;
+using Kaleidoscope.Services.Characters;
 
 namespace Kaleidoscope.Services;
 
@@ -22,50 +23,33 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     private readonly ConfigurationService _configService;
     private readonly CharacterDataCacheService _characterDataCache;
 
-    // Main cache: (variable, characterId) -> cached time series
     private readonly ConcurrentDictionary<CacheKey, TimeSeriesCache> _cache = new();
 
-    // Available characters per variable
     private readonly ConcurrentDictionary<string, HashSet<ulong>> _availableCharacters = new();
     private readonly object _availableCharactersLock = new();
 
-    // Inventory value history cache
     private readonly object _inventoryValueCacheLock = new();
     private List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)>? _inventoryValueCache;
     private long _inventoryValueCacheRecordCount;
     private long? _inventoryValueCacheMaxTimestamp;
     private DateTime _inventoryValueCacheTime = DateTime.MinValue;
 
-    // Cache statistics for monitoring
     private long _cacheHits;
     private long _cacheMisses;
+    private long _version;
 
-    // Event for notifying subscribers when cache is updated
     public event Action<string, ulong>? OnCacheUpdated;
 
     /// <summary>
-    /// Gets the cache configuration.
+    /// Monotonically increasing version counter. Incremented on every cache mutation.
+    /// Consumers can compare against a stored version to detect changes without polling.
     /// </summary>
+    public long Version => Volatile.Read(ref _version);
+
     public TimeSeriesCacheConfig CacheConfig => _configService.Config.TimeSeriesCacheConfig;
-
-    /// <summary>
-    /// Gets cache hit count for diagnostics.
-    /// </summary>
     public long CacheHits => _cacheHits;
-
-    /// <summary>
-    /// Gets cache miss count for diagnostics.
-    /// </summary>
     public long CacheMisses => _cacheMisses;
-
-    /// <summary>
-    /// Gets total number of cached series.
-    /// </summary>
     public int CachedSeriesCount => _cache.Count;
-
-    /// <summary>
-    /// Gets total cached points across all series.
-    /// </summary>
     public long TotalCachedPoints => _cache.Values.Sum(c => c.PointCount);
 
     public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, CharacterDataCacheService characterDataCache)
@@ -73,10 +57,8 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         _log = log;
         _configService = configService;
         _characterDataCache = characterDataCache;
-        _log.Debug("[TimeSeriesCacheService] Initialized");
+        LogService.Debug(LogCategory.Cache, "[TimeSeriesCacheService] Initialized");
     }
-
-    #region Cache Read Operations
 
     /// <summary>
     /// Gets cached points for a variable/character combination.
@@ -88,37 +70,30 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (_cache.TryGetValue(key, out var cache))
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] {variable}:{characterId}");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] {variable}:{characterId}");
             return cache.GetPoints();
         }
 
         Interlocked.Increment(ref _cacheMisses);
-        LogService.Verbose($"[Cache MISS] {variable}:{characterId}");
+        LogService.Verbose(LogCategory.Cache, $"[Cache MISS] {variable}:{characterId}");
         return Array.Empty<(DateTime, long)>();
     }
 
-    /// <summary>
-    /// Gets cached points filtered by time range.
-    /// </summary>
     public IReadOnlyList<(DateTime timestamp, long value)> GetCachedPoints(string variable, ulong characterId, DateTime since)
     {
         var key = new CacheKey(variable, characterId);
         if (_cache.TryGetValue(key, out var cache))
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] {variable}:{characterId} (since {since:HH:mm:ss})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] {variable}:{characterId} (since {since:HH:mm:ss})");
             return cache.GetPointsSince(since);
         }
 
         Interlocked.Increment(ref _cacheMisses);
-        LogService.Verbose($"[Cache MISS] {variable}:{characterId} (since {since:HH:mm:ss})");
+        LogService.Verbose(LogCategory.Cache, $"[Cache MISS] {variable}:{characterId} (since {since:HH:mm:ss})");
         return Array.Empty<(DateTime, long)>();
     }
 
-    /// <summary>
-    /// Gets the last cached value for a variable/character combination.
-    /// Returns null if not cached.
-    /// </summary>
     public (DateTime timestamp, long value)? GetLastCachedPoint(string variable, ulong characterId)
     {
         var key = new CacheKey(variable, characterId);
@@ -129,9 +104,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return null;
     }
 
-    /// <summary>
-    /// Gets all cached points across all characters for a variable.
-    /// </summary>
     public IReadOnlyList<(ulong characterId, DateTime timestamp, long value)> GetAllCachedPoints(string variable)
     {
         return GetAllCachedPoints(variable, null);
@@ -163,19 +135,17 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
         }
 
-        // Count as hit if we found any matching series, miss otherwise
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllCachedPoints({variable}) - {result.Count} points");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllCachedPoints({variable}) - {result.Count} points");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllCachedPoints({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllCachedPoints({variable})");
         }
 
-        // Sort by timestamp
         result.Sort((a, b) => a.Item2.CompareTo(b.Item2));
         return result;
     }
@@ -189,7 +159,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         var result = new List<(ulong, string, IReadOnlyList<(DateTime, long)>)>();
         var foundAny = false;
 
-        // First pass: collect all character IDs and their base names
         var characterNames = new Dictionary<ulong, string>();
         var characterPoints = new Dictionary<ulong, IReadOnlyList<(DateTime, long)>>();
         
@@ -211,14 +180,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
         }
 
-        // Second pass: detect name collisions and disambiguate
         var nameCounts = characterNames.Values.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
         
         foreach (var (characterId, baseName) in characterNames)
         {
             var displayName = baseName;
             
-            // If this name appears multiple times, append a short identifier
             if (nameCounts.Contains(baseName))
             {
                 // Append last 4 digits of character ID for disambiguation
@@ -228,32 +195,25 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             result.Add((characterId, displayName, characterPoints[characterId]));
         }
 
-        // Count as hit if we found any matching series, miss otherwise
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllCachedCharacterSeries({variable}) - {result.Count} series");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllCachedCharacterSeries({variable}) - {result.Count} series");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllCachedCharacterSeries({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllCachedCharacterSeries({variable})");
         }
 
         return result;
     }
 
-    /// <summary>
-    /// Checks if a variable/character combination is cached.
-    /// </summary>
     public bool IsCached(string variable, ulong characterId)
     {
         return _cache.ContainsKey(new CacheKey(variable, characterId));
     }
 
-    /// <summary>
-    /// Gets all available characters for a variable.
-    /// </summary>
     public IReadOnlyList<ulong> GetAvailableCharacters(string variable)
     {
         lock (_availableCharactersLock)
@@ -274,25 +234,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return _characterDataCache.GetCharacterName(characterId);
     }
 
-    /// <summary>
-    /// Gets a character's game name from cache.
-    /// </summary>
-    public string? GetCharacterGameName(ulong characterId)
-    {
-        return _characterDataCache.GetCharacterGameName(characterId);
-    }
-
-    /// <summary>
-    /// Gets a character's custom display name from cache.
-    /// </summary>
-    public string? GetCharacterDisplayName(ulong characterId)
-    {
-        return _characterDataCache.GetCharacterDisplayName(characterId);
-    }
-
-    /// <summary>
-    /// Gets a character's time series color from cache.
-    /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
     {
         return _characterDataCache.GetCharacterTimeSeriesColor(characterId);
@@ -319,30 +260,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Formats a name according to the specified format.
-    /// </summary>
-    public static string? FormatName(string? fullName, CharacterNameFormat format)
-    {
-        if (string.IsNullOrWhiteSpace(fullName))
-            return fullName;
-
-        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-            return fullName;
-
-        return format switch
-        {
-            CharacterNameFormat.FullName => fullName,
-            CharacterNameFormat.FirstNameOnly => parts[0],
-            CharacterNameFormat.LastNameOnly => parts.Length > 1 ? parts[^1] : parts[0],
-            CharacterNameFormat.Initials => string.Join(".", parts.Select(p => p.Length > 0 ? p[0].ToString().ToUpperInvariant() : "")) + ".",
-            _ => fullName
-        };
-    }
-
-    #region Cache-First Batch Read Operations (Phase 3)
-
-    /// <summary>
     /// Gets the latest cached value for each character for a given variable.
     /// Cache-first: returns only cached data, no DB fallback.
     /// </summary>
@@ -367,12 +284,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetLatestValuesForVariable({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetLatestValuesForVariable({variable})");
         }
 
         return result;
@@ -415,12 +332,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetAllPointsBatch({variable})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllPointsBatch({variable})");
         }
 
         return result;
@@ -465,20 +382,17 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         if (foundAny)
         {
             Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose($"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
+            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
         }
         else
         {
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose($"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
+            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
         }
 
         return result;
     }
 
-    /// <summary>
-    /// Gets all cached variables that match a prefix.
-    /// </summary>
     public IReadOnlyList<string> GetVariablesWithPrefix(string prefix)
     {
         return _cache.Keys
@@ -488,19 +402,10 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             .ToList();
     }
 
-    /// <summary>
-    /// Checks if the cache has data for a variable (any character).
-    /// </summary>
     public bool HasDataForVariable(string variable)
     {
         return _cache.Keys.Any(k => k.Variable == variable);
     }
-
-    #endregion
-
-    #endregion
-
-    #region Cache Write Operations
 
     /// <summary>
     /// Adds or updates a single point in the cache.
@@ -518,16 +423,15 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
         var cache = _cache.GetOrAdd(key, _ => new TimeSeriesCache(CacheConfig.MaxPointsPerSeries));
 
-        // Check if value is different from last point
         var lastPoint = cache.GetLastPoint();
         if (lastPoint.HasValue && lastPoint.Value.value == value)
         {
-            return false; // No change, don't add duplicate
+            return false;
         }
 
         cache.AddPoint(ts, value);
+        Interlocked.Increment(ref _version);
 
-        // Track available characters
         lock (_availableCharactersLock)
         {
             if (!_availableCharacters.TryGetValue(variable, out var chars))
@@ -538,7 +442,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             chars.Add(characterId);
         }
 
-        // Notify subscribers
         OnCacheUpdated?.Invoke(variable, characterId);
 
         return true;
@@ -558,8 +461,8 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         {
             cache.AddPoint(ts, val);
         }
+        Interlocked.Increment(ref _version);
 
-        // Track available characters
         lock (_availableCharactersLock)
         {
             if (!_availableCharacters.TryGetValue(variable, out var chars))
@@ -571,9 +474,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Populates available characters from database.
-    /// </summary>
     public void PopulateAvailableCharacters(string variable, IEnumerable<ulong> characterIds)
     {
         lock (_availableCharactersLock)
@@ -590,75 +490,56 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Caches a character's game name (automatically detected from the game).
-    /// </summary>
     public void SetCharacterName(ulong characterId, string name)
     {
         _characterDataCache.SetCharacterName(characterId, name);
     }
 
-    /// <summary>
-    /// Caches a character's custom display name.
-    /// </summary>
     public void SetCharacterDisplayName(ulong characterId, string? displayName)
     {
         _characterDataCache.SetCharacterDisplayName(characterId, displayName);
     }
 
-    /// <summary>
-    /// Caches a character's time series color.
-    /// </summary>
     public void SetCharacterTimeSeriesColor(ulong characterId, uint? color)
     {
         _characterDataCache.SetCharacterTimeSeriesColor(characterId, color);
     }
 
-    /// <summary>
-    /// Populates character names from database (with game name, display name, and color).
-    /// </summary>
     public void PopulateCharacterNames(IEnumerable<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> names)
     {
         _characterDataCache.PopulateCharacterData(names);
     }
 
-    /// <summary>
-    /// Populates character names from database (simple version, treats name as game name).
-    /// </summary>
     public void PopulateCharacterNamesSimple(IEnumerable<(ulong characterId, string? name)> names)
     {
         _characterDataCache.PopulateCharacterNamesSimple(names);
     }
 
-    /// <summary>
-    /// Invalidates cache for a specific variable/character combination.
-    /// </summary>
     public void Invalidate(string variable, ulong characterId)
     {
         var key = new CacheKey(variable, characterId);
-        _cache.TryRemove(key, out _);
+        if (_cache.TryRemove(key, out _))
+            Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Invalidates all cache entries for a variable.
-    /// </summary>
     public void InvalidateVariable(string variable)
     {
         var keysToRemove = _cache.Keys.Where(k => k.Variable == variable).ToList();
+        var removed = false;
         foreach (var key in keysToRemove)
         {
-            _cache.TryRemove(key, out _);
+            removed |= _cache.TryRemove(key, out _);
         }
 
         lock (_availableCharactersLock)
         {
             _availableCharacters.TryRemove(variable, out _);
         }
+
+        if (removed)
+            Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Clears all cached data.
-    /// </summary>
     public void ClearAll()
     {
         _cache.Clear();
@@ -668,17 +549,16 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
         _cacheHits = 0;
         _cacheMisses = 0;
+        Interlocked.Increment(ref _version);
     }
 
-    /// <summary>
-    /// Removes data for a specific character from all variables.
-    /// </summary>
     public void RemoveCharacter(ulong characterId)
     {
         var keysToRemove = _cache.Keys.Where(k => k.CharacterId == characterId).ToList();
+        var removed = false;
         foreach (var key in keysToRemove)
         {
-            _cache.TryRemove(key, out _);
+            removed |= _cache.TryRemove(key, out _);
         }
 
         _characterDataCache.RemoveCharacter(characterId);
@@ -690,11 +570,10 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 chars.Remove(characterId);
             }
         }
+
+        if (removed)
+            Interlocked.Increment(ref _version);
     }
-
-    #endregion
-
-    #region Cache Maintenance
 
     /// <summary>
     /// Trims old data from all cached series based on the configured time window.
@@ -709,7 +588,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             cache.TrimBefore(cutoff);
         }
 
-        // Remove empty caches
         var emptyKeys = _cache.Where(kvp => kvp.Value.PointCount == 0).Select(kvp => kvp.Key).ToList();
         foreach (var key in emptyKeys)
         {
@@ -717,9 +595,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    /// <summary>
-    /// Gets cache statistics for diagnostics.
-    /// </summary>
     public CacheStatistics GetStatistics()
     {
         return new CacheStatistics
@@ -734,10 +609,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 : 0.0
         };
     }
-
-    #endregion
-
-    #region Inventory Value Cache
 
     /// <summary>
     /// Gets or refreshes the inventory value history cache.
@@ -757,19 +628,16 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 _inventoryValueCacheMaxTimestamp == dbMaxTimestamp)
             {
                 Interlocked.Increment(ref _cacheHits);
-                LogService.Verbose($"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
+                LogService.Verbose(LogCategory.Cache, $"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
                 return _inventoryValueCache;
             }
 
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose("[Cache MISS] InventoryValueHistory");
+            LogService.Verbose(LogCategory.Cache, "[Cache MISS] InventoryValueHistory");
             return null;
         }
     }
 
-    /// <summary>
-    /// Updates the inventory value history cache with fresh data.
-    /// </summary>
     public void SetInventoryValueCache(
         List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> data,
         long dbRecordCount, long? dbMaxTimestamp)
@@ -808,7 +676,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _inventoryValueCacheTime = DateTime.UtcNow;
         }
         
-        LogService.Debug($"[TimeSeriesCacheService] Inventory value cache populated with {recordCount} records");
+        LogService.Debug(LogCategory.Cache, $"[TimeSeriesCacheService] Inventory value cache populated with {recordCount} records");
     }
 
     /// <summary>
@@ -823,6 +691,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             _inventoryValueCacheRecordCount = 0;
             _inventoryValueCacheMaxTimestamp = null;
         }
+        Interlocked.Increment(ref _version);
         
         // Fire event to notify UI that data has changed
         OnInventoryValueCacheInvalidated?.Invoke();
@@ -846,12 +715,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             if (_inventoryValueCache != null)
             {
                 Interlocked.Increment(ref _cacheHits);
-                LogService.Verbose($"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
+                LogService.Verbose(LogCategory.Cache, $"[Cache HIT] InventoryValueHistory - {_inventoryValueCache.Count} records");
                 return _inventoryValueCache;
             }
 
             Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose("[Cache MISS] InventoryValueHistory - cache empty");
+            LogService.Verbose(LogCategory.Cache, "[Cache MISS] InventoryValueHistory - cache empty");
             return null;
         }
     }
@@ -869,9 +738,6 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
     
-    /// <summary>
-    /// Checks if inventory value cache has data.
-    /// </summary>
     public bool HasInventoryValueCache
     {
         get
@@ -883,17 +749,11 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
     }
 
-    #endregion
-
     public void Dispose()
     {
         ClearAll();
-        GC.SuppressFinalize(this);
     }
 
-    /// <summary>
-    /// Cache key combining variable name and character ID.
-    /// </summary>
     private readonly record struct CacheKey(string Variable, ulong CharacterId);
 }
 
@@ -928,7 +788,6 @@ internal sealed class TimeSeriesCache
         {
             _points.Add((timestamp, value));
 
-            // Enforce max points limit
             if (_points.Count > _maxPoints)
             {
                 var removeCount = _points.Count - _maxPoints;
@@ -987,10 +846,7 @@ internal sealed class TimeSeriesCache
     }
 }
 
-/// <summary>
-/// Configuration for the time-series cache.
-/// </summary>
-public class TimeSeriesCacheConfig
+public sealed class TimeSeriesCacheConfig
 {
     /// <summary>
     /// Maximum number of points to cache per series.
@@ -1005,9 +861,6 @@ public class TimeSeriesCacheConfig
     /// </summary>
     public int MaxCacheHours { get; set; } = 168;
 
-    /// <summary>
-    /// Whether to pre-populate cache from database on startup.
-    /// </summary>
     public bool PrePopulateOnStartup { get; set; } = true;
 
     /// <summary>
@@ -1018,9 +871,6 @@ public class TimeSeriesCacheConfig
     public int StartupLoadHours { get; set; } = 24;
 }
 
-/// <summary>
-/// Cache statistics for diagnostics.
-/// </summary>
 public readonly struct CacheStatistics
 {
     public int SeriesCount { get; init; }

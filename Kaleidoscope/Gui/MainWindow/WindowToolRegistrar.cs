@@ -1,12 +1,17 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 using Kaleidoscope.Gui.MainWindow.Tools.Data;
+using Kaleidoscope.Gui.MainWindow.Tools.FFXIVMT;
 using Kaleidoscope.Gui.MainWindow.Tools.Help;
 using Kaleidoscope.Gui.MainWindow.Tools.Label;
 using Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 using Kaleidoscope.Gui.MainWindow.Tools.Status;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.FFXIVMT;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
@@ -35,6 +40,7 @@ public static class WindowToolRegistrar
         public const string RetainerVentureStatus = "RetainerVentureStatus";
         public const string SubmersibleVentureStatus = "SubmersibleVentureStatus";
         public const string Fps = "Fps";
+        public const string GilFlux = "GilFlux";
     }
 
     /// <summary>
@@ -58,13 +64,16 @@ public static class WindowToolRegistrar
             ctx.AutoRetainerIpc,
             ctx.TextureProvider,
             ctx.FavoritesService,
-            ctx.SalePriceCacheService);
+            ctx.SalePriceCacheService,
+            ctx.FFXIVMTService,
+            ctx.LifestreamService,
+            ctx.NotificationManager);
     }
 
     public static void RegisterTools(
         WindowContentContainer container, 
         FilenameService filenameService, 
-        CurrencyTrackerService CurrencyTrackerService, 
+        CurrencyTrackerService currencyTrackerService, 
         ConfigurationService configService,
         CharacterDataService? characterDataService = null,
         InventoryChangeService? inventoryChangeService = null,
@@ -74,23 +83,26 @@ public static class WindowToolRegistrar
         ItemDataService? itemDataService = null,
         IDataManager? dataManager = null,
         InventoryCacheService? inventoryCacheService = null,
-        AutoRetainerIpcService? autoRetainerIpc = null,
+        AutoRetainerService? autoRetainerIpc = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        SalePriceCacheService? salePriceCacheService = null)
+        SalePriceCacheService? salePriceCacheService = null,
+        FFXIVMTService? ffxivmtService = null,
+        LifestreamService? lifestreamService = null,
+        INotificationManager? notificationManager = null)
     {
         if (container == null) return;
 
         // Bundle context for cleaner factory method calls
         var ctx = new ToolCreationContext(
-            filenameService, CurrencyTrackerService, configService, characterDataService,
+            filenameService, currencyTrackerService, configService, characterDataService,
             inventoryChangeService, registry, webSocketService,
             priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService);
+            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
+            ffxivmtService, lifestreamService, notificationManager);
 
         try
         {
-            // Register Data tool variants for items/currency tracking
             container.DefineToolType(
                 ToolIds.DataGraph,
                 "Data Graph",
@@ -104,9 +116,6 @@ public static class WindowToolRegistrar
                 pos => CreateDataToolTable(pos, ctx),
                 "Track items and currencies in a table view with characters as rows",
                 "Items/Currency");
-
-            // Register tool presets from separate file
-            ToolPresets.RegisterPresets(container, CurrencyTrackerService, configService, inventoryCacheService, registry, itemDataService, dataManager, textureProvider, favoritesService, autoRetainerIpc, priceTrackingService);
 
             container.DefineToolType(
                 ToolIds.GettingStarted,
@@ -129,7 +138,6 @@ public static class WindowToolRegistrar
                 "A simple text label for adding notes or annotations to your layout",
                 "Utility");
 
-            // Register price tracking tools
             if (webSocketService != null && priceTrackingService != null && itemDataService != null)
             {
                 container.DefineToolType(
@@ -161,7 +169,6 @@ public static class WindowToolRegistrar
                     "Universalis");
             }
 
-            // Register status/utility tools
             container.DefineToolType(
                 ToolIds.UniversalisWebSocketStatus,
                 "WebSocket Status",
@@ -224,19 +231,32 @@ public static class WindowToolRegistrar
                 pos => CreateFpsTool(pos),
                 "Displays the current frames per second",
                 "Utility");
+
+            if (ctx.FFXIVMTService != null)
+            {
+                container.DefineToolType(
+                    ToolIds.GilFlux,
+                    "GilFlux",
+                    pos => CreateGilFluxTool(pos, ctx),
+                    "Shows which items move the most gil on the market board for a given world, datacenter, or region",
+                    "FFXIVMT");
+            }
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to register tools", ex);
+            LogService.Error(LogCategory.UI, "Failed to register tools", ex);
         }
     }
 
-    private static string GetCategoryPath(TrackedDataCategory category)
+    /// <summary>
+    /// Applies default UI colors from global configuration to a newly-created tool.
+    /// Called by factory methods so new tools inherit the user's customized defaults.
+    /// When loading from a saved layout, ApplyLayoutState will override these values.
+    /// </summary>
+    private static void ApplyDefaultColors(ToolComponent tool, ToolCreationContext ctx)
     {
-        // All data tracker tools are graphs - category path is just "Graph"
-        // The TrackedDataCategory is used for grouping within the tool's data selection,
-        // not for the top-level tool type categorization
-        return "Graph";
+        var colors = ctx.ConfigService.Config.UIColors;
+        tool.BackgroundColor = colors.ToolBackground;
     }
 
     private static ToolComponent? CreateDataToolGraph(Vector2 pos, ToolCreationContext ctx)
@@ -253,13 +273,16 @@ public static class WindowToolRegistrar
                 ctx.TextureProvider,
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
-                ctx.PriceTrackingService) { Position = pos };
+                ctx.PriceTrackingService,
+                ctx.LifestreamService,
+                ctx.NotificationManager) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Graph);
             return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTool (Graph)", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DataTool (Graph)", ex);
             return null;
         }
     }
@@ -278,13 +301,16 @@ public static class WindowToolRegistrar
                 ctx.TextureProvider,
                 ctx.FavoritesService,
                 ctx.AutoRetainerIpc,
-                ctx.PriceTrackingService) { Position = pos };
+                ctx.PriceTrackingService,
+                ctx.LifestreamService,
+                ctx.NotificationManager) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
             tool.ConfigureSettings(s => s.ViewMode = DataToolViewMode.Table);
             return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DataTool (Table)", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DataTool (Table)", ex);
             return null;
         }
     }
@@ -295,17 +321,19 @@ public static class WindowToolRegistrar
         {
             if (ctx.WebSocketService == null || ctx.PriceTrackingService == null || ctx.ItemDataService == null)
                 return null;
-            return new WebsocketFeedTool(
+            var tool = new WebsocketFeedTool(
                 ctx.WebSocketService, 
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
                 ctx.ItemDataService,
                 ctx.PriceTrackingService.UniversalisService,
                 ctx.CurrencyTrackerService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create WebsocketFeedTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create WebsocketFeedTool", ex);
             return null;
         }
     }
@@ -317,16 +345,18 @@ public static class WindowToolRegistrar
             if (ctx.PriceTrackingService == null || ctx.CharacterDataService == null || ctx.ItemDataService == null || 
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null)
             {
-                LogService.Debug("CreateTopInventoryValueTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateTopInventoryValueTool: Required service is null");
                 return null;
             }
-            return new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
+            var tool = new TopInventoryValueTool(ctx.PriceTrackingService, ctx.CurrencyTrackerService, ctx.ConfigService, ctx.CharacterDataService,
                 ctx.ItemDataService, ctx.DataManager, ctx.TextureProvider, ctx.FavoritesService, 
                 ctx.InventoryChangeService, ctx.InventoryCacheService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create TopInventoryValueTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create TopInventoryValueTool", ex);
             return null;
         }
     }
@@ -339,10 +369,10 @@ public static class WindowToolRegistrar
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
                 ctx.SalePriceCacheService == null)
             {
-                LogService.Debug("CreateItemSalesHistoryTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateItemSalesHistoryTool: Required service is null");
                 return null;
             }
-            return new ItemSalesHistoryTool(
+            var tool = new ItemSalesHistoryTool(
                 ctx.PriceTrackingService.UniversalisService, 
                 ctx.PriceTrackingService, 
                 ctx.ConfigService, 
@@ -352,10 +382,12 @@ public static class WindowToolRegistrar
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create ItemSalesHistoryTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create ItemSalesHistoryTool", ex);
             return null;
         }
     }
@@ -368,10 +400,10 @@ public static class WindowToolRegistrar
                 ctx.DataManager == null || ctx.TextureProvider == null || ctx.FavoritesService == null ||
                 ctx.SalePriceCacheService == null)
             {
-                LogService.Debug("CreateItemSalesTrackingTool: Required service is null");
+                LogService.Debug(LogCategory.UI, "CreateItemSalesTrackingTool: Required service is null");
                 return null;
             }
-            return new ItemSalesTrackingTool(
+            var tool = new ItemSalesTrackingTool(
                 ctx.PriceTrackingService.UniversalisService,
                 ctx.WebSocketService,
                 ctx.PriceTrackingService,
@@ -382,10 +414,12 @@ public static class WindowToolRegistrar
                 ctx.DataManager,
                 ctx.TextureProvider,
                 ctx.FavoritesService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create ItemSalesTrackingTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create ItemSalesTrackingTool", ex);
             return null;
         }
     }
@@ -394,11 +428,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new UniversalisWebSocketStatusTool(ctx.ConfigService, ctx.WebSocketService) { Position = pos };
+            var tool = new UniversalisWebSocketStatusTool(ctx.ConfigService, ctx.WebSocketService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create UniversalisWebSocketStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create UniversalisWebSocketStatusTool", ex);
             return null;
         }
     }
@@ -407,11 +443,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new AutoRetainerStatusTool(ctx.AutoRetainerIpc) { Position = pos };
+            var tool = new AutoRetainerStatusTool(ctx.AutoRetainerIpc) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create AutoRetainerStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create AutoRetainerStatusTool", ex);
             return null;
         }
     }
@@ -420,11 +458,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new AutoRetainerControlTool(ctx.AutoRetainerIpc) { Position = pos };
+            var tool = new AutoRetainerControlTool(ctx.AutoRetainerIpc) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create AutoRetainerControlTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create AutoRetainerControlTool", ex);
             return null;
         }
     }
@@ -433,11 +473,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new RetainerVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            var tool = new RetainerVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create RetainerVentureStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create RetainerVentureStatusTool", ex);
             return null;
         }
     }
@@ -446,11 +488,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new SubmersibleVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            var tool = new SubmersibleVentureStatusTool(ctx.AutoRetainerIpc, ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create SubmersibleVentureStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create SubmersibleVentureStatusTool", ex);
             return null;
         }
     }
@@ -459,11 +503,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new UniversalisApiStatusTool(ctx.ConfigService, ctx.PriceTrackingService) { Position = pos };
+            var tool = new UniversalisApiStatusTool(ctx.ConfigService, ctx.PriceTrackingService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create UniversalisApiStatusTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create UniversalisApiStatusTool", ex);
             return null;
         }
     }
@@ -472,11 +518,13 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return new DatabaseSizeTool(ctx.CurrencyTrackerService) { Position = pos };
+            var tool = new DatabaseSizeTool(ctx.CurrencyTrackerService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create DatabaseSizeTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create DatabaseSizeTool", ex);
             return null;
         }
     }
@@ -487,14 +535,16 @@ public static class WindowToolRegistrar
         {
             if (ctx.InventoryCacheService == null)
             {
-                LogService.Debug("CreateCacheSizeTool: InventoryCacheService is null");
+                LogService.Debug(LogCategory.UI, "CreateCacheSizeTool: InventoryCacheService is null");
                 return null;
             }
-            return new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
+            var tool = new CacheSizeTool(ctx.InventoryCacheService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create CacheSizeTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create CacheSizeTool", ex);
             return null;
         }
     }
@@ -507,10 +557,31 @@ public static class WindowToolRegistrar
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to create FpsTool", ex);
+            LogService.Error(LogCategory.UI, "Failed to create FpsTool", ex);
             return null;
         }
     }
+
+    private static ToolComponent? CreateGilFluxTool(Vector2 pos, ToolCreationContext ctx)
+    {
+        try
+        {
+            if (ctx.FFXIVMTService == null) return null;
+            var tool = new GilFluxTool(
+                ctx.FFXIVMTService, ctx.PriceTrackingService, ctx.ItemDataService,
+                ctx.TextureProvider, ctx.DataManager, ctx.FavoritesService,
+                ctx.ConfigService) { Position = pos };
+            ApplyDefaultColors(tool, ctx);
+            return tool;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.UI, "Failed to create GilFluxTool", ex);
+            return null;
+        }
+    }
+
+
 
     /// <summary>
     /// Creates a tool instance by ID using a bundled context.
@@ -519,7 +590,7 @@ public static class WindowToolRegistrar
     {
         try
         {
-            return id switch
+            var tool = id switch
             {
                 ToolIds.DataGraph => CreateDataToolGraph(pos, ctx),
                 ToolIds.DataTable => CreateDataToolTable(pos, ctx),
@@ -540,12 +611,17 @@ public static class WindowToolRegistrar
                 ToolIds.DatabaseSize => CreateDatabaseSizeTool(pos, ctx),
                 ToolIds.CacheSize => CreateCacheSizeTool(pos, ctx),
                 ToolIds.Fps => CreateFpsTool(pos),
+                ToolIds.GilFlux => CreateGilFluxTool(pos, ctx),
                 _ => null
             };
+            // Apply default colors only for tools created inline (factory methods handle their own)
+            if (tool != null && id is ToolIds.GettingStarted or ToolIds.ImPlotReference or ToolIds.Label)
+                ApplyDefaultColors(tool, ctx);
+            return tool;
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to create tool instance '{id}'", ex);
+            LogService.Error(LogCategory.UI, $"Failed to create tool instance '{id}'", ex);
             return null;
         }
     }

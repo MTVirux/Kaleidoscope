@@ -1,7 +1,6 @@
 using Kaleidoscope.Config;
 using Kaleidoscope.Interfaces;
 using Dalamud.Plugin;
-using Dalamud.Plugin.Services;
 using OtterGui.Services;
 using System.Timers;
 
@@ -24,15 +23,12 @@ namespace Kaleidoscope.Services;
 public sealed class ConfigurationService : IConfigurationService, IRequiredService, IDisposable
 {
     private readonly IDalamudPluginInterface _pluginInterface;
-    private readonly IPluginLog _log;
     
-    // Dirty tracking and debounced saves
     private bool _isDirty;
     private System.Timers.Timer? _saveDebounceTimer;
     private readonly object _saveLock = new();
     private const int SaveDebounceMs = 500; // Coalesce saves within 500ms
     
-    // Statistics for monitoring
     private long _saveCount;
     private long _saveSkippedCount;
     private long _configAccessCount;
@@ -55,10 +51,9 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// </summary>
     public event Action<string, LayoutType>? OnActiveLayoutChanged;
 
-    public ConfigurationService(IDalamudPluginInterface pluginInterface, IPluginLog log)
+    public ConfigurationService(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface ?? throw new ArgumentNullException(nameof(pluginInterface));
-        _log = log ?? throw new ArgumentNullException(nameof(log));
 
         var cfg = _pluginInterface.GetPluginConfig() as Configuration;
         if (cfg == null)
@@ -74,7 +69,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
         GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig { TrackingEnabled = true, TrackingIntervalMs = ConfigStatic.DefaultTrackingIntervalMs });
+        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig());
         WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig
         {
             PinMainWindow = Config.PinMainWindow,
@@ -85,22 +80,20 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             ConfigWindowSize = Config.ConfigWindowSize
         });
 
-        // Initialize debounce timer (500ms delay)
-        _saveDebounceTimer = new System.Timers.Timer(500);
+        _saveDebounceTimer = new System.Timers.Timer(SaveDebounceMs);
         _saveDebounceTimer.Elapsed += OnDebounceTimerElapsed;
         _saveDebounceTimer.AutoReset = false;
 
         LoadLayouts();
         SyncFromSubConfigs();
 
-        _log.Debug("ConfigurationService initialized with debounced save support");
+        LogService.Debug(LogCategory.Config, "ConfigurationService initialized with debounced save support");
     }
 
     private void NormalizeLayouts()
     {
         Config.Layouts ??= new List<ContentLayoutState>();
 
-        // Deduplicate layouts by (Name, Type) pair - rename duplicates instead of removing them
         var seenNames = new Dictionary<(string Name, LayoutType Type), int>(
             new LayoutNameTypeComparer());
         
@@ -110,10 +103,8 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             var key = (Name: keyName, Type: layout.Type);
             if (seenNames.TryGetValue(key, out var count))
             {
-                // This is a duplicate - rename it
                 seenNames[key] = count + 1;
                 var newName = $"{keyName} ({count + 1})";
-                // Make sure the new name is also unique
                 while (Config.Layouts.Any(l => l != layout && 
                                                l.Type == layout.Type && 
                                                string.Equals(l.Name, newName, StringComparison.OrdinalIgnoreCase)))
@@ -130,23 +121,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             }
         }
 
-        // Migrate from legacy ActiveLayoutName if needed
-#pragma warning disable CS0618 // Suppress obsolete warning for migration
-        if (!string.IsNullOrWhiteSpace(Config.ActiveLayoutName))
-        {
-            var legacyLayout = Config.Layouts.FirstOrDefault(x => string.Equals(x.Name, Config.ActiveLayoutName, StringComparison.OrdinalIgnoreCase));
-            if (legacyLayout != null)
-            {
-                if (legacyLayout.Type == LayoutType.Windowed && string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName))
-                    Config.ActiveWindowedLayoutName = legacyLayout.Name;
-                else if (legacyLayout.Type == LayoutType.Fullscreen && string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName))
-                    Config.ActiveFullscreenLayoutName = legacyLayout.Name;
-            }
-            Config.ActiveLayoutName = string.Empty;
-        }
-#pragma warning restore CS0618
-
-        // Validate windowed active layout
         var windowedLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Windowed).ToList();
         if (!string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName) &&
             !windowedLayouts.Any(x => string.Equals(x.Name, Config.ActiveWindowedLayoutName, StringComparison.OrdinalIgnoreCase)))
@@ -158,7 +132,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             Config.ActiveWindowedLayoutName = windowedLayouts.First().Name;
         }
 
-        // Validate fullscreen active layout
         var fullscreenLayouts = Config.Layouts.Where(x => x.Type == LayoutType.Fullscreen).ToList();
         if (!string.IsNullOrWhiteSpace(Config.ActiveFullscreenLayoutName) &&
             !fullscreenLayouts.Any(x => string.Equals(x.Name, Config.ActiveFullscreenLayoutName, StringComparison.OrdinalIgnoreCase)))
@@ -183,7 +156,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to load layouts: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Failed to load layouts: {ex.Message}");
         }
     }
 
@@ -223,17 +196,14 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         {
             var color = elementColorsAbgr[element];
             
-            // Shard
             var shardId = (uint)(baseId + element);
             if (!Config.GameItemColors.ContainsKey(shardId))
                 Config.GameItemColors[shardId] = color;
             
-            // Crystal
             var crystalId = (uint)(baseId + tierOffset + element);
             if (!Config.GameItemColors.ContainsKey(crystalId))
                 Config.GameItemColors[crystalId] = color;
             
-            // Cluster
             var clusterId = (uint)(baseId + 2 * tierOffset + element);
             if (!Config.GameItemColors.ContainsKey(clusterId))
                 Config.GameItemColors[clusterId] = color;
@@ -266,7 +236,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             _isDirty = true;
             Interlocked.Increment(ref _configAccessCount);
             
-            // Reset debounce timer
             _saveDebounceTimer?.Stop();
             _saveDebounceTimer?.Start();
         }
@@ -309,7 +278,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         try
         {
             _pluginInterface.SavePluginConfig(Config);
-            _log.Information($"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
+            LogService.Info(LogCategory.Config, $"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
             
             Interlocked.Increment(ref _saveCount);
             _lastSaveTime = DateTime.UtcNow;
@@ -317,19 +286,18 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving plugin config: {ex}");
+            LogService.Error(LogCategory.Config, $"Error saving plugin config: {ex}");
         }
 
         SaveSubConfigs();
 
-        // Notify subscribers that config has changed
         try
         {
             OnConfigChanged?.Invoke();
         }
         catch (Exception ex)
         {
-            _log.Error($"Error invoking OnConfigChanged: {ex}");
+            LogService.Error(LogCategory.Config, $"Error invoking OnConfigChanged: {ex}");
         }
     }
 
@@ -360,14 +328,13 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
         Save();
 
-        // Notify subscribers to apply the new layout
         try
         {
             OnActiveLayoutChanged?.Invoke(layoutName, layoutType);
         }
         catch (Exception ex)
         {
-            _log.Error($"Error invoking OnActiveLayoutChanged: {ex}");
+            LogService.Error(LogCategory.Config, $"Error invoking OnActiveLayoutChanged: {ex}");
         }
     }
 
@@ -387,8 +354,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
             var s = new CurrencyTrackerConfig
             {
-                TrackingEnabled = true, // Always enabled, cannot be turned off
-                TrackingIntervalMs = CurrencyTrackerConfig.TrackingIntervalMs,
                 DatabaseCacheSizeMb = CurrencyTrackerConfig.DatabaseCacheSizeMb
             };
             ConfigManager.Save("currencytracker.json", s);
@@ -406,7 +371,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving sub-configs: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Error saving sub-configs: {ex.Message}");
         }
     }
 
@@ -415,24 +380,20 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         try
         {
             ConfigManager.Save("layouts.json", Config.Layouts);
-            _log.Debug($"Saved layouts: {Config.Layouts?.Count ?? 0}");
+            LogService.Debug(LogCategory.Config, $"Saved layouts: {Config.Layouts?.Count ?? 0}");
+            
+            // Flush main config immediately after layout save — layouts are high-impact 
+            // and a crash within the 500ms debounce window would lose the user's work
+            SaveImmediate();
         }
         catch (Exception ex)
         {
-            _log.Error($"Error saving layouts: {ex.Message}");
+            LogService.Error(LogCategory.Config, $"Error saving layouts: {ex.Message}");
         }
     }
 
-    #region Statistics Properties
-    
-    /// <summary>
-    /// Total number of saves performed.
-    /// </summary>
     public long SaveCount => Interlocked.Read(ref _saveCount);
     
-    /// <summary>
-    /// Number of saves skipped because config was not dirty.
-    /// </summary>
     public long SaveSkippedCount => Interlocked.Read(ref _saveSkippedCount);
     
     /// <summary>
@@ -440,19 +401,10 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     /// </summary>
     public long ConfigAccessCount => Interlocked.Read(ref _configAccessCount);
     
-    /// <summary>
-    /// Whether the configuration has unsaved changes.
-    /// </summary>
     public bool IsDirty => _isDirty;
     
-    /// <summary>
-    /// Last time the configuration was saved.
-    /// </summary>
     public DateTime? LastSaveTime => _lastSaveTime;
     
-    /// <summary>
-    /// Resets all statistics counters.
-    /// </summary>
     public void ResetStatistics()
     {
         Interlocked.Exchange(ref _saveCount, 0);
@@ -460,21 +412,15 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         Interlocked.Exchange(ref _configAccessCount, 0);
         _lastSaveTime = null;
     }
-    
-    #endregion
 
-    #region IDisposable
-    
     public void Dispose()
     {
-        // Flush any pending saves
         lock (_saveLock)
         {
             _saveDebounceTimer?.Stop();
             _saveDebounceTimer?.Dispose();
             _saveDebounceTimer = null;
             
-            // Save if dirty on dispose
             if (_isDirty)
             {
                 try
@@ -482,22 +428,20 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
                     _pluginInterface.SavePluginConfig(Config);
                     SaveSubConfigs();
                     _isDirty = false;
-                    _log.Information("Flushed pending config changes on dispose");
+                    LogService.Info(LogCategory.Config, "Flushed pending config changes on dispose");
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"Error flushing config on dispose: {ex}");
+                    LogService.Error(LogCategory.Config, $"Error flushing config on dispose: {ex}");
                 }
             }
         }
     }
-    
-    #endregion
 
     /// <summary>
     /// Helper comparer for (Name, Type) tuple that uses case-insensitive name comparison.
     /// </summary>
-    private class LayoutNameTypeComparer : IEqualityComparer<(string Name, LayoutType Type)>
+    private sealed class LayoutNameTypeComparer : IEqualityComparer<(string Name, LayoutType Type)>
     {
         public bool Equals((string Name, LayoutType Type) x, (string Name, LayoutType Type) y)
         {

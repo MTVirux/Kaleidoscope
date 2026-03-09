@@ -100,7 +100,7 @@ public sealed class CurrenciesCategory
 
         if (definitions.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No tracked data types available.");
+            ImGui.TextColored(UiColors.Info, "No tracked data types available.");
             return;
         }
 
@@ -119,7 +119,7 @@ public sealed class CurrenciesCategory
         
         if (categories.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No currencies match your search.");
+            ImGui.TextColored(UiColors.Info, "No currencies match your search.");
             return;
         }
 
@@ -214,71 +214,24 @@ public sealed class CurrenciesCategory
         var summaryText = string.IsNullOrWhiteSpace(_searchFilter)
             ? $"{totalCount} currencies total, {colorCount} with custom colors"
             : $"Showing {filteredCount} of {totalCount} currencies, {colorCount} with custom colors";
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), summaryText);
+        ImGui.TextColored(UiColors.Info, summaryText);
     }
 
     private void DrawColorCell(TrackedDataType dataType, Configuration config)
     {
         ImGui.PushID((int)dataType);
         
-        var hasColor = config.ItemColors.TryGetValue(dataType, out var colorUint);
-        Vector4 colorValue;
+        config.ItemColors.TryGetValue(dataType, out var colorUint);
         
-        if (_editingColorType == dataType)
-        {
-            colorValue = _colorEditBuffer;
-        }
-        else if (hasColor)
-        {
-            colorValue = ColorUtils.UintToVector4(colorUint);
-        }
-        else
-        {
-            colorValue = new Vector4(0.5f, 0.5f, 0.5f, 1f);
-        }
-        
-        if (!hasColor && _editingColorType != dataType)
-        {
-            // Draw placeholder color button
-            if (ImGui.ColorButton("##colorPreview", new Vector4(0.3f, 0.3f, 0.3f, 0.5f),
-                ImGuiColorEditFlags.NoTooltip, new Vector2(20, 20)))
-            {
-                // Start editing with a default color
-                _editingColorType = dataType;
-                _colorEditBuffer = new Vector4(1f, 1f, 1f, 1f);
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.BeginTooltip();
-                ImGui.TextUnformatted("Click to set a custom color");
-                ImGui.EndTooltip();
-            }
-            ImGui.SameLine();
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Auto");
-        }
-        else
-        {
-            // Color picker for set colors or when actively editing
-            if (ImGui.ColorEdit4("##color", ref colorValue,
-                ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
-            {
-                _colorEditBuffer = colorValue;
-            }
-            
-            // Track when we start editing (for already-set colors)
-            if (ImGui.IsItemActivated() && hasColor)
-            {
-                _editingColorType = dataType;
-                _colorEditBuffer = colorValue;
-            }
-            
-            // Save when the user finishes editing
-            if (ImGui.IsItemDeactivatedAfterEdit())
-            {
-                SaveItemColor(dataType, ColorUtils.Vector4ToUint(_colorEditBuffer));
-                _editingColorType = null;
-            }
-        }
+        ImGuiHelpers.InlineColorEditor(
+            dataType,
+            ref _editingColorType,
+            ref _colorEditBuffer,
+            config.ItemColors.ContainsKey(dataType) ? colorUint : null,
+            ImGuiHelpers.DefaultColor,
+            newColor => SaveItemColor(dataType, newColor),
+            () => SaveItemColor(dataType, null),
+            drawClearButton: false);
         
         ImGui.PopID();
     }
@@ -287,22 +240,12 @@ public sealed class CurrenciesCategory
     {
         var hasColor = config.ItemColors.ContainsKey(dataType);
         
-        if (hasColor || _editingColorType == dataType)
-        {
-            ImGui.PushID((int)dataType);
-            if (ImGui.SmallButton("X"))
-            {
-                SaveItemColor(dataType, null);
-                _editingColorType = null;
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.BeginTooltip();
-                ImGui.TextUnformatted("Clear custom color");
-                ImGui.EndTooltip();
-            }
-            ImGui.PopID();
-        }
+        ImGui.PushID((int)dataType);
+        ImGuiHelpers.InlineColorClearButton(
+            hasColor,
+            ref _editingColorType,
+            () => SaveItemColor(dataType, null));
+        ImGui.PopID();
     }
 
     private void SaveItemColor(TrackedDataType dataType, uint? color)
@@ -321,17 +264,20 @@ public sealed class CurrenciesCategory
             }
             
             _configService.MarkDirty();
-            LogService.Debug($"[CurrenciesCategory] Saved color for {dataType}: {color?.ToString("X8") ?? "(cleared)"}");
+            LogService.Debug(LogCategory.UI, $"[CurrenciesCategory] Saved color for {dataType}: {color?.ToString("X8") ?? "(cleared)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save item color for {dataType}", ex);
+            LogService.Error(LogCategory.UI, $"Failed to save item color for {dataType}", ex);
         }
     }
 
     private void DrawCurrencyIcon(TrackedDataDefinition definition)
     {
-        if (_textureProvider == null || _itemDataService == null || !definition.ItemId.HasValue)
+        // Resolve the icon source: prefer ItemId, fall back to IconId
+        var iconSource = definition.ItemId ?? definition.IconId;
+        
+        if (_textureProvider == null || _itemDataService == null || !iconSource.HasValue)
         {
             ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
             return;
@@ -339,7 +285,7 @@ public sealed class CurrenciesCategory
 
         try
         {
-            var iconId = _itemDataService.GetItemIconId(definition.ItemId.Value);
+            var iconId = _itemDataService.GetItemIconId(iconSource.Value);
             if (iconId > 0)
             {
                 var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));

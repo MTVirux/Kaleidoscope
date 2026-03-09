@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Universalis;
 using System.Numerics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -9,13 +10,10 @@ namespace Kaleidoscope.Gui.Widgets;
 /// A tree-based widget for configuring price match modes hierarchically.
 /// Shows Region > DC > World hierarchy with cascading dropdowns.
 /// </summary>
-public class PriceMatchTreeWidget
+public sealed class PriceMatchTreeWidget
 {
     private readonly UniversalisWorldData _worldData;
     private readonly string _id;
-
-    /// <summary>Width of the widget.</summary>
-    public float Width { get; set; } = 400f;
 
     /// <summary>
     /// Reference to the settings being edited. Changes are applied directly to this object.
@@ -231,12 +229,12 @@ public class PriceMatchTreeWidget
         else if (hasOverride)
         {
             previewText = PriceMatchModeNames[(int)effectiveMode];
-            previewColor = new Vector4(0.5f, 0.8f, 1f, 1f); // Blue for override
+            previewColor = UiColors.Highlight; // Blue for override
         }
         else
         {
             previewText = $"{PriceMatchModeNames[(int)effectiveMode]} (inherited)";
-            previewColor = new Vector4(0.7f, 0.7f, 0.7f, 1f); // Gray for inherited
+            previewColor = UiColors.Info; // Gray for inherited
         }
 
         ImGui.SetNextItemWidth(155);
@@ -435,15 +433,5 @@ public class PriceMatchTreeWidget
     }
 
     private static void HelpMarker(string desc)
-    {
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 25.0f);
-            ImGui.TextUnformatted(desc);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
+        => ImGuiHelpers.HelpMarker(desc, wrapMultiplier: 25f);
 }

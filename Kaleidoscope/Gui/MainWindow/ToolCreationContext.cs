@@ -1,6 +1,10 @@
 using System.Numerics;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.FFXIVMT;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
@@ -20,7 +24,10 @@ public sealed record ToolCreationContext(
     ItemDataService? ItemDataService = null,
     IDataManager? DataManager = null,
     InventoryCacheService? InventoryCacheService = null,
-    AutoRetainerIpcService? AutoRetainerIpc = null,
+    AutoRetainerService? AutoRetainerIpc = null,
     ITextureProvider? TextureProvider = null,
     FavoritesService? FavoritesService = null,
-    SalePriceCacheService? SalePriceCacheService = null);
+    SalePriceCacheService? SalePriceCacheService = null,
+    FFXIVMTService? FFXIVMTService = null,
+    LifestreamService? LifestreamService = null,
+    INotificationManager? NotificationManager = null);

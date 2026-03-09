@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -7,7 +8,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Help;
 /// <summary>
 /// A tool that displays graph control instructions for users.
 /// </summary>
-public class ImPlotReferenceTool : ToolComponent
+public sealed class ImPlotReferenceTool : ToolComponent
 {
     public override string ToolName => "Graph Controls";
     
@@ -56,16 +57,14 @@ public class ImPlotReferenceTool : ToolComponent
 
             ImGui.Separator();
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "Tip: Use the graph settings to change chart type,");
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "legend position, and time range.");
+            ImGui.TextColored(UiColors.Info, "Tip: Use the graph settings to change chart type,");
+            ImGui.TextColored(UiColors.Info, "legend position, and time range.");
 
             ImGui.PopTextWrapPos();
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ImPlotReferenceTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
-
-    public override bool HasSettings => false;
 }

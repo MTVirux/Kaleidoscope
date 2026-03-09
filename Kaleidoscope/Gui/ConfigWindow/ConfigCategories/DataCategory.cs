@@ -12,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 public sealed class DataCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
-    private readonly AutoRetainerIpcService _autoRetainerIpc;
+    private readonly AutoRetainerService _autoRetainerIpc;
     private readonly ConfigurationService _configService;
 
     private bool _clearDbOpen = false;
@@ -21,9 +21,9 @@ public sealed class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(CurrencyTrackerService CurrencyTrackerService, AutoRetainerIpcService autoRetainerIpc, ConfigurationService configService)
+    public DataCategory(CurrencyTrackerService currencyTrackerService, AutoRetainerService autoRetainerIpc, ConfigurationService configService)
     {
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;
         _configService = configService;
     }
@@ -45,7 +45,7 @@ public sealed class DataCategory
             }
             catch (Exception ex)
             {
-                LogService.Error("Failed to export CSV", ex);
+                LogService.Error(LogCategory.UI, "Failed to export CSV", ex);
             }
         }
 
@@ -101,11 +101,11 @@ public sealed class DataCategory
                 try
                 {
                     _currencyTrackerService.ClearAllData();
-                    LogService.Info("Cleared all GilTracker data");
+                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data");
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Failed to clear data", ex);
+                    LogService.Error(LogCategory.UI, "Failed to clear data", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -119,17 +119,17 @@ public sealed class DataCategory
 
         if (ImGui.BeginPopupModal("config_sanitize_db_confirm", ref _sanitizeDbOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted("This will remove GilTracker data for characters that do not have a stored name association. Proceed?");
+            ImGui.TextUnformatted("This will remove data for characters that do not have a stored name association. Proceed?");
             if (ImGui.Button("Yes"))
             {
                 try
                 {
                     var count = _currencyTrackerService.CleanUnassociatedCharacters();
-                    LogService.Info($"Cleaned {count} unassociated character records");
+                    LogService.Info(LogCategory.UI, $"Cleaned {count} unassociated character records");
                 }
                 catch (Exception ex)
                 {
-                    LogService.Error("Failed to sanitize data", ex);
+                    LogService.Error(LogCategory.UI, "Failed to sanitize data", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -143,7 +143,7 @@ public sealed class DataCategory
 
         if (ImGui.BeginPopupModal("config_import_autoretainer_confirm", ref _importAutoRetainerOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextUnformatted("This will import all characters from AutoRetainer into the GilTracker database.");
+            ImGui.TextUnformatted("This will import all characters from AutoRetainer into the Kaleidoscope database.");
             ImGui.TextUnformatted("AutoRetainer data takes priority: character names and gil amounts will be updated");
             ImGui.TextUnformatted("if they differ from our current data.");
             ImGui.Separator();
@@ -161,7 +161,7 @@ public sealed class DataCategory
                         if (cid == 0 || string.IsNullOrEmpty(name)) continue;
                         
                         // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
-                        _currencyTrackerService.DbService?.SaveCharacterName(cid, name);
+                        _currencyTrackerService.CharacterDataCache.SetCharacterName(cid, name);
                         
                         // Create a series if it doesn't exist
                         var seriesId = _currencyTrackerService.DbService?.GetOrCreateSeries("Gil", cid);
@@ -183,12 +183,12 @@ public sealed class DataCategory
                     _importStatus = $"Imported {_importCount} characters from AutoRetainer";
                     if (updatedCount > 0)
                         _importStatus += $" ({updatedCount} updated with new gil values)";
-                    LogService.Info(_importStatus);
+                    LogService.Info(LogCategory.UI, _importStatus);
                 }
                 catch (Exception ex)
                 {
                     _importStatus = $"Import failed: {ex.Message}";
-                    LogService.Error("Failed to import from AutoRetainer", ex);
+                    LogService.Error(LogCategory.UI, "Failed to import from AutoRetainer", ex);
                 }
                 ImGui.CloseCurrentPopup();
             }

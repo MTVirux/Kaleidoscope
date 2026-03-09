@@ -7,16 +7,8 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Tracks UI mode states: fullscreen, edit, locked, and drag states.
 /// </summary>
-/// <remarks>
-/// This service is the central source of truth for all UI state in the plugin.
-/// It follows the Glamourer/InventoryTools pattern of using event-based state changes.
-/// </remarks>
 public sealed class StateService : IStateService, IService
 {
-    // Static accessor for legacy code that cannot use DI (e.g., static methods)
-    // This should be used sparingly - prefer constructor injection
-    private static StateService? _instance;
-
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
 
@@ -38,12 +30,6 @@ public sealed class StateService : IStateService, IService
         false;
 #endif
 
-    /// <summary>
-    /// Static accessor for edit mode state. Returns false if service not initialized.
-    /// Prefer using the instance property via DI when possible.
-    /// </summary>
-    public static bool IsEditModeStatic => _instance?._isEditMode ?? false;
-
     public StateService(IPluginLog log, ConfigurationService configService)
     {
         _log = log;
@@ -53,8 +39,7 @@ public sealed class StateService : IStateService, IService
         _isLocked = configService.Config.PinMainWindow;
         _isFullscreen = configService.Config.ExclusiveFullscreen;
 
-        _instance = this;
-        _log.Debug("StateService initialized");
+        LogService.Debug(LogCategory.UI, "StateService initialized");
     }
 
     private Configuration Config => _configService.Config;
@@ -67,7 +52,7 @@ public sealed class StateService : IStateService, IService
         {
             if (_isFullscreen == value) return;
             _isFullscreen = value;
-            _log.Debug($"IsFullscreen changed to {value}");
+            LogService.Debug(LogCategory.UI, $"IsFullscreen changed to {value}");
             OnFullscreenChanged?.Invoke(value);
         }
     }
@@ -82,7 +67,7 @@ public sealed class StateService : IStateService, IService
             _isEditMode = value;
             Config.EditMode = value;
             _configService.MarkDirty();
-            _log.Debug($"IsEditMode changed to {value}");
+            LogService.Debug(LogCategory.UI, $"IsEditMode changed to {value}");
             OnEditModeChanged?.Invoke(value);
         }
     }
@@ -97,7 +82,7 @@ public sealed class StateService : IStateService, IService
             _isLocked = value;
             Config.PinMainWindow = value;
             _configService.MarkDirty();
-            _log.Debug($"IsLocked changed to {value}");
+            LogService.Debug(LogCategory.UI, $"IsLocked changed to {value}");
             OnLockedChanged?.Invoke(value);
         }
     }
@@ -110,7 +95,7 @@ public sealed class StateService : IStateService, IService
         {
             if (_isDragging == value) return;
             _isDragging = value;
-            _log.Verbose($"IsDragging changed to {value}");
+            LogService.Verbose(LogCategory.UI, $"IsDragging changed to {value}");
             OnDraggingChanged?.Invoke(value);
         }
     }
@@ -123,7 +108,7 @@ public sealed class StateService : IStateService, IService
         {
             if (_isResizing == value) return;
             _isResizing = value;
-            _log.Verbose($"IsResizing changed to {value}");
+            LogService.Verbose(LogCategory.UI, $"IsResizing changed to {value}");
             OnResizingChanged?.Invoke(value);
         }
     }
@@ -136,7 +121,7 @@ public sealed class StateService : IStateService, IService
         {
             if (_isMainWindowMoving == value) return;
             _isMainWindowMoving = value;
-            _log.Verbose($"IsMainWindowMoving changed to {value}");
+            LogService.Verbose(LogCategory.UI, $"IsMainWindowMoving changed to {value}");
         }
     }
 
@@ -148,7 +133,7 @@ public sealed class StateService : IStateService, IService
         {
             if (_isMainWindowResizing == value) return;
             _isMainWindowResizing = value;
-            _log.Verbose($"IsMainWindowResizing changed to {value}");
+            LogService.Verbose(LogCategory.UI, $"IsMainWindowResizing changed to {value}");
         }
     }
 
@@ -180,14 +165,12 @@ public sealed class StateService : IStateService, IService
     public void ToggleEditMode()
     {
         IsEditMode = !IsEditMode;
-        _log.Debug($"Edit mode toggled to {IsEditMode}");
     }
 
     /// <inheritdoc />
     public void ToggleLocked()
     {
         IsLocked = !IsLocked;
-        _log.Debug($"Locked toggled to {IsLocked}");
     }
 
     /// <inheritdoc />
@@ -199,11 +182,10 @@ public sealed class StateService : IStateService, IService
         if (_isEditMode)
         {
             IsEditMode = false;
-            _log.Debug("Exited edit mode due to fullscreen entry");
+            LogService.Debug(LogCategory.UI, "Exited edit mode due to fullscreen entry");
         }
         
         IsFullscreen = true;
-        _log.Debug("Entered fullscreen");
     }
 
     /// <inheritdoc />
@@ -211,6 +193,6 @@ public sealed class StateService : IStateService, IService
     {
         if (!_isFullscreen) return;
         IsFullscreen = false;
-        _log.Debug("Exited fullscreen");
     }
+
 }

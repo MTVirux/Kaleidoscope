@@ -2,7 +2,7 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
@@ -70,7 +70,7 @@ public readonly struct VesselVoyageAdapter : IVentureEntity
 /// </summary>
 public abstract class VentureStatusToolBase : ToolComponent
 {
-    protected readonly AutoRetainerIpcService? AutoRetainerIpc;
+    protected readonly AutoRetainerService? AutoRetainerIpc;
     protected readonly ConfigurationService? ConfigService;
 
     // Cached state
@@ -115,7 +115,7 @@ public abstract class VentureStatusToolBase : ToolComponent
     protected abstract string HiddenEntitiesSettingsKey { get; } // "HiddenRetainers" or "HiddenSubmersibles"
     protected abstract string NoVentureColorSettingsKey { get; } // "NoVentureColor" or "NoVoyageColor"
 
-    protected VentureStatusToolBase(AutoRetainerIpcService? autoRetainerIpc, ConfigurationService? configService)
+    protected VentureStatusToolBase(AutoRetainerService? autoRetainerIpc, ConfigurationService? configService)
     {
         AutoRetainerIpc = autoRetainerIpc;
         ConfigService = configService;
@@ -133,7 +133,7 @@ public abstract class VentureStatusToolBase : ToolComponent
     protected string GetFormattedCharacterName(AutoRetainerCharacterData character)
     {
         var format = ConfigService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
-        return TimeSeriesCacheService.FormatName(character.Name, format) ?? character.Name;
+        return Kaleidoscope.Libs.CharacterNameFormatter.FormatName(character.Name, format) ?? character.Name;
     }
 
     public override void RenderToolContent()
@@ -168,7 +168,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[{GetType().Name}] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -187,7 +187,7 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[{GetType().Name}] Refresh error: {ex.Message}");
+            LogDebug($"Refresh error: {ex.Message}");
         }
     }
 
@@ -195,9 +195,12 @@ public abstract class VentureStatusToolBase : ToolComponent
     {
         var sortedCharacters = GetSortedCharacters(nowUnix);
 
+        var isCtrlHeld = ImGui.GetIO().KeyCtrl;
+
         foreach (var character in sortedCharacters)
         {
-            if (HiddenCharacters.Contains(character.CID))
+            var isRevealedHidden = HiddenCharacters.Contains(character.CID);
+            if (isRevealedHidden && !isCtrlHeld)
                 continue;
 
             var entities = GetEntities(character).ToList();
@@ -205,11 +208,13 @@ public abstract class VentureStatusToolBase : ToolComponent
                 continue;
 
             ImGui.PushID((int)character.CID);
+            if (isRevealedHidden)
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
 
             var headerLabel = $"{GetFormattedCharacterName(character)} @ {character.World}";
-            if (MTTreeHelpers.DrawCollapsingSection(headerLabel, true))
+            if (TreeHelpers.DrawCollapsingSection(headerLabel, true))
             {
-                DrawCharacterContextMenu(character.CID);
+                DrawCharacterContextMenu(character.CID, isRevealedHidden);
 
                 var visibleEntities = entities.Where(e => !IsEntityHidden(character.CID, e.Name)).ToList();
                 var sortedEntities = GetSortedEntities(visibleEntities, nowUnix);
@@ -233,33 +238,52 @@ public abstract class VentureStatusToolBase : ToolComponent
             }
             else
             {
-                DrawCharacterContextMenu(character.CID);
+                DrawCharacterContextMenu(character.CID, isRevealedHidden);
             }
 
+            if (isRevealedHidden)
+                ImGui.PopStyleVar();
             ImGui.PopID();
         }
     }
 
-    private void DrawCharacterContextMenu(ulong characterCid)
+    private void DrawCharacterContextMenu(ulong characterCid, bool isRevealedHidden = false)
     {
+        if (isRevealedHidden)
+            ImGui.PopStyleVar();
         if (ImGui.BeginPopupContextItem($"CharContext_{characterCid}"))
         {
-            if (ImGui.MenuItem("Hide Character"))
+            if (isRevealedHidden)
             {
-                HiddenCharacters.Add(characterCid);
-                NotifyToolSettingsChanged();
+                if (ImGui.MenuItem("Unhide Character"))
+                {
+                    HiddenCharacters.Remove(characterCid);
+                    NotifyToolSettingsChanged();
+                }
+            }
+            else
+            {
+                if (ImGui.MenuItem("Hide Character"))
+                {
+                    HiddenCharacters.Add(characterCid);
+                    NotifyToolSettingsChanged();
+                }
             }
             ImGui.EndPopup();
         }
+        if (isRevealedHidden)
+            ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
     }
 
     private void DrawFlatList(long nowUnix, long nowMs)
     {
         var allEntities = new List<(IVentureEntity Entity, AutoRetainerCharacterData Character)>();
+        var isCtrlHeld = ImGui.GetIO().KeyCtrl;
 
         foreach (var character in Characters!)
         {
-            if (HiddenCharacters.Contains(character.CID))
+            var isCharHidden = HiddenCharacters.Contains(character.CID);
+            if (isCharHidden && !isCtrlHeld)
                 continue;
 
             foreach (var entity in GetEntities(character))
@@ -313,8 +337,12 @@ public abstract class VentureStatusToolBase : ToolComponent
 
     private void DrawEntityTableRowWithCharacter(IVentureEntity entity, AutoRetainerCharacterData character, long nowUnix, long nowMs, bool showCharacter)
     {
+        var isRevealedHidden = HiddenCharacters.Contains(character.CID) && ImGui.GetIO().KeyCtrl;
         ImGui.TableNextRow();
         
+        if (isRevealedHidden)
+            ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
+
         ImGui.TableNextColumn();
         var (color, _) = GetEntityDisplayInfo(entity, nowUnix);
         ImGui.TextColored(color, entity.Name);
@@ -325,11 +353,18 @@ public abstract class VentureStatusToolBase : ToolComponent
         {
             ImGui.TableNextColumn();
             ImGui.TextColored(DisabledColor, GetFormattedCharacterName(character));
-            DrawCharacterColumnContextMenu(character.CID, entity.Name);
+            if (isRevealedHidden)
+                ImGui.PopStyleVar();
+            DrawCharacterColumnContextMenu(character.CID, entity.Name, isRevealedHidden);
+            if (isRevealedHidden)
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.4f);
         }
 
         ImGui.TableNextColumn();
         DrawEntityStatus(entity, nowUnix, nowMs);
+
+        if (isRevealedHidden)
+            ImGui.PopStyleVar();
     }
 
     private void DrawEntityContextMenu(ulong characterCid, string entityName)
@@ -345,14 +380,25 @@ public abstract class VentureStatusToolBase : ToolComponent
         }
     }
 
-    private void DrawCharacterColumnContextMenu(ulong characterCid, string entityName)
+    private void DrawCharacterColumnContextMenu(ulong characterCid, string entityName, bool isRevealedHidden = false)
     {
         if (ImGui.BeginPopupContextItem($"CharColContext_{characterCid}_{entityName}"))
         {
-            if (ImGui.MenuItem("Hide Character"))
+            if (isRevealedHidden)
             {
-                HiddenCharacters.Add(characterCid);
-                NotifyToolSettingsChanged();
+                if (ImGui.MenuItem("Unhide Character"))
+                {
+                    HiddenCharacters.Remove(characterCid);
+                    NotifyToolSettingsChanged();
+                }
+            }
+            else
+            {
+                if (ImGui.MenuItem("Hide Character"))
+                {
+                    HiddenCharacters.Add(characterCid);
+                    NotifyToolSettingsChanged();
+                }
             }
             ImGui.EndPopup();
         }
@@ -485,7 +531,6 @@ public abstract class VentureStatusToolBase : ToolComponent
             : notReady.Concat(ready).ToList();
     }
 
-    public override bool HasSettings => true;
     protected override bool HasToolSettings => true;
 
     protected override void DrawToolSettings()
@@ -702,31 +747,23 @@ public abstract class VentureStatusToolBase : ToolComponent
     /// </summary>
     public override Dictionary<string, object?>? ExportToolSettings()
     {
-        return new Dictionary<string, object?>
+        var settings = new Dictionary<string, object?>
         {
             ["GroupByCharacter"] = GroupByCharacter,
             ["HideCharacterName"] = HideCharacterName,
             ["SortOrder"] = (int)SortOrder,
             ["ReadyOnTop"] = ReadyOnTop,
-            ["HiddenCharacters"] = HiddenCharacters.ToList(),
-            [HiddenEntitiesSettingsKey] = HiddenEntities.ToList(),
-            ["ReadyColorR"] = ReadyColor.X,
-            ["ReadyColorG"] = ReadyColor.Y,
-            ["ReadyColorB"] = ReadyColor.Z,
-            ["ReadyColorA"] = ReadyColor.W,
-            ["ActiveColorR"] = ActiveColor.X,
-            ["ActiveColorG"] = ActiveColor.Y,
-            ["ActiveColorB"] = ActiveColor.Z,
-            ["ActiveColorA"] = ActiveColor.W,
-            ["DisabledColorR"] = DisabledColor.X,
-            ["DisabledColorG"] = DisabledColor.Y,
-            ["DisabledColorB"] = DisabledColor.Z,
-            ["DisabledColorA"] = DisabledColor.W,
-            [$"{NoVentureColorSettingsKey}R"] = NoVentureColor.X,
-            [$"{NoVentureColorSettingsKey}G"] = NoVentureColor.Y,
-            [$"{NoVentureColorSettingsKey}B"] = NoVentureColor.Z,
-            [$"{NoVentureColorSettingsKey}A"] = NoVentureColor.W
         };
+        
+        ExportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+        ExportHashSet(settings, HiddenEntitiesSettingsKey, HiddenEntities);
+        
+        ExportColor(settings, "ReadyColor", ReadyColor);
+        ExportColor(settings, "ActiveColor", ActiveColor);
+        ExportColor(settings, "DisabledColor", DisabledColor);
+        ExportColor(settings, NoVentureColorSettingsKey, NoVentureColor);
+        
+        return settings;
     }
 
     /// <summary>
@@ -741,41 +778,13 @@ public abstract class VentureStatusToolBase : ToolComponent
         SortOrder = (VentureSortOrder)GetSetting(settings, "SortOrder", (int)SortOrder);
         ReadyOnTop = GetSetting(settings, "ReadyOnTop", ReadyOnTop);
 
-        var hiddenChars = GetSetting<List<ulong>>(settings, "HiddenCharacters", null);
-        if (hiddenChars != null)
-        {
-            HiddenCharacters = new HashSet<ulong>(hiddenChars);
-        }
+        HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+        HiddenEntities = ImportHashSet(settings, HiddenEntitiesSettingsKey, HiddenEntities);
 
-        var hiddenEntities = GetSetting<List<string>>(settings, HiddenEntitiesSettingsKey, null);
-        if (hiddenEntities != null)
-        {
-            HiddenEntities = new HashSet<string>(hiddenEntities);
-        }
-
-        ReadyColor = new Vector4(
-            GetSetting(settings, "ReadyColorR", ReadyColor.X),
-            GetSetting(settings, "ReadyColorG", ReadyColor.Y),
-            GetSetting(settings, "ReadyColorB", ReadyColor.Z),
-            GetSetting(settings, "ReadyColorA", ReadyColor.W));
-
-        ActiveColor = new Vector4(
-            GetSetting(settings, "ActiveColorR", ActiveColor.X),
-            GetSetting(settings, "ActiveColorG", ActiveColor.Y),
-            GetSetting(settings, "ActiveColorB", ActiveColor.Z),
-            GetSetting(settings, "ActiveColorA", ActiveColor.W));
-
-        DisabledColor = new Vector4(
-            GetSetting(settings, "DisabledColorR", DisabledColor.X),
-            GetSetting(settings, "DisabledColorG", DisabledColor.Y),
-            GetSetting(settings, "DisabledColorB", DisabledColor.Z),
-            GetSetting(settings, "DisabledColorA", DisabledColor.W));
-
-        NoVentureColor = new Vector4(
-            GetSetting(settings, $"{NoVentureColorSettingsKey}R", NoVentureColor.X),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}G", NoVentureColor.Y),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}B", NoVentureColor.Z),
-            GetSetting(settings, $"{NoVentureColorSettingsKey}A", NoVentureColor.W));
+        ReadyColor = ImportColor(settings, "ReadyColor", DefaultReadyColor);
+        ActiveColor = ImportColor(settings, "ActiveColor", DefaultActiveColor);
+        DisabledColor = ImportColor(settings, "DisabledColor", DefaultDisabledColor);
+        NoVentureColor = ImportColor(settings, NoVentureColorSettingsKey, DefaultNoVentureColor);
     }
 
     public override void Dispose()

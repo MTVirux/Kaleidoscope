@@ -3,11 +3,8 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// Configuration for the currency tracking service.
 /// </summary>
-public class CurrencyTrackerConfig
+public sealed class CurrencyTrackerConfig
 {
-    public bool TrackingEnabled { get; set; } = true;
-    public int TrackingIntervalMs { get; set; } = 1000;
-    
     /// <summary>
     /// SQLite page cache size in megabytes.
     /// Higher values improve read performance at the cost of RAM usage.

@@ -2,13 +2,11 @@ using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
-/// <summary>
-/// A tool that displays the Universalis REST API status and configuration.
-/// </summary>
-public class UniversalisApiStatusTool : StatusToolBase
+public sealed class UniversalisApiStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis API Status";
     
@@ -37,7 +35,6 @@ public class UniversalisApiStatusTool : StatusToolBase
 
             if (ShowDetails)
             {
-                // Show configured query scope
                 var scope = _configService.Config.UniversalisQueryScope;
                 var scopeText = scope switch
                 {
@@ -48,7 +45,6 @@ public class UniversalisApiStatusTool : StatusToolBase
                 };
                 ImGui.TextUnformatted($"  Query scope: {scopeText}");
 
-                // Show price tracking mode if available
                 if (_priceTrackingService != null)
                 {
                     var worldData = _priceTrackingService.WorldData;
@@ -64,7 +60,7 @@ public class UniversalisApiStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[UniversalisApiStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

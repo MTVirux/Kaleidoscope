@@ -3,7 +3,7 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// General plugin settings.
 /// </summary>
-public class GeneralConfig
+public sealed class GeneralConfig
 {
     public bool ShowOnStart { get; set; } = true;
     public bool ExclusiveFullscreen { get; set; } = false;

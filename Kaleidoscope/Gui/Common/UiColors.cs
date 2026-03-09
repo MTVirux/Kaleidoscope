@@ -14,57 +14,6 @@ namespace Kaleidoscope.Gui.Common;
 /// </remarks>
 public static class UiColors
 {
-    // === Favorite Star Colors (uint ABGR format for ImGui native) ===
-    
-    /// <summary>Active favorite star color (yellow-gold) - ABGR format.</summary>
-    public const uint FavoriteStarOn = 0xFF00CFFF;
-    
-    /// <summary>Inactive favorite star color (dim white) - ABGR format.</summary>
-    public const uint FavoriteStarOff = 0x40FFFFFF;
-    
-    /// <summary>Hovered favorite star color (bright gold) - ABGR format.</summary>
-    public const uint FavoriteStarHovered = 0xFF40DFFF;
-    
-    // === Selection Colors (uint ABGR format) ===
-    
-    /// <summary>Selected item background color (dim green) - ABGR format.</summary>
-    public const uint SelectedBackground = 0x40008000;
-    
-    /// <summary>Dimmed/secondary text color (gray) - ABGR format.</summary>
-    public const uint TextDimmed = 0xFF808080;
-    
-    /// <summary>World/datacenter name color (dim gray) - ABGR format.</summary>
-    public const uint WorldColor = 0xFF808080;
-    
-    /// <summary>Category label color (dim gray) - ABGR format.</summary>
-    public const uint CategoryColor = 0xFF808080;
-    
-    // === Helper Methods for ABGR/Vector4 Conversion ===
-    
-    /// <summary>
-    /// Converts ABGR uint to Vector4 (RGBA float format for ImGui.ColorEdit).
-    /// </summary>
-    public static Vector4 ToVector4(uint abgr)
-    {
-        var r = (abgr & 0xFF) / 255f;
-        var g = ((abgr >> 8) & 0xFF) / 255f;
-        var b = ((abgr >> 16) & 0xFF) / 255f;
-        var a = ((abgr >> 24) & 0xFF) / 255f;
-        return new Vector4(r, g, b, a);
-    }
-    
-    /// <summary>
-    /// Converts Vector4 (RGBA float) to ABGR uint format.
-    /// </summary>
-    public static uint FromVector4(Vector4 rgba)
-    {
-        var r = (uint)(rgba.X * 255) & 0xFF;
-        var g = (uint)(rgba.Y * 255) & 0xFF;
-        var b = (uint)(rgba.Z * 255) & 0xFF;
-        var a = (uint)(rgba.W * 255) & 0xFF;
-        return r | (g << 8) | (b << 16) | (a << 24);
-    }
-
     // Status colors (Vector4 format for ImGui styling)
     /// <summary>Connected/Success status - green.</summary>
     public static readonly Vector4 Connected = new(0.2f, 0.8f, 0.2f, 1f);
@@ -99,6 +48,12 @@ public static class UiColors
     
     /// <summary>Highlighted text - blue.</summary>
     public static readonly Vector4 Highlight = new(0.4f, 0.6f, 1.0f, 1f);
+    
+    /// <summary>Selection highlight background - semi-transparent yellow.</summary>
+    public static readonly Vector4 SelectionHighlight = new(0.8f, 0.8f, 0.2f, 0.5f);
+    
+    /// <summary>Retainer sub-row background - slightly darker blue-tinted.</summary>
+    public static readonly Vector4 SubRowBackground = new(0.15f, 0.15f, 0.2f, 0.5f);
 
     // Size tier colors (for file/memory size displays)
     /// <summary>Small size - green (good).</summary>

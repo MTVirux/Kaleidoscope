@@ -77,12 +77,6 @@
           "SQLitePCLRaw.core": "2.1.2"
         }
       },
-      "mtgui": {
-        "type": "Project",
-        "dependencies": {
-          "JetBrains.Annotations": "[2024.3.0, )"
-        }
-      },
       "ottergui": {
         "type": "Project",
         "dependencies": {

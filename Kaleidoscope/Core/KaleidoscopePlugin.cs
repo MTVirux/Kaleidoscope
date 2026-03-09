@@ -1,5 +1,6 @@
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Core;
 using Kaleidoscope.Services;
 using OtterGui.Log;
 using OtterGui.Services;
@@ -13,7 +14,13 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
 {
     public static readonly Logger Log = new();
 
-    private readonly ServiceManager _services;
+    private readonly ServiceManager? _services;
+
+    /// <summary>
+    /// Deferred startup state. Non-null while services are still being loaded,
+    /// set to null once startup completes or fails.
+    /// </summary>
+    private DeferredStartupService? _startup;
 
     public KaleidoscopePlugin(IDalamudPluginInterface pluginInterface)
     {
@@ -21,20 +28,22 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
         {
             _services = StaticServiceManager.CreateProvider(pluginInterface, Log, this);
 
-            // Initialize static log service for components without DI access
+            // Lightweight init — these are fast (Dalamud singletons / simple config reads).
             var dalamudLog = _services.GetService<IPluginLog>();
             LogService.Initialize(dalamudLog);
 
-            // Initialize static game state service for FFXIVClientStructs access
+            var configService = _services.GetService<ConfigurationService>();
+            var filenameService = _services.GetService<FilenameService>();
+            filenameService.SetConfiguration(configService.Config);
+            LogService.SetConfiguration(configService.Config);
+
             var playerState = _services.GetService<IPlayerState>();
             var objectTable = _services.GetService<IObjectTable>();
             GameStateService.Initialize(playerState, objectTable);
 
-            // Initialize all services marked with IRequiredService
-            // This follows the Glamourer pattern for service initialization
-            _services.EnsureRequiredServices();
-
-            Log.Information("Kaleidoscope loaded successfully.");
+            // Kick off deferred startup — resolves services on a background thread
+            // while a Framework.Update handler polls progress for the notification.
+            _startup = new DeferredStartupService(_services, typeof(KaleidoscopePlugin).Assembly);
         }
         catch (Exception ex)
         {
@@ -46,6 +55,11 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
 
     public void Dispose()
     {
+        _startup?.Dispose();
+        _startup = null;
+
+        LogService.Shutdown();
+        GameStateService.Cleanup();
         _services?.Dispose();
         Log.Information("Kaleidoscope disposed.");
     }

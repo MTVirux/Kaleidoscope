@@ -29,6 +29,18 @@ public abstract record SettingDefinitionBase
     
     /// <summary>For enum types: the enum type.</summary>
     public Type? EnumType { get; init; }
+    
+    /// <summary>For enum types: cached enum values array (computed once, reused every frame).</summary>
+    public Array? CachedEnumValues { get; init; }
+    
+    /// <summary>For enum types: cached display names (computed once, reused every frame).</summary>
+    public string[]? CachedEnumNames { get; init; }
+    
+    /// <summary>For enum types: cached untyped getter delegate to avoid per-frame reflection.</summary>
+    public Delegate? UntypedGetter { get; init; }
+    
+    /// <summary>For enum types: cached untyped setter delegate to avoid per-frame reflection.</summary>
+    public Delegate? UntypedSetter { get; init; }
 }
 
 /// <summary>
@@ -104,7 +116,12 @@ public sealed record SettingDefinition<TSettings, TValue> : SettingDefinitionBas
             Type = type,
             Getter = getter,
             Setter = setter,
-            EnumType = typeof(TValue).IsEnum ? typeof(TValue) : null
+            EnumType = typeof(TValue).IsEnum ? typeof(TValue) : null,
+            // Pre-cache enum data at schema construction time to avoid per-frame reflection
+            CachedEnumValues = typeof(TValue).IsEnum ? Enum.GetValues(typeof(TValue)) : null,
+            CachedEnumNames = typeof(TValue).IsEnum ? Enum.GetNames(typeof(TValue)) : null,
+            UntypedGetter = getter,
+            UntypedSetter = setter
         };
     }
 }

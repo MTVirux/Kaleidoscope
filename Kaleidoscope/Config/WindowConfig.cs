@@ -3,7 +3,7 @@ namespace Kaleidoscope.Config;
 /// <summary>
 /// Window state and position configuration.
 /// </summary>
-public class WindowConfig
+public sealed class WindowConfig
 {
     public bool PinMainWindow { get; set; } = false;
     public bool PinConfigWindow { get; set; } = false;

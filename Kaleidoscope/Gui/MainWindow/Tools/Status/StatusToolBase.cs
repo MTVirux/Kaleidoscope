@@ -9,12 +9,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// </summary>
 public abstract class StatusToolBase : ToolComponent
 {
-    /// <summary>
-    /// Whether to show extra details beyond the primary status indicator.
-    /// </summary>
     public bool ShowDetails { get; set; } = true;
 
-    public override bool HasSettings => true;
     protected override bool HasToolSettings => true;
 
     protected override void DrawToolSettings()
@@ -26,7 +22,6 @@ public abstract class StatusToolBase : ToolComponent
             NotifyToolSettingsChanged();
         }
         
-        // Allow subclasses to add additional settings
         DrawAdditionalSettings();
     }
     
@@ -46,14 +41,8 @@ public abstract class StatusToolBase : ToolComponent
         return settings;
     }
     
-    /// <summary>
-    /// Override to export additional tool-specific settings.
-    /// </summary>
     protected virtual Dictionary<string, object?>? ExportAdditionalSettings() => null;
 
-    /// <summary>
-    /// Imports tool-specific settings from a layout.
-    /// </summary>
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
     {
         if (settings == null) return;
@@ -62,8 +51,5 @@ public abstract class StatusToolBase : ToolComponent
         ImportAdditionalSettings(settings);
     }
     
-    /// <summary>
-    /// Override to import additional tool-specific settings.
-    /// </summary>
     protected virtual void ImportAdditionalSettings(Dictionary<string, object?> settings) { }
 }

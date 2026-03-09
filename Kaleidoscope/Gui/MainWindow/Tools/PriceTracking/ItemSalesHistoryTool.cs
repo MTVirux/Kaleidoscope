@@ -6,14 +6,15 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
 /// <summary>
 /// Tool component that shows sale history for a selected item from Universalis.
 /// </summary>
-public class ItemSalesHistoryTool : ToolComponent
+public sealed class ItemSalesHistoryTool : ToolComponent
 {
     public override string ToolName => "Item Sales History";
     
@@ -23,7 +24,7 @@ public class ItemSalesHistoryTool : ToolComponent
     private readonly ItemDataService _itemDataService;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly SalePriceCacheService _salePriceCacheService;
-    private readonly MTItemComboDropdown _itemCombo;
+    private readonly ItemComboDropdown _itemCombo;
 
     // State
     private MarketHistory? _currentHistory;
@@ -36,13 +37,14 @@ public class ItemSalesHistoryTool : ToolComponent
     private int _maxEntries = 100;
     private bool _showHqOnly = false;
     private bool _showNqOnly = false;
+    private bool _showActionButtons = true;
 
     public ItemSalesHistoryTool(
         UniversalisService universalisService,
         PriceTrackingService priceTrackingService,
         ConfigurationService configService,
         ItemDataService itemDataService,
-        CurrencyTrackerService CurrencyTrackerService,
+        CurrencyTrackerService currencyTrackerService,
         SalePriceCacheService salePriceCacheService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
@@ -52,10 +54,10 @@ public class ItemSalesHistoryTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _configService = configService;
         _itemDataService = itemDataService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _salePriceCacheService = salePriceCacheService;
 
-        _itemCombo = new MTItemComboDropdown(
+        _itemCombo = new ItemComboDropdown(
             textureProvider,
             dataManager,
             favoritesService,
@@ -74,10 +76,13 @@ public class ItemSalesHistoryTool : ToolComponent
     {
         try
         {
-            DrawItemSelector();
-            ImGui.Separator();
-            DrawFilters();
-            ImGui.Separator();
+            if (_showActionButtons)
+            {
+                DrawItemSelector();
+                ImGui.Separator();
+                DrawFilters();
+                ImGui.Separator();
+            }
             using (ProfilerService.BeginStaticChildScope("DrawSalesHistory"))
             {
                 DrawSalesHistory();
@@ -86,7 +91,7 @@ public class ItemSalesHistoryTool : ToolComponent
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[ItemSalesHistoryTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -338,7 +343,7 @@ public class ItemSalesHistoryTool : ToolComponent
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
-            LogService.Debug($"[ItemSalesHistoryTool] Fetch error: {ex.Message}");
+            LogDebug($"Fetch error: {ex.Message}");
         }
         finally
         {
@@ -346,20 +351,29 @@ public class ItemSalesHistoryTool : ToolComponent
         }
     }
 
-    public override bool HasSettings => true;
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    protected override void DrawToolSettings()
     {
-        if (!MTTreeHelpers.DrawCollapsingSection("Item Sales History Settings", true))
-            return;
-
         // Default max entries
         var maxEntries = _maxEntries;
         if (ImGui.SliderInt("Default Max Entries", ref maxEntries, 10, 500))
         {
             _maxEntries = maxEntries;
+            NotifyToolSettingsChanged();
         }
         ImGui.TextDisabled("Number of sale entries to fetch and display.");
+
+        ImGui.Spacing();
+
+        if (ImGui.Checkbox("Show Action Buttons", ref _showActionButtons))
+        {
+            NotifyToolSettingsChanged();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Show or hide the item selector, quality filters, and refresh button.");
+        }
     }
     
     /// <summary>
@@ -371,7 +385,8 @@ public class ItemSalesHistoryTool : ToolComponent
         {
             ["MaxEntries"] = _maxEntries,
             ["ShowHqOnly"] = _showHqOnly,
-            ["ShowNqOnly"] = _showNqOnly
+            ["ShowNqOnly"] = _showNqOnly,
+            ["ShowActionButtons"] = _showActionButtons
         };
     }
     
@@ -385,6 +400,7 @@ public class ItemSalesHistoryTool : ToolComponent
         _maxEntries = GetSetting(settings, "MaxEntries", _maxEntries);
         _showHqOnly = GetSetting(settings, "ShowHqOnly", _showHqOnly);
         _showNqOnly = GetSetting(settings, "ShowNqOnly", _showNqOnly);
+        _showActionButtons = GetSetting(settings, "ShowActionButtons", true);
     }
 
     public override void Dispose()

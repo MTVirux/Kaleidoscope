@@ -28,7 +28,7 @@ public enum VerticalAlignment
 /// <summary>
 /// Settings class for LabelTool with all configurable properties.
 /// </summary>
-public class LabelToolSettings
+public sealed class LabelToolSettings
 {
     public string Text { get; set; } = "Label";
     public Vector4 TextColor { get; set; } = new(1f, 1f, 1f, 1f);
@@ -41,7 +41,7 @@ public class LabelToolSettings
 /// A simple tool that displays customizable text.
 /// Useful for adding labels, notes, or separators to layouts.
 /// </summary>
-public class LabelTool : ToolComponent
+public sealed class LabelTool : ToolComponent
 {
     public override string ToolName => "Label";
     
@@ -173,11 +173,9 @@ public class LabelTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[LabelTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
-
-    public override bool HasSettings => true;
 
     protected override bool HasToolSettings => true;
     

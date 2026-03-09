@@ -1,10 +1,12 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Interfaces;
 using Kaleidoscope.Models.Settings;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
@@ -106,7 +108,7 @@ public abstract class ToolComponent : IDisposable
             // Draw tool-specific settings first (in collapsible header)
             if (HasToolSettings)
             {
-                if (MTTreeHelpers.DrawCollapsingSection("Tool Settings", true))
+                if (TreeHelpers.DrawCollapsingSection("Tool Settings", true))
                 {
                     // Check if tool provides a schema for declarative rendering
                     var schema = GetToolSettingsSchema();
@@ -149,7 +151,7 @@ public abstract class ToolComponent : IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ToolComponent] DrawSettings error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] DrawSettings error: {ex.Message}");
         }
     }
     
@@ -238,59 +240,178 @@ public abstract class ToolComponent : IDisposable
     
     /// <summary>
     /// Helper method to safely get a typed value from settings dictionary.
-    /// Handles JSON deserialization for complex types.
+    /// Delegates to SettingsImportHelper for JSON deserialization handling.
     /// </summary>
     protected static T? GetSetting<T>(Dictionary<string, object?>? settings, string key, T? defaultValue = default)
+    {
+        // Delegate to centralized implementation to avoid code duplication
+        return SettingsImportHelper.GetSetting(settings, key, defaultValue);
+    }
+
+    protected void ShowSettingTooltip(string description, string defaultText)
+        => ImGuiHelpers.SettingTooltip(description, defaultText);
+    
+    protected void LogDebug(string message) => LogService.Debug(LogCategory.UI, $"[{GetType().Name}] {message}");
+    
+    protected void LogError(string message) => LogService.Error(LogCategory.UI, $"[{GetType().Name}] {message}");
+    
+    /// <summary>
+    /// Exports a Vector4 color to the settings dictionary with RGBA component keys.
+    /// Usage: ExportColor(dict, "ReadyColor", ReadyColor);
+    /// </summary>
+    protected static void ExportColor(Dictionary<string, object?> settings, string key, Vector4 color)
+    {
+        settings[$"{key}R"] = color.X;
+        settings[$"{key}G"] = color.Y;
+        settings[$"{key}B"] = color.Z;
+        settings[$"{key}A"] = color.W;
+    }
+    
+    /// <summary>
+    /// Imports a Vector4 color from the settings dictionary with RGBA component keys.
+    /// Usage: ReadyColor = ImportColor(settings, "ReadyColor", DefaultReadyColor);
+    /// </summary>
+    protected static Vector4 ImportColor(Dictionary<string, object?>? settings, string key, Vector4 defaultValue)
+    {
+        if (settings == null) return defaultValue;
+        return new Vector4(
+            GetSetting(settings, $"{key}R", defaultValue.X),
+            GetSetting(settings, $"{key}G", defaultValue.Y),
+            GetSetting(settings, $"{key}B", defaultValue.Z),
+            GetSetting(settings, $"{key}A", defaultValue.W));
+    }
+    
+    /// <summary>
+    /// Exports a HashSet to the settings dictionary as a List for JSON serialization.
+    /// Usage: ExportHashSet(dict, "HiddenCharacters", HiddenCharacters);
+    /// </summary>
+    protected static void ExportHashSet<T>(Dictionary<string, object?> settings, string key, HashSet<T> hashSet)
+    {
+        settings[key] = hashSet.ToList();
+    }
+    
+    /// <summary>
+    /// Imports a HashSet from the settings dictionary, handling JsonElement deserialization.
+    /// Usage: HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", HiddenCharacters);
+    /// </summary>
+    protected static HashSet<T> ImportHashSet<T>(Dictionary<string, object?>? settings, string key, HashSet<T> defaultValue)
     {
         if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
             return defaultValue;
         
         try
         {
-            // Handle Newtonsoft.Json JValue/JToken (used by ConfigManager)
-            if (value is Newtonsoft.Json.Linq.JToken jToken)
+            // Handle System.Text.Json JsonElement (from JSON deserialization)
+            if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
             {
-                return jToken.ToObject<T>();
+                var result = new HashSet<T>();
+                foreach (var item in jsonElement.EnumerateArray())
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<T>(item.GetRawText());
+                    if (parsed != null)
+                        result.Add(parsed);
+                }
+                return result;
             }
             
-            // Handle System.Text.Json JsonElement (when loaded from JSON)
-            if (value is System.Text.Json.JsonElement jsonElement)
+            // Handle Newtonsoft.Json JArray
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
             {
-                return System.Text.Json.JsonSerializer.Deserialize<T>(jsonElement.GetRawText());
+                return new HashSet<T>(jArray.ToObject<List<T>>() ?? new List<T>());
             }
             
-            // Direct cast for simple types
-            if (value is T typedValue)
-                return typedValue;
-            
-            // Try convert for numeric types
-            return (T)Convert.ChangeType(value, typeof(T));
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
-
-    protected void ShowSettingTooltip(string description, string defaultText)
-    {
-        try
-        {
-            if (!ImGui.IsItemHovered()) return;
-
-            ImGui.BeginTooltip();
-            if (!string.IsNullOrEmpty(description))
-                ImGui.TextUnformatted(description);
-            if (!string.IsNullOrEmpty(defaultText))
+            // Handle direct List<T>
+            if (value is List<T> list)
             {
-                ImGui.Separator();
-                ImGui.TextUnformatted($"Default: {defaultText}");
+                return new HashSet<T>(list);
             }
-            ImGui.EndTooltip();
+            
+            // Handle IEnumerable<T>
+            if (value is IEnumerable<T> enumerable)
+            {
+                return new HashSet<T>(enumerable);
+            }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"Tooltip error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportHashSet failed for key '{key}': {ex.Message}");
         }
+        
+        return defaultValue;
     }
+    
+    /// <summary>
+    /// Exports a Vector4 color to the settings dictionary as a float array [R, G, B, A].
+    /// Use this format when storing colors as a single key (vs ExportColor which uses RGBA component keys).
+    /// Usage: ExportColorArray(dict, "CharacterColumnColor", color);
+    /// </summary>
+    protected static void ExportColorArray(Dictionary<string, object?> settings, string key, Vector4? color)
+    {
+        if (color.HasValue)
+            settings[key] = new[] { color.Value.X, color.Value.Y, color.Value.Z, color.Value.W };
+    }
+    
+    /// <summary>
+    /// Imports a Vector4 color from a float array format [R, G, B, A].
+    /// Delegates to <see cref="SettingsImportHelper.ImportColor"/>.
+    /// </summary>
+    protected static Vector4? ImportColorArray(Dictionary<string, object?>? settings, string key)
+        => SettingsImportHelper.ImportColor(settings, key);
+    
+    /// <summary>
+    /// Imports a List of values from various serialized formats.
+    /// Usage: var ids = ImportList&lt;ulong&gt;(settings, "CharacterIds");
+    /// </summary>
+    protected static List<T>? ImportList<T>(Dictionary<string, object?>? settings, string key)
+    {
+        if (settings == null || !settings.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        try
+        {
+            // Handle System.Text.Json JsonElement
+            if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var result = new List<T>();
+                foreach (var item in jsonElement.EnumerateArray())
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<T>(item.GetRawText());
+                    if (parsed != null)
+                        result.Add(parsed);
+                }
+                return result;
+            }
+            
+            // Handle Newtonsoft.Json JArray
+            if (value is Newtonsoft.Json.Linq.JArray jArray)
+            {
+                return jArray.ToObject<List<T>>() ?? new List<T>();
+            }
+
+            // Handle direct List<T>
+            if (value is List<T> list)
+            {
+                return new List<T>(list);
+            }
+
+            // Handle IEnumerable<T>
+            if (value is IEnumerable<T> enumerable)
+            {
+                return enumerable.ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.UI, $"[ToolComponent] ImportList failed for key '{key}': {ex.Message}");
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Converts an object to a Dictionary from various serialized formats.
+    /// Delegates to <see cref="SettingsImportHelper.ConvertToDictionary"/>.
+    /// </summary>
+    protected static Dictionary<string, object?>? ConvertToDictionary(object? obj)
+        => SettingsImportHelper.ConvertToDictionary(obj);
 }

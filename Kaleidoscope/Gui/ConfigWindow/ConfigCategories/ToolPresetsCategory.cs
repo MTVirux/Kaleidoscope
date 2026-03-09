@@ -1,7 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
 using System.Numerics;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.MainWindow;
 using Kaleidoscope.Services;
 
@@ -105,7 +106,7 @@ public sealed class ToolPresetsCategory
         {
             var toolDisplayName = GetToolDisplayName(group.Key);
             
-            if (MTTreeHelpers.DrawCollapsingSection($"{toolDisplayName} ({group.Count()})", true, group.Key))
+            if (TreeHelpers.DrawCollapsingSection($"{toolDisplayName} ({group.Count()})", true, group.Key))
             {
                 foreach (var preset in group)
                 {
@@ -114,7 +115,6 @@ public sealed class ToolPresetsCategory
             }
         }
 
-        // Handle deletion
         if (presetToDelete != null)
         {
             var toRemove = presets.FirstOrDefault(p => p.Id == presetToDelete);
@@ -181,13 +181,10 @@ public sealed class ToolPresetsCategory
             ImGui.SameLine();
             
             // Delete button with confirmation
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.6f, 0.2f, 0.2f, 1f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.3f, 0.3f, 1f));
-            if (ImGui.SmallButton("Delete"))
+            if (ImGuiHelpers.DangerSmallButton("Delete"))
             {
                 ImGui.OpenPopup("ConfirmDelete");
             }
-            ImGui.PopStyleColor(2);
             
             // Confirmation popup
             if (ImGui.BeginPopup("ConfirmDelete"))
@@ -211,7 +208,6 @@ public sealed class ToolPresetsCategory
                 ImGui.EndPopup();
             }
             
-            // Show creation date on hover
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip($"Created: {preset.CreatedAt:g}\nModified: {preset.ModifiedAt:g}");

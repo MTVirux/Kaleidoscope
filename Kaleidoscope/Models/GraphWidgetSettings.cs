@@ -1,12 +1,9 @@
 using Kaleidoscope.Gui.Widgets;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope.Models;
 
-/// <summary>
-/// Mode for determining series colors in the graph.
-/// </summary>
 public enum GraphColorMode
 {
     /// <summary>Don't use preferred colors - use custom series colors or default palette.</summary>
@@ -19,37 +16,27 @@ public enum GraphColorMode
 
 /// <summary>
 /// Interface for settings classes that contain graph widget configuration.
-/// Implement this interface to enable automatic settings binding with MTGraphWidget.
+/// Implement this interface to enable automatic settings binding with GraphWidget.
 /// </summary>
-public interface IGraphWidgetSettings : IMTGraphSettings
+public interface IGraphWidgetSettings : IGraphSettings
 {
-    /// <summary>
-    /// Mode for determining series colors in the graph.
-    /// </summary>
     GraphColorMode ColorMode { get; set; }
 }
 
 /// <summary>
 /// Shared settings for graph widget display configuration.
-/// Used by tools that embed an MTGraphWidget to avoid duplicating settings definitions.
-/// Implements IGraphWidgetSettings for automatic binding with MTGraphWidget.
+/// Used by tools that embed an GraphWidget to avoid duplicating settings definitions.
+/// Implements IGraphWidgetSettings for automatic binding with GraphWidget.
 /// </summary>
-public class GraphWidgetSettings : IGraphWidgetSettings
+public sealed class GraphWidgetSettings : IGraphWidgetSettings
 {
-    // Color mode for series
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
-    
-    // Legend settings
     public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
-    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
-    
-    // Graph type
-    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
-    
-    // Display settings
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public GraphType GraphType { get; set; } = GraphType.Area;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;
     public bool ShowGridLines { get; set; } = true;
@@ -57,34 +44,19 @@ public class GraphWidgetSettings : IGraphWidgetSettings
     public bool ShowValueLabel { get; set; } = false;
     public float ValueLabelOffsetX { get; set; } = 0f;
     public float ValueLabelOffsetY { get; set; } = 0f;
-    
-    // Auto-scroll settings
     public bool AutoScrollEnabled { get; set; } = false;
     public int AutoScrollTimeValue { get; set; } = 1;
-    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     public float AutoScrollNowPosition { get; set; } = 75f;
     public bool ShowControlsDrawer { get; set; } = true;
-    
-    // Time range settings
     public int TimeRangeValue { get; set; } = 7;
-    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
-    
-    // Number format settings
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
-    /// <summary>
-    /// Calculates the auto-scroll time range in seconds from value and unit.
-    /// </summary>
-    public double GetAutoScrollTimeRangeSeconds() => MTTimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
+    public double GetAutoScrollTimeRangeSeconds() => TimeUnitExtensions.ToSeconds(AutoScrollTimeUnit, AutoScrollTimeValue);
     
-    /// <summary>
-    /// Gets the time span for the current time range settings.
-    /// </summary>
     public TimeSpan? GetTimeSpan() => TimeRangeSelectorWidget.GetTimeSpan(TimeRangeValue, TimeRangeUnit);
     
-    /// <summary>
-    /// Copies all graph settings from another IGraphWidgetSettings instance.
-    /// </summary>
     public void CopyFrom(IGraphWidgetSettings other)
     {
         ColorMode = other.ColorMode;

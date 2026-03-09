@@ -1,10 +1,15 @@
 using System.Numerics;
+using Kaleidoscope.Services;
 
 namespace Kaleidoscope.Gui.Helpers;
 
 /// <summary>
 /// Utility methods for importing settings from serialized dictionaries.
 /// Handles multiple JSON formats (Newtonsoft.Json, System.Text.Json, in-memory).
+/// 
+/// NOTE: For ToolComponent subclasses, prefer using the base class helper methods
+/// (GetSetting, ImportColor, ImportColorArray, ImportHashSet, ImportList, ConvertToDictionary)
+/// instead of this static class. This class is intended for non-ToolComponent usage (widgets, services).
 /// </summary>
 public static class SettingsImportHelper
 {
@@ -46,9 +51,9 @@ public static class SettingsImportHelper
                 return new Vector4(floatArr[0], floatArr[1], floatArr[2], floatArr[3]);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback - return null on any conversion error
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] Color import failed for key '{key}': {ex.Message}");
         }
 
         return null;
@@ -99,29 +104,12 @@ public static class SettingsImportHelper
                 return result;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] List import failed for key '{key}': {ex.Message}");
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Imports a HashSet of ulong values from various serialized formats.
-    /// </summary>
-    public static HashSet<ulong>? ImportUlongHashSet(Dictionary<string, object?>? settings, string key)
-    {
-        var list = ImportList<ulong>(settings, key, ConvertToUlong);
-        return list != null ? new HashSet<ulong>(list) : null;
-    }
-
-    /// <summary>
-    /// Imports a List of ulong values from various serialized formats.
-    /// </summary>
-    public static List<ulong>? ImportUlongList(Dictionary<string, object?>? settings, string key)
-    {
-        return ImportList<ulong>(settings, key, ConvertToUlong);
     }
 
     /// <summary>
@@ -134,17 +122,6 @@ public static class SettingsImportHelper
 
     /// <summary>
     /// Converts an object to ulong, handling various numeric types and Newtonsoft.Json tokens.
-    /// </summary>
-    private static ulong? ConvertToUlong(object item)
-    {
-        if (item is ulong ul) return ul;
-        if (item is long l) return (ulong)l;
-        if (item is int i) return (ulong)i;
-        if (item is Newtonsoft.Json.Linq.JValue jv) return jv.ToObject<ulong>();
-        if (ulong.TryParse(item.ToString(), out var parsed)) return parsed;
-        return null;
-    }
-
     /// <summary>
     /// Converts an object to int, handling various numeric types and Newtonsoft.Json tokens.
     /// </summary>
@@ -172,10 +149,10 @@ public static class SettingsImportHelper
 
         try
         {
-            // Handle Newtonsoft.Json JValue
-            if (value is Newtonsoft.Json.Linq.JValue jValue)
+            // Handle Newtonsoft.Json JToken (base class for JValue, JObject, JArray)
+            if (value is Newtonsoft.Json.Linq.JToken jToken)
             {
-                return jValue.ToObject<T>() ?? defaultValue;
+                return jToken.ToObject<T>() ?? defaultValue;
             }
 
             // Handle System.Text.Json.JsonElement
@@ -191,8 +168,9 @@ public static class SettingsImportHelper
             // Try Convert.ChangeType for primitives
             return (T)Convert.ChangeType(value, typeof(T));
         }
-        catch
+        catch (Exception ex)
         {
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] GetSetting failed for key '{key}': {ex.Message}");
             return defaultValue;
         }
     }
@@ -251,9 +229,9 @@ public static class SettingsImportHelper
                 return result;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Graceful fallback
+            LogService.Debug(LogCategory.UI, $"[SettingsImport] ConvertToDictionary failed: {ex.Message}");
         }
         
         return null;

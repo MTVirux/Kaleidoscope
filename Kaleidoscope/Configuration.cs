@@ -3,19 +3,12 @@ using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope;
 
-/// <summary>
-/// Main plugin configuration. Implements IPluginConfiguration for Dalamud persistence.
-/// Related types are split into separate files:
-/// - Configuration.Enums.cs - Enum definitions
-/// - Configuration.Settings.cs - Tool settings classes
-/// - Configuration.Layout.cs - Layout persistence classes
-/// </summary>
-public class Configuration : IPluginConfiguration
+public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
 
@@ -25,13 +18,13 @@ public class Configuration : IPluginConfiguration
     public bool PinConfigWindow { get; set; } = false;
 
     /// <summary>
-    /// Whether profiling is enabled for draw time tracking.
+    /// When enabled, the Kaleidoscope window stays visible during cutscenes and GPose.
+    /// This overrides Dalamud's "Hide plugin UI during cutscenes" setting for this plugin.
     /// </summary>
+    public bool ShowDuringCutscenes { get; set; } = true;
+
     public bool ProfilerEnabled { get; set; } = false;
 
-    /// <summary>
-    /// Whether to log slow operations to the Dalamud log.
-    /// </summary>
     public bool ProfilerLogSlowOperations { get; set; } = true;
 
     /// <summary>
@@ -44,24 +37,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public int ProfilerStatsView { get; set; } = 0;
 
-    /// <summary>
-    /// Whether to show the histogram panel in the profiler.
-    /// </summary>
     public bool ProfilerShowHistogram { get; set; } = false;
 
-    /// <summary>
-    /// Whether to expand child scopes in profiler tool stats.
-    /// </summary>
     public bool ProfilerShowChildScopes { get; set; } = true;
 
-    /// <summary>
-    /// Whether the frame limiter is enabled.
-    /// </summary>
     public bool FrameLimiterEnabled { get; set; } = false;
 
-    /// <summary>
-    /// Target framerate for the frame limiter in frames per second.
-    /// </summary>
     public int FrameLimiterTargetFps { get; set; } = 60;
 
     /// <summary>
@@ -76,19 +57,52 @@ public class Configuration : IPluginConfiguration
     public bool DeveloperModeEnabled { get; set; } = false;
 
     /// <summary>
+    /// Enabled log categories for verbose/debug output filtering.
+    /// Only logs matching enabled categories will be emitted.
+    /// </summary>
+    public LogCategory EnabledLogCategories { get; set; } = LogCategory.None;
+
+    /// <summary>
+    /// Whether category-based log filtering is active.
+    /// When false, all logs pass through regardless of category.
+    /// </summary>
+    public bool LogCategoryFilteringEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Whether to write logs to an external file in the plugin directory.
+    /// </summary>
+    public bool FileLoggingEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Maximum size of the log file in megabytes before rotation.
+    /// </summary>
+    public int FileLoggingMaxSizeMB { get; set; } = 10;
+
+    public bool FileLoggingIncludeTimestamps { get; set; } = true;
+
+    /// <summary>
+    /// Custom directory for log files. If empty, uses the default plugin config directory.
+    /// </summary>
+    public string FileLoggingDirectory { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether to split log files by category (e.g., kaleidoscope_database.log, kaleidoscope_ui.log).
+    /// When enabled, each log category writes to its own file.
+    /// </summary>
+    public bool FileLoggingSplitByCategory { get; set; } = false;
+
+    /// <summary>
+    /// Whether to split log files by character (e.g., logs/FirstName LastName/kaleidoscope.log).
+    /// When enabled, logs are organized into character-specific subdirectories where applicable.
+    /// </summary>
+    public bool FileLoggingSplitByCharacter { get; set; } = false;
+
+    /// <summary>
     /// Format for displaying character names throughout the UI.
     /// </summary>
     public CharacterNameFormat CharacterNameFormat { get; set; } = CharacterNameFormat.FullName;
 
-    /// <summary>
-    /// Sort order for character lists throughout the UI.
-    /// </summary>
     public CharacterSortOrder CharacterSortOrder { get; set; } = CharacterSortOrder.Alphabetical;
-    
-    /// <summary>
-    /// Sort order for item lists in item pickers (alphabetical or by ID).
-    /// </summary>
-    public Gui.Widgets.ItemSortOrder ItemPickerSortOrder { get; set; } = Gui.Widgets.ItemSortOrder.Alphabetical;
 
     public Vector2 MainWindowPos { get; set; } = new(100, 100);
     public Vector2 MainWindowSize { get; set; } = new(600, 400);
@@ -98,9 +112,6 @@ public class Configuration : IPluginConfiguration
     public Vector4 MainWindowBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
     public Vector4 FullscreenBackgroundColor { get; set; } = new(0.06f, 0.06f, 0.06f, 0.94f);
 
-    /// <summary>
-    /// Default UI color settings for customization.
-    /// </summary>
     public UIColors UIColors { get; set; } = new();
 
     public float ContentGridCellWidthPercent { get; set; } = 25f;
@@ -117,23 +128,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoSaveLayoutChanges { get; set; } = false;
 
-    [Obsolete("Use ActiveWindowedLayoutName or ActiveFullscreenLayoutName instead")]
-    public string ActiveLayoutName { get; set; } = string.Empty;
-
-    // GilTracker settings
-    public bool GilTrackerHideCharacterSelector { get; set; } = false;
-    public bool GilTrackerShowMultipleLines { get; set; } = false;
-    public int GilTrackerTimeRangeValue { get; set; } = 7;
-    public MTTimeUnit GilTrackerTimeRangeUnit { get; set; } = MTTimeUnit.All;
-    public bool GilTrackerShowEndGap { get; set; } = false;
-    public float GilTrackerEndGapPercent { get; set; } = 5f;
-    public bool GilTrackerShowValueLabel { get; set; } = false;
-    public float GilTrackerValueLabelOffsetX { get; set; } = 0f;
-    public float GilTrackerValueLabelOffsetY { get; set; } = 0f;
-    public float GilTrackerLegendWidth { get; set; } = 120f;
-    public bool GilTrackerShowLegend { get; set; } = true;
-
-    // Universalis Integration settings
     /// <summary>
     /// The scope for Universalis market data queries (World, DataCenter, or Region).
     /// </summary>
@@ -154,7 +148,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public string UniversalisRegionOverride { get; set; } = string.Empty;
 
-    // Data Tracking settings
     /// <summary>
     /// Set of item IDs that have historical time-series tracking enabled.
     /// When an item is in this set, its quantities are sampled and stored for graphing over time.
@@ -174,7 +167,6 @@ public class Configuration : IPluginConfiguration
         TrackedDataType.OrangeGatherersScrip,
         TrackedDataType.SackOfNuts,
         TrackedDataType.Ventures
-        // Individual crystals are now handled by CrystalTracker tool
     };
 
     /// <summary>
@@ -189,7 +181,6 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Dictionary<uint, uint> GameItemColors { get; set; } = new();
 
-    // === Favorites ===
     /// <summary>
     /// Favorite item IDs for quick access in item selectors.
     /// </summary>
@@ -205,53 +196,31 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public HashSet<ulong> FavoriteCharacters { get; set; } = new();
 
-    // CrystalTracker settings
-    public CrystalTrackerSettings CrystalTracker { get; set; } = new();
-
-    // Price Tracking settings
-    /// <summary>
-    /// Settings for the Universalis price tracking feature.
-    /// </summary>
     public PriceTrackingSettings PriceTracking { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Websocket Feed tool.
-    /// </summary>
     public WebsocketFeedSettings WebsocketFeed { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Inventory Value tool.
-    /// </summary>
     public InventoryValueSettings InventoryValue { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the Top Inventory Value Items tool.
-    /// </summary>
-    public TopInventoryValueItemsSettings TopInventoryValueItems { get; set; } = new();
-    
-    /// <summary>
-    /// Settings for the Item Table tool.
-    /// </summary>
     public ItemTableSettings ItemTable { get; set; } = new();
     
-    /// <summary>
-    /// Settings for the Item Graph tool.
-    /// </summary>
     public ItemGraphSettings ItemGraph { get; set; } = new();
 
-    /// <summary>
-    /// User-created tool presets for quick tool configuration.
-    /// </summary>
     public List<UserToolPreset> UserToolPresets { get; set; } = new();
 
-    /// <summary>
-    /// Settings for the time-series in-memory cache.
-    /// </summary>
     public TimeSeriesCacheConfig TimeSeriesCacheConfig { get; set; } = new();
 
+    public GraphStyleConfig GraphStyle { get; set; } = new();
+    
     /// <summary>
-    /// Style configuration for all graph widgets.
-    /// Customizes colors, spacing, and styling for graph components.
+    /// Default number format for table widgets.
+    /// New tables will inherit this setting.
     /// </summary>
-    public MTGraphStyleConfig GraphStyle { get; set; } = new();
+    public NumberFormatConfig DefaultTableNumberFormat { get; set; } = new();
+    
+    /// <summary>
+    /// Default number format for graph widgets.
+    /// New graphs will inherit this setting.
+    /// </summary>
+    public NumberFormatConfig DefaultGraphNumberFormat { get; set; } = new();
 }

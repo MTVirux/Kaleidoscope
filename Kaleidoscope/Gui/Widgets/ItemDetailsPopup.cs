@@ -4,13 +4,16 @@ using Kaleidoscope.Models.Inventory;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
 /// Data for a single inventory row showing item distribution per character/retainer.
 /// </summary>
-public class ItemInventoryRow
+public sealed class ItemInventoryRow
 {
     public ulong CharacterId { get; set; }
     public string CharacterName { get; set; } = string.Empty;
@@ -26,7 +29,7 @@ public class ItemInventoryRow
 /// <summary>
 /// A popup window that displays current listings and recent sales for a market item.
 /// </summary>
-public class ItemDetailsPopup
+public sealed class ItemDetailsPopup
 {
     private readonly UniversalisService _universalisService;
     private readonly ItemDataService _itemDataService;
@@ -77,7 +80,7 @@ public class ItemDetailsPopup
         UniversalisService universalisService,
         ItemDataService itemDataService,
         PriceTrackingService priceTrackingService,
-        CurrencyTrackerService? CurrencyTrackerService = null,
+        CurrencyTrackerService? currencyTrackerService = null,
         InventoryCacheService? inventoryCacheService = null,
         CharacterDataService? characterDataService = null,
         SalePriceCacheService? salePriceCacheService = null)
@@ -85,7 +88,7 @@ public class ItemDetailsPopup
         _universalisService = universalisService;
         _itemDataService = itemDataService;
         _priceTrackingService = priceTrackingService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
         _salePriceCacheService = salePriceCacheService;
@@ -658,12 +661,12 @@ public class ItemDetailsPopup
                 // Notify that inventory value history was modified
                 _currencyTrackerService.NotifyInventoryValueHistoryChanged();
                 
-                LogService.Debug($"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
+                LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
             }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error deleting sale: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error deleting sale: {ex.Message}");
         }
     }
 
@@ -682,7 +685,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
         }
     }
 
@@ -695,26 +698,18 @@ public class ItemDetailsPopup
 
         try
         {
-            var itemId = _currentItemId;
-            var currencyService = _currencyTrackerService;
-
-            if (currencyService == null || itemId == 0)
+            if (_currencyTrackerService == null || _currentItemId == 0)
             {
                 _localSalesLoaded = true;
-                _localSalesLoading = false;
                 return;
             }
 
-            var sales = await Task.Run(() => 
-                currencyService.DbService.GetSaleRecords((int)itemId, limit: 100)
-            ).ConfigureAwait(false);
-
-            _localSales = sales;
+            await Task.Run(LoadLocalSales).ConfigureAwait(false);
             _localSalesLoaded = true;
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading local sales: {ex.Message}");
             _localSalesLoaded = true;
         }
         finally
@@ -967,7 +962,7 @@ public class ItemDetailsPopup
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading inventory data: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading inventory data: {ex.Message}");
         }
     }
 
@@ -980,164 +975,17 @@ public class ItemDetailsPopup
 
         try
         {
-            var itemId = _currentItemId;
-            var inventoryCacheService = _inventoryCacheService;
-            var currencyService = _currencyTrackerService;
-            var characterDataService = _characterDataService;
-
-            if (inventoryCacheService == null || itemId == 0)
+            if (_inventoryCacheService == null || _currentItemId == 0)
             {
                 _inventoryLoaded = true;
-                _inventoryLoading = false;
                 return;
             }
 
-            // Capture the cache service reference for the background thread
-            var salePriceCacheService = _salePriceCacheService;
-
-            // Offload the data processing to a background thread
-            var result = await Task.Run(() =>
-            {
-                var rows = new List<ItemInventoryRow>();
-                long unitPrice = 0;
-                int totalQuantity = 0;
-                long totalValue = 0;
-
-                // Get all inventories across all characters
-                var allInventories = inventoryCacheService.GetAllInventories();
-
-                // Get the current price for this item using cache
-                if (salePriceCacheService != null)
-                {
-                    var prices = salePriceCacheService.GetLatestSalePrices(
-                        new[] { (int)itemId },
-                        includedWorldIds: null);
-                    if (prices.TryGetValue((int)itemId, out var price))
-                    {
-                        unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
-                    }
-                }
-
-                // Group by character, then by player/retainer
-                var characterGroups = allInventories
-                    .GroupBy(i => i.CharacterId)
-                    .OrderBy(g => g.First().Name ?? string.Empty);
-
-                foreach (var charGroup in characterGroups)
-                {
-                    var characterId = charGroup.Key;
-                    var characterName = string.Empty;
-                    var worldName = string.Empty;
-
-                    // Get character display name
-                    if (characterDataService != null)
-                    {
-                        var charInfo = characterDataService.GetCharacter(characterId);
-                        if (charInfo != null)
-                        {
-                            characterName = charInfo.Name;
-                            worldName = charInfo.WorldName ?? string.Empty;
-                        }
-                    }
-
-                    // Fallback to inventory cache name
-                    if (string.IsNullOrEmpty(characterName))
-                    {
-                        var playerCache = charGroup.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
-                        characterName = playerCache?.Name ?? $"Character {characterId}";
-                        worldName = playerCache?.World ?? string.Empty;
-                    }
-
-                    // Calculate player inventory quantity
-                    var playerInventories = charGroup.Where(c => c.SourceType == InventorySourceType.Player);
-                    var playerQuantity = playerInventories
-                        .SelectMany(c => c.Items)
-                        .Where(i => i.ItemId == itemId)
-                        .Sum(i => i.Quantity);
-
-                    // Calculate retainer quantities
-                    var retainerData = charGroup
-                        .Where(c => c.SourceType == InventorySourceType.Retainer)
-                        .Select(r => new
-                        {
-                            RetainerId = r.RetainerId,
-                            RetainerName = r.Name,
-                            Quantity = r.Items.Where(i => i.ItemId == itemId).Sum(i => i.Quantity)
-                        })
-                        .Where(r => r.Quantity > 0)
-                        .OrderBy(r => r.RetainerName)
-                        .ToList();
-
-                    // Skip this character if they have no items
-                    var totalCharQuantity = playerQuantity + retainerData.Sum(r => r.Quantity);
-                    if (totalCharQuantity == 0)
-                        continue;
-
-                    // Add character row (showing player inventory only)
-                    if (playerQuantity > 0)
-                    {
-                        var playerValue = unitPrice * playerQuantity;
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = false,
-                            Quantity = playerQuantity,
-                            UnitPrice = unitPrice,
-                            TotalValue = playerValue
-                        });
-                        totalQuantity += playerQuantity;
-                        totalValue += playerValue;
-                    }
-                    else
-                    {
-                        // Add a character header row with 0 quantity if they only have retainer items
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = false,
-                            Quantity = 0,
-                            UnitPrice = 0,
-                            TotalValue = 0
-                        });
-                    }
-
-                    // Add retainer rows
-                    foreach (var retainer in retainerData)
-                    {
-                        var retainerValue = unitPrice * retainer.Quantity;
-                        rows.Add(new ItemInventoryRow
-                        {
-                            CharacterId = characterId,
-                            CharacterName = characterName,
-                            WorldName = worldName,
-                            IsRetainer = true,
-                            RetainerId = retainer.RetainerId,
-                            RetainerName = retainer.RetainerName,
-                            Quantity = retainer.Quantity,
-                            UnitPrice = unitPrice,
-                            TotalValue = retainerValue
-                        });
-                        totalQuantity += retainer.Quantity;
-                        totalValue += retainerValue;
-                    }
-                }
-
-                return (rows, unitPrice, totalQuantity, totalValue);
-            }).ConfigureAwait(false);
-
-            _inventoryRows = result.rows;
-            _inventoryUnitPrice = result.unitPrice;
-            _inventoryTotalQuantity = result.totalQuantity;
-            _inventoryTotalValue = result.totalValue;
-            _inventoryLoaded = true;
+            await Task.Run(LoadInventoryData).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[ItemDetailsPopup] Error loading inventory data async: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Error loading inventory data async: {ex.Message}");
             _inventoryLoaded = true;
         }
         finally
@@ -1185,7 +1033,7 @@ public class ItemDetailsPopup
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
-            LogService.Debug($"[ItemDetailsPopup] Fetch error: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Fetch error: {ex.Message}");
         }
         finally
         {

@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
@@ -123,23 +122,18 @@ public sealed class FrameLimiterService : IDisposable, IService
         _configService = configService;
         _pluginInterface = pluginInterface;
         
-        // Load saved settings
         _isEnabled = _configService.Config.FrameLimiterEnabled;
         _targetFramerate = Math.Clamp(_configService.Config.FrameLimiterTargetFps, 10, 1000);
         
-        // Initialize ChillFrames IPC
         InitializeChillFramesIpc();
-        
-        // Subscribe to framework update
         _framework.Update += OnFrameworkUpdate;
         
-        // If we're starting enabled, disable ChillFrames
         if (_isEnabled)
         {
             DisableChillFrames();
         }
         
-        _log.Information($"FrameLimiterService initialized. Enabled: {_isEnabled}, Target: {_targetFramerate} FPS, ChillFrames available: {IsChillFramesAvailable}");
+        LogService.Info(LogCategory.UI, $"FrameLimiterService initialized. Enabled: {_isEnabled}, Target: {_targetFramerate} FPS, ChillFrames available: {IsChillFramesAvailable}");
     }
     
     /// <summary>
@@ -158,7 +152,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"ChillFrames IPC not available: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"ChillFrames IPC not available: {ex.Message}");
             IsChillFramesAvailable = false;
         }
     }
@@ -176,7 +170,7 @@ public sealed class FrameLimiterService : IDisposable, IService
             if (result == true)
             {
                 _chillFramesDisabled = true;
-                _log.Debug("ChillFrames limiter disabled via IPC");
+                LogService.Debug(LogCategory.UI, "ChillFrames limiter disabled via IPC");
             }
         }
         catch (IpcNotReadyError)
@@ -186,7 +180,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"Failed to disable ChillFrames: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Failed to disable ChillFrames: {ex.Message}");
             IsChillFramesAvailable = false;
         }
     }
@@ -204,7 +198,7 @@ public sealed class FrameLimiterService : IDisposable, IService
             if (result == true)
             {
                 _chillFramesDisabled = false;
-                _log.Debug("ChillFrames limiter re-enabled via IPC");
+                LogService.Debug(LogCategory.UI, "ChillFrames limiter re-enabled via IPC");
             }
         }
         catch (IpcNotReadyError)
@@ -215,7 +209,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         }
         catch (Exception ex)
         {
-            _log.Debug($"Failed to enable ChillFrames: {ex.Message}");
+            LogService.Debug(LogCategory.UI, $"Failed to enable ChillFrames: {ex.Message}");
             IsChillFramesAvailable = false;
             _chillFramesDisabled = false;
         }
@@ -236,9 +230,9 @@ public sealed class FrameLimiterService : IDisposable, IService
     }
     
     /// <summary>
-    /// Performs the actual frame limiting using sleep and spin-wait.
+    /// Performs the actual frame limiting using sleep and cooperative spin-wait.
+    /// Uses SpinWait to yield CPU time to the OS scheduler instead of burning a full core.
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoOptimization)]
     private void PerformFrameLimiting()
     {
         var delayMs = (int)(TargetFrametimeMs - _frameTimer.ElapsedMilliseconds);
@@ -249,12 +243,12 @@ public sealed class FrameLimiterService : IDisposable, IService
             Thread.Sleep(delayMs - 1);
         }
         
-        // Spin-wait for precise timing
+        // Cooperative spin-wait for precise timing — yields to OS scheduler 
+        // instead of burning a full CPU core with an empty busy loop
+        var sw = new SpinWait();
         while (_frameTimer.ElapsedTicks < PreciseFrametimeTicks)
         {
-            // Empty loop for precise timing
-            // Using a delegate prevents the JIT from optimizing this away
-            ((Action)(() => { }))();
+            sw.SpinOnce();
         }
     }
     
@@ -271,6 +265,6 @@ public sealed class FrameLimiterService : IDisposable, IService
             EnableChillFrames();
         }
         
-        _log.Debug("FrameLimiterService disposed");
+        LogService.Debug(LogCategory.UI, "FrameLimiterService disposed");
     }
 }

@@ -6,6 +6,7 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Inventory;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
@@ -23,21 +24,16 @@ public sealed class ItemsCategory
     private readonly FavoritesService? _favoritesService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
     
-    // Color editing state
     private uint? _editingColorItemId = null;
     private Vector4 _colorEditBuffer = Vector4.One;
     
-    // Search state
     private string _searchFilter = string.Empty;
     private string _trackedItemsSearchFilter = string.Empty;
     
-    // Item picker for adding new items (for colors section)
-    private readonly MTItemComboDropdown? _itemCombo;
+    private readonly ItemComboDropdown? _itemCombo;
     
-    // Item picker for tracking items (for tracked items section)
-    private readonly MTItemComboDropdown? _trackItemCombo;
+    private readonly ItemComboDropdown? _trackItemCombo;
     
-    // Cached item names for display
     private readonly Dictionary<uint, string> _itemNameCache = new();
 
     public ItemsCategory(
@@ -46,19 +42,19 @@ public sealed class ItemsCategory
         IDataManager? dataManager = null,
         ITextureProvider? textureProvider = null,
         FavoritesService? favoritesService = null,
-        CurrencyTrackerService? CurrencyTrackerService = null)
+        CurrencyTrackerService? currencyTrackerService = null)
     {
         _configService = configService;
         _itemDataService = itemDataService;
         _dataManager = dataManager;
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         
         // Create item picker if we have the required services
         if (_dataManager != null && _textureProvider != null && _favoritesService != null)
         {
-            _itemCombo = new MTItemComboDropdown(
+            _itemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -69,7 +65,7 @@ public sealed class ItemsCategory
                 trackedDataRegistry: _currencyTrackerService?.Registry,
                 excludeCurrencies: true);
             
-            _trackItemCombo = new MTItemComboDropdown(
+            _trackItemCombo = new ItemComboDropdown(
                 _textureProvider,
                 _dataManager,
                 _favoritesService,
@@ -113,7 +109,7 @@ public sealed class ItemsCategory
         }
         else
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+            ImGui.TextColored(UiColors.Info, 
                 "No items have historical tracking enabled. Enable tracking per-item below.");
         }
         
@@ -157,8 +153,8 @@ public sealed class ItemsCategory
         
         if (trackedItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No items are being tracked.");
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Use the item picker above to add items to track.");
+            ImGui.TextColored(UiColors.Info, "No items are being tracked.");
+            ImGui.TextColored(UiColors.Muted, "Use the item picker above to add items to track.");
             return;
         }
         
@@ -183,7 +179,7 @@ public sealed class ItemsCategory
         
         if (filteredItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No tracked items match your search.");
+            ImGui.TextColored(UiColors.Info, "No tracked items match your search.");
             return;
         }
         
@@ -215,11 +211,9 @@ public sealed class ItemsCategory
                 ImGui.TableNextRow();
                 ImGui.PushID((int)info.ItemId);
 
-                // Icon column
                 ImGui.TableNextColumn();
                 DrawItemIcon(info.ItemId);
 
-                // Item name column
                 ImGui.TableNextColumn();
                 var itemName = GetItemName(info.ItemId);
                 ImGui.TextUnformatted(itemName);
@@ -228,14 +222,12 @@ public sealed class ItemsCategory
                     ImGui.SetTooltip($"Item ID: {info.ItemId}");
                 }
 
-                // Source column
                 ImGui.TableNextColumn();
                 var sources = new List<string>();
                 if (info.InItemTable) sources.Add("Table");
                 if (info.InItemGraph) sources.Add("Graph");
                 ImGui.TextDisabled(string.Join(", ", sources));
 
-                // Store History checkbox column (per-item toggle)
                 ImGui.TableNextColumn();
                 var storeHistory = config.ItemsWithHistoricalTracking.Contains(info.ItemId);
                 if (ImGui.Checkbox("##storeHistory", ref storeHistory))
@@ -256,7 +248,6 @@ public sealed class ItemsCategory
                         "This setting applies across all tools in the project.");
                 }
 
-                // Status column
                 ImGui.TableNextColumn();
                 if (storeHistory)
                 {
@@ -267,10 +258,8 @@ public sealed class ItemsCategory
                     ImGui.TextDisabled("Off");
                 }
                 
-                // Actions column
                 ImGui.TableNextColumn();
                 
-                // Delete history button
                 if (ImGui.SmallButton("Clear##clr"))
                 {
                     itemToDeleteHistory = info.ItemId;
@@ -282,14 +271,10 @@ public sealed class ItemsCategory
                 
                 ImGui.SameLine();
                 
-                // Remove item button
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.15f, 0.15f, 1f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.7f, 0.2f, 0.2f, 1f));
-                if (ImGui.SmallButton("×##del"))
+                if (ImGuiHelpers.DangerSmallButton("×##del"))
                 {
                     itemToDelete = info.ItemId;
                 }
-                ImGui.PopStyleColor(2);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("Remove item from tracking");
@@ -314,7 +299,7 @@ public sealed class ItemsCategory
         
         // Summary
         var recordingCount = trackedItems.Values.Count(i => config.ItemsWithHistoricalTracking.Contains(i.ItemId));
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), 
+        ImGui.TextColored(UiColors.Info, 
             $"{trackedItems.Count} tracked items, {recordingCount} recording history");
     }
     
@@ -359,11 +344,11 @@ public sealed class ItemsCategory
                 StoreHistory = true
             });
             _configService.MarkDirty();
-            LogService.Debug($"[ItemsCategory] Added item {itemId} to tracking with StoreHistory=true");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Added item {itemId} to tracking with StoreHistory=true");
         }
         else
         {
-            LogService.Debug($"[ItemsCategory] Item {itemId} already being tracked");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Item {itemId} already being tracked");
         }
     }
     
@@ -390,7 +375,7 @@ public sealed class ItemsCategory
         {
             _configService.MarkDirty();
             _itemNameCache.Remove(itemId);
-            LogService.Debug($"[ItemsCategory] Removed item {itemId} from tracking");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Removed item {itemId} from tracking");
         }
     }
     
@@ -398,7 +383,7 @@ public sealed class ItemsCategory
     {
         if (_currencyTrackerService == null)
         {
-            LogService.Debug("[ItemsCategory] Cannot delete item history: CurrencyTrackerService not available");
+            LogService.Debug(LogCategory.UI, "[ItemsCategory] Cannot delete item history: CurrencyTrackerService not available");
             return;
         }
         
@@ -419,15 +404,15 @@ public sealed class ItemsCategory
         var itemName = GetItemName(itemId);
         if (playerDeleted || retainerDeleted)
         {
-            LogService.Info($"[ItemsCategory] Deleted historical data for item '{itemName}' (ID: {itemId})");
+            LogService.Info(LogCategory.UI, $"[ItemsCategory] Deleted historical data for item '{itemName}' (ID: {itemId})");
         }
         else
         {
-            LogService.Debug($"[ItemsCategory] No historical data found for item '{itemName}' (ID: {itemId})");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] No historical data found for item '{itemName}' (ID: {itemId})");
         }
     }
     
-    private class TrackedItemInfo
+    private sealed class TrackedItemInfo
     {
         public uint ItemId { get; set; }
         public bool InItemTable { get; set; }
@@ -466,8 +451,8 @@ public sealed class ItemsCategory
 
         if (gameItemColors.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No game items with custom colors yet.");
-            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "Use the item picker above to add items.");
+            ImGui.TextColored(UiColors.Info, "No game items with custom colors yet.");
+            ImGui.TextColored(UiColors.Muted, "Use the item picker above to add items.");
             return;
         }
         
@@ -482,7 +467,7 @@ public sealed class ItemsCategory
         
         if (filteredItems.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), "No items match your search.");
+            ImGui.TextColored(UiColors.Info, "No items match your search.");
             return;
         }
 
@@ -569,7 +554,7 @@ public sealed class ItemsCategory
         var summaryText = string.IsNullOrWhiteSpace(_searchFilter)
             ? $"{totalCount} items with custom colors"
             : $"Showing {filteredCount} of {totalCount} items";
-        ImGui.TextColored(new Vector4(0.7f, 0.7f, 0.7f, 1f), summaryText);
+        ImGui.TextColored(UiColors.Info, summaryText);
     }
 
     private void DrawAddItemSection(Dictionary<uint, uint> gameItemColors)
@@ -589,7 +574,7 @@ public sealed class ItemsCategory
                         // Add with white color (0xFFFFFFFF in ABGR)
                         gameItemColors[itemId] = 0xFFFFFFFF;
                         _configService.MarkDirty();
-                        LogService.Debug($"[ItemsCategory] Added item {itemId} with default color");
+                        LogService.Debug(LogCategory.UI, $"[ItemsCategory] Added item {itemId} with default color");
                     }
                     _itemCombo.ClearSelection();
                 }
@@ -605,42 +590,14 @@ public sealed class ItemsCategory
     {
         ImGui.PushID((int)itemId);
         
-        var hasColor = config.GameItemColors.TryGetValue(itemId, out var colorUint);
-        Vector4 colorValue;
+        config.GameItemColors.TryGetValue(itemId, out var colorUint);
         
-        if (_editingColorItemId == itemId)
-        {
-            colorValue = _colorEditBuffer;
-        }
-        else if (hasColor)
-        {
-            colorValue = ColorUtils.UintToVector4(colorUint);
-        }
-        else
-        {
-            colorValue = new Vector4(1f, 1f, 1f, 1f);
-        }
-        
-        // Color picker
-        if (ImGui.ColorEdit4("##color", ref colorValue,
-            ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.AlphaBar))
-        {
-            _colorEditBuffer = colorValue;
-        }
-        
-        // Track when we start editing
-        if (ImGui.IsItemActivated())
-        {
-            _editingColorItemId = itemId;
-            _colorEditBuffer = colorValue;
-        }
-        
-        // Save when the user finishes editing
-        if (ImGui.IsItemDeactivatedAfterEdit())
-        {
-            SaveGameItemColor(itemId, ColorUtils.Vector4ToUint(_colorEditBuffer));
-            _editingColorItemId = null;
-        }
+        ImGuiHelpers.InlineColorEditorAlwaysVisible(
+            itemId,
+            ref _editingColorItemId,
+            ref _colorEditBuffer,
+            colorUint,
+            newColor => SaveGameItemColor(itemId, newColor));
         
         ImGui.PopID();
     }
@@ -648,17 +605,11 @@ public sealed class ItemsCategory
     private void DrawActionsCell(uint itemId, Configuration config)
     {
         ImGui.PushID((int)itemId);
-        if (ImGui.SmallButton("X"))
-        {
-            SaveGameItemColor(itemId, null);
-            _editingColorItemId = null;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.TextUnformatted("Remove item");
-            ImGui.EndTooltip();
-        }
+        ImGuiHelpers.InlineColorClearButton(
+            config.GameItemColors.ContainsKey(itemId),
+            ref _editingColorItemId,
+            () => SaveGameItemColor(itemId, null),
+            "Remove item");
         ImGui.PopID();
     }
 
@@ -689,11 +640,11 @@ public sealed class ItemsCategory
             }
             
             _configService.MarkDirty();
-            LogService.Debug($"[ItemsCategory] Saved color for item {itemId}: {color?.ToString("X8") ?? "(removed)"}");
+            LogService.Debug(LogCategory.UI, $"[ItemsCategory] Saved color for item {itemId}: {color?.ToString("X8") ?? "(removed)"}");
         }
         catch (Exception ex)
         {
-            LogService.Error($"Failed to save game item color for {itemId}", ex);
+            LogService.Error(LogCategory.UI, $"Failed to save game item color for {itemId}", ex);
         }
     }
 

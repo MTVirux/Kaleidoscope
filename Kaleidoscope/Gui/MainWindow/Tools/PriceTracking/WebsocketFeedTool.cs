@@ -5,7 +5,10 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using MTGui.Tree;
+using Kaleidoscope.Gui.Widgets.Tree;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 
@@ -14,7 +17,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// Shows listings added/removed and sales as they happen in real-time.
 /// Click on any entry to open the ItemDetailsPopup with full market data from the API.
 /// </summary>
-public class WebsocketFeedTool : ToolComponent
+public sealed class WebsocketFeedTool : ToolComponent
 {
     public override string ToolName => "Websocket Feed";
     
@@ -28,11 +31,9 @@ public class WebsocketFeedTool : ToolComponent
     private readonly CharacterDataService? _characterDataService;
     private readonly WebsocketFeedSettings _instanceSettings;
 
-    // World selection widget for filtering
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
-    // Item details popup for clicking on entries
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
@@ -46,7 +47,7 @@ public class WebsocketFeedTool : ToolComponent
         ConfigurationService configService,
         ItemDataService itemDataService,
         UniversalisService universalisService,
-        CurrencyTrackerService? CurrencyTrackerService = null,
+        CurrencyTrackerService? currencyTrackerService = null,
         InventoryCacheService? inventoryCacheService = null,
         CharacterDataService? characterDataService = null)
     {
@@ -55,12 +56,14 @@ public class WebsocketFeedTool : ToolComponent
         _configService = configService;
         _itemDataService = itemDataService;
         _universalisService = universalisService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
         _inventoryCacheService = inventoryCacheService;
         _characterDataService = characterDataService;
-        _instanceSettings = new WebsocketFeedSettings();
+        _instanceSettings = new WebsocketFeedSettings
+        {
+            MaxEntries = configService.Config.WebsocketFeed.MaxEntries
+        };
 
-        // Create item details popup for viewing market data when clicking entries
         _itemDetailsPopup = new ItemDetailsPopup(
             _universalisService,
             _itemDataService,
@@ -77,24 +80,21 @@ public class WebsocketFeedTool : ToolComponent
     {
         try
         {
-            // Connection status
             DrawConnectionStatus();
 
             ImGui.Separator();
 
-            // Feed list
             using (ProfilerService.BeginStaticChildScope("DrawFeed"))
             {
                 DrawFeed();
             }
 
-            // Draw item details popup (renders on top when open)
             _itemDetailsPopup.Draw();
         }
         catch (Exception ex)
         {
             ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
-            LogService.Debug($"[WebsocketFeedTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 
@@ -102,7 +102,6 @@ public class WebsocketFeedTool : ToolComponent
     {
         var isConnected = _webSocketService.IsConnected;
 
-        // Status indicator with ball
         var indicatorColor = isConnected ? UiColors.Connected : UiColors.Disconnected;
         var icon = isConnected ? "●" : "○";
         var statusText = isConnected ? "Connected" : "Disconnected";
@@ -123,7 +122,6 @@ public class WebsocketFeedTool : ToolComponent
         var settings = Settings;
         var entries = _webSocketService.LiveFeed.ToList();
 
-        // Apply world filter based on scope mode
         if (settings.FilterScopeMode != PriceTrackingScopeMode.All)
         {
             var effectiveWorldIds = GetEffectiveFilterWorldIds();
@@ -133,7 +131,6 @@ public class WebsocketFeedTool : ToolComponent
             }
         }
 
-        // Apply item filter
         if (settings.FilterItemId > 0)
         {
             entries = entries.Where(e => e.ItemId == settings.FilterItemId).ToList();
@@ -151,16 +148,13 @@ public class WebsocketFeedTool : ToolComponent
             entries = entries.Where(e => e.EventType != "Sale").ToList();
         }
 
-        // Limit entries
         entries = entries.TakeLast(settings.MaxEntries).ToList();
 
-        // Reverse order if latest on top
         if (settings.LatestOnTop)
         {
             entries.Reverse();
         }
 
-        // Child window for scrolling
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         if (ImGui.BeginChild("##PriceFeed", new Vector2(0, availableHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
         {
@@ -170,7 +164,6 @@ public class WebsocketFeedTool : ToolComponent
             }
             else
             {
-                // Auto-scroll to top if latest on top
                 if (settings.AutoScroll && settings.LatestOnTop)
                 {
                     ImGui.SetScrollY(0);
@@ -181,7 +174,6 @@ public class WebsocketFeedTool : ToolComponent
                     DrawFeedEntry(entry);
                 }
 
-                // Auto-scroll to bottom if latest on bottom
                 if (settings.AutoScroll && !settings.LatestOnTop)
                 {
                     ImGui.SetScrollHereY(1.0f);
@@ -193,19 +185,16 @@ public class WebsocketFeedTool : ToolComponent
 
     private void DrawFeedEntry(PriceFeedEntry entry)
     {
-        // Get world name
         var worldName = _priceTrackingService.WorldData?.GetWorldName(entry.WorldId) ?? $"World {entry.WorldId}";
         
-        // Get item name
         var itemName = _itemDataService.GetItemName(entry.ItemId);
         
-        // Event type color
         var eventColor = entry.EventType switch
         {
-            "Listing Added" => new Vector4(0.3f, 0.9f, 0.3f, 1f),    // Green for new listings
-            "Listing Removed" => new Vector4(0.9f, 0.6f, 0.3f, 1f), // Orange for removed
-            "Sale" => new Vector4(0.3f, 0.7f, 0.9f, 1f),            // Blue for sales
-            _ => new Vector4(0.7f, 0.7f, 0.7f, 1f)
+            "Listing Added" => UiColors.Good,      // Green for new listings
+            "Listing Removed" => UiColors.Warning, // Orange for removed
+            "Sale" => UiColors.Highlight,          // Blue for sales
+            _ => UiColors.Info
         };
 
         var eventIcon = entry.EventType switch
@@ -254,15 +243,12 @@ public class WebsocketFeedTool : ToolComponent
         ImGui.TextUnformatted($"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
     }
 
-    public override bool HasSettings => true;
+    protected override bool HasToolSettings => true;
 
-    public override void DrawSettings()
+    protected override void DrawToolSettings()
     {
         try
         {
-            if (!MTTreeHelpers.DrawCollapsingSection("Websocket Feed Settings", true))
-                return;
-                
             var settings = Settings;
 
             // Max entries
@@ -334,7 +320,7 @@ public class WebsocketFeedTool : ToolComponent
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[WebsocketFeedTool] Settings error: {ex.Message}");
+            LogDebug($"Settings error: {ex.Message}");
         }
     }
 
@@ -485,7 +471,7 @@ public class WebsocketFeedTool : ToolComponent
     public override Dictionary<string, object?>? ExportToolSettings()
     {
         var s = Settings;
-        return new Dictionary<string, object?>
+        var settings = new Dictionary<string, object?>
         {
             ["MaxEntries"] = s.MaxEntries,
             ["ShowListingsAdd"] = s.ShowListingsAdd,
@@ -494,11 +480,14 @@ public class WebsocketFeedTool : ToolComponent
             ["AutoScroll"] = s.AutoScroll,
             ["LatestOnTop"] = s.LatestOnTop,
             ["FilterScopeMode"] = (int)s.FilterScopeMode,
-            ["FilterRegions"] = s.FilterRegions.ToList(),
-            ["FilterDataCenters"] = s.FilterDataCenters.ToList(),
-            ["FilterWorldIds"] = s.FilterWorldIds.ToList(),
             ["FilterItemId"] = s.FilterItemId
         };
+        
+        ExportHashSet(settings, "FilterRegions", s.FilterRegions);
+        ExportHashSet(settings, "FilterDataCenters", s.FilterDataCenters);
+        ExportHashSet(settings, "FilterWorldIds", s.FilterWorldIds);
+        
+        return settings;
     }
 
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
@@ -515,28 +504,9 @@ public class WebsocketFeedTool : ToolComponent
         s.FilterScopeMode = (PriceTrackingScopeMode)GetSetting(settings, "FilterScopeMode", (int)s.FilterScopeMode);
         s.FilterItemId = GetSetting(settings, "FilterItemId", s.FilterItemId);
 
-        // Restore HashSet properties from lists (handles JsonElement from deserialization)
-        if (settings.TryGetValue("FilterRegions", out var regionsObj) && regionsObj != null)
-        {
-            if (regionsObj is System.Text.Json.JsonElement regionsJson && regionsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterRegions = new HashSet<string>(regionsJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
-            }
-        }
-        if (settings.TryGetValue("FilterDataCenters", out var dcObj) && dcObj != null)
-        {
-            if (dcObj is System.Text.Json.JsonElement dcJson && dcJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterDataCenters = new HashSet<string>(dcJson.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => !string.IsNullOrEmpty(v)));
-            }
-        }
-        if (settings.TryGetValue("FilterWorldIds", out var worldsObj) && worldsObj != null)
-        {
-            if (worldsObj is System.Text.Json.JsonElement worldsJson && worldsJson.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                s.FilterWorldIds = new HashSet<int>(worldsJson.EnumerateArray().Select(v => v.GetInt32()));
-            }
-        }
+        s.FilterRegions = ImportHashSet(settings, "FilterRegions", s.FilterRegions);
+        s.FilterDataCenters = ImportHashSet(settings, "FilterDataCenters", s.FilterDataCenters);
+        s.FilterWorldIds = ImportHashSet(settings, "FilterWorldIds", s.FilterWorldIds);
 
         // Reset widget initialization flag so it picks up imported settings
         _worldSelectionWidgetInitialized = false;

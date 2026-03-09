@@ -3,7 +3,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// <summary>
 /// Represents a custom option that can appear in a tool's right-click context menu.
 /// </summary>
-public class ToolContextMenuOption
+public sealed class ToolContextMenuOption
 {
     /// <summary>
     /// The text label displayed in the menu item.

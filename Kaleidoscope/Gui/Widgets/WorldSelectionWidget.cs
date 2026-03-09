@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -22,7 +23,7 @@ public enum WorldSelectionMode
 /// A reusable world/datacenter/region selection widget with a dropdown containing
 /// nested checkboxes in a hierarchical structure (Region > DataCenter > World).
 /// </summary>
-public class WorldSelectionWidget
+public sealed class WorldSelectionWidget
 {
     private readonly UniversalisWorldData? _worldData;
     private readonly string _id;
@@ -262,7 +263,7 @@ public class WorldSelectionWidget
                     // DC checkbox (selects/deselects all worlds in DC)
                     if (mixed)
                     {
-                        ImGui.PushStyleColor(ImGuiCol.CheckMark, new Vector4(0.7f, 0.7f, 0.7f, 1f));
+                        ImGui.PushStyleColor(ImGuiCol.CheckMark, UiColors.Info);
                     }
 
                     if (ImGui.Checkbox($"{dcName}##{_id}_dc_{dcName}", ref allSelected))
@@ -461,11 +462,37 @@ public class WorldSelectionWidget
     }
 
     /// <summary>
-    /// Checks if a specific world ID is selected (directly or via DC/region).
+    /// Gets the selected location names based on the current mode.
+    /// In Worlds mode, returns world names. In DataCenters mode, returns DC names.
+    /// In Regions mode, returns region names.
+    /// These names can be passed directly to APIs that accept a location string.
     /// </summary>
-    public bool IsWorldSelected(int worldId)
+    public List<string> GetSelectedLocationNames()
     {
-        return GetEffectiveWorldIds().Contains(worldId);
+        var result = new List<string>();
+        if (_worldData == null) return result;
+
+        switch (Mode)
+        {
+            case WorldSelectionMode.Regions:
+                result.AddRange(SelectedRegions);
+                break;
+
+            case WorldSelectionMode.DataCenters:
+                result.AddRange(SelectedDataCenters);
+                break;
+
+            case WorldSelectionMode.Worlds:
+                foreach (var wid in SelectedWorldIds)
+                {
+                    var name = _worldData.GetWorldName(wid);
+                    if (!string.IsNullOrEmpty(name))
+                        result.Add(name);
+                }
+                break;
+        }
+
+        return result;
     }
 
     /// <summary>

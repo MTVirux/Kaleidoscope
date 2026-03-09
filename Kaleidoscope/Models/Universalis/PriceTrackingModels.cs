@@ -1,8 +1,8 @@
 using Kaleidoscope;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Models;
-using MTGui.Common;
-using MTGui.Graph;
+using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Gui.Widgets.Graph;
 
 namespace Kaleidoscope.Models.Universalis;
 
@@ -53,7 +53,7 @@ public enum PriceMatchMode
 /// <summary>
 /// Configuration for price tracking feature.
 /// </summary>
-public class PriceTrackingSettings
+public sealed class PriceTrackingSettings
 {
     /// <summary>Whether price tracking is enabled.</summary>
     public bool Enabled { get; set; } = false;
@@ -78,13 +78,6 @@ public class PriceTrackingSettings
 
     /// <summary>Selected world IDs when using ByWorld scope mode.</summary>
     public HashSet<int> SelectedWorldIds { get; set; } = new();
-
-    /// <summary>
-    /// Deprecated: Use InventoryValueSettings.ValueScopeMode and related settings instead.
-    /// Kept for config backwards compatibility.
-    /// </summary>
-    [Obsolete("Use InventoryValueSettings.ValueScopeMode instead")]
-    public HashSet<int> ExcludedWorldIds { get; set; } = new();
 
     /// <summary>Item IDs to exclude from tracking.</summary>
     public HashSet<int> ExcludedItemIds { get; set; } = new();
@@ -131,12 +124,26 @@ public class PriceTrackingSettings
 
     /// <summary>Maximum leniency multiplier for bulk sales (e.g., 1.5 = 50% more lenient for large stacks).</summary>
     public double BulkSaleMaxLeniency { get; set; } = 1.5;
+
+    /// <summary>
+    /// Minimum interval in milliseconds between event-driven inventory value recalculations.
+    /// Lower values provide more responsive updates but increase CPU/DB load.
+    /// Ignored when <see cref="ValueRecalcOnEveryUpdate"/> is true.
+    /// Minimum: 50ms. Default: 30000ms (30 seconds).
+    /// </summary>
+    public int ValueRecalcIntervalMs { get; set; } = 30000;
+
+    /// <summary>
+    /// When true, recalculate inventory values on every price update without throttling.
+    /// This provides the most responsive updates but may impact performance on busy servers.
+    /// </summary>
+    public bool ValueRecalcOnEveryUpdate { get; set; } = false;
 }
 
 /// <summary>
 /// Settings for the Websocket Feed tool.
 /// </summary>
-public class WebsocketFeedSettings
+public sealed class WebsocketFeedSettings
 {
     /// <summary>Maximum number of entries to display.</summary>
     public int MaxEntries { get; set; } = 100;
@@ -176,10 +183,8 @@ public class WebsocketFeedSettings
 /// Settings for the Inventory Value tool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
-public class InventoryValueSettings : IGraphWidgetSettings
+public sealed class InventoryValueSettings : IGraphWidgetSettings
 {
-    // === Tool-specific settings ===
-    
     /// <summary>Whether to show multiple lines per character.</summary>
     public bool ShowMultipleLines { get; set; } = true;
 
@@ -189,8 +194,6 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// <summary>Whether to include gil in the value calculation.</summary>
     public bool IncludeGil { get; set; } = true;
 
-    // === Hierarchical Price Match Settings ===
-    
     /// <summary>
     /// Default price match mode used when no specific override is set.
     /// </summary>
@@ -210,26 +213,6 @@ public class InventoryValueSettings : IGraphWidgetSettings
     /// Per-world price match mode overrides. Key is world ID.
     /// </summary>
     public Dictionary<int, PriceMatchMode> WorldPriceMatchModes { get; set; } = new();
-
-    // === Legacy settings (deprecated, kept for config compatibility) ===
-    
-    /// <summary>Deprecated: Use DefaultPriceMatchMode instead.</summary>
-    [Obsolete("Use DefaultPriceMatchMode and hierarchical overrides instead")]
-    public PriceTrackingScopeMode ValueScopeMode { get; set; } = PriceTrackingScopeMode.All;
-
-    /// <summary>Deprecated: Use RegionPriceMatchModes instead.</summary>
-    [Obsolete("Use RegionPriceMatchModes instead")]
-    public HashSet<string> ValueSelectedRegions { get; set; } = new();
-
-    /// <summary>Deprecated: Use DataCenterPriceMatchModes instead.</summary>
-    [Obsolete("Use DataCenterPriceMatchModes instead")]
-    public HashSet<string> ValueSelectedDataCenters { get; set; } = new();
-
-    /// <summary>Deprecated: Use WorldPriceMatchModes instead.</summary>
-    [Obsolete("Use WorldPriceMatchModes instead")]
-    public HashSet<int> ValueSelectedWorldIds { get; set; } = new();
-    
-    // === IGraphWidgetSettings implementation ===
     
     /// <summary>Mode for determining series colors in the graph.</summary>
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredCharacterColors;
@@ -238,7 +221,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int TimeRangeValue { get; set; } = 7;
 
     /// <summary>Time range unit for the graph.</summary>
-    public MTTimeUnit TimeRangeUnit { get; set; } = MTTimeUnit.Days;
+    public TimeUnit TimeRangeUnit { get; set; } = TimeUnit.Days;
 
     /// <summary>Whether to show the legend.</summary>
     public bool ShowLegend { get; set; } = true;
@@ -250,13 +233,13 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public float LegendWidth { get; set; } = 140f;
 
     /// <summary>Legend position (outside or inside corners).</summary>
-    public MTLegendPosition LegendPosition { get; set; } = MTLegendPosition.Outside;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
 
     /// <summary>Maximum height of inside legend as percentage of graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
 
     /// <summary>Graph type for visualization.</summary>
-    public MTGraphType GraphType { get; set; } = MTGraphType.Area;
+    public GraphType GraphType { get; set; } = GraphType.Area;
     
     /// <summary>Whether to show X-axis timestamps.</summary>
     public bool ShowXAxisTimestamps { get; set; } = true;
@@ -286,7 +269,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
     public int AutoScrollTimeValue { get; set; } = 1;
     
     /// <summary>Auto-scroll time range unit.</summary>
-    public MTTimeUnit AutoScrollTimeUnit { get; set; } = MTTimeUnit.Hours;
+    public TimeUnit AutoScrollTimeUnit { get; set; } = TimeUnit.Hours;
     
     /// <summary>Position of "now" on X-axis (0-100%).</summary>
     public float AutoScrollNowPosition { get; set; } = 75f;
@@ -301,7 +284,7 @@ public class InventoryValueSettings : IGraphWidgetSettings
 /// <summary>
 /// Settings for the Top Inventory Value Items tool.
 /// </summary>
-public class TopInventoryValueItemsSettings
+public sealed class TopInventoryValueItemsSettings
 {
     /// <summary>Maximum number of items to display.</summary>
     public int MaxItems { get; set; } = 100;

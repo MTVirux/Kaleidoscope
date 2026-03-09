@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 
@@ -8,9 +7,8 @@ namespace Kaleidoscope.Services;
 /// Manages favorites for items, currencies, and characters.
 /// Favorites are persisted via the configuration service.
 /// </summary>
-public sealed class FavoritesService : IDisposable, IService
+public sealed class FavoritesService : IService
 {
-    private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     
     /// <summary>
@@ -18,18 +16,10 @@ public sealed class FavoritesService : IDisposable, IService
     /// </summary>
     public event Action? OnFavoritesChanged;
 
-    public FavoritesService(IPluginLog log, ConfigurationService configService)
+    public FavoritesService(ConfigurationService configService)
     {
-        _log = log;
         _configService = configService;
     }
-
-    public void Dispose()
-    {
-        // No unmanaged resources
-    }
-
-    #region Generic Helpers
 
     /// <summary>
     /// Adds an item to a favorites set and notifies if changed.
@@ -77,104 +67,45 @@ public sealed class FavoritesService : IDisposable, IService
         }
     }
 
-    #endregion
-
-    #region Items
-    
-    /// <summary>
-    /// Checks if an item is marked as favorite.
-    /// </summary>
     public bool ContainsItem(uint itemId)
         => _configService.Config.FavoriteItems.Contains(itemId);
 
-    /// <summary>
-    /// Adds an item to favorites.
-    /// </summary>
     public bool AddItem(uint itemId)
         => AddToSet(_configService.Config.FavoriteItems, itemId);
 
-    /// <summary>
-    /// Removes an item from favorites.
-    /// </summary>
     public bool RemoveItem(uint itemId)
         => RemoveFromSet(_configService.Config.FavoriteItems, itemId);
 
-    /// <summary>
-    /// Toggles an item's favorite status.
-    /// </summary>
     public bool ToggleItem(uint itemId)
         => ToggleInSet(_configService.Config.FavoriteItems, itemId);
 
-    /// <summary>
-    /// Gets all favorite item IDs.
-    /// </summary>
     public IReadOnlySet<uint> FavoriteItems => _configService.Config.FavoriteItems;
 
-    #endregion
-
-    #region Currencies
-
-    /// <summary>
-    /// Checks if a currency (TrackedDataType) is marked as favorite.
-    /// </summary>
     public bool ContainsCurrency(TrackedDataType type)
         => _configService.Config.FavoriteCurrencies.Contains(type);
 
-    /// <summary>
-    /// Adds a currency to favorites.
-    /// </summary>
     public bool AddCurrency(TrackedDataType type)
         => AddToSet(_configService.Config.FavoriteCurrencies, type);
 
-    /// <summary>
-    /// Removes a currency from favorites.
-    /// </summary>
     public bool RemoveCurrency(TrackedDataType type)
         => RemoveFromSet(_configService.Config.FavoriteCurrencies, type);
 
-    /// <summary>
-    /// Toggles a currency's favorite status.
-    /// </summary>
     public bool ToggleCurrency(TrackedDataType type)
         => ToggleInSet(_configService.Config.FavoriteCurrencies, type);
 
-    /// <summary>
-    /// Gets all favorite currency types.
-    /// </summary>
     public IReadOnlySet<TrackedDataType> FavoriteCurrencies => _configService.Config.FavoriteCurrencies;
 
-    #endregion
-
-    #region Characters
-
-    /// <summary>
-    /// Checks if a character is marked as favorite.
-    /// </summary>
     public bool ContainsCharacter(ulong characterId)
         => _configService.Config.FavoriteCharacters.Contains(characterId);
 
-    /// <summary>
-    /// Adds a character to favorites.
-    /// </summary>
     public bool AddCharacter(ulong characterId)
         => AddToSet(_configService.Config.FavoriteCharacters, characterId);
 
-    /// <summary>
-    /// Removes a character from favorites.
-    /// </summary>
     public bool RemoveCharacter(ulong characterId)
         => RemoveFromSet(_configService.Config.FavoriteCharacters, characterId);
 
-    /// <summary>
-    /// Toggles a character's favorite status.
-    /// </summary>
     public bool ToggleCharacter(ulong characterId)
         => ToggleInSet(_configService.Config.FavoriteCharacters, characterId);
 
-    /// <summary>
-    /// Gets all favorite character IDs.
-    /// </summary>
     public IReadOnlySet<ulong> FavoriteCharacters => _configService.Config.FavoriteCharacters;
-
-    #endregion
 }

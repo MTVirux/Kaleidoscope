@@ -8,13 +8,13 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 /// <summary>
 /// A tool that displays the AutoRetainer IPC connection status.
 /// </summary>
-public class AutoRetainerStatusTool : StatusToolBase
+public sealed class AutoRetainerStatusTool : StatusToolBase
 {
     public override string ToolName => "AutoRetainer Status";
     
-    private readonly AutoRetainerIpcService? _autoRetainerIpc;
+    private readonly AutoRetainerService? _autoRetainerIpc;
 
-    public AutoRetainerStatusTool(AutoRetainerIpcService? autoRetainerIpc = null)
+    public AutoRetainerStatusTool(AutoRetainerService? autoRetainerIpc = null)
     {
         _autoRetainerIpc = autoRetainerIpc;
 
@@ -52,7 +52,7 @@ public class AutoRetainerStatusTool : StatusToolBase
         }
         catch (Exception ex)
         {
-            LogService.Debug($"[AutoRetainerStatusTool] Draw error: {ex.Message}");
+            LogDebug($"Draw error: {ex.Message}");
         }
     }
 

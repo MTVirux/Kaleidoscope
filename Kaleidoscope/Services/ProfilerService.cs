@@ -15,11 +15,11 @@ public sealed class ProfilerService : IDisposable, IService
     private readonly object _lock = new();
     
     /// <summary>
-    /// Thread-local context for the current tool being profiled.
+    /// Async-local context for the current tool being profiled.
     /// Allows nested widgets to add child scopes without explicit service passing.
+    /// Uses AsyncLocal instead of ThreadStatic so context flows across await continuations.
     /// </summary>
-    [ThreadStatic]
-    private static ProfilerContext? _currentContext;
+    private static readonly AsyncLocal<ProfilerContext?> _currentContext = new();
     
     /// <summary>
     /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
@@ -50,9 +50,9 @@ public sealed class ProfilerService : IDisposable, IService
     }
     
     /// <summary>
-    /// Gets the current profiler context for this thread, if any.
+    /// Gets the current profiler context for this thread/async flow, if any.
     /// </summary>
-    public static ProfilerContext? CurrentContext => _currentContext;
+    public static ProfilerContext? CurrentContext => _currentContext.Value;
 
     /// <summary>
     /// Ring buffer size for recent samples (used for rolling stats and percentiles).
@@ -62,7 +62,7 @@ public sealed class ProfilerService : IDisposable, IService
     /// <summary>
     /// Statistics for a single profiled target with detailed metrics.
     /// </summary>
-    public class ProfileStats
+    public sealed class ProfileStats
     {
         public string Name { get; set; } = string.Empty;
         
@@ -86,15 +86,9 @@ public sealed class ProfilerService : IDisposable, IService
         // Child scopes for hierarchical profiling
         private Dictionary<string, ProfileStats>? _childScopes;
         
-        /// <summary>
-        /// Gets child scopes for hierarchical profiling.
-        /// </summary>
         public IReadOnlyDictionary<string, ProfileStats> ChildScopes => 
             _childScopes ?? (IReadOnlyDictionary<string, ProfileStats>)new Dictionary<string, ProfileStats>();
 
-        /// <summary>
-        /// Gets or creates a child scope for hierarchical profiling.
-        /// </summary>
         public ProfileStats GetOrCreateChildScope(string name)
         {
             _childScopes ??= new Dictionary<string, ProfileStats>();
@@ -116,9 +110,6 @@ public sealed class ProfilerService : IDisposable, IService
         /// </summary>
         public double EffectiveFps => AverageDrawTimeMs > 0 ? 1000.0 / AverageDrawTimeMs : 0;
 
-        /// <summary>
-        /// Gets the number of samples in the ring buffer.
-        /// </summary>
         public int RecentSampleCount => _ringCount;
 
         /// <summary>
@@ -126,24 +117,12 @@ public sealed class ProfilerService : IDisposable, IService
         /// </summary>
         public double P50Ms => GetPercentile(50);
 
-        /// <summary>
-        /// Gets the 90th percentile from recent samples.
-        /// </summary>
         public double P90Ms => GetPercentile(90);
 
-        /// <summary>
-        /// Gets the 95th percentile from recent samples.
-        /// </summary>
         public double P95Ms => GetPercentile(95);
 
-        /// <summary>
-        /// Gets the 99th percentile from recent samples.
-        /// </summary>
         public double P99Ms => GetPercentile(99);
 
-        /// <summary>
-        /// Gets the average of samples from the last N seconds.
-        /// </summary>
         public double GetRollingAverageMs(double seconds)
         {
             if (_ringCount == 0) return 0;
@@ -169,14 +148,8 @@ public sealed class ProfilerService : IDisposable, IService
             return count > 0 ? sum / count : 0;
         }
 
-        /// <summary>
-        /// Gets the 1-second rolling average.
-        /// </summary>
         public double Rolling1SecMs => GetRollingAverageMs(1.0);
 
-        /// <summary>
-        /// Gets the 5-second rolling average.
-        /// </summary>
         public double Rolling5SecMs => GetRollingAverageMs(5.0);
 
         /// <summary>
@@ -224,9 +197,6 @@ public sealed class ProfilerService : IDisposable, IService
             }
         }
 
-        /// <summary>
-        /// Gets recent samples as a copy for histogram display.
-        /// </summary>
         public double[] GetRecentSamples()
         {
             var result = new double[_ringCount];
@@ -279,16 +249,16 @@ public sealed class ProfilerService : IDisposable, IService
 
         public void RecordSample(double drawTimeMs)
         {
-            // Update basic stats
             LastDrawTimeMs = drawTimeMs;
             if (drawTimeMs < MinDrawTimeMs) MinDrawTimeMs = drawTimeMs;
             if (drawTimeMs > MaxDrawTimeMs) MaxDrawTimeMs = drawTimeMs;
+
+            // Welford's online algorithm: compute delta against OLD mean before updating count
+            var oldMean = AverageDrawTimeMs;
             TotalDrawTimeMs += drawTimeMs;
             SampleCount++;
-
-            // Update Welford's algorithm for standard deviation
-            var delta = drawTimeMs - AverageDrawTimeMs;
-            _m2 += delta * (drawTimeMs - AverageDrawTimeMs);
+            var newMean = AverageDrawTimeMs;
+            _m2 += (drawTimeMs - oldMean) * (drawTimeMs - newMean);
 
             // Add to ring buffer
             _recentSamples[_ringIndex] = drawTimeMs;
@@ -307,9 +277,6 @@ public sealed class ProfilerService : IDisposable, IService
 
     private Configuration Config => _configService.Config;
 
-    /// <summary>
-    /// Gets or sets whether profiling is enabled.
-    /// </summary>
     public bool IsEnabled
     {
         get => Config.ProfilerEnabled;
@@ -325,22 +292,13 @@ public sealed class ProfilerService : IDisposable, IService
     {
         _log = log;
         _configService = configService;
-        _log.Debug("ProfilerService initialized");
+        LogService.Debug(LogCategory.UI, "ProfilerService initialized");
     }
 
-    /// <summary>
-    /// Gets the main window profile stats.
-    /// </summary>
     public ProfileStats MainWindowStats => _mainWindowStats;
 
-    /// <summary>
-    /// Gets the fullscreen window profile stats.
-    /// </summary>
     public ProfileStats FullscreenWindowStats => _fullscreenWindowStats;
 
-    /// <summary>
-    /// Gets all tool profile stats.
-    /// </summary>
     public IReadOnlyDictionary<string, ProfileStats> ToolStats
     {
         get
@@ -352,27 +310,18 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Records a draw time sample for the main window.
-    /// </summary>
     public void RecordMainWindowDraw(double drawTimeMs)
     {
         if (!IsEnabled) return;
         _mainWindowStats.RecordSample(drawTimeMs);
     }
 
-    /// <summary>
-    /// Records a draw time sample for the fullscreen window.
-    /// </summary>
     public void RecordFullscreenWindowDraw(double drawTimeMs)
     {
         if (!IsEnabled) return;
         _fullscreenWindowStats.RecordSample(drawTimeMs);
     }
 
-    /// <summary>
-    /// Records a draw time sample for a specific tool.
-    /// </summary>
     public void RecordToolDraw(string toolId, string toolName, double drawTimeMs)
     {
         if (!IsEnabled) return;
@@ -388,9 +337,6 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Resets all profiling statistics.
-    /// </summary>
     public void ResetAll()
     {
         _mainWindowStats.Reset();
@@ -404,12 +350,9 @@ public sealed class ProfilerService : IDisposable, IService
             }
         }
 
-        _log.Debug("ProfilerService: All stats reset");
+        LogService.Debug(LogCategory.UI, "ProfilerService: All stats reset");
     }
 
-    /// <summary>
-    /// Resets statistics for a specific tool.
-    /// </summary>
     public void ResetTool(string toolId)
     {
         lock (_lock)
@@ -421,9 +364,6 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Clears all tool statistics (removes all entries).
-    /// </summary>
     public void ClearToolStats()
     {
         lock (_lock)
@@ -432,19 +372,10 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginMainWindowScope() => new(this, ProfileTargetType.MainWindow, string.Empty, string.Empty);
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginFullscreenWindowScope() => new(this, ProfileTargetType.FullscreenWindow, string.Empty, string.Empty);
 
-    /// <summary>
-    /// Creates a scoped timer that records draw time on dispose.
-    /// </summary>
     public ProfileScope BeginToolScope(string toolId, string toolName) => new(this, ProfileTargetType.Tool, toolId, toolName);
 
     /// <summary>
@@ -463,7 +394,7 @@ public sealed class ProfilerService : IDisposable, IService
             if (!_toolStats.TryGetValue(toolId, out var parentStats))
             {
                 // Get tool name from current context if available
-                var toolName = _currentContext?.ToolName ?? toolId;
+                var toolName = _currentContext.Value?.ToolName ?? toolId;
                 parentStats = new ProfileStats { Name = toolName };
                 _toolStats[toolId] = parentStats;
             }
@@ -481,7 +412,7 @@ public sealed class ProfilerService : IDisposable, IService
     /// <returns>A disposable scope that records the elapsed time.</returns>
     public static ChildProfileScope BeginStaticChildScope(string scopeName)
     {
-        var context = _currentContext;
+        var context = _currentContext.Value;
         if (context == null)
         {
             return new ChildProfileScope(null, null, null, null, null);
@@ -495,14 +426,11 @@ public sealed class ProfilerService : IDisposable, IService
     public (int gen0, int gen1, int gen2) GetGcCollectionCounts() =>
         (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
 
-    /// <summary>
-    /// Gets the total managed memory in bytes.
-    /// </summary>
     public long GetTotalManagedMemory() => GC.GetTotalMemory(forceFullCollection: false);
 
     public void Dispose()
     {
-        _log.Debug("ProfilerService disposed");
+        LogService.Debug(LogCategory.UI, "ProfilerService disposed");
     }
 
     public enum ProfileTargetType
@@ -556,18 +484,18 @@ public sealed class ProfilerService : IDisposable, IService
             _toolName = toolName;
             _stopwatch = Stopwatch.StartNew();
             
-            // Set up thread-local context for Tool scopes
-            _previousContext = _currentContext;
+            // Set up async-local context for Tool scopes
+            _previousContext = _currentContext.Value;
             if (targetType == ProfileTargetType.Tool && service.IsEnabled)
             {
-                _currentContext = new ProfilerContext(service, toolId, toolName);
+                _currentContext.Value = new ProfilerContext(service, toolId, toolName);
             }
         }
 
         public void Dispose()
         {
             // Restore previous context
-            _currentContext = _previousContext;
+            _currentContext.Value = _previousContext;
             
             _stopwatch.Stop();
             var elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;
@@ -585,7 +513,7 @@ public sealed class ProfilerService : IDisposable, IService
                     // Log slow tool draws
                     if (_service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
                     {
-                        _service._log.Debug($"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
+                        LogService.Debug(LogCategory.UI, $"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
                     }
                     break;
             }
@@ -622,7 +550,7 @@ public sealed class ProfilerService : IDisposable, IService
             // Log slow child operations
             if (_service != null && _service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
             {
-                _service._log.Debug($"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
+                LogService.Debug(LogCategory.UI, $"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
             }
         }
     }

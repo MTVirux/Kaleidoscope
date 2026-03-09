@@ -22,11 +22,11 @@ public sealed class ProfilerCategory
     /// </summary>
     private string? _selectedHistogramTool;
 
-    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, CurrencyTrackerService? CurrencyTrackerService = null)
+    public ProfilerCategory(ProfilerService profilerService, ConfigurationService configService, CurrencyTrackerService? currencyTrackerService = null)
     {
         _profilerService = profilerService;
         _configService = configService;
-        _currencyTrackerService = CurrencyTrackerService;
+        _currencyTrackerService = currencyTrackerService;
     }
 
     public void Draw()
@@ -97,7 +97,7 @@ public sealed class ProfilerCategory
             ImGui.SetTooltip("Operations taking longer than this will be logged. Lower values = more verbose logging.");
         }
 
-        ImGui.Spacing();;
+        ImGui.Spacing();
 
         // Stats view selector
         ImGui.SetNextItemWidth(150);

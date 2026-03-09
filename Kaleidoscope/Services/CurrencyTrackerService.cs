@@ -2,6 +2,9 @@ using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
 using OtterGui.Services;
 using System.Threading.Channels;
+using Kaleidoscope.Services.Characters;
+using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Inventory;
 
 namespace Kaleidoscope.Services;
 
@@ -26,44 +29,16 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     private readonly TimeSeriesCacheService _cacheService;
     private readonly CharacterDataCacheService _characterDataCache;
 
-    // Background thread for database writes
     private readonly Channel<SampleWorkItem> _sampleQueue;
     private readonly Task _backgroundWorker;
     private readonly CancellationTokenSource _cts = new();
 
-    /// <summary>
-    /// Gets whether currency tracking is enabled. Always returns true as tracking cannot be disabled.
-    /// </summary>
-    public bool Enabled => true;
-
-    /// <summary>
-    /// Gets the effective sampling interval in milliseconds.
-    /// This is controlled by InventoryChangeService's polling interval.
-    /// </summary>
-    public int IntervalMs
-    {
-        get => 1000; // InventoryChangeService polls every 1s
-        set { /* Interval is now controlled by InventoryChangeService */ }
-    }
-
-    /// <summary>
-    /// Gets the underlying database service for direct data access.
-    /// </summary>
     public KaleidoscopeDbService DbService => _dbService;
 
-    /// <summary>
-    /// Gets the tracked data registry.
-    /// </summary>
     public TrackedDataRegistry Registry => _registry;
 
-    /// <summary>
-    /// Gets the in-memory cache service for fast data access.
-    /// </summary>
     public TimeSeriesCacheService CacheService => _cacheService;
 
-    /// <summary>
-    /// Gets the character data cache service for character name lookups.
-    /// </summary>
     public CharacterDataCacheService CharacterDataCache => _characterDataCache;
 
     /// <summary>
@@ -97,24 +72,24 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _cacheService.AddPoint(itemVariable, characterId, itemValue);
         _sampleQueue.Writer.TryWrite(new SampleWorkItem(characterId, itemVariable, itemValue, characterName));
 
-        // Cache character name if provided
         if (!string.IsNullOrEmpty(characterName))
         {
             _cacheService.SetCharacterName(characterId, characterName);
         }
     }
 
-    private readonly AutoRetainerIpcService _arIpc;
+    private readonly AutoRetainerService _arIpc;
 
     public CurrencyTrackerService(
         IPluginLog log,
         FilenameService filenames,
         ConfigurationService configService,
-        AutoRetainerIpcService arIpc,
+        AutoRetainerService arIpc,
         TrackedDataRegistry registry,
         InventoryChangeService inventoryChangeService,
         TimeSeriesCacheService cacheService,
-        CharacterDataCacheService characterDataCache)
+        CharacterDataCacheService characterDataCache,
+        KaleidoscopeDbService dbService)
     {
         _log = log;
         _filenames = filenames;
@@ -124,22 +99,19 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _inventoryChangeService = inventoryChangeService;
         _cacheService = cacheService;
         _characterDataCache = characterDataCache;
+        _dbService = dbService;
 
-        // Create the database service with configured cache size
-        var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
-        _dbService = new KaleidoscopeDbService(filenames.DatabasePath, cacheSizeMb);
-
-        // Initialize character data cache with DB service
         _characterDataCache.Initialize(_dbService);
 
-        // Initialize background work queue (unbounded, single consumer)
-        _sampleQueue = Channel.CreateUnbounded<SampleWorkItem>(new UnboundedChannelOptions
+        // Use bounded channel to prevent unbounded memory growth under high load
+        // 1000 items is plenty for currency samples (infrequent writes)
+        _sampleQueue = Channel.CreateBounded<SampleWorkItem>(new BoundedChannelOptions(1000)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
         });
 
-        // Start the background worker thread for database writes
         _backgroundWorker = Task.Factory.StartNew(
             ProcessSampleQueueAsync,
             _cts.Token,
@@ -147,19 +119,15 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             TaskScheduler.Default
         ).Unwrap();
 
-        // Perform one-time migration of stored names
         _dbService.MigrateStoredNames();
 
-        // Auto-import from AutoRetainer on startup
         ImportFromAutoRetainer();
 
-        // Populate cache from database on startup
         PopulateCacheFromDatabase();
 
-        // Subscribe to inventory change events - uses pre-captured values to avoid re-reading game memory
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
 
-        _log.Information("[CurrencyTrackerService] Initialized with background thread for database writes");
+        LogService.Info(LogCategory.CurrencyTracker, "[CurrencyTrackerService] Initialized with background thread for database writes");
     }
 
     /// <summary>
@@ -172,14 +140,14 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         {
             if (!_arIpc.IsAvailable)
             {
-                LogService.Debug("AutoRetainer not available for auto-import");
+                LogService.Debug(LogCategory.CurrencyTracker, "AutoRetainer not available for auto-import");
                 return;
             }
             
             var characters = _arIpc.GetAllCharacterData();
             if (characters.Count == 0)
             {
-                LogService.Debug("No characters returned from AutoRetainer");
+                LogService.Debug(LogCategory.CurrencyTracker, "No characters returned from AutoRetainer");
                 return;
             }
             
@@ -191,13 +159,11 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 if (cid == 0 || string.IsNullOrEmpty(name)) continue;
                 
                 // Always save/overwrite the character name from AutoRetainer (AR data takes priority)
-                _dbService.SaveCharacterName(cid, name);
+                _characterDataCache.SetCharacterName(cid, name);
                 
-                // Create a series if it doesn't exist
                 var seriesId = _dbService.GetOrCreateSeries("Gil", cid);
                 if (seriesId.HasValue)
                 {
-                    // Check if we already have data for this character
                     var existingValue = _dbService.GetLastValueForCharacter("Gil", cid);
                     
                     // AutoRetainer data takes priority - add sample if gil differs from latest
@@ -215,12 +181,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                 var msg = $"Auto-imported {importCount} characters from AutoRetainer";
                 if (updatedCount > 0)
                     msg += $" ({updatedCount} updated with new gil values)";
-                LogService.Info(msg);
+                LogService.Info(LogCategory.CurrencyTracker, msg);
             }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"AutoRetainer auto-import failed: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, $"AutoRetainer auto-import failed: {ex.Message}");
         }
     }
 
@@ -246,23 +212,22 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             }
             catch (Exception ex)
             {
-                LogService.Debug($"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+                characterName = GameStateService.LocalPlayerName;
+                LogService.Debug(LogCategory.CurrencyTracker, characterName ?? "Unknown", $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
+            }
+            
+            // Cache character name ONCE outside the loop
+            if (!string.IsNullOrEmpty(characterName))
+            {
+                _cacheService.SetCharacterName(cid, characterName);
             }
 
-            // Queue all changed values for background database write
-            // Also update cache immediately for instant UI access
             foreach (var (dataType, value) in changedValues)
             {
                 var variable = dataType.ToString();
                 
                 // Update cache immediately (main thread) for instant UI access
                 var isNewValue = _cacheService.AddPoint(variable, cid, value);
-                
-                // Cache character name if available
-                if (!string.IsNullOrEmpty(characterName))
-                {
-                    _cacheService.SetCharacterName(cid, characterName);
-                }
                 
                 // Queue DB write (background thread) for persistence
                 if (isNewValue)
@@ -274,7 +239,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            _log.Debug($"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
+            var charName = GameStateService.LocalPlayerName;
+            LogService.Debug(LogCategory.CurrencyTracker, charName ?? "Unknown", $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
 
@@ -301,12 +267,12 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         if (inserted && !string.IsNullOrEmpty(workItem.CharacterName) 
                             && GameStateService.ValidateCharacterName(workItem.CharacterName))
                         {
-                            _dbService.SaveCharacterName(workItem.CharacterId, workItem.CharacterName);
+                            _characterDataCache.SetCharacterName(workItem.CharacterId, workItem.CharacterName);
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogService.Debug($"[CurrencyTrackerService] Background write error: {ex.Message}");
+                        LogService.Debug(LogCategory.CurrencyTracker, workItem.CharacterName ?? string.Empty, $"[CurrencyTrackerService] Background write error: {ex.Message}");
                     }
                 }
             }
@@ -321,20 +287,16 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            LogService.Error($"[CurrencyTrackerService] Background worker crashed: {ex.Message}", ex);
+            LogService.Error(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background worker crashed: {ex.Message}", ex);
         }
     }
 
-    /// <summary>
-    /// Populates the in-memory cache from database on startup.
-    /// Loads recent data based on cache configuration.
-    /// </summary>
     private void PopulateCacheFromDatabase()
     {
         var cacheConfig = _configService.Config.TimeSeriesCacheConfig;
         if (!cacheConfig.PrePopulateOnStartup)
         {
-            _log.Debug("[CurrencyTrackerService] Cache pre-population disabled");
+            LogService.Debug(LogCategory.CurrencyTracker, "[CurrencyTrackerService] Cache pre-population disabled");
             return;
         }
 
@@ -345,20 +307,17 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var loadedPoints = 0L;
 
             // Character names are now loaded by CharacterDataCacheService.Initialize()
-            _log.Debug($"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
+            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Character data cache has {_characterDataCache.CachedCharacterCount} characters");
 
-            // Load data for each tracked data type (currencies)
             foreach (var dataType in _registry.Definitions.Keys)
             {
                 var variable = dataType.ToString();
 
-                // Get available characters for this variable
                 var characters = _dbService.GetAvailableCharacters(variable);
                 if (characters.Count == 0) continue;
 
                 _cacheService.PopulateAvailableCharacters(variable, characters);
 
-                // Load recent points for each character
                 foreach (var charId in characters)
                 {
                     var points = _dbService.GetPointsSince(variable, charId, cutoffTime);
@@ -367,6 +326,18 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         _cacheService.PopulateFromDatabase(variable, charId, points);
                         loadedSeries++;
                         loadedPoints += points.Count;
+                    }
+                    else
+                    {
+                        // No points within time window - ensure we still have the latest value
+                        // This handles cases where data exists but hasn't changed recently
+                        var lastPoint = _dbService.GetLastPointForCharacter(variable, charId);
+                        if (lastPoint.HasValue)
+                        {
+                            _cacheService.PopulateFromDatabase(variable, charId, new[] { lastPoint.Value });
+                            loadedSeries++;
+                            loadedPoints++;
+                        }
                     }
                 }
             }
@@ -389,46 +360,43 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                         loadedSeries++;
                         loadedPoints += points.Count;
                     }
+                    else
+                    {
+                        // No points within time window - ensure we still have the latest value
+                        var lastPoint = _dbService.GetLastPointForCharacter(variable, charId);
+                        if (lastPoint.HasValue)
+                        {
+                            _cacheService.PopulateFromDatabase(variable, charId, new[] { lastPoint.Value });
+                            loadedSeries++;
+                            loadedPoints++;
+                        }
+                    }
                 }
             }
 
-            _log.Information($"[CurrencyTrackerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
+            LogService.Info(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Cache populated: {loadedSeries} series, {loadedPoints} points from last {cacheConfig.StartupLoadHours}h");
         }
         catch (Exception ex)
         {
-            _log.Error($"[CurrencyTrackerService] Failed to populate cache from database: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Failed to populate cache from database: {ex.Message}");
         }
     }
 
-    #region Data Management Helpers
-
-    /// <summary>
-    /// Gets whether the database exists and has data.
-    /// </summary>
     public bool HasDb => !string.IsNullOrEmpty(_filenames.DatabasePath) 
                          && File.Exists(_filenames.DatabasePath);
 
-    /// <summary>
-    /// Clears all data for a specific data type from the database.
-    /// </summary>
     public void ClearAllData(TrackedDataType dataType)
     {
         _dbService.ClearAllData(dataType.ToString());
-        _log.Information($"Cleared all {dataType} data");
+        LogService.Info(LogCategory.CurrencyTracker, $"Cleared all {dataType} data");
     }
 
-    /// <summary>
-    /// Clears all data from the database (all data types).
-    /// </summary>
     public void ClearAllData()
     {
         _dbService.ClearAllTables();
-        _log.Information("Cleared all tracking data");
+        LogService.Info(LogCategory.CurrencyTracker, "Cleared all tracking data");
     }
 
-    /// <summary>
-    /// Removes data for characters without a name association.
-    /// </summary>
     public int CleanUnassociatedCharacters()
     {
         var totalCount = 0;
@@ -437,24 +405,18 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             totalCount += _dbService.CleanUnassociatedCharacters(dataType.ToString());
         }
         if (totalCount > 0)
-            _log.Information($"Cleaned {totalCount} unassociated character series");
+            LogService.Info(LogCategory.CurrencyTracker, $"Cleaned {totalCount} unassociated character series");
         return totalCount;
     }
 
-    /// <summary>
-    /// Removes data for characters without a name association for a specific data type.
-    /// </summary>
     public int CleanUnassociatedCharacters(TrackedDataType dataType)
     {
         var count = _dbService.CleanUnassociatedCharacters(dataType.ToString());
         if (count > 0)
-            _log.Information($"Cleaned {count} unassociated {dataType} character series");
+            LogService.Info(LogCategory.CurrencyTracker, $"Cleaned {count} unassociated {dataType} character series");
         return count;
     }
 
-    /// <summary>
-    /// Exports data to a CSV file and returns the file path.
-    /// </summary>
     public string? ExportCsv(TrackedDataType dataType, ulong? characterId = null)
     {
         var dbPath = _filenames.DatabasePath;
@@ -474,47 +436,263 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
             var filePath = Path.Combine(dir, fileName);
 
             File.WriteAllText(filePath, csvContent);
-            _log.Information($"Exported {dataType} data to {filePath}");
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {dataType} data to {filePath}");
             return filePath;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to export {dataType} CSV: {ex.Message}");
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {dataType} CSV: {ex.Message}");
             return null;
         }
     }
 
     /// <summary>
-    /// Exports data to a CSV file and returns the file path (legacy Gil-only method).
+    /// Gets points within a date range for a data type.
     /// </summary>
-    [Obsolete("Use ExportCsv(TrackedDataType, ulong?) instead")]
-    public string? ExportCsv(ulong? characterId = null) => ExportCsv(TrackedDataType.Gil, characterId);
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRange(
+        TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.GetPointsInRange(dataType.ToString(), characterId, start, end);
+    }
 
-    #endregion
+    /// <summary>
+    /// Counts points within a date range and estimates storage size.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Tuple of (count, estimated bytes).</returns>
+    public (int count, long estimatedBytes) CountPointsInRange(
+        TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.CountPointsInRange(dataType.ToString(), characterId, start, end);
+    }
+
+    /// <summary>
+    /// Deletes points within a date range for a data type.
+    /// Invalidates the cache after deletion.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Number of points deleted.</returns>
+    public int DeletePointsInRange(TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        var variable = dataType.ToString();
+        var deleted = _dbService.DeletePointsInRange(variable, characterId, start, end);
+        
+        if (deleted > 0)
+        {
+            _cacheService.InvalidateVariable(variable);
+            LogService.Info(LogCategory.CurrencyTracker, $"Deleted {deleted} points for {dataType} and invalidated cache");
+        }
+        
+        return deleted;
+    }
+
+    /// <summary>
+    /// Exports points within a date range to a CSV file and returns the file path.
+    /// </summary>
+    /// <param name="dataType">The tracked data type.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeToCsv(TrackedDataType dataType, ulong? characterId, DateTime start, DateTime end)
+    {
+        return ExportPointsInRangeByVariableToCsv(dataType.ToString(), characterId, start, end);
+    }
+
+    /// <summary>
+    /// Gets points within a date range for a raw variable name (for items).
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRangeByVariable(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.GetPointsInRange(variable, characterId, start, end);
+    }
+
+    /// <summary>
+    /// Counts points within a date range for a raw variable name (for items).
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Tuple of (count, estimated bytes).</returns>
+    public (int count, long estimatedBytes) CountPointsInRangeByVariable(
+        string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        return _dbService.CountPointsInRange(variable, characterId, start, end);
+    }
+
+    /// <summary>
+    /// Deletes points within a date range for a raw variable name (for items).
+    /// Invalidates the cache after deletion.
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>Number of points deleted.</returns>
+    public int DeletePointsInRangeByVariable(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var deleted = _dbService.DeletePointsInRange(variable, characterId, start, end);
+        
+        if (deleted > 0)
+        {
+            _cacheService.InvalidateVariable(variable);
+            LogService.Info(LogCategory.CurrencyTracker, $"Deleted {deleted} points for {variable} and invalidated cache");
+        }
+        
+        return deleted;
+    }
+
+    /// <summary>
+    /// Exports points within a date range for a raw variable name to a CSV file.
+    /// </summary>
+    /// <param name="variable">The variable name (e.g., "Item_12345").</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeByVariableToCsv(string variable, ulong? characterId, DateTime start, DateTime end)
+    {
+        var dbPath = _filenames.DatabasePath;
+        if (string.IsNullOrEmpty(dbPath)) return null;
+
+        try
+        {
+            var csvContent = _dbService.ExportPointsInRangeToCsv(variable, characterId, start, end);
+            if (string.IsNullOrEmpty(csvContent)) return null;
+
+            var dir = Path.GetDirectoryName(dbPath) ?? "";
+            var suffix = characterId.HasValue && characterId.Value != 0
+                ? $"-{characterId.Value}"
+                : "-all";
+            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
+            var fileName = $"{variable.ToLower()}{suffix}-{dateRange}-backup.csv";
+            var filePath = Path.Combine(dir, fileName);
+
+            File.WriteAllText(filePath, csvContent);
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {variable} range data to {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export {variable} range CSV: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Exports points for multiple variables to a CSV file.
+    /// Useful for items that have both player and retainer data.
+    /// </summary>
+    /// <param name="variables">List of variable names to export.</param>
+    /// <param name="characterId">Character ID, or null for all characters.</param>
+    /// <param name="start">Start of range (inclusive).</param>
+    /// <param name="end">End of range (inclusive).</param>
+    /// <returns>File path if successful, null otherwise.</returns>
+    public string? ExportPointsInRangeByVariablesToCsv(IReadOnlyList<string> variables, ulong? characterId, DateTime start, DateTime end)
+    {
+        if (variables.Count == 0) return null;
+        
+        var dbPath = _filenames.DatabasePath;
+        if (string.IsNullOrEmpty(dbPath)) return null;
+
+        try
+        {
+            var allCsvContent = new System.Text.StringBuilder();
+            bool headerWritten = false;
+            
+            foreach (var variable in variables)
+            {
+                var csvContent = _dbService.ExportPointsInRangeToCsv(variable, characterId, start, end);
+                if (string.IsNullOrEmpty(csvContent)) continue;
+                
+                var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    // Skip header for subsequent variables
+                    if (i == 0)
+                    {
+                        if (!headerWritten)
+                        {
+                            allCsvContent.AppendLine(lines[i]);
+                            headerWritten = true;
+                        }
+                        continue;
+                    }
+                    allCsvContent.AppendLine(lines[i]);
+                }
+            }
+            
+            if (allCsvContent.Length == 0) return null;
+
+            var dir = Path.GetDirectoryName(dbPath) ?? "";
+            var suffix = characterId.HasValue && characterId.Value != 0
+                ? $"-{characterId.Value}"
+                : "-all";
+            var dateRange = $"{start:yyyyMMdd}-{end:yyyyMMdd}";
+            // Use the first variable name for the file
+            var baseVarName = variables[0].ToLower();
+            if (baseVarName.StartsWith("item_"))
+                baseVarName = baseVarName.Replace("item_", "item-");
+            var fileName = $"{baseVarName}{suffix}-{dateRange}-backup.csv";
+            var filePath = Path.Combine(dir, fileName);
+
+            File.WriteAllText(filePath, allCsvContent.ToString());
+            LogService.Info(LogCategory.CurrencyTracker, $"Exported {variables.Count} variable(s) range data to {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.CurrencyTracker, $"Failed to export multi-variable range CSV: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs VACUUM to reclaim disk space after deletions.
+    /// Warning: This can be slow on large databases.
+    /// </summary>
+    /// <returns>True if successful.</returns>
+    public bool Vacuum()
+    {
+        return _dbService.Vacuum();
+    }
 
     public void Dispose()
     {
-        // Unsubscribe from inventory change events
         _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
 
-        // Signal background worker to stop and wait for it to finish
         _cts.Cancel();
         _sampleQueue.Writer.Complete();
 
         try
         {
-            // Wait for background worker to finish processing (with timeout)
             _backgroundWorker.Wait(TimeSpan.FromSeconds(2));
         }
         catch (AggregateException) { /* Expected if task was canceled */ }
         catch (Exception ex)
         {
-            LogService.Debug($"[CurrencyTrackerService] Background worker shutdown error: {ex.Message}");
+            LogService.Debug(LogCategory.CurrencyTracker, $"[CurrencyTrackerService] Background worker shutdown error: {ex.Message}");
         }
 
         _cts.Dispose();
-        _dbService.Dispose();
-        GC.SuppressFinalize(this);
     }
 }
 
