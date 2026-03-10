@@ -50,7 +50,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private CharactersCategory? _charactersCategory;
     private CurrenciesCategory? _currenciesCategory;
     private ItemsCategory? _itemsCategory;
-    private ToolPresetsCategory? _toolPresetsCategory;
     private StorageCategory? _storageCategory;
     private TestsCategory? _testsCategory;
     private CachesCategory? _cachesCategory;
@@ -68,15 +67,14 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         public const int GameItems = 3;
         public const int Currencies = 4;
         public const int Layouts = 5;
-        public const int ToolPresets = 6;
-        public const int Customization = 7;
-        public const int Universalis = 8;
-        public const int Storage = 9;
-        public const int Profiler = 10; // Hidden tab, only shown with CTRL+ALT
-        public const int Tests = 11; // Hidden tab, only shown with CTRL+ALT
-        public const int Caches = 12; // Hidden tab, only shown with CTRL+ALT
-        public const int Logging = 13; // Hidden tab, only shown with CTRL+ALT
-        public const int SqlQuery = 14; // Hidden tab, only shown with CTRL+ALT
+        public const int Customization = 6;
+        public const int Universalis = 7;
+        public const int Storage = 8;
+        public const int Profiler = 9; // Hidden tab, only shown with CTRL+ALT
+        public const int Tests = 10; // Hidden tab, only shown with CTRL+ALT
+        public const int Caches = 11; // Hidden tab, only shown with CTRL+ALT
+        public const int Logging = 12; // Hidden tab, only shown with CTRL+ALT
+        public const int SqlQuery = 13; // Hidden tab, only shown with CTRL+ALT
     }
 
     /// <summary>
@@ -184,7 +182,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _charactersCategory = new CharactersCategory(_currencyTrackerService, _currencyTrackerService.CacheService, _configService, _arIpc);
         _currenciesCategory = new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService);
         _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService);
-        _toolPresetsCategory = new ToolPresetsCategory(_configService);
         _storageCategory = new StorageCategory(
             _configService, 
             _currencyTrackerService, 
@@ -272,7 +269,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         if (ImGui.Selectable("Items", _selectedTab == TabIndex.GameItems)) _selectedTab = TabIndex.GameItems;
         if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
         if (ImGui.Selectable("Layouts", _selectedTab == TabIndex.Layouts)) _selectedTab = TabIndex.Layouts;
-        if (ImGui.Selectable("Tool Presets", _selectedTab == TabIndex.ToolPresets)) _selectedTab = TabIndex.ToolPresets;
         if (ImGui.Selectable("Customization", _selectedTab == TabIndex.Customization)) _selectedTab = TabIndex.Customization;
         if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
         if (ImGui.Selectable("Storage", _selectedTab == TabIndex.Storage)) _selectedTab = TabIndex.Storage;
@@ -314,9 +310,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
                 break;
             case TabIndex.Layouts:
                 _layoutsCategory?.Draw();
-                break;
-            case TabIndex.ToolPresets:
-                _toolPresetsCategory?.Draw();
                 break;
             case TabIndex.Customization:
                 _customizationCategory?.Draw();
