@@ -22,6 +22,8 @@ public sealed class ImPlotReferenceTool : ToolComponent
     {
         try
         {
+            var avail = ImGui.GetContentRegionAvail();
+            ImGui.BeginChild("##GraphControlsScroll", avail, false, ImGuiWindowFlags.None);
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
             ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.2f, 1f), "Graph Controls");
@@ -61,6 +63,7 @@ public sealed class ImPlotReferenceTool : ToolComponent
             ImGui.TextColored(UiColors.Info, "legend position, and time range.");
 
             ImGui.PopTextWrapPos();
+            ImGui.EndChild();
         }
         catch (Exception ex)
         {
