@@ -23,6 +23,8 @@ public sealed class GettingStartedTool : ToolComponent
     {
         try
         {
+            var avail = ImGui.GetContentRegionAvail();
+            ImGui.BeginChild("##GettingStartedScroll", avail, false, ImGuiWindowFlags.None);
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
             ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.2f, 1f), "Welcome to Kaleidoscope!");
@@ -57,7 +59,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Tool Context Menu ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Tool Options (right-click a tool):");
+            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Tool Options (right-click a tool header):");
             ImGui.Spacing();
 
             ImGui.BulletText("Rename: Change the tool's display name");
@@ -91,6 +93,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.TextColored(UiColors.Info, "You can remove this tool once you're comfortable.");
 
             ImGui.PopTextWrapPos();
+            ImGui.EndChild();
         }
         catch (Exception ex)
         {
