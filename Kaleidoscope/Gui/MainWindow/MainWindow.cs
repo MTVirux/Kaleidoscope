@@ -51,6 +51,8 @@ public sealed class MainWindow : Window, IService, IDisposable
     private bool _suppressEscClose;
     private bool _escPressedThisFrame;
     private bool _isFullscreenMode;
+    private bool _pendingEnterFullscreen;
+    private bool _pendingExitFullscreen;
 
     /// <summary>
     /// Set after construction due to circular dependency with WindowService.
@@ -742,10 +744,21 @@ public sealed class MainWindow : Window, IService, IDisposable
         
         if (!_layoutEditingService.TryPerformDestructiveAction("enter fullscreen mode", () =>
         {
-            EnterFullscreenModeInternal();
+            // Defer to PreDraw — this callback may run inside Draw() (from the
+            // unsaved-changes dialog), and EnterFullscreenModeInternal modifies
+            // the tool list which would corrupt the in-progress iteration.
+            _pendingEnterFullscreen = true;
         }))
         {
             // Dialog will be shown, action deferred
+            return;
+        }
+        // Not dirty — action ran immediately from a safe call site (title bar
+        // button or PreDraw), so process the flag right away.
+        if (_pendingEnterFullscreen)
+        {
+            _pendingEnterFullscreen = false;
+            EnterFullscreenModeInternal();
         }
     }
 
@@ -795,10 +808,18 @@ public sealed class MainWindow : Window, IService, IDisposable
         
         if (!_layoutEditingService.TryPerformDestructiveAction("exit fullscreen mode", () =>
         {
-            ExitFullscreenModeInternal();
+            // Defer to PreDraw — see EnterFullscreenMode for rationale.
+            _pendingExitFullscreen = true;
         }))
         {
             // Dialog will be shown, action deferred
+            return;
+        }
+        // Not dirty — safe to process immediately.
+        if (_pendingExitFullscreen)
+        {
+            _pendingExitFullscreen = false;
+            ExitFullscreenModeInternal();
         }
     }
 
@@ -903,6 +924,20 @@ public sealed class MainWindow : Window, IService, IDisposable
 
     public override void PreDraw()
     {
+        // Process deferred fullscreen transitions. These are deferred from the
+        // unsaved-changes dialog callback which runs inside Draw(); executing
+        // them here (before Draw) avoids modifying the tool list mid-iteration.
+        if (_pendingEnterFullscreen)
+        {
+            _pendingEnterFullscreen = false;
+            EnterFullscreenModeInternal();
+        }
+        if (_pendingExitFullscreen)
+        {
+            _pendingExitFullscreen = false;
+            ExitFullscreenModeInternal();
+        }
+
         // Handle fullscreen mode - fill viewport with no decorations
         if (_isFullscreenMode)
         {
