@@ -28,6 +28,7 @@ public sealed class StartupTestService : IRequiredService
             ("DB Connection", TestDbConnection),
             ("DB Read/Write", TestDbReadWrite),
             ("DB Sanity Check", TestDbSanity),
+            ("DB Integrity", TestDbIntegrity),
             ("Cache Service", TestCacheService),
             ("Tracked Data Registry", TestRegistry),
             ("Config Service", TestConfigService),
@@ -122,6 +123,27 @@ public sealed class StartupTestService : IRequiredService
             return (false, $"{errors.Count} error(s) found", string.Join("; ", errors));
 
         return (true, "Passed", $"DB size: {sizeMb:F2}MB, {characters?.Count ?? 0} character(s)");
+    }
+
+    private (bool Passed, string Message, string? Details) TestDbIntegrity()
+    {
+        var db = _currencyTrackerService.DbService;
+        if (db == null)
+            return (false, "DbService is null", null);
+
+        var result = db.QuickCheck();
+        if (result.IsHealthy)
+            return (true, "Database integrity OK", null);
+
+        var errorSummary = string.Join("; ", result.Errors.Take(5));
+        if (result.Errors.Count > 5)
+            errorSummary += $" (and {result.Errors.Count - 5} more)";
+
+        LogService.Error(LogCategory.Database,
+            $"[StartupTest] DATABASE CORRUPTION DETECTED — {result.Errors.Count} error(s). " +
+            "Use the Storage tab in Settings to run a database repair.");
+
+        return (false, $"Database is corrupt: {result.Errors.Count} error(s)", errorSummary);
     }
 
     private (bool Passed, string Message, string? Details) TestCacheService()

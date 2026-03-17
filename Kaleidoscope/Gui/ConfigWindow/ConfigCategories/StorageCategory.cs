@@ -72,6 +72,14 @@ public sealed class StorageCategory : IDisposable
     private bool _tableSizeLoading;
     private static readonly TimeSpan TableSizeRefreshInterval = TimeSpan.FromSeconds(10);
 
+    // Database health state
+    private KaleidoscopeDbService.IntegrityCheckResult? _integrityResult;
+    private bool _integrityCheckRunning;
+    private bool _backupRunning;
+    private (bool Success, string? Path, long SizeBytes)? _lastBackupResult;
+    private bool _repairRunning;
+    private (bool Success, string Message)? _lastRepairResult;
+
     public StorageCategory(
         ConfigurationService configService,
         CurrencyTrackerService currencyTrackerService,
@@ -266,6 +274,12 @@ public sealed class StorageCategory : IDisposable
 
         DrawTableSizeBreakdown();
 
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        DrawDatabaseHealthSection();
+
         ImGui.Unindent();
         ImGui.Spacing();
     }
@@ -398,6 +412,172 @@ public sealed class StorageCategory : IDisposable
                 _tableSizeLoading = false;
             }
         });
+    }
+
+    private void DrawDatabaseHealthSection()
+    {
+        var dbService = _currencyTrackerService.DbService;
+        if (dbService == null)
+        {
+            ImGui.TextDisabled("Database not available.");
+            return;
+        }
+
+        ImGui.TextUnformatted("Database Health");
+        ImGui.Spacing();
+
+        // --- Integrity Check ---
+        var checkDisabled = _integrityCheckRunning || _repairRunning;
+        if (checkDisabled) ImGui.BeginDisabled();
+
+        if (ImGui.Button(_integrityCheckRunning ? "Checking...##IntegrityCheck" : "Quick Check##IntegrityQuick"))
+        {
+            _integrityCheckRunning = true;
+            _integrityResult = null;
+            Task.Run(() =>
+            {
+                try { _integrityResult = dbService.QuickCheck(); }
+                catch (Exception ex) { _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } }; }
+                finally { _integrityCheckRunning = false; }
+            });
+        }
+        DrawHelpMarker("Runs PRAGMA quick_check to detect database corruption.\nFast — skips index verification.");
+
+        ImGui.SameLine();
+        if (ImGui.Button(_integrityCheckRunning ? "Checking...##IntegrityFull" : "Full Check##IntegrityFull"))
+        {
+            _integrityCheckRunning = true;
+            _integrityResult = null;
+            Task.Run(() =>
+            {
+                try { _integrityResult = dbService.FullIntegrityCheck(); }
+                catch (Exception ex) { _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } }; }
+                finally { _integrityCheckRunning = false; }
+            });
+        }
+        DrawHelpMarker("Runs PRAGMA integrity_check — thorough but can be slow on large databases.\nVerifies every page, B-tree, index, and constraint.");
+
+        if (checkDisabled) ImGui.EndDisabled();
+
+        // Show integrity result
+        if (_integrityResult != null)
+        {
+            if (_integrityResult.IsHealthy)
+            {
+                ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1f, 0.4f, 1f), "✓ Database is healthy");
+            }
+            else
+            {
+                ImGui.TextColored(new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f),
+                    $"✗ {_integrityResult.Errors.Count} error(s) detected");
+
+                ImGui.Indent();
+                foreach (var error in _integrityResult.Errors.Take(10))
+                {
+                    ImGui.TextColored(new System.Numerics.Vector4(1f, 0.6f, 0.6f, 1f), $"• {error}");
+                }
+                if (_integrityResult.Errors.Count > 10)
+                    ImGui.TextDisabled($"  ...and {_integrityResult.Errors.Count - 10} more");
+                ImGui.Unindent();
+            }
+        }
+
+        ImGui.Spacing();
+
+        // --- Backup ---
+        var backupDisabled = _backupRunning || _repairRunning;
+        if (backupDisabled) ImGui.BeginDisabled();
+
+        if (ImGui.Button(_backupRunning ? "Backing up...##Backup" : "Backup Database##Backup"))
+        {
+            _backupRunning = true;
+            _lastBackupResult = null;
+            Task.Run(() =>
+            {
+                try { _lastBackupResult = dbService.BackupDatabase(); }
+                catch (Exception ex) { _lastBackupResult = (false, null, 0); LogService.Error(LogCategory.Database, $"Backup exception: {ex.Message}", ex); }
+                finally { _backupRunning = false; }
+            });
+        }
+        DrawHelpMarker("Creates a timestamped copy of the database file.\nPerforms a WAL checkpoint first to ensure data consistency.");
+
+        if (backupDisabled) ImGui.EndDisabled();
+
+        if (_lastBackupResult.HasValue)
+        {
+            var br = _lastBackupResult.Value;
+            if (br.Success)
+            {
+                ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1f, 0.4f, 1f),
+                    $"✓ Backed up ({FormatUtils.FormatByteSize(br.SizeBytes)})");
+                if (!string.IsNullOrEmpty(br.Path))
+                {
+                    ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
+                        $"  {Path.GetFileName(br.Path)}");
+                }
+            }
+            else
+            {
+                ImGui.TextColored(new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f), "✗ Backup failed");
+            }
+        }
+
+        ImGui.Spacing();
+
+        // --- Repair ---
+        var showRepair = _integrityResult is { IsHealthy: false } || _lastRepairResult.HasValue;
+        if (showRepair)
+        {
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.3f, 1f), "Database Repair");
+            ImGui.TextWrapped(
+                "Attempts to recover data from a corrupt database by copying all readable rows " +
+                "into a new database file. The corrupt file is preserved as a .corrupt.bak backup.");
+            ImGui.Spacing();
+
+            var repairDisabled = _repairRunning || _integrityCheckRunning || _backupRunning;
+            if (repairDisabled) ImGui.BeginDisabled();
+
+            if (ImGui.Button(_repairRunning ? "Repairing...##Repair" : "Repair Database##Repair"))
+            {
+                _repairRunning = true;
+                _lastRepairResult = null;
+                Task.Run(() =>
+                {
+                    try { _lastRepairResult = dbService.RepairDatabase(); }
+                    catch (Exception ex) { _lastRepairResult = (false, $"Exception: {ex.Message}"); }
+                    finally { _repairRunning = false; }
+                });
+            }
+            DrawHelpMarker(
+                "This will:\n" +
+                "1. Close all database connections\n" +
+                "2. Create a new empty database\n" +
+                "3. Copy all readable rows from the corrupt database\n" +
+                "4. Rename the corrupt file to .corrupt.bak\n" +
+                "5. Use the recovered database going forward\n\n" +
+                "Some data may be lost if it was stored in corrupt pages.");
+
+            if (repairDisabled) ImGui.EndDisabled();
+
+            if (_lastRepairResult.HasValue)
+            {
+                var rr = _lastRepairResult.Value;
+                if (rr.Success)
+                {
+                    ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1f, 0.4f, 1f), "✓ Repair completed");
+                    ImGui.TextWrapped(rr.Message);
+                    // Clear integrity result since the DB has been replaced
+                    _integrityResult = null;
+                }
+                else
+                {
+                    ImGui.TextColored(new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f), "✗ Repair failed");
+                    ImGui.TextWrapped(rr.Message);
+                }
+            }
+        }
     }
 
     private void DrawMemoryCacheSection()
