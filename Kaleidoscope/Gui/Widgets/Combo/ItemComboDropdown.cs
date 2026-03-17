@@ -147,8 +147,8 @@ public sealed class ItemComboDropdown : IDisposable
         
         // Configure filter
         _widget.WithFilter((item, filter) =>
-            item.Name.ToLowerInvariant().Contains(filter) ||
-            item.Id.ToString().Contains(filter));
+            item.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+            item.Id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase));
         
         // Subscribe to events
         _widget.SelectionChanged += OnWidgetSelectionChanged;

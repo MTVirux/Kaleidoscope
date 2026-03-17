@@ -35,6 +35,8 @@ public sealed class ItemsCategory
     private readonly ItemComboDropdown? _trackItemCombo;
     
     private readonly Dictionary<uint, string> _itemNameCache = new();
+    
+    private bool _trackComboInitialized;
 
     public ItemsCategory(
         ConfigurationService configService,
@@ -74,7 +76,12 @@ public sealed class ItemsCategory
                 marketableOnly: false,
                 configService: _configService,
                 trackedDataRegistry: _currencyTrackerService?.Registry,
-                excludeCurrencies: true);
+                excludeCurrencies: true,
+                multiSelect: true,
+                emptySelectionText: "Select items to track...",
+                showNoneBulkAction: true);
+            
+            _trackItemCombo.MultiSelectionChanged += OnTrackItemMultiSelectionChanged;
         }
     }
 
@@ -305,23 +312,79 @@ public sealed class ItemsCategory
     
     private void DrawAddTrackedItemSection(Configuration config)
     {
-        ImGui.TextUnformatted("Add Item to Track");
+        ImGui.TextUnformatted("Items to Track");
         
         if (_trackItemCombo != null)
         {
-            if (_trackItemCombo.Draw(300))
+            // Sync combo selection with currently tracked items on first draw
+            if (!_trackComboInitialized)
             {
-                if (_trackItemCombo.SelectedItemId > 0)
-                {
-                    var itemId = _trackItemCombo.SelectedItemId;
-                    AddTrackedItem(config, itemId);
-                    _trackItemCombo.ClearSelection();
-                }
+                SyncTrackComboSelection(config);
+                _trackComboInitialized = true;
             }
+            
+            _trackItemCombo.DrawMultiSelect(400);
         }
         else
         {
             ImGui.TextDisabled("Item picker not available.");
+        }
+    }
+    
+    /// <summary>
+    /// Syncs the multi-select combo state with the currently tracked items from config.
+    /// </summary>
+    private void SyncTrackComboSelection(Configuration config)
+    {
+        var trackedIds = new HashSet<uint>();
+        
+        if (config.ItemTable?.Columns != null)
+        {
+            foreach (var col in config.ItemTable.Columns.Where(c => !c.IsCurrency))
+                trackedIds.Add(col.Id);
+        }
+        
+        if (config.ItemGraph?.Series != null)
+        {
+            foreach (var series in config.ItemGraph.Series.Where(s => !s.IsCurrency))
+                trackedIds.Add(series.Id);
+        }
+        
+        _trackItemCombo!.SetMultiSelection(trackedIds);
+    }
+    
+    /// <summary>
+    /// Handles multi-selection changes — adds/removes tracked items to match the selection.
+    /// </summary>
+    private void OnTrackItemMultiSelectionChanged(IReadOnlySet<uint> selectedIds)
+    {
+        var config = _configService.Config;
+        
+        // Build set of currently tracked item IDs
+        var currentlyTracked = new HashSet<uint>();
+        if (config.ItemTable?.Columns != null)
+        {
+            foreach (var col in config.ItemTable.Columns.Where(c => !c.IsCurrency))
+                currentlyTracked.Add(col.Id);
+        }
+        if (config.ItemGraph?.Series != null)
+        {
+            foreach (var series in config.ItemGraph.Series.Where(s => !s.IsCurrency))
+                currentlyTracked.Add(series.Id);
+        }
+        
+        // Items to add (in selection but not tracked)
+        foreach (var itemId in selectedIds)
+        {
+            if (!currentlyTracked.Contains(itemId))
+                AddTrackedItem(config, itemId);
+        }
+        
+        // Items to remove (tracked but no longer in selection)
+        foreach (var itemId in currentlyTracked)
+        {
+            if (!selectedIds.Contains(itemId))
+                RemoveTrackedItem(itemId);
         }
     }
     
@@ -376,6 +439,9 @@ public sealed class ItemsCategory
             _configService.MarkDirty();
             _itemNameCache.Remove(itemId);
             LogService.Debug(LogCategory.UI, $"[ItemsCategory] Removed item {itemId} from tracking");
+            
+            // Re-sync the multi-select combo so it reflects the removal
+            SyncTrackComboSelection(config);
         }
     }
     
