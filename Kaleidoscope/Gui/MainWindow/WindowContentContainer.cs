@@ -441,6 +441,34 @@ public sealed partial class WindowContentContainer
         }
 
         /// <summary>
+        /// Removes and disposes all tools from the container.
+        /// </summary>
+        public void ClearAllTools()
+        {
+            _suppressDirtyMarking = true;
+            try
+            {
+                for (var i = _tools.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        _tools[i].Tool.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Error(LogCategory.UI, $"ClearAllTools: Failed to dispose tool at index {i}", ex);
+                    }
+                }
+                _tools.Clear();
+                LogService.Debug(LogCategory.UI, "ClearAllTools: all tools removed");
+            }
+            finally
+            {
+                _suppressDirtyMarking = false;
+            }
+        }
+
+        /// <summary>
         /// Adds a tool instance without marking the layout as dirty.
         /// Use this for initial setup (e.g., adding default tools on first run).
         /// </summary>

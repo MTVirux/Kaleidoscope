@@ -94,6 +94,24 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     {
         Config.Layouts ??= new List<ContentLayoutState>();
 
+        // Validate each layout's data integrity
+        foreach (var layout in Config.Layouts)
+        {
+            // Ensure non-null name
+            if (string.IsNullOrWhiteSpace(layout.Name))
+                layout.Name = "Unnamed";
+            
+            // Ensure non-null tools list
+            layout.Tools ??= new List<ToolLayoutState>();
+            
+            // Clamp grid settings to sane ranges
+            if (layout.Columns < 1) layout.Columns = 16;
+            if (layout.Rows < 1) layout.Rows = 9;
+            if (layout.Subdivisions < 1) layout.Subdivisions = 1;
+            if (layout.GridResolutionMultiplier < 1) layout.GridResolutionMultiplier = 2;
+            if (layout.GridResolutionMultiplier > 10) layout.GridResolutionMultiplier = 2;
+        }
+
         var seenNames = new Dictionary<(string Name, LayoutType Type), int>(
             new LayoutNameTypeComparer());
         

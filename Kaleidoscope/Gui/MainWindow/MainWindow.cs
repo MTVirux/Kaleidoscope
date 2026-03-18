@@ -425,9 +425,9 @@ public sealed class MainWindow : Window, IService, IDisposable
             _contentContainer?.SetGridSettingsFromLayout(layout);
             
             if (layout.Tools is { Count: > 0 })
-            {
                 _contentContainer?.ApplyLayout(layout.Tools);
-            }
+            else
+                _contentContainer?.ClearAllTools();
             
             if (string.IsNullOrWhiteSpace(Config.ActiveWindowedLayoutName)) 
                 Config.ActiveWindowedLayoutName = layout.Name;
@@ -792,8 +792,19 @@ public sealed class MainWindow : Window, IService, IDisposable
         _isFullscreenMode = true;
         _stateService.IsFullscreen = true;
         
-        // Load the fullscreen layout
-        LoadLayoutForCurrentMode();
+        try
+        {
+            // Load the fullscreen layout
+            LoadLayoutForCurrentMode();
+        }
+        catch (Exception ex)
+        {
+            // Revert fullscreen state so the window isn't stuck half-transitioned
+            _isFullscreenMode = false;
+            _stateService.IsFullscreen = false;
+            _log.Error($"Failed to enter fullscreen mode, reverting: {ex.Message}");
+            return;
+        }
         
         _log.Debug("Entered fullscreen mode");
     }
@@ -833,8 +844,19 @@ public sealed class MainWindow : Window, IService, IDisposable
         // Restore windowed position/size
         ExitFullscreen();
         
-        // Load the windowed layout
-        LoadLayoutForCurrentMode();
+        try
+        {
+            // Load the windowed layout
+            LoadLayoutForCurrentMode();
+        }
+        catch (Exception ex)
+        {
+            // Revert fullscreen state so the window isn't stuck half-transitioned
+            _isFullscreenMode = true;
+            _stateService.IsFullscreen = true;
+            _log.Error($"Failed to exit fullscreen mode, reverting: {ex.Message}");
+            return;
+        }
         
         _log.Debug("Exited fullscreen mode");
     }
@@ -844,66 +866,90 @@ public sealed class MainWindow : Window, IService, IDisposable
     /// </summary>
     private void LoadLayoutForCurrentMode()
     {
-        var layouts = Config.Layouts ?? new List<ContentLayoutState>();
-        var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
-        var activeName = _isFullscreenMode 
-            ? Config.ActiveFullscreenLayoutName 
-            : Config.ActiveWindowedLayoutName;
-        
-        var filteredLayouts = layouts.Where(x => x.Type == targetType).ToList();
-        ContentLayoutState? layout = null;
-        
-        if (!string.IsNullOrWhiteSpace(activeName))
-            layout = filteredLayouts.Find(x => x.Name == activeName);
-        layout ??= filteredLayouts.FirstOrDefault();
-        
-        if (layout != null && _contentContainer != null)
+        try
         {
-            _contentContainer.SetGridSettingsFromLayout(layout);
-            if (layout.Tools is { Count: > 0 })
-                _contentContainer.ApplyLayout(layout.Tools);
+            var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+            var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
+            var activeName = _isFullscreenMode 
+                ? Config.ActiveFullscreenLayoutName 
+                : Config.ActiveWindowedLayoutName;
             
-            // When switching to a windowed layout, restore its saved window position/size
-            if (!_isFullscreenMode && layout.WindowedPos.HasValue && layout.WindowedSize.HasValue)
+            var filteredLayouts = layouts.Where(x => x.Type == targetType).ToList();
+            ContentLayoutState? layout = null;
+            
+            if (!string.IsNullOrWhiteSpace(activeName))
+                layout = filteredLayouts.Find(x => x.Name == activeName);
+            layout ??= filteredLayouts.FirstOrDefault();
+            
+            if (layout != null && _contentContainer != null)
             {
-                _savedPos = layout.WindowedPos.Value;
-                _savedSize = layout.WindowedSize.Value;
-                Config.MainWindowPos = _savedPos;
-                Config.MainWindowSize = _savedSize;
-                _lastSavedPos = _savedPos;
-                _lastSavedSize = _savedSize;
+                _contentContainer.SetGridSettingsFromLayout(layout);
+                if (layout.Tools is { Count: > 0 })
+                    _contentContainer.ApplyLayout(layout.Tools);
+                else
+                    _contentContainer.ClearAllTools();
                 
-                // Schedule the position restore for the next PreDraw
-                _pendingWindowRestore = true;
+                // When switching to a windowed layout, restore its saved window position/size
+                if (!_isFullscreenMode && layout.WindowedPos.HasValue && layout.WindowedSize.HasValue)
+                {
+                    _savedPos = layout.WindowedPos.Value;
+                    _savedSize = layout.WindowedSize.Value;
+                    Config.MainWindowPos = _savedPos;
+                    Config.MainWindowSize = _savedSize;
+                    _lastSavedPos = _savedPos;
+                    _lastSavedSize = _savedSize;
+                    
+                    // Schedule the position restore for the next PreDraw
+                    _pendingWindowRestore = true;
+                }
+                
+                // Update the active layout name if we fell back to a different one
+                if (_isFullscreenMode && Config.ActiveFullscreenLayoutName != layout.Name)
+                {
+                    Config.ActiveFullscreenLayoutName = layout.Name;
+                    _configService.MarkDirty();
+                }
+                else if (!_isFullscreenMode && Config.ActiveWindowedLayoutName != layout.Name)
+                {
+                    Config.ActiveWindowedLayoutName = layout.Name;
+                    _configService.MarkDirty();
+                }
+                
+                _layoutEditingService.InitializeFromPersisted(
+                    layout.Name, 
+                    targetType, 
+                    layout.Tools, 
+                    _contentContainer.GridSettings);
+                
+                _log.Information($"Loaded {targetType} layout '{layout.Name}' ({layout.Tools?.Count ?? 0} tools)");
             }
-            
-            // Update the active layout name if we fell back to a different one
-            if (_isFullscreenMode && Config.ActiveFullscreenLayoutName != layout.Name)
+            else
             {
-                Config.ActiveFullscreenLayoutName = layout.Name;
-                _configService.MarkDirty();
+                // No layout exists for this mode — clear any leftover tools and initialize with defaults
+                _contentContainer?.ClearAllTools();
+                _layoutEditingService.InitializeFromPersisted(
+                    "Default", 
+                    targetType, 
+                    new List<ToolLayoutState>(), 
+                    _contentContainer?.GridSettings);
             }
-            else if (!_isFullscreenMode && Config.ActiveWindowedLayoutName != layout.Name)
-            {
-                Config.ActiveWindowedLayoutName = layout.Name;
-                _configService.MarkDirty();
-            }
-            
-            _layoutEditingService.InitializeFromPersisted(
-                layout.Name, 
-                targetType, 
-                layout.Tools, 
-                _contentContainer.GridSettings);
-            
-            _log.Information($"Loaded {targetType} layout '{layout.Name}' ({layout.Tools.Count} tools)");
         }
-        else
+        catch (Exception ex)
         {
-            // No layout exists for this mode, initialize with defaults
+            _log.Error($"Failed to load layout for current mode: {ex.Message}");
+            
+            // Fall back to empty defaults so the window remains usable
+            try
+            {
+                _contentContainer?.ClearAllTools();
+            }
+            catch { /* best effort */ }
+            
+            var fallbackType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
             _layoutEditingService.InitializeFromPersisted(
-                "Default", 
-                targetType, 
-                new List<ToolLayoutState>(), 
+                "Default",
+                fallbackType,
+                new List<ToolLayoutState>(),
                 _contentContainer?.GridSettings);
         }
         
@@ -915,10 +961,16 @@ public sealed class MainWindow : Window, IService, IDisposable
     /// </summary>
     public void ApplyLayoutByName(string name)
     {
-        var layout = Config.Layouts?.Find(x => x.Name == name) ?? Config.Layouts?.FirstOrDefault();
+        var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
+        var layout = Config.Layouts?.Find(x => x.Name == name && x.Type == targetType)
+                  ?? Config.Layouts?.Where(x => x.Type == targetType).FirstOrDefault();
         if (layout != null && _contentContainer != null)
         {
-            _contentContainer.ApplyLayout(layout.Tools);
+            _contentContainer.SetGridSettingsFromLayout(layout);
+            if (layout.Tools is { Count: > 0 })
+                _contentContainer.ApplyLayout(layout.Tools);
+            else
+                _contentContainer.ClearAllTools();
         }
     }
 
@@ -1086,7 +1138,7 @@ public sealed class MainWindow : Window, IService, IDisposable
         {
             _escPressedThisFrame = false;
             _suppressEscClose = true;
-            ExitFullscreenModeInternal();
+            ExitFullscreenMode();
         }
 
         // In fullscreen mode, skip window interaction detection since the window can't be moved/resized

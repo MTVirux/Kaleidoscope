@@ -29,6 +29,7 @@ public sealed class LayoutEditingService : IDisposable, IService
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly FilenameService _filenameService;
+    private readonly IFramework _framework;
 
     private volatile bool _isDirty;
     private List<ToolLayoutState>? _workingLayout;
@@ -82,11 +83,12 @@ public sealed class LayoutEditingService : IDisposable, IService
     public List<ToolLayoutState>? WorkingLayout => _workingLayout;
     public LayoutGridSettings? WorkingGridSettings => _workingGridSettings;
 
-    public LayoutEditingService(IPluginLog log, ConfigurationService configService, FilenameService filenameService)
+    public LayoutEditingService(IPluginLog log, ConfigurationService configService, FilenameService filenameService, IFramework framework)
     {
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _filenameService = filenameService ?? throw new ArgumentNullException(nameof(filenameService));
+        _framework = framework ?? throw new ArgumentNullException(nameof(framework));
 
         _snapshotDebounceTimer = new System.Timers.Timer(SnapshotDebounceMs);
         _snapshotDebounceTimer.Elapsed += OnSnapshotDebounceElapsed;
@@ -115,8 +117,15 @@ public sealed class LayoutEditingService : IDisposable, IService
     {
         if (_isDirty)
         {
-            Save();
-            LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
+            // Marshal to the main thread to avoid concurrent mutation of Config.Layouts
+            _framework.RunOnFrameworkThread(() =>
+            {
+                if (_isDirty)
+                {
+                    Save();
+                    LogService.Debug(LogCategory.Layout, $"Layout auto-saved for '{_currentLayoutName}'");
+                }
+            });
         }
     }
 
@@ -134,11 +143,22 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void InitializeFromPersisted(string layoutName, LayoutType layoutType, List<ToolLayoutState>? tools, LayoutGridSettings? gridSettings)
     {
-        // Keep restored dirty state if present
+        // Keep restored dirty state only if it belongs to the same layout name AND type.
+        // If the mode is changing (e.g., windowed → fullscreen), discard the stale snapshot
+        // so the correct layout for the new mode is loaded.
         if (_isDirty && _workingLayout != null)
         {
-            LogService.Debug(LogCategory.Layout, $"Keeping restored dirty state for '{_currentLayoutName}'");
-            return;
+            if (_currentLayoutName == layoutName && _currentLayoutType == layoutType)
+            {
+                LogService.Debug(LogCategory.Layout, $"Keeping restored dirty state for '{_currentLayoutName}'");
+                return;
+            }
+            
+            // Mode or layout changed — discard the stale dirty snapshot
+            LogService.Debug(LogCategory.Layout, $"Discarding stale dirty state for '{_currentLayoutName}' ({_currentLayoutType}) — switching to '{layoutName}' ({layoutType})");
+            _isDirty = false;
+            ClearDirtySnapshot();
+            OnDirtyStateChanged?.Invoke(false);
         }
 
         _currentLayoutName = layoutName;
@@ -400,6 +420,13 @@ public sealed class LayoutEditingService : IDisposable, IService
                 $"switch to layout '{newLayoutName}'",
                 () =>
                 {
+                    // Save pre-switch state in case applyLayoutAction throws
+                    var prevName = _currentLayoutName;
+                    var prevType = _currentLayoutType;
+                    var prevDirty = _isDirty;
+                    var prevLayout = _workingLayout;
+                    var prevGrid = _workingGridSettings;
+                    
                     // Clear current state
                     _currentLayoutName = newLayoutName;
                     _currentLayoutType = newLayoutType;
@@ -409,7 +436,20 @@ public sealed class LayoutEditingService : IDisposable, IService
                     ClearDirtySnapshot();
                     
                     // Apply the new layout
-                    applyLayoutAction();
+                    try
+                    {
+                        applyLayoutAction();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Restore pre-switch state so the service isn't left inconsistent
+                        LogService.Error(LogCategory.Layout, $"TrySwitchLayout: applyLayoutAction failed, reverting to '{prevName}': {ex.Message}");
+                        _currentLayoutName = prevName;
+                        _currentLayoutType = prevType;
+                        _isDirty = prevDirty;
+                        _workingLayout = prevLayout;
+                        _workingGridSettings = prevGrid;
+                    }
                 }
             );
         }
