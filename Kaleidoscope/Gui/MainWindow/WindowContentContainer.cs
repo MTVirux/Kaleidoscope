@@ -81,6 +81,10 @@ public sealed partial class WindowContentContainer
     private LayoutGridSettings _currentGridSettings = new();
     private Vector2 _lastContentSize = Vector2.Zero;
 
+    // ── Auto-Layout State ───────────────────────────────────────────────
+    /// <summary>The current auto-layout arrangement. <see cref="LayoutArrangement.Grid"/> means manual mode.</summary>
+    internal LayoutArrangement CurrentArrangement { get; private set; } = LayoutArrangement.Grid;
+
     // ── Dirty Suppression ───────────────────────────────────────────────
     private bool _suppressDirtyMarking = false;
 
@@ -193,6 +197,58 @@ public sealed partial class WindowContentContainer
     {
         if (layout == null) return;
         _currentGridSettings = LayoutGridSettings.FromLayoutState(layout);
+        CurrentArrangement = layout.Arrangement;
+    }
+
+    // ── Auto-Layout ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Applies an auto-layout arrangement to all current tools, animating
+    /// from their old positions to the new ones.
+    /// </summary>
+    public void ApplyArrangement(LayoutArrangement arrangement)
+    {
+        if (arrangement == LayoutArrangement.Grid || Tools.Count == 0) return;
+
+        var contentSize = _lastContentSize;
+        var effectiveCols = GetEffectiveColumns(contentSize);
+        var effectiveRows = GetEffectiveRows(contentSize);
+        var cellW = contentSize.X / MathF.Max(1f, effectiveCols);
+        var cellH = contentSize.Y / MathF.Max(1f, effectiveRows);
+
+        // Capture old positions for animation
+        var oldPositions = new List<(System.Numerics.Vector2 pos, System.Numerics.Vector2 size)>(Tools.Count);
+        foreach (var te in Tools)
+            oldPositions.Add((te.Tool.Position, te.Tool.Size));
+
+        // Run the auto-layout algorithm on live tools
+        var toolList = new List<ToolComponent>(Tools.Count);
+        foreach (var te in Tools)
+            toolList.Add(te.Tool);
+
+        AutoLayoutEngine.ApplyPreset(arrangement, toolList, effectiveCols, effectiveRows);
+
+        // Convert grid coords to pixel positions and animate
+        for (var i = 0; i < Tools.Count; i++)
+        {
+            var te = Tools[i];
+            var t = te.Tool;
+            var newPos = new System.Numerics.Vector2(t.GridCol * cellW, t.GridRow * cellH);
+            var newSize = new System.Numerics.Vector2(
+                MathF.Max(MinToolWidth, t.GridColSpan * cellW),
+                MathF.Max(MinToolHeight, t.GridRowSpan * cellH));
+
+            t.Position = newPos;
+            t.Size = newSize;
+
+            // Animate from old to new
+            Animator.StartVec2($"{te.AnimKey}_pos", oldPositions[i].pos, newPos, 0.25f, Animation.Easing.QuadInOut);
+            Animator.StartVec2($"{te.AnimKey}_size", oldPositions[i].size, newSize, 0.25f, Animation.Easing.QuadInOut);
+        }
+
+        MarkLayoutDirty();
+        CurrentArrangement = arrangement;
+        LogService.Debug(LogCategory.UI, $"ApplyArrangement: applied {arrangement} to {Tools.Count} tools");
     }
 
     // ── Dirty Notification ──────────────────────────────────────────────
@@ -205,6 +261,21 @@ public sealed partial class WindowContentContainer
         if (_suppressDirtyMarking) return;
         try { Host?.MarkLayoutDirty(ExportLayout()); }
         catch (Exception ex) { LogService.Error(LogCategory.UI, "Error while invoking MarkLayoutDirty", ex); }
+    }
+
+    /// <summary>
+    /// Marks dirty and resets auto-arrangement to Grid (manual mode).
+    /// Called when the user manually drags or resizes a tool, invalidating
+    /// any previously applied auto-layout preset.
+    /// </summary>
+    internal void MarkLayoutDirtyManualOverride()
+    {
+        if (CurrentArrangement != LayoutArrangement.Grid)
+        {
+            LogService.Debug(LogCategory.UI, $"Manual override: {CurrentArrangement} → Grid");
+            CurrentArrangement = LayoutArrangement.Grid;
+        }
+        MarkLayoutDirty();
     }
 
     // ── Tool Registry ───────────────────────────────────────────────────

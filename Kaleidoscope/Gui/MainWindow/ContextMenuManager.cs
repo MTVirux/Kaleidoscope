@@ -107,7 +107,8 @@ internal sealed class ContextMenuManager
         IReadOnlyList<ToolRegistration> toolRegistry,
         Action<ToolComponent> addToolInstance,
         LayoutGridSettings gridSettings,
-        DialogManager dialogManager)
+        DialogManager dialogManager,
+        Action<LayoutArrangement>? applyArrangement = null)
     {
         // Keep popup open even if temp edit mode keys are released
         if (!ctx.EditMode && !ImGui.IsPopupOpen("content_context_menu")) return;
@@ -138,6 +139,24 @@ internal sealed class ContextMenuManager
                 }
 
                 DrawMenuNode(rootNode, ctx, gridSettings, addToolInstance);
+                ImGui.EndMenu();
+            }
+
+            if (applyArrangement != null && ImGui.BeginMenu("Quick Layouts"))
+            {
+                if (ImGui.MenuItem("Single Column"))
+                    applyArrangement(LayoutArrangement.SingleColumn);
+                if (ImGui.MenuItem("Two Columns"))
+                    applyArrangement(LayoutArrangement.TwoColumn);
+                if (ImGui.MenuItem("Three Columns"))
+                    applyArrangement(LayoutArrangement.ThreeColumn);
+                if (ImGui.MenuItem("Split Horizontal"))
+                    applyArrangement(LayoutArrangement.SplitHorizontal);
+                if (ImGui.MenuItem("Split Vertical"))
+                    applyArrangement(LayoutArrangement.SplitVertical);
+                if (ImGui.MenuItem("Dashboard"))
+                    applyArrangement(LayoutArrangement.Dashboard);
+
                 ImGui.EndMenu();
             }
 

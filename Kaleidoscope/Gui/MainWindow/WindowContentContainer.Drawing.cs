@@ -38,6 +38,14 @@ public sealed partial class WindowContentContainer
         {
             try
             {
+                if (CurrentArrangement != LayoutArrangement.Grid && Tools.Count > 0)
+                {
+                    // Auto-layout: re-apply preset so tools redistribute for the new size
+                    var toolList = new List<ToolComponent>(Tools.Count);
+                    foreach (var te in Tools) toolList.Add(te.Tool);
+                    AutoLayoutEngine.ApplyPreset(CurrentArrangement, toolList, effectiveCols, effectiveRows);
+                }
+
                 foreach (var te in Tools)
                 {
                     var t = te.Tool;
@@ -83,7 +91,7 @@ public sealed partial class WindowContentContainer
         ContextMenus.HandleRightClick(ctx, Tools);
 
         // ── 6. Content Context Menu ─────────────────────────────────────
-        ContextMenus.DrawContentContextMenu(ctx, Host!, ToolRegistry, AddToolInstance, _currentGridSettings, Dialogs);
+        ContextMenus.DrawContentContextMenu(ctx, Host!, ToolRegistry, AddToolInstance, _currentGridSettings, Dialogs, ApplyArrangement);
 
         // ── 7. Layout Modals ────────────────────────────────────────────
         ContextMenus.DrawLayoutModals(ctx, editMode, Host!, Dialogs);
@@ -252,10 +260,10 @@ public sealed partial class WindowContentContainer
                 var anotherToolInteracting = ToolInteractionManager.IsAnotherToolInteracting(Tools, i);
 
                 Interactions.HandleDrag(ctx, te, i, _currentGridSettings,
-                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty, Animator);
+                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirtyManualOverride, Animator);
 
                 Interactions.HandleResize(ctx, te, i, _currentGridSettings,
-                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty, Animator);
+                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirtyManualOverride, Animator);
             }
 
             ImGui.PopID();
