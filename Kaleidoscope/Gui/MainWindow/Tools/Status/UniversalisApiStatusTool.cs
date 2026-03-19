@@ -6,6 +6,7 @@ using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
+[ToolType("UniversalisApiStatus", "Universalis API Status", "Universalis", "Shows the Universalis REST API status and configuration")]
 public sealed class UniversalisApiStatusTool : StatusToolBase
 {
     public override string ToolName => "Universalis API Status";

@@ -70,6 +70,9 @@ public sealed class GilFluxToolSettings
 /// Shows which items move the most gil on the market for a given set of worlds.
 /// Queries each world individually and merges results.
 /// </summary>
+[ToolType("GilFlux", "GilFlux", "FFXIVMT",
+    "Shows which items move the most gil on the market board for a given world, datacenter, or region",
+    RequiredServices = new[] { typeof(FFXIVMTService) })]
 public sealed class GilFluxTool : ToolComponent
 {
     public override string ToolName => "GilFlux";

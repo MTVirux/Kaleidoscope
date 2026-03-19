@@ -26,6 +26,8 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// - DataTool.GraphView.cs: Graph view rendering and series data loading
 /// - DataTool.Settings.cs: Tool settings, context menus, import/export
 /// </remarks>
+[ToolType("DataGraph", "Data Graph", "Items/Currency", "Track items and currencies over time with graphing visualization", Variant = "Graph")]
+[ToolType("DataTable", "Data Table", "Items/Currency", "Track items and currencies in a table view with characters as rows", Variant = "Table")]
 public sealed partial class DataTool : ToolComponent
 {
     public override string ToolName => "Data";

@@ -43,6 +43,9 @@ public record TooltipMarketData(
 /// - TopInventoryValueTool.ItemRendering.cs: Item/tooltip rendering
 /// - TopInventoryValueTool.Settings.cs: Settings UI and import/export
 /// </summary>
+[ToolType("TopInventoryValueItems", "Top Inventory Value Items", "Universalis",
+    "Shows the most valuable items in character inventories",
+    RequiredServices = new[] { typeof(PriceTrackingService), typeof(CharacterDataService), typeof(ItemDataService) })]
 public sealed partial class TopInventoryValueTool : ToolComponent
 {
     public override string ToolName => "Top Inventory Value Items";

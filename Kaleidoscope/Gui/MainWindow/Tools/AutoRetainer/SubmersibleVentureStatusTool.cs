@@ -5,6 +5,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// <summary>
 /// A tool that displays submersible voyage status with precise timers.
 /// </summary>
+[ToolType("SubmersibleVentureStatus", "Submersibles Status", "AutoRetainer", "Displays submersible voyage timers with millisecond precision")]
 public sealed class SubmersibleVentureStatusTool : VentureStatusToolBase
 {
     public override string ToolName => "Submersible Voyage Status";

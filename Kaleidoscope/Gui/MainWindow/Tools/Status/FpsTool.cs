@@ -13,6 +13,7 @@ public sealed class FpsToolSettings
     public float BadThreshold { get; set; } = 15f;
 }
 
+[ToolType("Fps", "FPS", "Utility", "Displays the current frames per second")]
 public sealed class FpsTool : ToolComponent
 {
     public override string ToolName => "FPS";
