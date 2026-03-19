@@ -6,7 +6,6 @@ public sealed class ContentLayoutState
 {
     public string Name { get; set; } = string.Empty;
     public LayoutType Type { get; set; } = LayoutType.Windowed;
-    public List<ContentComponentState> Components { get; set; } = new();
     public List<ToolLayoutState> Tools { get; set; } = new();
 
     public bool AutoAdjustResolution { get; set; } = true;
@@ -41,14 +40,6 @@ public sealed class ContentLayoutState
     /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
     /// </summary>
     public Vector2? WindowedSize { get; set; }
-}
-
-public sealed class ContentComponentState
-{
-    public int Col { get; set; }
-    public int Row { get; set; }
-    public int ColSpan { get; set; }
-    public int RowSpan { get; set; }
 }
 
 public sealed class ToolLayoutState
