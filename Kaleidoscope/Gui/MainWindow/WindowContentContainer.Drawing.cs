@@ -125,6 +125,13 @@ public sealed partial class WindowContentContainer
             var t = te.Tool;
             if (!t.Visible && !te.PendingRemoval) continue;
 
+            // Occlusion culling: skip tools entirely outside the visible content region
+            var toolScreenMin = t.Position + contentOrigin;
+            var toolScreenMax = toolScreenMin + t.Size;
+            if (toolScreenMax.X < contentMin.X || toolScreenMin.X > contentMax.X ||
+                toolScreenMax.Y < contentMin.Y || toolScreenMin.Y > contentMax.Y)
+                continue;
+
             // Resolve animated position/size (falls back to model values when no animation is active)
             var animPos = Animator.GetVec2($"{te.AnimKey}_pos", t.Position);
             var animSize = Animator.GetVec2($"{te.AnimKey}_size", t.Size);
