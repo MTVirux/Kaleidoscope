@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Newtonsoft.Json;
+using Kaleidoscope;
 using Kaleidoscope.Services;
 using Kaleidoscope.Gui.Widgets;
 
@@ -21,6 +22,20 @@ public sealed class LayoutsCategory
     private List<LayoutItemWidget> _fullscreenWidgets = new();
     private int _lastWindowedCount = -1;
     private int _lastFullscreenCount = -1;
+
+    // Preset selection state
+    private int _windowedPresetIndex;
+    private int _fullscreenPresetIndex;
+    private static readonly string[] PresetLabels =
+    [
+        "Empty (Grid)", "Single Column", "Two Columns",
+        "Three Columns", "Split Horizontal", "Split Vertical", "Dashboard",
+    ];
+    private static readonly LayoutArrangement[] PresetValues =
+    [
+        LayoutArrangement.Grid, LayoutArrangement.SingleColumn, LayoutArrangement.TwoColumn,
+        LayoutArrangement.ThreeColumn, LayoutArrangement.SplitHorizontal, LayoutArrangement.SplitVertical, LayoutArrangement.Dashboard,
+    ];
 
     public LayoutsCategory(ConfigurationService configService)
     {
@@ -69,8 +84,13 @@ public sealed class LayoutsCategory
         ImGui.SameLine();
         if (ImGui.Button("New##windowed"))
         {
-            CreateNewLayout(LayoutType.Windowed);
+            CreateNewLayout(LayoutType.Windowed, PresetValues[_windowedPresetIndex]);
         }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(130f);
+        ImGui.Combo("##windowed_preset", ref _windowedPresetIndex, PresetLabels, PresetLabels.Length);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Choose a starting arrangement for the new layout.");
         ImGui.Spacing();
 
         if (windowedLayouts.Count == 0)
@@ -103,8 +123,13 @@ public sealed class LayoutsCategory
         ImGui.SameLine();
         if (ImGui.Button("New##fullscreen"))
         {
-            CreateNewLayout(LayoutType.Fullscreen);
+            CreateNewLayout(LayoutType.Fullscreen, PresetValues[_fullscreenPresetIndex]);
         }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(130f);
+        ImGui.Combo("##fullscreen_preset", ref _fullscreenPresetIndex, PresetLabels, PresetLabels.Length);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Choose a starting arrangement for the new layout.");
         ImGui.Spacing();
 
         if (fullscreenLayouts.Count == 0)
@@ -263,7 +288,7 @@ public sealed class LayoutsCategory
         catch (Exception ex) { LogService.Debug(LogCategory.Layout, $"[LayoutsCategory] Import JSON failed: {ex.Message}"); }
     }
 
-    private void CreateNewLayout(LayoutType layoutType)
+    private void CreateNewLayout(LayoutType layoutType, LayoutArrangement arrangement = LayoutArrangement.Grid)
     {
         try
         {
@@ -283,6 +308,7 @@ public sealed class LayoutsCategory
             {
                 Name = name,
                 Type = layoutType,
+                Arrangement = arrangement,
                 Tools = new List<ToolLayoutState>()
             };
             
