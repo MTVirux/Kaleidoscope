@@ -182,6 +182,10 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
 
         _contentContainer?.GridSettings?.ApplyToLayoutState(existing);
 
+        // Preserve the current auto-layout arrangement from the container
+        if (_contentContainer != null)
+            existing.Arrangement = _contentContainer.CurrentArrangement;
+
         if (_isFullscreenMode)
             Config.ActiveFullscreenLayoutName = name;
         else
@@ -241,6 +245,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
 
     void ILayoutHost.SaveLayoutExplicit()
     {
+        SyncArrangementToEditingService();
         _layoutEditingService.Save();
         UpdateWindowTitle();
     }
@@ -248,7 +253,10 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
     void ILayoutHost.DiscardChanges() => _layoutEditingService.DiscardChanges();
 
     void ILayoutHost.MarkLayoutDirty(List<ToolLayoutState> tools)
-        => _layoutEditingService.MarkDirty(tools, _contentContainer?.GridSettings);
+    {
+        SyncArrangementToEditingService();
+        _layoutEditingService.MarkDirty(tools, _contentContainer?.GridSettings);
+    }
 
     bool ILayoutHost.ShowUnsavedChangesDialog => _layoutEditingService.ShowUnsavedChangesDialog;
 
@@ -295,6 +303,15 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
 
     int ILayoutHost.GetExternalToolInternalPadding()
         => _layoutEditingService.WorkingGridSettings?.ToolInternalPaddingPx ?? -1;
+
+    /// <summary>
+    /// Copies the container's current arrangement to the editing service so it is persisted on save.
+    /// </summary>
+    private void SyncArrangementToEditingService()
+    {
+        if (_contentContainer != null)
+            _layoutEditingService.WorkingArrangement = _contentContainer.CurrentArrangement;
+    }
 
     #endregion
     

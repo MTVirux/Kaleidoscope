@@ -36,6 +36,7 @@ public sealed class LayoutEditingService : IDisposable, IService
     private LayoutGridSettings? _workingGridSettings;
     private volatile string _currentLayoutName = string.Empty;
     private LayoutType _currentLayoutType = LayoutType.Windowed;
+    private LayoutArrangement _workingArrangement = LayoutArrangement.Grid;
     private PendingLayoutAction? _pendingAction;
     private bool _showUnsavedChangesDialog;
 
@@ -84,6 +85,16 @@ public sealed class LayoutEditingService : IDisposable, IService
     public PendingLayoutAction? PendingAction => _pendingAction;
     public string CurrentLayoutName => _currentLayoutName;
     public LayoutType CurrentLayoutType => _currentLayoutType;
+
+    /// <summary>
+    /// The current auto-layout arrangement. Set by the container when an arrangement
+    /// is applied or reset to Grid on manual override. Persisted on save.
+    /// </summary>
+    public LayoutArrangement WorkingArrangement
+    {
+        get => _workingArrangement;
+        set => _workingArrangement = value;
+    }
     public List<ToolLayoutState>? WorkingLayout => _workingLayout;
     public LayoutGridSettings? WorkingGridSettings => _workingGridSettings;
 
@@ -267,6 +278,7 @@ public sealed class LayoutEditingService : IDisposable, IService
 
             existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
             _workingGridSettings?.ApplyToLayoutState(existing);
+            existing.Arrangement = _workingArrangement;
 
             // For windowed layouts, persist the current window position/size
             if (_currentLayoutType == LayoutType.Windowed)
