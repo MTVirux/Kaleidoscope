@@ -1,4 +1,5 @@
 using System.Numerics;
+using Kaleidoscope.Gui.Animation;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Dalamud.Bindings.ImGui;
@@ -37,7 +38,8 @@ internal sealed class ToolInteractionManager
         DrawContext ctx, ToolEntry te, int toolIndex,
         LayoutGridSettings gridSettings,
         bool mainWindowInteracting, bool anotherToolInteracting,
-        bool isChildFocused, Action markDirty)
+        bool isChildFocused, Action markDirty,
+        AnimationController? animator = null)
     {
         var t = te.Tool;
         var io = ImGui.GetIO();
@@ -90,7 +92,11 @@ internal sealed class ToolInteractionManager
         {
             if (te.Dragging)
             {
+                var preSnapPos = t.Position;
                 SnapPosition(t, ctx, gridSettings);
+                // Animate from pre-snap to snapped position
+                if (animator != null && (t.Position - preSnapPos).LengthSquared() > 1f)
+                    animator.StartVec2($"{te.AnimKey}_pos", preSnapPos, t.Position, 0.12f, Easing.CubicOut);
                 markDirty();
             }
             te.Dragging = false;
@@ -104,7 +110,8 @@ internal sealed class ToolInteractionManager
         DrawContext ctx, ToolEntry te, int toolIndex,
         LayoutGridSettings gridSettings,
         bool mainWindowInteracting, bool anotherToolInteracting,
-        bool isChildFocused, Action markDirty)
+        bool isChildFocused, Action markDirty,
+        AnimationController? animator = null)
     {
         var t = te.Tool;
         var io = ImGui.GetIO();
@@ -148,7 +155,11 @@ internal sealed class ToolInteractionManager
         {
             if (te.Resizing)
             {
+                var preSnapSize = t.Size;
                 SnapSize(t, ctx, gridSettings);
+                // Animate from pre-snap to snapped size
+                if (animator != null && (t.Size - preSnapSize).LengthSquared() > 1f)
+                    animator.StartVec2($"{te.AnimKey}_size", preSnapSize, t.Size, 0.12f, Easing.CubicOut);
                 markDirty();
             }
             te.Resizing = false;

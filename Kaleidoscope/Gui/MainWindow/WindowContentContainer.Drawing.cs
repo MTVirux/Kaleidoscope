@@ -1,4 +1,5 @@
 using System.Numerics;
+using Kaleidoscope.Gui.Animation;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -98,25 +99,57 @@ public sealed partial class WindowContentContainer
         // ── 9. Unsaved Changes Dialog ───────────────────────────────────
         if (Host != null) Dialogs.DrawUnsavedChangesDialog(Host);
 
+        // ── 9b. Update Animations ───────────────────────────────────────
+        var dt = ImGui.GetIO().DeltaTime;
+        Animator.Update(dt);
+
+        // ── 9c. Reap Completed Fade-Outs ────────────────────────────────
+        for (var i = Tools.Count - 1; i >= 0; i--)
+        {
+            var te = Tools[i];
+            if (te.PendingRemoval && !Animator.IsAnimating($"{te.AnimKey}_alpha"))
+            {
+                Animator.Cancel($"{te.AnimKey}_pos");
+                Animator.Cancel($"{te.AnimKey}_size");
+                Animator.Cancel($"{te.AnimKey}_hover");
+                te.Tool.Dispose();
+                Tools.RemoveAt(i);
+                MarkLayoutDirty();
+            }
+        }
+
         // ── 10. Render Tools ────────────────────────────────────────────
         for (var i = 0; i < Tools.Count; i++)
         {
             var te = Tools[i];
             var t = te.Tool;
-            if (!t.Visible) continue;
+            if (!t.Visible && !te.PendingRemoval) continue;
 
-            ImGui.SetCursorScreenPos(t.Position + contentOrigin);
+            // Resolve animated position/size (falls back to model values when no animation is active)
+            var animPos = Animator.GetVec2($"{te.AnimKey}_pos", t.Position);
+            var animSize = Animator.GetVec2($"{te.AnimKey}_size", t.Size);
+
+            ImGui.SetCursorScreenPos(animPos + contentOrigin);
             var id = $"tool_{i}_{t.Id}";
 
             ImGui.PushID(id);
+
+            // Alpha: use animation value (1.0 = fully visible when no animation active)
+            var alpha = Animator.Get($"{te.AnimKey}_alpha", 1f);
+            var pushedAlpha = false;
+            if (alpha < 0.999f)
+            {
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * alpha);
+                pushedAlpha = true;
+            }
 
             // Background
             try
             {
                 if (t.BackgroundEnabled)
                 {
-                    var screenMin = t.Position + contentOrigin;
-                    var screenMax = screenMin + t.Size;
+                    var screenMin = animPos + contentOrigin;
+                    var screenMax = screenMin + animSize;
                     var col = ImGui.GetColorU32(t.BackgroundColor);
                     dl.AddRectFilled(screenMin, screenMax, col);
                 }
@@ -134,10 +167,10 @@ public sealed partial class WindowContentContainer
 
             // Child window with tool content
             ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(internalPadding, internalPadding));
-            ImGui.BeginChild(id, t.Size, true, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+            ImGui.BeginChild(id, animSize, true, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
             ImGui.PopStyleVar();
 
-            var contentWidth = t.Size.X - internalPadding * 2;
+            var contentWidth = animSize.X - internalPadding * 2;
             ImGui.BeginGroup();
             ImGui.PushItemWidth(MathF.Max(50f, contentWidth));
 
@@ -147,17 +180,20 @@ public sealed partial class WindowContentContainer
                 ImGui.Separator();
             }
 
-            // Draw tool content with optional profiling
-            if (profilerService != null)
+            // Draw tool content with optional profiling (skip for tools being removed)
+            if (!te.PendingRemoval)
             {
-                using (profilerService.BeginToolScope(t.Id, t.DisplayTitle))
+                if (profilerService != null)
+                {
+                    using (profilerService.BeginToolScope(t.Id, t.DisplayTitle))
+                    {
+                        t.RenderToolContent();
+                    }
+                }
+                else
                 {
                     t.RenderToolContent();
                 }
-            }
-            else
-            {
-                t.RenderToolContent();
             }
 
             ImGui.PopItemWidth();
@@ -166,23 +202,53 @@ public sealed partial class WindowContentContainer
             var isChildFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows);
             ImGui.EndChild();
 
+            if (pushedAlpha)
+                ImGui.PopStyleVar();
+
             var min = ImGui.GetItemRectMin();
             var max = ImGui.GetItemRectMax();
 
             // ── 11. Edit-Mode Interactions ──────────────────────────────
-            if (editMode)
+            if (editMode && !te.PendingRemoval)
             {
+                // Outline
                 if (t.OutlineEnabled)
                     dl.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border));
+
+                // Hover highlight: subtle accent border on mouse hover
+                var mouse = ImGui.GetIO().MousePos;
+                var isHovered = mouse.X >= min.X && mouse.X <= max.X && mouse.Y >= min.Y && mouse.Y <= max.Y
+                                && !te.Dragging && !te.Resizing;
+                if (isHovered && !Animator.IsAnimating($"{te.AnimKey}_hover"))
+                    Animator.Start($"{te.AnimKey}_hover", 0f, 1f, 0.10f, Easing.QuadOut);
+                else if (!isHovered && Animator.Get($"{te.AnimKey}_hover", 0f) > 0f && !Animator.IsAnimating($"{te.AnimKey}_hover"))
+                    Animator.Start($"{te.AnimKey}_hover", Animator.Get($"{te.AnimKey}_hover", 0f), 0f, 0.10f, Easing.QuadIn);
+
+                var hoverAlpha = Animator.Get($"{te.AnimKey}_hover", 0f);
+                if (hoverAlpha > 0.01f)
+                {
+                    var accentColor = new Vector4(0.26f, 0.59f, 0.98f, 0.5f * hoverAlpha);
+                    dl.AddRect(min, max, ImGui.GetColorU32(accentColor), 0f, ImDrawFlags.None, 2f);
+                }
+
+                // Snap ghost during drag: draw outline at snap-target position
+                if (te.Dragging)
+                {
+                    var snapTarget = ComputeSnapTarget(t, ctx, _currentGridSettings);
+                    var ghostMin = snapTarget + contentOrigin;
+                    var ghostMax = ghostMin + t.Size;
+                    var ghostColor = new Vector4(0.26f, 0.59f, 0.98f, 0.30f);
+                    dl.AddRect(ghostMin, ghostMax, ImGui.GetColorU32(ghostColor), 0f, ImDrawFlags.None, 1.5f);
+                }
 
                 var mainWindowInteracting = Host?.IsMainWindowInteracting ?? false;
                 var anotherToolInteracting = ToolInteractionManager.IsAnotherToolInteracting(Tools, i);
 
                 Interactions.HandleDrag(ctx, te, i, _currentGridSettings,
-                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty);
+                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty, Animator);
 
                 Interactions.HandleResize(ctx, te, i, _currentGridSettings,
-                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty);
+                    mainWindowInteracting, anotherToolInteracting, isChildFocused, MarkLayoutDirty, Animator);
             }
 
             ImGui.PopID();
@@ -201,5 +267,23 @@ public sealed partial class WindowContentContainer
         if (Host != null) Dialogs.DrawToolSettingsWindow(Tools, Host);
         Dialogs.DrawToolRenameModal(Tools, MarkLayoutDirty);
         if (Host != null) Dialogs.DrawSavePresetModal(Tools, Host);
+    }
+
+    /// <summary>Computes the snap-target position for a tool without applying it (for ghost rendering).</summary>
+    private static Vector2 ComputeSnapTarget(ToolComponent t, DrawContext ctx, LayoutGridSettings gridSettings)
+    {
+        var subdivisions = Math.Max(1, gridSettings.Subdivisions);
+        var subW = ctx.CellW / subdivisions;
+        var subH = ctx.CellH / subdivisions;
+        var snapped = t.Position;
+        if (subW > 0) snapped.X = MathF.Round(snapped.X / subW) * subW;
+        if (subH > 0) snapped.Y = MathF.Round(snapped.Y / subH) * subH;
+        var minX = ctx.ContentMin.X - ctx.ContentOrigin.X;
+        var minY = ctx.ContentMin.Y - ctx.ContentOrigin.Y;
+        var maxX = (ctx.ContentMax.X - ctx.ContentOrigin.X) - t.Size.X;
+        var maxY = (ctx.ContentMax.Y - ctx.ContentOrigin.Y) - t.Size.Y;
+        snapped.X = MathF.Max(minX, MathF.Min(maxX, snapped.X));
+        snapped.Y = MathF.Max(minY, MathF.Min(maxY, snapped.Y));
+        return snapped;
     }
 }

@@ -1,4 +1,5 @@
 using System.Numerics;
+using Kaleidoscope.Gui.Animation;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -27,11 +28,19 @@ internal sealed class ToolEntry
     public bool Resizing;
     public Vector2 DragMouseStart;
     public Vector2 ResizeMouseStart;
+
+    /// <summary>Unique animation key prefix for this tool entry (stable across frames).</summary>
+    public string AnimKey;
+
+    /// <summary>Whether this tool is pending removal (playing fade-out).</summary>
+    public bool PendingRemoval;
+
     public ToolEntry(ToolComponent t)
     {
         Tool = t;
         OrigPos = t.Position;
         OrigSize = t.Size;
+        AnimKey = $"tool_{t.GetHashCode():X8}";
     }
 }
 
@@ -59,6 +68,10 @@ public sealed partial class WindowContentContainer
     internal readonly DialogManager Dialogs = new();
     internal readonly ContextMenuManager ContextMenus = new();
     internal readonly ToolInteractionManager Interactions = new();
+
+    // ── Animation ───────────────────────────────────────────────────────
+    /// <summary>Shared animation controller for tool transitions (fade, move, resize).</summary>
+    internal readonly AnimationController Animator = new();
 
     // ── Tool Data ───────────────────────────────────────────────────────
     internal readonly List<ToolRegistration> ToolRegistry = new();
@@ -148,17 +161,27 @@ public sealed partial class WindowContentContainer
             foreach (var te in Tools)
             {
                 var t = te.Tool;
+                var oldPos = t.Position;
+                var oldSize = t.Size;
+
                 t.GridCol *= colScale;
                 t.GridRow *= rowScale;
                 t.GridColSpan *= colScale;
                 t.GridRowSpan *= rowScale;
 
-                t.Position = new Vector2(t.GridCol * newCellW, t.GridRow * newCellH);
-                t.Size = new Vector2(
+                var newPos = new Vector2(t.GridCol * newCellW, t.GridRow * newCellH);
+                var newSize = new Vector2(
                     MathF.Max(MinToolWidth, t.GridColSpan * newCellW),
                     MathF.Max(MinToolHeight, t.GridRowSpan * newCellH));
+
+                t.Position = newPos;
+                t.Size = newSize;
                 if (newCellW > 0) t.GridColSpan = t.Size.X / newCellW;
                 if (newCellH > 0) t.GridRowSpan = t.Size.Y / newCellH;
+
+                // Animate from old to new position/size
+                Animator.StartVec2($"{te.AnimKey}_pos", oldPos, newPos, 0.2f, Easing.QuadInOut);
+                Animator.StartVec2($"{te.AnimKey}_size", oldSize, newSize, 0.2f, Easing.QuadInOut);
             }
 
             MarkLayoutDirty();
@@ -199,8 +222,12 @@ public sealed partial class WindowContentContainer
     {
         if (tool == null) return;
 
-        Tools.Add(new ToolEntry(tool));
+        var entry = new ToolEntry(tool);
+        Tools.Add(entry);
         LogService.Debug(LogCategory.UI, $"AddToolInstance: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={Tools.Count}");
+
+        // Start fade-in animation
+        Animator.Start($"{entry.AnimKey}_alpha", 0f, 1f, 0.15f, Easing.QuadOut);
 
         tool.OnToolSettingsChanged += () => MarkLayoutDirty();
         MarkLayoutDirty();
@@ -212,6 +239,7 @@ public sealed partial class WindowContentContainer
         _suppressDirtyMarking = true;
         try
         {
+            Animator.CancelAll();
             for (var i = Tools.Count - 1; i >= 0; i--)
             {
                 try { Tools[i].Tool.Dispose(); }
@@ -223,7 +251,7 @@ public sealed partial class WindowContentContainer
         finally { _suppressDirtyMarking = false; }
     }
 
-    /// <summary>Adds a tool without marking dirty. Use for initial setup.</summary>
+    /// <summary>Adds a tool without marking dirty. Use for initial setup and layout restore.</summary>
     public void AddToolInstanceWithoutDirty(ToolComponent tool)
     {
         if (tool == null) return;
@@ -231,8 +259,13 @@ public sealed partial class WindowContentContainer
         _suppressDirtyMarking = true;
         try
         {
-            Tools.Add(new ToolEntry(tool));
+            var entry = new ToolEntry(tool);
+            Tools.Add(entry);
             LogService.Debug(LogCategory.UI, $"AddToolInstanceWithoutDirty: added tool '{tool.Title ?? tool.Id ?? "<unknown>"}' total={Tools.Count}");
+
+            // Fade-in for layout restore / initial load
+            Animator.Start($"{entry.AnimKey}_alpha", 0f, 1f, 0.15f, Easing.QuadOut);
+
             tool.OnToolSettingsChanged += () => MarkLayoutDirty();
         }
         finally { _suppressDirtyMarking = false; }
@@ -285,13 +318,28 @@ public sealed partial class WindowContentContainer
         LogService.Debug(LogCategory.UI, $"DuplicateTool: duplicated tool id='{source.Id}'");
     }
 
-    /// <summary>Removes and disposes the tool at the given index.</summary>
+    /// <summary>Starts a fade-out animation for the tool at the given index, then removes it on completion.</summary>
     internal void RemoveTool(int index)
     {
         if (index < 0 || index >= Tools.Count) return;
-        var tool = Tools[index].Tool;
-        tool.Dispose();
+        var te = Tools[index];
+        if (te.PendingRemoval) return; // Already fading out
+
+        te.PendingRemoval = true;
+        Animator.Start($"{te.AnimKey}_alpha", 1f, 0f, 0.10f, Easing.QuadIn);
+        // Actual removal happens in Draw() after the animation completes
+    }
+
+    /// <summary>Immediately removes and disposes the tool (no animation). Used during layout clear.</summary>
+    private void RemoveToolImmediate(int index)
+    {
+        if (index < 0 || index >= Tools.Count) return;
+        var te = Tools[index];
+        Animator.Cancel($"{te.AnimKey}_alpha");
+        Animator.Cancel($"{te.AnimKey}_pos");
+        Animator.Cancel($"{te.AnimKey}_size");
+        Animator.Cancel($"{te.AnimKey}_hover");
+        te.Tool.Dispose();
         Tools.RemoveAt(index);
-        MarkLayoutDirty();
     }
 }
