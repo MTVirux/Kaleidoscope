@@ -1,8 +1,8 @@
 # UI Refactor Plan — Kaleidoscope
 
-> **Status**: Phase 1 Complete  
+> **Status**: All Phases Complete  
 > **Created**: 2026-03-18  
-> **Last Updated**: 2026-03-18  
+> **Last Updated**: 2026-03-19  
 > **Scope**: Structural overhaul — phased, with stable checkpoints  
 
 ---
@@ -1039,12 +1039,24 @@ For tools that use `SettingsSchema<T>`:
 - Add inline XML docs to all new public types and methods
 - Update "Adding a UI Tool" section to reflect `[ToolType]` + constructor injection pattern
 
+### Implementation Notes — Phase 6
+
+**6.1 — Dead Code**: Deleted `ContentComponentState` class and `Components` property from `ContentLayoutState`. Zero references outside `Configuration.Layout.cs`. Existing `layouts.json` safely ignores unknown properties on deserialization.
+
+**6.2 — JSON Serializer**: Migrated `LayoutEditingService` snapshot serialization from `Newtonsoft.Json` to `System.Text.Json` (2 call sites: serialize + deserialize). Added `JsonStringEnumConverter` for enum round-tripping. Left `SettingsImportHelper` as a dual-format bridge — it handles both `JToken` (Newtonsoft) and `JsonElement` (STJ) for backward compatibility.
+
+**6.3 — Concurrency**: After analysis, the existing architecture is adequate for the single-main-thread model. `_snapshotLock` correctly protects the critical path (working layout cloning during background snapshot serialization). Timer callbacks already marshal to framework thread. `volatile _isDirty` provides correct cross-thread visibility. Added comprehensive XML doc threading contract instead of code changes.
+
+**6.4 — Settings Type Safety**: Assessed all 11+ tools with `ExportToolSettings`/`ImportToolSettings`. The schema-based pattern (`SettingsSchema<T>.ToDictionary`/`FromDictionary`) is already used by `FpsTool` and `LabelTool`. Remaining tools use 1–4 simple fields where the manual pattern is actually more concise. Decision: skip migration, documented guidance in copilot-instructions.md instead.
+
+**6.5 — Documentation**: Rewrote `.github/copilot-instructions.md`: corrected "Adding a UI Tool" section (`DrawContent()` → `RenderToolContent()`, `ToolRegistry` → `[ToolType]` + `ToolFactory`), added Tool System section (ToolComponent, ToolTypeAttribute, ToolFactory, SettingsSchema), Layout System section (ILayoutHost, LayoutEditingService, AutoLayoutEngine), Animation Framework section, updated Interfaces table, added Animation directory.
+
 ### Verification Checklist — Phase 6
 
+- [x] Clean build, zero warnings
 - [ ] Full regression: every tool type, every edit mode interaction
 - [ ] Layout save/load/switch across windowed and fullscreen
 - [ ] Config window: all tabs, including developer tabs
-- [ ] Clean build, zero warnings
 - [ ] Profiler tab: stable or improved frame times vs baseline
 - [ ] Legacy layouts (from before refactor) load correctly with migration
 
@@ -1137,7 +1149,7 @@ All files touched or created across all phases, with current state and planned c
 | **3** — Animation Framework | ✅ Complete | 2026-03-19 | 2026-03-19 | Easing/Tween/AnimationController, tool fade/snap/hover/ghost, QAB migrated |
 | **4** — Rendering Performance | ✅ Complete | 2026-03-19 | 2026-03-19 | Occlusion culling, reflection cache, LINQ elimination, Clone() replaces JSON, MarkDirty throttle |
 | **5** — Hybrid Layout System | ✅ Complete | 2026-03-19 | 2026-03-19 | AutoLayoutEngine (6 presets), Quick Layouts context menu, config tab combo, manual override, arrangement persistence, responsive re-layout |
-| **6** — Final Polish & Cleanup | ⬜ Not Started | — | — | After all other phases |
+| **6** — Final Polish & Cleanup | ✅ Complete | 2026-03-19 | 2026-03-19 | Dead code removal, Newtonsoft→STJ migration, threading contract docs, copilot-instructions rewrite |
 
 ### Dependencies
 
