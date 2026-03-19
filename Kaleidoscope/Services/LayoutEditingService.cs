@@ -48,6 +48,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     private System.Timers.Timer? _autoSaveDebounceTimer;
     private const int AutoSaveDebounceMs = 500;
     
+    // Throttle rapid MarkDirty calls during drag/resize (reduces CloneToolList overhead)
+    private DateTime _lastDirtyMarkTime = DateTime.MinValue;
+    private const int DirtyThrottleMs = 100;
+    
     // Phase 6: Tool lookup cache
     private Dictionary<string, ToolLayoutState>? _toolByNameCache;
     private bool _toolCacheValid;
@@ -176,6 +180,22 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
     {
+        // Throttle rapid calls (e.g., during drag/resize) to reduce CloneToolList overhead.
+        // The final position on mouse release will always trigger an unthrottled mark
+        // because the time gap after the last drag frame exceeds the threshold.
+        var now = DateTime.UtcNow;
+        if ((now - _lastDirtyMarkTime).TotalMilliseconds < DirtyThrottleMs)
+        {
+            // Still mark dirty flag so the final save on release captures changes
+            if (!_isDirty)
+            {
+                _isDirty = true;
+                OnDirtyStateChanged?.Invoke(true);
+            }
+            return;
+        }
+        _lastDirtyMarkTime = now;
+
         lock (_snapshotLock)
         {
             _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
@@ -581,9 +601,10 @@ public sealed class LayoutEditingService : IDisposable, IService
         
         private static List<ToolLayoutState> CloneToolList(List<ToolLayoutState> source)
         {
-            // Deep clone by serializing/deserializing
-            var json = JsonConvert.SerializeObject(source);
-            return JsonConvert.DeserializeObject<List<ToolLayoutState>>(json) ?? new List<ToolLayoutState>();
+            var clone = new List<ToolLayoutState>(source.Count);
+            foreach (var tool in source)
+                clone.Add(tool.Clone());
+            return clone;
         }
         
         /// <summary>

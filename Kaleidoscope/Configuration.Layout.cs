@@ -75,6 +75,32 @@ public sealed class ToolLayoutState
     /// Each tool type can store its own settings here for instance-specific persistence.
     /// </summary>
     public Dictionary<string, object?> ToolSettings { get; set; } = new();
+
+    /// <summary>
+    /// Creates a deep copy of this layout state without JSON serialization.
+    /// ToolSettings values are shallow-copied (they are immutable primitives/JTokens).
+    /// </summary>
+    public ToolLayoutState Clone() => new()
+    {
+        Id = Id,
+        Type = Type,
+        Title = Title,
+        CustomTitle = CustomTitle,
+        Position = Position,
+        Size = Size,
+        Visible = Visible,
+        BackgroundEnabled = BackgroundEnabled,
+        HeaderVisible = HeaderVisible,
+        OutlineEnabled = OutlineEnabled,
+        BackgroundColor = BackgroundColor,
+        GridCol = GridCol,
+        GridRow = GridRow,
+        GridColSpan = GridColSpan,
+        GridRowSpan = GridRowSpan,
+        HasGridCoords = HasGridCoords,
+        HiddenSeries = new List<string>(HiddenSeries),
+        ToolSettings = new Dictionary<string, object?>(ToolSettings),
+    };
 }
 
 public sealed class UserToolPreset
