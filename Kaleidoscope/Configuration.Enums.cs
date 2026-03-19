@@ -6,6 +6,28 @@ public enum LayoutType
     Fullscreen = 1
 }
 
+/// <summary>
+/// Determines how tools are automatically arranged within a layout.
+/// Grid is the default manual grid-snap mode; other values trigger auto-layout.
+/// </summary>
+public enum LayoutArrangement
+{
+    /// <summary>Manual grid-snap placement (default, existing behavior).</summary>
+    Grid = 0,
+    /// <summary>Tools stacked vertically, each spanning full width.</summary>
+    SingleColumn,
+    /// <summary>Tools fill two equal-width columns left-to-right.</summary>
+    TwoColumn,
+    /// <summary>Tools fill three equal-width columns.</summary>
+    ThreeColumn,
+    /// <summary>First half of tools on top, second half on bottom.</summary>
+    SplitHorizontal,
+    /// <summary>First half of tools on left, second half on right.</summary>
+    SplitVertical,
+    /// <summary>First tool spans full width as header; remaining tools fill a grid below.</summary>
+    Dashboard,
+}
+
 public enum UniversalisScope
 {
     World = 0,

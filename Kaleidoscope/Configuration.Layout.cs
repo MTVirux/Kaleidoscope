@@ -22,6 +22,13 @@ public sealed class ContentLayoutState
     public int ToolInternalPaddingPx { get; set; } = 4;
 
     /// <summary>
+    /// The auto-layout arrangement for this layout.
+    /// <see cref="LayoutArrangement.Grid"/> is the default manual grid-snap mode.
+    /// Other values cause tools to be automatically positioned by <c>AutoLayoutEngine</c>.
+    /// </summary>
+    public LayoutArrangement Arrangement { get; set; } = LayoutArrangement.Grid;
+
+    /// <summary>
     /// Saved windowed-mode window position for this layout.
     /// When exiting fullscreen, the window restores to this position.
     /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
