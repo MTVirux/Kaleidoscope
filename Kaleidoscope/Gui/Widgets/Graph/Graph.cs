@@ -161,12 +161,25 @@ public class GraphRenderer : IDisposable
     }
     
     /// <summary>
+    /// Reusable buffer for projecting 2-tuple series to 3-tuple (avoids per-frame List allocation).
+    /// </summary>
+    private readonly List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> _projectionBuffer = new();
+
+    /// <summary>
     /// Renders multiple data series overlaid on the same graph with time-aligned data.
-    /// Projects 2-tuple series to 3-tuple with null colors and delegates.
+    /// Projects 2-tuple series to 3-tuple with null colors using a reusable buffer.
     /// </summary>
     /// <param name="series">List of data series with names and timestamped values.</param>
     public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples)> series)
-        => RenderMultipleSeries(series.Select(s => (s.name, s.samples, (Vector4?)null)).ToList());
+    {
+        _projectionBuffer.Clear();
+        for (var i = 0; i < series.Count; i++)
+        {
+            var s = series[i];
+            _projectionBuffer.Add((s.name, s.samples, null));
+        }
+        RenderMultipleSeries(_projectionBuffer);
+    }
     
     /// <summary>
     /// Renders multiple data series with optional custom colors.
