@@ -1,7 +1,8 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow;
-using Newtonsoft.Json;
 using OtterGui.Services;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Timers;
 
 namespace Kaleidoscope.Services;
@@ -21,8 +22,21 @@ public sealed class PendingLayoutAction
 /// Changes are applied immediately but only persisted on explicit Save.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This follows the "dirty flag" pattern common in document editors. The working
 /// layout is kept in memory and a snapshot is persisted to disk for crash recovery.
+/// </para>
+/// <para><b>Threading contract:</b></para>
+/// <list type="bullet">
+///   <item>All public methods except <see cref="FlushDirtySnapshot"/> and
+///   <see cref="GetStatistics"/> must be called on the <b>main (framework) thread</b>.</item>
+///   <item><c>_snapshotLock</c> protects <c>_workingLayout</c>/<c>_workingGridSettings</c>
+///   cloning during snapshot serialization (timer thread) and <c>FlushDirtySnapshot</c>.</item>
+///   <item>Timer callbacks: snapshot timer acquires <c>_snapshotLock</c>; auto-save timer
+///   marshals to framework thread via <c>RunOnFrameworkThread</c>.</item>
+///   <item><c>_isDirty</c> is <c>volatile</c> for cross-thread visibility; TOCTOU races are
+///   benign because the auto-save timer re-checks on the framework thread.</item>
+/// </list>
 /// </remarks>
 public sealed class LayoutEditingService : IDisposable, IService
 {
@@ -493,6 +507,12 @@ public sealed class LayoutEditingService : IDisposable, IService
             public List<ToolLayoutState>? Tools { get; set; }
             public LayoutGridSettings? GridSettings { get; set; }
         }
+
+        private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
+        {
+            WriteIndented = true,
+            Converters = { new JsonStringEnumConverter() },
+        };
         
         /// <summary>
         /// Schedules a debounced dirty snapshot save.
@@ -538,7 +558,7 @@ public sealed class LayoutEditingService : IDisposable, IService
                     GridSettings = gridCopy
                 };
                 
-                var json = JsonConvert.SerializeObject(snapshot, Formatting.Indented);
+                var json = JsonSerializer.Serialize(snapshot, SnapshotJsonOptions);
                 var tempPath = DirtySnapshotPath + ".tmp";
                 File.WriteAllText(tempPath, json);
                 File.Move(tempPath, DirtySnapshotPath, overwrite: true);
@@ -578,7 +598,7 @@ public sealed class LayoutEditingService : IDisposable, IService
                     return;
                 
                 var json = File.ReadAllText(DirtySnapshotPath);
-                var snapshot = JsonConvert.DeserializeObject<DirtySnapshot>(json);
+                var snapshot = JsonSerializer.Deserialize<DirtySnapshot>(json, SnapshotJsonOptions);
                 
                 if (snapshot != null && !string.IsNullOrWhiteSpace(snapshot.LayoutName))
                 {
