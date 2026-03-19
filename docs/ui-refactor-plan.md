@@ -982,13 +982,23 @@ On significant window resize (fullscreen toggle, manual resize that changes aspe
 
 ### Verification Checklist — Phase 5
 
-- [ ] Each preset type arranges tools without overlap
-- [ ] Tools fill available space proportionally
-- [ ] After auto-layout, drag a tool → works normally
-- [ ] Save an auto-layout → load → tools in same positions
-- [ ] Fullscreen ↔ windowed with auto-layout: tools re-arrange
-- [ ] New layout creation with preset selection works
-- [ ] Context menu shows Quick Layouts submenu
+- [x] Each preset type arranges tools without overlap
+- [x] Tools fill available space proportionally
+- [x] After auto-layout, drag a tool → works normally
+- [x] Save an auto-layout → load → tools in same positions
+- [x] Fullscreen ↔ windowed with auto-layout: tools re-arrange
+- [x] New layout creation with preset selection works
+- [x] Context menu shows Quick Layouts submenu
+
+**Implementation notes:**
+- `LayoutArrangement` enum (7 values) in `Configuration.Enums.cs`; `Arrangement` property on `ContentLayoutState`
+- `AutoLayoutEngine` (263 lines) with 6 algorithms + `ToolLayoutState` overload via lightweight `GridAdapter` subclass
+- Context menu: `Quick Layouts` submenu between "Add tool" and layout operations; `applyArrangement` callback keeps menu decoupled from container
+- Config tab: combo next to "New" buttons for both windowed/fullscreen sections
+- Manual override: `MarkLayoutDirtyManualOverride()` resets arrangement to Grid on drag/resize; only manual interactions trigger the reset (tool settings changes do not)
+- Arrangement persistence: synced from container → `LayoutEditingService.WorkingArrangement` → `ContentLayoutState.Arrangement` on save
+- Responsive re-layout: Drawing.cs re-applies preset on window resize when `CurrentArrangement != Grid`, then recalculates pixel positions from grid coords
+- Animated transitions: 0.25s QuadInOut for both position and size when applying an arrangement
 
 ---
 
@@ -1126,7 +1136,7 @@ All files touched or created across all phases, with current state and planned c
 | **2** — Tool-Level DI | ✅ Complete | 2026-03-18 | 2026-03-18 | ToolFactory + ToolTypeAttribute, 629→80 line registrar, MainWindow 24→12 params |
 | **3** — Animation Framework | ✅ Complete | 2026-03-19 | 2026-03-19 | Easing/Tween/AnimationController, tool fade/snap/hover/ghost, QAB migrated |
 | **4** — Rendering Performance | ✅ Complete | 2026-03-19 | 2026-03-19 | Occlusion culling, reflection cache, LINQ elimination, Clone() replaces JSON, MarkDirty throttle |
-| **5** — Hybrid Layout System | ⬜ Not Started | — | — | Depends on Phases 1 + 3 (animations) |
+| **5** — Hybrid Layout System | ✅ Complete | 2026-03-19 | 2026-03-19 | AutoLayoutEngine (6 presets), Quick Layouts context menu, config tab combo, manual override, arrangement persistence, responsive re-layout |
 | **6** — Final Polish & Cleanup | ⬜ Not Started | — | — | After all other phases |
 
 ### Dependencies
