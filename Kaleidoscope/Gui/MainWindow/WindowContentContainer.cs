@@ -52,6 +52,9 @@ public sealed partial class WindowContentContainer
     /// <summary>The host window that implements layout persistence and interaction state.</summary>
     internal ILayoutHost? Host { get; set; }
 
+    /// <summary>Optional tool factory for improved layout restore (type-based lookup).</summary>
+    internal ToolFactory? Factory { get; set; }
+
     // ── Sub-Managers ────────────────────────────────────────────────────
     internal readonly DialogManager Dialogs = new();
     internal readonly ContextMenuManager ContextMenus = new();

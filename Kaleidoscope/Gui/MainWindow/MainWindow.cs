@@ -7,9 +7,6 @@ using Kaleidoscope.Services;
 using Kaleidoscope.Models;
 using Kaleidoscope.Gui.Widgets;
 using OtterGui.Services;
-using Kaleidoscope.Services.Characters;
-using Kaleidoscope.Services.FFXIVMT;
-using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -29,7 +26,9 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
     private readonly FrameLimiterService _frameLimiterService;
     private readonly IKeyState _keyState;
     private readonly IFramework _framework;
-    private readonly ToolCreationContext _toolContext;
+    private readonly ToolFactory _toolFactory;
+    private readonly UniversalisWebSocketService? _webSocketService;
+    private readonly AutoRetainerService? _autoRetainerIpc;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -76,28 +75,15 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         IPluginLog log,
         ConfigurationService configService,
         CurrencyTrackerService currencyTrackerService,
-        FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
-        TrackedDataRegistry trackedDataRegistry,
-        InventoryChangeService inventoryChangeService,
-        UniversalisWebSocketService webSocketService,
-        PriceTrackingService priceTrackingService,
-        ItemDataService itemDataService,
-        IDataManager dataManager,
-        InventoryCacheService inventoryCacheService,
         ProfilerService profilerService,
-        AutoRetainerService autoRetainerIpc,
-        ITextureProvider textureProvider,
-        FavoritesService favoritesService,
-        CharacterDataService characterDataService,
-        SalePriceCacheService salePriceCacheService,
-        FFXIVMTService ffxivmtService,
         FrameLimiterService frameLimiterService,
+        ToolFactory toolFactory,
         IKeyState keyState,
         IFramework framework,
-        LifestreamService? lifestreamService = null,
-        INotificationManager? notificationManager = null) 
+        UniversalisWebSocketService? webSocketService = null,
+        AutoRetainerService? autoRetainerIpc = null) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -107,6 +93,9 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         _layoutEditingService = layoutEditingService;
         _profilerService = profilerService;
         _frameLimiterService = frameLimiterService;
+        _toolFactory = toolFactory;
+        _webSocketService = webSocketService;
+        _autoRetainerIpc = autoRetainerIpc;
         _keyState = keyState;
         _framework = framework;
         
@@ -116,14 +105,6 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         // while ImGui still receives input normally via Win32 messages.
         _framework.Update += OnFrameworkUpdate;
         
-        // Bundle tool-related services into a single context for tool creation
-        _toolContext = new ToolCreationContext(
-            filenameService, currencyTrackerService, configService, characterDataService,
-            inventoryChangeService, trackedDataRegistry, webSocketService,
-            priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
-            ffxivmtService, lifestreamService, notificationManager);
-
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
         InitializeTitleBarButtons();
@@ -486,8 +467,9 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
 
         // Wire the ILayoutHost interface instead of individual callbacks
         _contentContainer.Host = this;
+        _contentContainer.Factory = _toolFactory;
 
-        WindowToolRegistrar.RegisterTools(_contentContainer, _toolContext);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _toolFactory);
 
         ApplyInitialLayout();
 
@@ -498,7 +480,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), _toolContext);
+                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), _toolFactory);
                 if (gettingStarted != null) _contentContainer?.AddToolInstanceWithoutDirty(gettingStarted);
             }
         }
@@ -560,8 +542,8 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
             _layoutEditingService,
             _configService,
             _currencyTrackerService,
-            _toolContext.WebSocketService,
-            _toolContext.AutoRetainerIpc,
+            _webSocketService,
+            _autoRetainerIpc,
             _frameLimiterService,
             onFullscreenToggle: () =>
             {

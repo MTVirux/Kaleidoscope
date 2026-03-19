@@ -186,98 +186,64 @@ public sealed partial class WindowContentContainer
 
                     if (!createdAny)
                     {
-                        // If not found by id, try each registered factory and match by resulting type FullName.
-                        foreach (var candReg in ToolRegistry)
+                        // If not found by id, use ToolFactory to look up the definition by .NET type name.
+                        // This avoids the old brute-force probe that created and disposed tool instances.
+                        if (Factory != null && !string.IsNullOrWhiteSpace(entry.Type))
                         {
-                            try
+                            var def = Factory.FindDefinitionByTypeName(entry.Type);
+                            if (def != null)
                             {
-                                var cand = candReg.Factory(entry.Position);
-                                if (cand == null) continue;
-                                if (cand.GetType().FullName == entry.Type)
-                                {
-                                    cand.Id = candReg.Id;
-                                    ApplyLayoutState(cand, entry, setTitle: true);
-                                    AddToolInstance(cand);
-                                    // Mark newly added tool as matched so it won't be reused for another entry
-                                    matchedIndices.Add(Tools.Count - 1);
-                                    LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
-                                    createdAny = true;
-                                    break;
-                                }
-                                else
-                                {
-                                    // Type didn't match — dispose the probed instance to avoid resource leaks
-                                    cand.Dispose();
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
-                            }
-                        }
-                    }
-
-                    if (createdAny) continue;
-
-                    // If no registry factories matched, try reflection-based creation by type name
-                    if (!createdAny && !string.IsNullOrWhiteSpace(entry.Type))
-                    {
-                        try
-                        {
-                            Type? found = null;
-                            try
-                            {
-                                found = Type.GetType(entry.Type);
-                            }
-                            catch (Exception ex)
-                            {
-                                LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Type.GetType failed for '{entry.Type}': {ex.Message}");
-                                found = null;
-                            }
-                            if (found == null)
-                            {
-                                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                                {
-                                    try
-                                    {
-                                        var t = asm.GetType(entry.Type);
-                                        if (t != null) { found = t; break; }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Assembly type resolution failed for '{entry.Type}' in {asm.GetName().Name}: {ex.Message}");
-                                    }
-                                }
-                            }
-
-                            if (found != null && typeof(ToolComponent).IsAssignableFrom(found))
-                            {
+                                LogService.Debug(LogCategory.UI, $"ApplyLayout: found definition '{def.Id}' by type '{entry.Type}' for entry '{entry.Id}'");
                                 try
                                 {
-                                    var inst = Activator.CreateInstance(found) as ToolComponent;
-                                    if (inst != null)
+                                    var created = Factory.Create(def.Id, entry.Position);
+                                    if (created != null)
                                     {
-                                        ApplyLayoutState(inst, entry, setId: true, setTitle: true);
-                                        AddToolInstance(inst);
-                                        // Mark newly added tool as matched so it won't be reused for another entry
+                                        created.Id = def.Id;
+                                        ApplyLayoutState(created, entry, setTitle: true);
+                                        AddToolInstance(created);
                                         matchedIndices.Add(Tools.Count - 1);
-                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
+                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via ToolFactory for definition '{def.Id}' (type={entry.Type})");
                                         createdAny = true;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogService.Debug(LogCategory.UI, $"Reflection creation failed for type '{entry.Type}': {ex.Message}");
+                                    LogService.Debug(LogCategory.UI, $"ApplyLayout: ToolFactory.Create failed for '{def.Id}': {ex.Message}");
                                 }
                             }
-                            else
-                            {
-                                LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection could not find type '{entry.Type}'");
-                            }
                         }
-                        catch (Exception ex)
+
+                        // Legacy fallback: try each registered factory and match by resulting type FullName.
+                        // This handles cases where ToolFactory doesn't know about the type (e.g. plugins).
+                        if (!createdAny)
                         {
-                            LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection attempt failed for '{entry.Type}': {ex.Message}");
+                            foreach (var candReg in ToolRegistry)
+                            {
+                                try
+                                {
+                                    var cand = candReg.Factory(entry.Position);
+                                    if (cand == null) continue;
+                                    if (cand.GetType().FullName == entry.Type)
+                                    {
+                                        cand.Id = candReg.Id;
+                                        ApplyLayoutState(cand, entry, setTitle: true);
+                                        AddToolInstance(cand);
+                                        matchedIndices.Add(Tools.Count - 1);
+                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
+                                        createdAny = true;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        cand.Dispose();
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
+                                }
+                            }
                         }
                     }
 
