@@ -1,7 +1,4 @@
-using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
-using ImGui = Dalamud.Bindings.ImGui.ImGui;
-using Dalamud.Bindings.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow;
 
@@ -51,7 +48,7 @@ public sealed partial class WindowContentContainer
         public List<ToolLayoutState> ExportLayout()
         {
             var ret = new List<ToolLayoutState>();
-            foreach (var te in _tools)
+            foreach (var te in Tools)
             {
                 if (te?.Tool is not { } t) continue;
                 var state = new ToolLayoutState
@@ -107,14 +104,14 @@ public sealed partial class WindowContentContainer
 
         private void ApplyLayoutInternal(List<ToolLayoutState> layout)
         {
-            LogService.Debug(LogCategory.UI, $"ApplyLayout: applying {layout.Count} entries to {_tools.Count} existing tools");
-            if (_toolRegistry.Count > 0)
+            LogService.Debug(LogCategory.UI, $"ApplyLayout: applying {layout.Count} entries to {Tools.Count} existing tools");
+            if (ToolRegistry.Count > 0)
             {
-                LogService.Debug(LogCategory.UI, $"ApplyLayout: registered tool factories ({_toolRegistry.Count})");
+                LogService.Debug(LogCategory.UI, $"ApplyLayout: registered tool factories ({ToolRegistry.Count})");
             }
             
             // Track the original tool count before adding new tools
-            var originalToolCount = _tools.Count;
+            var originalToolCount = Tools.Count;
             var matchedIndices = new System.Collections.Generic.HashSet<int>();
             for (var li = 0; li < layout.Count; li++)
             {
@@ -125,25 +122,25 @@ public sealed partial class WindowContentContainer
                     // Only consider existing tools that have not already been matched to another layout entry.
                     ToolComponent? match = null;
                     var matchIdx = -1;
-                    for (var i = 0; i < _tools.Count; i++)
+                    for (var i = 0; i < Tools.Count; i++)
                     {
                         if (matchedIndices.Contains(i)) continue;
-                        if (_tools[i].Tool.Id == entry.Id) { match = _tools[i].Tool; matchIdx = i; break; }
+                        if (Tools[i].Tool.Id == entry.Id) { match = Tools[i].Tool; matchIdx = i; break; }
                     }
                     if (match == null)
                     {
-                        for (var i = 0; i < _tools.Count; i++)
+                        for (var i = 0; i < Tools.Count; i++)
                         {
                             if (matchedIndices.Contains(i)) continue;
-                            if (_tools[i].Tool.Title == entry.Title) { match = _tools[i].Tool; matchIdx = i; break; }
+                            if (Tools[i].Tool.Title == entry.Title) { match = Tools[i].Tool; matchIdx = i; break; }
                         }
                     }
                     if (match == null)
                     {
-                        for (var i = 0; i < _tools.Count; i++)
+                        for (var i = 0; i < Tools.Count; i++)
                         {
                             if (matchedIndices.Contains(i)) continue;
-                            if (_tools[i].Tool.GetType().FullName == entry.Type) { match = _tools[i].Tool; matchIdx = i; break; }
+                            if (Tools[i].Tool.GetType().FullName == entry.Type) { match = Tools[i].Tool; matchIdx = i; break; }
                         }
                     }
 
@@ -163,7 +160,7 @@ public sealed partial class WindowContentContainer
                     // No existing tool matched — attempt to create a new instance from the registered tool factories.
                     // First, try to find a registration by factory id (common case when Id contains a factory name).
                     var createdAny = false;
-                    var reg = _toolRegistry.Find(r => string.Equals(r.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
+                    var reg = ToolRegistry.Find(r => string.Equals(r.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
                     if (reg != null && reg.Factory != null)
                     {
                         LogService.Debug(LogCategory.UI, $"ApplyLayout: attempting registry factory by id='{reg.Id}' for entry '{entry.Id}'");
@@ -176,7 +173,7 @@ public sealed partial class WindowContentContainer
                                 ApplyLayoutState(created, entry, setTitle: true);
                                 AddToolInstance(created);
                                 // Mark newly added tool as matched so it won't be reused for another entry
-                                matchedIndices.Add(_tools.Count - 1);
+                                matchedIndices.Add(Tools.Count - 1);
                                 LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via registry id='{reg.Id}' for entry '{entry.Id}' (type={entry.Type})");
                                 createdAny = true;
                             }
@@ -189,98 +186,64 @@ public sealed partial class WindowContentContainer
 
                     if (!createdAny)
                     {
-                        // If not found by id, try each registered factory and match by resulting type FullName.
-                        foreach (var candReg in _toolRegistry)
+                        // If not found by id, use ToolFactory to look up the definition by .NET type name.
+                        // This avoids the old brute-force probe that created and disposed tool instances.
+                        if (Factory != null && !string.IsNullOrWhiteSpace(entry.Type))
                         {
-                            try
+                            var def = Factory.FindDefinitionByTypeName(entry.Type);
+                            if (def != null)
                             {
-                                var cand = candReg.Factory(entry.Position);
-                                if (cand == null) continue;
-                                if (cand.GetType().FullName == entry.Type)
-                                {
-                                    cand.Id = candReg.Id;
-                                    ApplyLayoutState(cand, entry, setTitle: true);
-                                    AddToolInstance(cand);
-                                    // Mark newly added tool as matched so it won't be reused for another entry
-                                    matchedIndices.Add(_tools.Count - 1);
-                                    LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
-                                    createdAny = true;
-                                    break;
-                                }
-                                else
-                                {
-                                    // Type didn't match — dispose the probed instance to avoid resource leaks
-                                    cand.Dispose();
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
-                            }
-                        }
-                    }
-
-                    if (createdAny) continue;
-
-                    // If no registry factories matched, try reflection-based creation by type name
-                    if (!createdAny && !string.IsNullOrWhiteSpace(entry.Type))
-                    {
-                        try
-                        {
-                            Type? found = null;
-                            try
-                            {
-                                found = Type.GetType(entry.Type);
-                            }
-                            catch (Exception ex)
-                            {
-                                LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Type.GetType failed for '{entry.Type}': {ex.Message}");
-                                found = null;
-                            }
-                            if (found == null)
-                            {
-                                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                                {
-                                    try
-                                    {
-                                        var t = asm.GetType(entry.Type);
-                                        if (t != null) { found = t; break; }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogService.Debug(LogCategory.UI, $"[WindowContentContainer] Assembly type resolution failed for '{entry.Type}' in {asm.GetName().Name}: {ex.Message}");
-                                    }
-                                }
-                            }
-
-                            if (found != null && typeof(ToolComponent).IsAssignableFrom(found))
-                            {
+                                LogService.Debug(LogCategory.UI, $"ApplyLayout: found definition '{def.Id}' by type '{entry.Type}' for entry '{entry.Id}'");
                                 try
                                 {
-                                    var inst = Activator.CreateInstance(found) as ToolComponent;
-                                    if (inst != null)
+                                    var created = Factory.Create(def.Id, entry.Position);
+                                    if (created != null)
                                     {
-                                        ApplyLayoutState(inst, entry, setId: true, setTitle: true);
-                                        AddToolInstance(inst);
-                                        // Mark newly added tool as matched so it won't be reused for another entry
-                                        matchedIndices.Add(_tools.Count - 1);
-                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via reflection type='{entry.Type}' for entry '{entry.Id}'");
+                                        created.Id = def.Id;
+                                        ApplyLayoutState(created, entry, setTitle: true);
+                                        AddToolInstance(created);
+                                        matchedIndices.Add(Tools.Count - 1);
+                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via ToolFactory for definition '{def.Id}' (type={entry.Type})");
                                         createdAny = true;
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogService.Debug(LogCategory.UI, $"Reflection creation failed for type '{entry.Type}': {ex.Message}");
+                                    LogService.Debug(LogCategory.UI, $"ApplyLayout: ToolFactory.Create failed for '{def.Id}': {ex.Message}");
                                 }
                             }
-                            else
-                            {
-                                LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection could not find type '{entry.Type}'");
-                            }
                         }
-                        catch (Exception ex)
+
+                        // Legacy fallback: try each registered factory and match by resulting type FullName.
+                        // This handles cases where ToolFactory doesn't know about the type (e.g. plugins).
+                        if (!createdAny)
                         {
-                            LogService.Debug(LogCategory.UI, $"ApplyLayout: reflection attempt failed for '{entry.Type}': {ex.Message}");
+                            foreach (var candReg in ToolRegistry)
+                            {
+                                try
+                                {
+                                    var cand = candReg.Factory(entry.Position);
+                                    if (cand == null) continue;
+                                    if (cand.GetType().FullName == entry.Type)
+                                    {
+                                        cand.Id = candReg.Id;
+                                        ApplyLayoutState(cand, entry, setTitle: true);
+                                        AddToolInstance(cand);
+                                        matchedIndices.Add(Tools.Count - 1);
+                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
+                                        createdAny = true;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        cand.Dispose();
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
+                                }
+                            }
                         }
                     }
 
@@ -303,10 +266,10 @@ public sealed partial class WindowContentContainer
                 {
                     try
                     {
-                        var tool = _tools[i].Tool;
+                        var tool = Tools[i].Tool;
                         LogService.Debug(LogCategory.UI, $"ApplyLayout: removing unmatched tool '{tool.Title}' (id={tool.Id}, type={tool.GetType().FullName})");
                         tool.Dispose();
-                        _tools.RemoveAt(i);
+                        Tools.RemoveAt(i);
                     }
                     catch (Exception ex)
                     {

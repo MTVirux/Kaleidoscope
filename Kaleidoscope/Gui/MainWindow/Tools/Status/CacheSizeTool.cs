@@ -7,6 +7,7 @@ using Kaleidoscope.Services.Inventory;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
+[ToolType("CacheSize", "Cache Size", "Utility", "Shows the current size of the inventory memory cache")]
 public sealed class CacheSizeTool : StatusToolBase
 {
     public override string ToolName => "Cache Size";

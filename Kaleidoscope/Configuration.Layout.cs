@@ -6,7 +6,6 @@ public sealed class ContentLayoutState
 {
     public string Name { get; set; } = string.Empty;
     public LayoutType Type { get; set; } = LayoutType.Windowed;
-    public List<ContentComponentState> Components { get; set; } = new();
     public List<ToolLayoutState> Tools { get; set; } = new();
 
     public bool AutoAdjustResolution { get; set; } = true;
@@ -22,6 +21,13 @@ public sealed class ContentLayoutState
     public int ToolInternalPaddingPx { get; set; } = 4;
 
     /// <summary>
+    /// The auto-layout arrangement for this layout.
+    /// <see cref="LayoutArrangement.Grid"/> is the default manual grid-snap mode.
+    /// Other values cause tools to be automatically positioned by <c>AutoLayoutEngine</c>.
+    /// </summary>
+    public LayoutArrangement Arrangement { get; set; } = LayoutArrangement.Grid;
+
+    /// <summary>
     /// Saved windowed-mode window position for this layout.
     /// When exiting fullscreen, the window restores to this position.
     /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
@@ -34,14 +40,6 @@ public sealed class ContentLayoutState
     /// Only meaningful for windowed layouts; fullscreen layouts ignore this.
     /// </summary>
     public Vector2? WindowedSize { get; set; }
-}
-
-public sealed class ContentComponentState
-{
-    public int Col { get; set; }
-    public int Row { get; set; }
-    public int ColSpan { get; set; }
-    public int RowSpan { get; set; }
 }
 
 public sealed class ToolLayoutState
@@ -75,6 +73,32 @@ public sealed class ToolLayoutState
     /// Each tool type can store its own settings here for instance-specific persistence.
     /// </summary>
     public Dictionary<string, object?> ToolSettings { get; set; } = new();
+
+    /// <summary>
+    /// Creates a deep copy of this layout state without JSON serialization.
+    /// ToolSettings values are shallow-copied (they are immutable primitives/JTokens).
+    /// </summary>
+    public ToolLayoutState Clone() => new()
+    {
+        Id = Id,
+        Type = Type,
+        Title = Title,
+        CustomTitle = CustomTitle,
+        Position = Position,
+        Size = Size,
+        Visible = Visible,
+        BackgroundEnabled = BackgroundEnabled,
+        HeaderVisible = HeaderVisible,
+        OutlineEnabled = OutlineEnabled,
+        BackgroundColor = BackgroundColor,
+        GridCol = GridCol,
+        GridRow = GridRow,
+        GridColSpan = GridColSpan,
+        GridRowSpan = GridRowSpan,
+        HasGridCoords = HasGridCoords,
+        HiddenSeries = new List<string>(HiddenSeries),
+        ToolSettings = new Dictionary<string, object?>(ToolSettings),
+    };
 }
 
 public sealed class UserToolPreset

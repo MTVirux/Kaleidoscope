@@ -5,6 +5,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// <summary>
 /// A tool that displays retainer venture status with precise timers.
 /// </summary>
+[ToolType("RetainerVentureStatus", "Ventures Status", "AutoRetainer", "Displays retainer venture timers with millisecond precision")]
 public sealed class RetainerVentureStatusTool : VentureStatusToolBase
 {
     public override string ToolName => "Retainer Venture Status";

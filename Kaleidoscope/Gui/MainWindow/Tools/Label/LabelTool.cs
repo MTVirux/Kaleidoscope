@@ -41,6 +41,7 @@ public sealed class LabelToolSettings
 /// A simple tool that displays customizable text.
 /// Useful for adding labels, notes, or separators to layouts.
 /// </summary>
+[ToolType("Label", "Label", "Utility", "A simple text label for adding notes or annotations to your layout")]
 public sealed class LabelTool : ToolComponent
 {
     public override string ToolName => "Label";

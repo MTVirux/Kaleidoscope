@@ -7,6 +7,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Status;
 
+[ToolType("DatabaseSize", "Database Size", "Utility", "Shows the current size of the SQLite database file")]
 public sealed class DatabaseSizeTool : StatusToolBase
 {
     public override string ToolName => "Database Size";

@@ -2,15 +2,11 @@ using System.Reflection;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
-using OtterGui.Text;
 using Dalamud.Interface;
 using Kaleidoscope.Services;
 using Kaleidoscope.Models;
 using Kaleidoscope.Gui.Widgets;
 using OtterGui.Services;
-using Kaleidoscope.Services.Characters;
-using Kaleidoscope.Services.FFXIVMT;
-using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -19,7 +15,7 @@ namespace Kaleidoscope.Gui.MainWindow;
 /// <summary>
 /// Main plugin window containing the HUD layout.
 /// </summary>
-public sealed class MainWindow : Window, IService, IDisposable
+public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
@@ -30,7 +26,9 @@ public sealed class MainWindow : Window, IService, IDisposable
     private readonly FrameLimiterService _frameLimiterService;
     private readonly IKeyState _keyState;
     private readonly IFramework _framework;
-    private readonly ToolCreationContext _toolContext;
+    private readonly ToolFactory _toolFactory;
+    private readonly UniversalisWebSocketService? _webSocketService;
+    private readonly AutoRetainerService? _autoRetainerIpc;
     private WindowContentContainer? _contentContainer;
     private TitleBarButton? _editModeButton;
     
@@ -73,55 +71,19 @@ public sealed class MainWindow : Window, IService, IDisposable
     /// </summary>
     public bool IsFullscreenMode => _isFullscreenMode;
 
-    /// <summary>
-    /// Gets whether the database is available.
-    /// </summary>
-    public bool HasDb => _currencyTrackerService.HasDb;
-
-    public void ClearAllData()
-    {
-        try { _currencyTrackerService.ClearAllData(); }
-        catch (Exception ex) { _log.Error($"ClearAllData failed: {ex.Message}"); }
-    }
-
-    public int CleanUnassociatedCharacters()
-    {
-        try { return _currencyTrackerService.CleanUnassociatedCharacters(); }
-        catch (Exception ex) { _log.Error($"CleanUnassociatedCharacters failed: {ex.Message}"); return 0; }
-    }
-
-    public string? ExportCsv()
-    {
-        try { return _currencyTrackerService.ExportCsv(TrackedDataType.Gil); }
-        catch (Exception ex) { _log.Error($"ExportCsv failed: {ex.Message}"); return null; }
-    }
-
     public MainWindow(
         IPluginLog log,
         ConfigurationService configService,
         CurrencyTrackerService currencyTrackerService,
-        FilenameService filenameService,
         StateService stateService,
         LayoutEditingService layoutEditingService,
-        TrackedDataRegistry trackedDataRegistry,
-        InventoryChangeService inventoryChangeService,
-        UniversalisWebSocketService webSocketService,
-        PriceTrackingService priceTrackingService,
-        ItemDataService itemDataService,
-        IDataManager dataManager,
-        InventoryCacheService inventoryCacheService,
         ProfilerService profilerService,
-        AutoRetainerService autoRetainerIpc,
-        ITextureProvider textureProvider,
-        FavoritesService favoritesService,
-        CharacterDataService characterDataService,
-        SalePriceCacheService salePriceCacheService,
-        FFXIVMTService ffxivmtService,
         FrameLimiterService frameLimiterService,
+        ToolFactory toolFactory,
         IKeyState keyState,
         IFramework framework,
-        LifestreamService? lifestreamService = null,
-        INotificationManager? notificationManager = null) 
+        UniversalisWebSocketService? webSocketService = null,
+        AutoRetainerService? autoRetainerIpc = null) 
         : base(GetDisplayTitle(), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         _log = log;
@@ -131,6 +93,9 @@ public sealed class MainWindow : Window, IService, IDisposable
         _layoutEditingService = layoutEditingService;
         _profilerService = profilerService;
         _frameLimiterService = frameLimiterService;
+        _toolFactory = toolFactory;
+        _webSocketService = webSocketService;
+        _autoRetainerIpc = autoRetainerIpc;
         _keyState = keyState;
         _framework = framework;
         
@@ -140,14 +105,6 @@ public sealed class MainWindow : Window, IService, IDisposable
         // while ImGui still receives input normally via Win32 messages.
         _framework.Update += OnFrameworkUpdate;
         
-        // Bundle tool-related services into a single context for tool creation
-        _toolContext = new ToolCreationContext(
-            filenameService, currencyTrackerService, configService, characterDataService,
-            inventoryChangeService, trackedDataRegistry, webSocketService,
-            priceTrackingService, itemDataService, dataManager,
-            inventoryCacheService, autoRetainerIpc, textureProvider, favoritesService, salePriceCacheService,
-            ffxivmtService, lifestreamService, notificationManager);
-
         SizeConstraints = new WindowSizeConstraints { MinimumSize = ConfigStatic.MinimumWindowSize };
 
         InitializeTitleBarButtons();
@@ -195,8 +152,8 @@ public sealed class MainWindow : Window, IService, IDisposable
         var currentType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
         if (layoutType != currentType) return;
         
-        // Use the same logic as OnLoadLayout callback
-        _contentContainer?.OnLoadLayout?.Invoke(layoutName);
+        // Use the ILayoutHost.LoadLayout implementation
+        ((ILayoutHost)this).LoadLayout(layoutName);
     }
 
     public void Dispose()
@@ -206,6 +163,157 @@ public sealed class MainWindow : Window, IService, IDisposable
         _layoutEditingService.OnLayoutReverted -= OnLayoutReverted;
         _configService.OnActiveLayoutChanged -= OnActiveLayoutChangedFromConfig;
     }
+
+    #region ILayoutHost Implementation
+
+    void ILayoutHost.SaveLayout(string name, List<ToolLayoutState> tools)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
+        var layouts = Config.Layouts ??= new List<ContentLayoutState>();
+        var existing = layouts.Find(x => x.Name == name && x.Type == targetType);
+        if (existing == null)
+        {
+            existing = new ContentLayoutState { Name = name, Type = targetType };
+            layouts.Add(existing);
+        }
+        existing.Tools = tools ?? new List<ToolLayoutState>();
+
+        _contentContainer?.GridSettings?.ApplyToLayoutState(existing);
+
+        // Preserve the current auto-layout arrangement from the container
+        if (_contentContainer != null)
+            existing.Arrangement = _contentContainer.CurrentArrangement;
+
+        if (_isFullscreenMode)
+            Config.ActiveFullscreenLayoutName = name;
+        else
+            Config.ActiveWindowedLayoutName = name;
+
+        _configService.Save();
+        _configService.SaveLayouts();
+
+        _layoutEditingService.InitializeFromPersisted(name, targetType, tools, _contentContainer?.GridSettings);
+        UpdateWindowTitle();
+
+        _log.Information($"Saved {targetType} layout '{name}' ({existing.Tools.Count} tools)");
+    }
+
+    void ILayoutHost.LoadLayout(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
+
+        _layoutEditingService.TrySwitchLayout(name, targetType, () =>
+        {
+            var layouts = Config.Layouts ?? new List<ContentLayoutState>();
+            var found = layouts.Find(x => x.Name == name && x.Type == targetType);
+            if (found != null)
+            {
+                _contentContainer?.SetGridSettingsFromLayout(found);
+                _contentContainer?.ApplyLayout(found.Tools);
+
+                if (_isFullscreenMode)
+                    Config.ActiveFullscreenLayoutName = name;
+                else
+                    Config.ActiveWindowedLayoutName = name;
+
+                _configService.Save();
+
+                _layoutEditingService.InitializeFromPersisted(name, targetType, found.Tools, _contentContainer?.GridSettings);
+                UpdateWindowTitle();
+
+                _log.Information($"Loaded {targetType} layout '{name}' ({found.Tools.Count} tools)");
+            }
+        });
+    }
+
+    List<string> ILayoutHost.GetAvailableLayoutNames()
+    {
+        var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
+        return (Config.Layouts ?? new List<ContentLayoutState>())
+            .Where(x => x.Type == targetType)
+            .Select(x => x.Name)
+            .ToList();
+    }
+
+    string ILayoutHost.GetCurrentLayoutName() => _layoutEditingService.CurrentLayoutName;
+
+    bool ILayoutHost.IsDirty => _layoutEditingService.IsDirty;
+
+    void ILayoutHost.SaveLayoutExplicit()
+    {
+        SyncArrangementToEditingService();
+        _layoutEditingService.Save();
+        UpdateWindowTitle();
+    }
+
+    void ILayoutHost.DiscardChanges() => _layoutEditingService.DiscardChanges();
+
+    void ILayoutHost.MarkLayoutDirty(List<ToolLayoutState> tools)
+    {
+        SyncArrangementToEditingService();
+        _layoutEditingService.MarkDirty(tools, _contentContainer?.GridSettings);
+    }
+
+    bool ILayoutHost.ShowUnsavedChangesDialog => _layoutEditingService.ShowUnsavedChangesDialog;
+
+    string ILayoutHost.PendingActionDescription => _layoutEditingService.PendingAction?.Description ?? "";
+
+    void ILayoutHost.HandleUnsavedChangesChoice(UnsavedChangesChoice choice)
+        => _layoutEditingService.HandleUnsavedChangesChoice(choice);
+
+    void ILayoutHost.SavePreset(string toolType, string presetName, Dictionary<string, object?> settings, string? description)
+    {
+        var preset = new UserToolPreset
+        {
+            Name = presetName,
+            ToolType = toolType,
+            Description = description ?? string.Empty,
+            Settings = settings,
+            CreatedAt = DateTime.UtcNow,
+            ModifiedAt = DateTime.UtcNow
+        };
+
+        Config.UserToolPresets ??= new List<UserToolPreset>();
+        Config.UserToolPresets.Add(preset);
+        _configService.MarkDirty();
+
+        _log.Information($"Saved user preset '{presetName}' for tool type '{toolType}'");
+    }
+
+    bool ILayoutHost.CanSavePresets => true;
+
+    void ILayoutHost.OpenLayoutsManager() => _windowService?.OpenLayoutsConfig();
+
+    bool ILayoutHost.IsMainWindowInteracting => _stateService.IsMainWindowInteracting;
+
+    // IsFullscreenMode is already a public property — serves as implicit implementation
+
+    void ILayoutHost.NotifyDraggingChanged(bool dragging) => _stateService.IsDragging = dragging;
+
+    void ILayoutHost.NotifyResizingChanged(bool resizing) => _stateService.IsResizing = resizing;
+
+    void ILayoutHost.NotifyGridSettingsChanged(LayoutGridSettings settings)
+        => _layoutEditingService.MarkDirty(_contentContainer?.ExportLayout() ?? new List<ToolLayoutState>(), settings);
+
+    ConfigurationService? ILayoutHost.ConfigService => _configService;
+
+    int ILayoutHost.GetExternalToolInternalPadding()
+        => _layoutEditingService.WorkingGridSettings?.ToolInternalPaddingPx ?? -1;
+
+    /// <summary>
+    /// Copies the container's current arrangement to the editing service so it is persisted on save.
+    /// </summary>
+    private void SyncArrangementToEditingService()
+    {
+        if (_contentContainer != null)
+            _layoutEditingService.WorkingArrangement = _contentContainer.CurrentArrangement;
+    }
+
+    #endregion
     
     /// <summary>
     /// Clears the game's key buffer while in fullscreen mode so the game doesn't
@@ -372,18 +480,13 @@ public sealed class MainWindow : Window, IService, IDisposable
         _contentContainer = new WindowContentContainer(
             () => Config.ContentGridCellWidthPercent,
             () => Config.ContentGridCellHeightPercent,
-            () => Config.GridSubdivisions)
-        {
-            ConfigService = _configService
-        };
+            () => Config.GridSubdivisions);
 
-        // Wire up external padding source for real-time config window updates
-        _contentContainer.GetExternalToolInternalPadding = () =>
-        {
-            return _layoutEditingService.WorkingGridSettings?.ToolInternalPaddingPx ?? -1;
-        };
+        // Wire the ILayoutHost interface instead of individual callbacks
+        _contentContainer.Host = this;
+        _contentContainer.Factory = _toolFactory;
 
-        WindowToolRegistrar.RegisterTools(_contentContainer, _toolContext);
+        WindowToolRegistrar.RegisterTools(_contentContainer, _toolFactory);
 
         ApplyInitialLayout();
 
@@ -394,7 +497,7 @@ public sealed class MainWindow : Window, IService, IDisposable
             var exported = _contentContainer?.ExportLayout() ?? new List<ToolLayoutState>();
             if (exported.Count == 0)
             {
-                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), _toolContext);
+                var gettingStarted = WindowToolRegistrar.CreateToolFromId("GettingStarted", new Vector2(20, 50), _toolFactory);
                 if (gettingStarted != null) _contentContainer?.AddToolInstanceWithoutDirty(gettingStarted);
             }
         }
@@ -402,9 +505,6 @@ public sealed class MainWindow : Window, IService, IDisposable
         {
             _log.Debug($"Failed to add default tool after layout apply: {ex.Message}");
         }
-
-        WireLayoutCallbacks();
-        WireInteractionCallbacks();
     }
 
     private void ApplyInitialLayout()
@@ -452,177 +552,6 @@ public sealed class MainWindow : Window, IService, IDisposable
         }
     }
 
-    private void WireLayoutCallbacks()
-    {
-        if (_contentContainer == null) return;
-        
-        _contentContainer.OnSaveLayout = (name, tools) =>
-        {
-            if (string.IsNullOrWhiteSpace(name)) return;
-            
-            // Determine the layout type based on current mode
-            var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
-            
-            var layouts = Config.Layouts ??= new List<ContentLayoutState>();
-            var existing = layouts.Find(x => x.Name == name && x.Type == targetType);
-            if (existing == null)
-            {
-                existing = new ContentLayoutState { Name = name, Type = targetType };
-                layouts.Add(existing);
-            }
-            existing.Tools = tools ?? new List<ToolLayoutState>();
-            
-            // Apply grid settings (including tool padding) to the layout state
-            _contentContainer.GridSettings?.ApplyToLayoutState(existing);
-            
-            // Update the appropriate active layout name
-            if (_isFullscreenMode)
-                Config.ActiveFullscreenLayoutName = name;
-            else
-                Config.ActiveWindowedLayoutName = name;
-                
-            _configService.Save();
-            _configService.SaveLayouts();
-            
-            // After saving as new name, initialize the editing service for this layout
-            _layoutEditingService.InitializeFromPersisted(name, targetType, tools, _contentContainer.GridSettings);
-            UpdateWindowTitle();
-            
-            _log.Information($"Saved {targetType} layout '{name}' ({existing.Tools.Count} tools)");
-        };
-
-        _contentContainer.OnLoadLayout = name =>
-        {
-            if (string.IsNullOrWhiteSpace(name)) return;
-            
-            // Determine the layout type based on current mode
-            var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
-            
-            // Use LayoutEditingService to handle dirty check and layout switch
-            // TrySwitchLayout returns true if action proceeds immediately (not dirty),
-            // or false if dirty (in which case dialog will be shown and action deferred)
-            _layoutEditingService.TrySwitchLayout(name, targetType, () =>
-            {
-                var layouts = Config.Layouts ?? new List<ContentLayoutState>();
-                var found = layouts.Find(x => x.Name == name && x.Type == targetType);
-                if (found != null)
-                {
-                    // Apply grid settings first
-                    _contentContainer.SetGridSettingsFromLayout(found);
-                    // Then apply tool layout
-                    _contentContainer.ApplyLayout(found.Tools);
-                    
-                    // Update the appropriate active layout name
-                    if (_isFullscreenMode)
-                        Config.ActiveFullscreenLayoutName = name;
-                    else
-                        Config.ActiveWindowedLayoutName = name;
-                        
-                    _configService.Save();
-                    
-                    // Initialize the editing service for the new layout
-                    _layoutEditingService.InitializeFromPersisted(name, targetType, found.Tools, _contentContainer.GridSettings);
-                    UpdateWindowTitle();
-                    
-                    _log.Information($"Loaded {targetType} layout '{name}' ({found.Tools.Count} tools)");
-                }
-            });
-        };
-
-        _contentContainer.GetAvailableLayoutNames = () =>
-        {
-            // Filter layouts by current mode (windowed or fullscreen)
-            var targetType = _isFullscreenMode ? LayoutType.Fullscreen : LayoutType.Windowed;
-            return (Config.Layouts ?? new List<ContentLayoutState>())
-                .Where(x => x.Type == targetType)
-                .Select(x => x.Name)
-                .ToList();
-        };
-
-        _contentContainer.OnManageLayouts = () =>
-        {
-            _windowService?.OpenLayoutsConfig();
-        };
-
-        // Wire layout change callback - marks dirty instead of auto-saving
-        _contentContainer.OnLayoutChanged = tools =>
-        {
-            _layoutEditingService.MarkDirty(tools, _contentContainer.GridSettings);
-        };
-
-        // Wire grid settings change callback - marks dirty instead of auto-saving
-        _contentContainer.OnGridSettingsChanged = gridSettings =>
-        {
-            _layoutEditingService.MarkDirty(_contentContainer.ExportLayout(), gridSettings);
-        };
-        
-        // Wire explicit save callback
-        _contentContainer.OnSaveLayoutExplicit = () =>
-        {
-            _layoutEditingService.Save();
-            UpdateWindowTitle();
-        };
-        
-        // Wire discard changes callback (for explicit Discard Changes menu item)
-        _contentContainer.OnDiscardChanges = () =>
-        {
-            _layoutEditingService.DiscardChanges();
-            // OnLayoutReverted event will trigger UI refresh
-        };
-        
-        // Wire dirty state query
-        _contentContainer.GetIsDirty = () => _layoutEditingService.IsDirty;
-        
-        // Wire current layout name query
-        _contentContainer.GetCurrentLayoutName = () => _layoutEditingService.CurrentLayoutName;
-        
-        // Wire unsaved changes dialog callbacks (state is managed by LayoutEditingService)
-        _contentContainer.GetShowUnsavedChangesDialog = () => _layoutEditingService.ShowUnsavedChangesDialog;
-        _contentContainer.GetPendingActionDescription = () => _layoutEditingService.PendingAction?.Description ?? "";
-        _contentContainer.HandleUnsavedChangesChoice = choice => _layoutEditingService.HandleUnsavedChangesChoice(choice);
-        
-        // Wire save preset callback
-        _contentContainer.OnSavePreset = (toolType, presetName, settings) =>
-        {
-            var preset = new UserToolPreset
-            {
-                Name = presetName,
-                ToolType = toolType,
-                Settings = settings,
-                CreatedAt = DateTime.UtcNow,
-                ModifiedAt = DateTime.UtcNow
-            };
-            
-            Config.UserToolPresets ??= new List<UserToolPreset>();
-            Config.UserToolPresets.Add(preset);
-            _configService.MarkDirty();
-            
-            _log.Information($"Saved user preset '{presetName}' for tool type '{toolType}'");
-        };
-    }
-
-    private void WireInteractionCallbacks()
-    {
-        if (_contentContainer == null) return;
-
-        // Wire drag/resize state changes from content container to StateService
-        _contentContainer.OnDraggingChanged = dragging =>
-        {
-            _stateService.IsDragging = dragging;
-        };
-
-        _contentContainer.OnResizingChanged = resizing =>
-        {
-            _stateService.IsResizing = resizing;
-        };
-
-        // Wire main window interaction state so container can block tool interactions
-        _contentContainer.IsMainWindowInteracting = () => _stateService.IsMainWindowInteracting;
-
-        // Wire fullscreen state so tool settings windows can stay on top
-        _contentContainer.IsFullscreenMode = () => _isFullscreenMode;
-    }
-
     private void InitializeQuickAccessBar()
     {
         _quickAccessBar = new QuickAccessBarWidget(
@@ -630,8 +559,8 @@ public sealed class MainWindow : Window, IService, IDisposable
             _layoutEditingService,
             _configService,
             _currencyTrackerService,
-            _toolContext.WebSocketService,
-            _toolContext.AutoRetainerIpc,
+            _webSocketService,
+            _autoRetainerIpc,
             _frameLimiterService,
             onFullscreenToggle: () =>
             {
@@ -666,18 +595,8 @@ public sealed class MainWindow : Window, IService, IDisposable
             },
             onLayoutChanged: layoutName =>
             {
-                _contentContainer?.OnLoadLayout?.Invoke(layoutName);
+                ((ILayoutHost)this).LoadLayout(layoutName);
             });
-    }
-
-    private void PersistCurrentLayout()
-    {
-        // Use the LayoutEditingService to save instead of manually persisting
-        if (_layoutEditingService.IsDirty)
-        {
-            _layoutEditingService.Save();
-            UpdateWindowTitle();
-        }
     }
 
     /// <summary>

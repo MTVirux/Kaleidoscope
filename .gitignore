@@ -7,4 +7,5 @@ scripts/
 !.github/workflows
 build.lock
 .vscode/settings.json
+docs/
 logs

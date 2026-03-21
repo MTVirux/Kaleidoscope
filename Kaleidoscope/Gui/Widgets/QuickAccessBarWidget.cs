@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Kaleidoscope;
+using Kaleidoscope.Gui.Animation;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -63,10 +64,7 @@ public sealed class QuickAccessBarWidget
         : DefaultSeparatorColor;
 
     private bool _isPinned = false;
-    private float _animationProgress = 0f;
-    private DateTime _animationStartTime = DateTime.MinValue;
-    private bool _isAnimatingIn = false;
-    private bool _isAnimatingOut = false;
+    private readonly AnimationController _animator = new();
     private bool _wasVisible = false;
 
     /// <summary>
@@ -119,61 +117,26 @@ public sealed class QuickAccessBarWidget
     public bool Draw()
     {
         var io = ImGui.GetIO();
-        var now = DateTime.Now;
         
         // Show when CTRL+ALT is held (but not SHIFT) OR when pinned
         var keyComboHeld = io.KeyCtrl && io.KeyAlt && !io.KeyShift;
         var shouldBeVisible = keyComboHeld || _isPinned;
         
+        // Update animation controller
+        _animator.Update(io.DeltaTime);
+
         // Handle animation state transitions
         if (shouldBeVisible && !_wasVisible)
-        {
-            // Start animating in
-            _isAnimatingIn = true;
-            _isAnimatingOut = false;
-            _animationStartTime = now;
-        }
+            _animator.Start("qab_alpha", 0f, 1f, AnimationDuration, Easing.QuadOut);
         else if (!shouldBeVisible && _wasVisible)
-        {
-            // Start animating out
-            _isAnimatingOut = true;
-            _isAnimatingIn = false;
-            _animationStartTime = now;
-        }
+            _animator.Start("qab_alpha", 1f, 0f, AnimationDuration, Easing.QuadIn);
         
-        // Update animation progress
-        if (_isAnimatingIn)
-        {
-            var elapsed = (float)(now - _animationStartTime).TotalSeconds;
-            _animationProgress = Math.Min(1f, elapsed / AnimationDuration);
-            if (_animationProgress >= 1f)
-            {
-                _isAnimatingIn = false;
-                _animationProgress = 1f;
-            }
-        }
-        else if (_isAnimatingOut)
-        {
-            var elapsed = (float)(now - _animationStartTime).TotalSeconds;
-            _animationProgress = Math.Max(0f, 1f - (elapsed / AnimationDuration));
-            if (_animationProgress <= 0f)
-            {
-                _isAnimatingOut = false;
-                _animationProgress = 0f;
-            }
-        }
-        else if (shouldBeVisible)
-        {
-            _animationProgress = 1f;
-        }
-        else
-        {
-            _animationProgress = 0f;
-        }
-        
-        // Only track the shouldBeVisible state, not animation progress
-        // This prevents the animation from restarting every frame
         _wasVisible = shouldBeVisible;
+        
+        // Resolve animation progress (1.0 when fully visible, 0.0 when hidden)
+        var _animationProgress = shouldBeVisible && !_animator.IsAnimating("qab_alpha")
+            ? 1f
+            : _animator.Get("qab_alpha", shouldBeVisible ? 1f : 0f);
         
         // Don't draw if fully hidden
         if (_animationProgress <= 0f)
@@ -226,8 +189,8 @@ public sealed class QuickAccessBarWidget
         var windowSize = ImGui.GetWindowSize();
         var contentMin = ImGui.GetWindowContentRegionMin();
         
-        var easeProgress = 1f - (float)Math.Pow(1f - _animationProgress, 2);
-        var animationOffset = BarHeight * (1f - easeProgress);
+        // _animationProgress is already eased by the AnimationController (QuadOut/QuadIn)
+        var animationOffset = BarHeight * (1f - _animationProgress);
         
         var barPos = new Vector2(
             windowPos.X + (windowSize.X - barWidth) / 2f, 

@@ -17,6 +17,9 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// Shows listings added/removed and sales as they happen in real-time.
 /// Click on any entry to open the ItemDetailsPopup with full market data from the API.
 /// </summary>
+[ToolType("WebsocketFeed", "Websocket Feed", "Universalis",
+    "Real-time feed of Universalis market updates from the WebSocket. Click entries to view full market data via API.",
+    RequiredServices = new[] { typeof(UniversalisWebSocketService), typeof(PriceTrackingService), typeof(ItemDataService) })]
 public sealed class WebsocketFeedTool : ToolComponent
 {
     public override string ToolName => "Websocket Feed";

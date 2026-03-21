@@ -1,7 +1,8 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.MainWindow;
-using Newtonsoft.Json;
 using OtterGui.Services;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Timers;
 
 namespace Kaleidoscope.Services;
@@ -21,8 +22,21 @@ public sealed class PendingLayoutAction
 /// Changes are applied immediately but only persisted on explicit Save.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This follows the "dirty flag" pattern common in document editors. The working
 /// layout is kept in memory and a snapshot is persisted to disk for crash recovery.
+/// </para>
+/// <para><b>Threading contract:</b></para>
+/// <list type="bullet">
+///   <item>All public methods except <see cref="FlushDirtySnapshot"/> and
+///   <see cref="GetStatistics"/> must be called on the <b>main (framework) thread</b>.</item>
+///   <item><c>_snapshotLock</c> protects <c>_workingLayout</c>/<c>_workingGridSettings</c>
+///   cloning during snapshot serialization (timer thread) and <c>FlushDirtySnapshot</c>.</item>
+///   <item>Timer callbacks: snapshot timer acquires <c>_snapshotLock</c>; auto-save timer
+///   marshals to framework thread via <c>RunOnFrameworkThread</c>.</item>
+///   <item><c>_isDirty</c> is <c>volatile</c> for cross-thread visibility; TOCTOU races are
+///   benign because the auto-save timer re-checks on the framework thread.</item>
+/// </list>
 /// </remarks>
 public sealed class LayoutEditingService : IDisposable, IService
 {
@@ -36,6 +50,7 @@ public sealed class LayoutEditingService : IDisposable, IService
     private LayoutGridSettings? _workingGridSettings;
     private volatile string _currentLayoutName = string.Empty;
     private LayoutType _currentLayoutType = LayoutType.Windowed;
+    private LayoutArrangement _workingArrangement = LayoutArrangement.Grid;
     private PendingLayoutAction? _pendingAction;
     private bool _showUnsavedChangesDialog;
 
@@ -47,6 +62,10 @@ public sealed class LayoutEditingService : IDisposable, IService
     // Debounced auto-save: avoids synchronous disk I/O on every MarkDirty call
     private System.Timers.Timer? _autoSaveDebounceTimer;
     private const int AutoSaveDebounceMs = 500;
+    
+    // Throttle rapid MarkDirty calls during drag/resize (reduces CloneToolList overhead)
+    private DateTime _lastDirtyMarkTime = DateTime.MinValue;
+    private const int DirtyThrottleMs = 100;
     
     // Phase 6: Tool lookup cache
     private Dictionary<string, ToolLayoutState>? _toolByNameCache;
@@ -80,6 +99,16 @@ public sealed class LayoutEditingService : IDisposable, IService
     public PendingLayoutAction? PendingAction => _pendingAction;
     public string CurrentLayoutName => _currentLayoutName;
     public LayoutType CurrentLayoutType => _currentLayoutType;
+
+    /// <summary>
+    /// The current auto-layout arrangement. Set by the container when an arrangement
+    /// is applied or reset to Grid on manual override. Persisted on save.
+    /// </summary>
+    public LayoutArrangement WorkingArrangement
+    {
+        get => _workingArrangement;
+        set => _workingArrangement = value;
+    }
     public List<ToolLayoutState>? WorkingLayout => _workingLayout;
     public LayoutGridSettings? WorkingGridSettings => _workingGridSettings;
 
@@ -176,6 +205,22 @@ public sealed class LayoutEditingService : IDisposable, IService
     /// </summary>
     public void MarkDirty(List<ToolLayoutState>? currentTools, LayoutGridSettings? currentGridSettings)
     {
+        // Throttle rapid calls (e.g., during drag/resize) to reduce CloneToolList overhead.
+        // The final position on mouse release will always trigger an unthrottled mark
+        // because the time gap after the last drag frame exceeds the threshold.
+        var now = DateTime.UtcNow;
+        if ((now - _lastDirtyMarkTime).TotalMilliseconds < DirtyThrottleMs)
+        {
+            // Still mark dirty flag so the final save on release captures changes
+            if (!_isDirty)
+            {
+                _isDirty = true;
+                OnDirtyStateChanged?.Invoke(true);
+            }
+            return;
+        }
+        _lastDirtyMarkTime = now;
+
         lock (_snapshotLock)
         {
             _workingLayout = currentTools != null ? CloneToolList(currentTools) : _workingLayout;
@@ -247,6 +292,7 @@ public sealed class LayoutEditingService : IDisposable, IService
 
             existing.Tools = _workingLayout != null ? CloneToolList(_workingLayout) : new List<ToolLayoutState>();
             _workingGridSettings?.ApplyToLayoutState(existing);
+            existing.Arrangement = _workingArrangement;
 
             // For windowed layouts, persist the current window position/size
             if (_currentLayoutType == LayoutType.Windowed)
@@ -461,6 +507,12 @@ public sealed class LayoutEditingService : IDisposable, IService
             public List<ToolLayoutState>? Tools { get; set; }
             public LayoutGridSettings? GridSettings { get; set; }
         }
+
+        private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
+        {
+            WriteIndented = true,
+            Converters = { new JsonStringEnumConverter() },
+        };
         
         /// <summary>
         /// Schedules a debounced dirty snapshot save.
@@ -506,7 +558,7 @@ public sealed class LayoutEditingService : IDisposable, IService
                     GridSettings = gridCopy
                 };
                 
-                var json = JsonConvert.SerializeObject(snapshot, Formatting.Indented);
+                var json = JsonSerializer.Serialize(snapshot, SnapshotJsonOptions);
                 var tempPath = DirtySnapshotPath + ".tmp";
                 File.WriteAllText(tempPath, json);
                 File.Move(tempPath, DirtySnapshotPath, overwrite: true);
@@ -546,7 +598,7 @@ public sealed class LayoutEditingService : IDisposable, IService
                     return;
                 
                 var json = File.ReadAllText(DirtySnapshotPath);
-                var snapshot = JsonConvert.DeserializeObject<DirtySnapshot>(json);
+                var snapshot = JsonSerializer.Deserialize<DirtySnapshot>(json, SnapshotJsonOptions);
                 
                 if (snapshot != null && !string.IsNullOrWhiteSpace(snapshot.LayoutName))
                 {
@@ -581,9 +633,10 @@ public sealed class LayoutEditingService : IDisposable, IService
         
         private static List<ToolLayoutState> CloneToolList(List<ToolLayoutState> source)
         {
-            // Deep clone by serializing/deserializing
-            var json = JsonConvert.SerializeObject(source);
-            return JsonConvert.DeserializeObject<List<ToolLayoutState>>(json) ?? new List<ToolLayoutState>();
+            var clone = new List<ToolLayoutState>(source.Count);
+            foreach (var tool in source)
+                clone.Add(tool.Clone());
+            return clone;
         }
         
         /// <summary>

@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Numerics;
+using System.Reflection;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
@@ -156,20 +158,26 @@ public abstract class ToolComponent : IDisposable
     }
     
     /// <summary>
+    /// Cached generic MethodInfo per settings type to avoid per-frame reflection.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, MethodInfo?> _cachedDrawMethods = new();
+
+    /// <summary>
     /// Draws settings from a schema using the SettingsSchemaRenderer.
     /// Handles type discovery for the generic schema type.
+    /// Uses a cached MethodInfo to avoid repeated GetMethod/MakeGenericMethod reflection.
     /// </summary>
     private static bool DrawSettingsFromSchema(object schema, object settings)
     {
-        // Use reflection to call SettingsSchemaRenderer.Draw<TSettings>(schema, settings)
         var schemaType = schema.GetType();
         if (!schemaType.IsGenericType || schemaType.GetGenericTypeDefinition() != typeof(SettingsSchema<>))
             return false;
         
         var settingsType = schemaType.GetGenericArguments()[0];
-        var drawMethod = typeof(SettingsSchemaRenderer)
-            .GetMethod(nameof(SettingsSchemaRenderer.Draw))
-            ?.MakeGenericMethod(settingsType);
+        var drawMethod = _cachedDrawMethods.GetOrAdd(settingsType, type =>
+            typeof(SettingsSchemaRenderer)
+                .GetMethod(nameof(SettingsSchemaRenderer.Draw))
+                ?.MakeGenericMethod(type));
         
         if (drawMethod == null) return false;
         

@@ -22,6 +22,9 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.PriceTracking;
 /// - ItemSalesTrackingTool.DataFetching.cs: Data fetching and world scope resolution
 /// - ItemSalesTrackingTool.Settings.cs: Settings UI and import/export logic
 /// </summary>
+[ToolType("ItemSalesTracking", "Item Sales Tracking", "Universalis",
+    "Track and graph sales data for multiple items with real-time WebSocket updates",
+    RequiredServices = new[] { typeof(UniversalisWebSocketService), typeof(PriceTrackingService), typeof(ItemDataService), typeof(SalePriceCacheService) })]
 public sealed partial class ItemSalesTrackingTool : ToolComponent
 {
     public override string ToolName => "Item Sales Tracking";
