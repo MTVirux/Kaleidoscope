@@ -42,7 +42,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveItemPrice failed: {ex.Message}", ex);
+                LogDbError("SaveItemPrice", ex);
             }
         }
     }
@@ -102,7 +102,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveItemPricesBatch failed: {ex.Message}", ex);
+                LogDbError("SaveItemPricesBatch", ex);
             }
         }
     }
@@ -129,7 +129,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SavePriceHistory failed: {ex.Message}", ex);
+                LogDbError("SavePriceHistory", ex);
             }
         }
     }
@@ -170,7 +170,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPrice failed: {ex.Message}", ex);
+                LogDbError("GetItemPrice", ex);
             }
         }
 
@@ -215,7 +215,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMinPrice failed: {ex.Message}", ex);
+                LogDbError("GetMinPrice", ex);
             }
         }
 
@@ -275,7 +275,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPricesBatch failed: {ex.Message}", ex);
+                LogDbError("GetItemPricesBatch", ex);
             }
         }
 
@@ -336,7 +336,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemPricesDetailedBatch failed: {ex.Message}", ex);
+                LogDbError("GetItemPricesDetailedBatch", ex);
             }
         }
 
@@ -384,7 +384,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetStaleItemIds failed: {ex.Message}", ex);
+                LogDbError("GetStaleItemIds", ex);
             }
         }
 
@@ -453,7 +453,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryValueHistory failed: {ex.Message}", ex);
+                LogDbError("SaveInventoryValueHistory", ex);
             }
         }
     }
@@ -498,7 +498,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryValueHistory failed: {ex.Message}", ex);
+                LogDbError("GetInventoryValueHistory", ex);
             }
         }
 
@@ -544,7 +544,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryValueHistory failed: {ex.Message}", ex);
+                LogDbError("GetAllInventoryValueHistory", ex);
             }
         }
 
@@ -593,7 +593,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAggregatedInventoryValueHistory failed: {ex.Message}", ex);
+                LogDbError("GetAggregatedInventoryValueHistory", ex);
             }
         }
 
@@ -686,7 +686,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryValueHistoryStats failed: {ex.Message}", ex);
+                LogDbError("GetInventoryValueHistoryStats", ex);
             }
         }
 
@@ -731,7 +731,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllPriceData failed: {ex.Message}", ex);
+                LogDbError("ClearAllPriceData", ex);
                 return false;
             }
         }

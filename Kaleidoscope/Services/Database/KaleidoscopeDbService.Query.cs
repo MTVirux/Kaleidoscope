@@ -228,7 +228,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetTableNames failed: {ex.Message}");
+                LogDbDebug("GetTableNames", ex);
             }
         }
 
@@ -332,7 +332,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetTableSizes failed: {ex.Message}");
+                LogDbDebug("GetTableSizes", ex);
             }
         }
 
@@ -371,7 +371,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetTableSchema failed: {ex.Message}");
+                LogDbDebug("GetTableSchema", ex);
             }
         }
 

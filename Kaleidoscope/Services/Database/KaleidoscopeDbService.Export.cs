@@ -58,7 +58,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ExportToCsv failed: {ex.Message}", ex);
+                LogDbError("ExportToCsv", ex);
             }
         }
 

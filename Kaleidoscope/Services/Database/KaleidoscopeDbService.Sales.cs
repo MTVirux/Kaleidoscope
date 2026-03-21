@@ -31,7 +31,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSaleRecord failed: {ex.Message}", ex);
+                LogDbError("SaveSaleRecord", ex);
             }
         }
     }
@@ -87,7 +87,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSaleRecordsBatch failed: {ex.Message}", ex);
+                LogDbError("SaveSaleRecordsBatch", ex);
             }
         }
     }
@@ -120,7 +120,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMostRecentSalePrice failed: {ex.Message}", ex);
+                LogDbError("GetMostRecentSalePrice", ex);
                 return 0;
             }
         }
@@ -151,7 +151,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetMostRecentSalePriceForWorld failed: {ex.Message}", ex);
+                LogDbError("GetMostRecentSalePriceForWorld", ex);
                 return 0;
             }
         }
@@ -239,7 +239,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetLatestSalePrices failed: {ex.Message}", ex);
+                LogDbError("GetLatestSalePrices", ex);
             }
         }
 
@@ -317,7 +317,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetRecentSalesForCache failed: {ex.Message}", ex);
+                LogDbError("GetRecentSalesForCache", ex);
             }
         }
 
@@ -385,7 +385,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetSaleRecords failed: {ex.Message}", ex);
+                LogDbError("GetSaleRecords", ex);
             }
         }
 
@@ -409,7 +409,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteSaleRecord failed: {ex.Message}", ex);
+                LogDbError("DeleteSaleRecord", ex);
                 return false;
             }
         }
@@ -549,7 +549,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteSaleRecordWithHistoryCleanup failed: {ex.Message}", ex);
+                LogDbError("DeleteSaleRecordWithHistoryCleanup", ex);
                 return false;
             }
         }
@@ -571,7 +571,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetSaleRecordCount failed: {ex.Message}", ex);
+                LogDbError("GetSaleRecordCount", ex);
                 return 0;
             }
         }
@@ -614,7 +614,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanupOldPriceData failed: {ex.Message}", ex);
+                LogDbError("CleanupOldPriceData", ex);
                 return 0;
             }
         }
@@ -643,7 +643,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetPriceDataSize failed: {ex.Message}", ex);
+                LogDbError("GetPriceDataSize", ex);
                 return 0;
             }
         }
@@ -698,7 +698,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanupPriceDataBySize failed: {ex.Message}", ex);
+                LogDbError("CleanupPriceDataBySize", ex);
                 return 0;
             }
         }

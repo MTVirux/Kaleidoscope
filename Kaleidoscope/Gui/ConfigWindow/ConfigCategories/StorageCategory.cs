@@ -426,6 +426,20 @@ public sealed class StorageCategory : IDisposable
         ImGui.TextUnformatted("Database Health");
         ImGui.Spacing();
 
+        // --- Corruption Warning Banner ---
+        if (dbService.IsCorrupt)
+        {
+            ImGui.PushStyleColor(ImGuiCol.ChildBg, new System.Numerics.Vector4(0.5f, 0.1f, 0.1f, 0.5f));
+            ImGui.BeginChild("CorruptionWarning", new System.Numerics.Vector2(-1, 60), false, ImGuiWindowFlags.None);
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f), "⚠ DATABASE CORRUPTION DETECTED");
+            ImGui.TextWrapped(
+                "The database is malformed. Use the Repair button below to attempt recovery. " +
+                "Some data may be unavailable until the database is repaired.");
+            ImGui.EndChild();
+            ImGui.PopStyleColor();
+            ImGui.Spacing();
+        }
+
         // --- Integrity Check ---
         var checkDisabled = _integrityCheckRunning || _repairRunning;
         if (checkDisabled) ImGui.BeginDisabled();
@@ -525,7 +539,7 @@ public sealed class StorageCategory : IDisposable
         ImGui.Spacing();
 
         // --- Repair ---
-        var showRepair = _integrityResult is { IsHealthy: false } || _lastRepairResult.HasValue;
+        var showRepair = dbService.IsCorrupt || _integrityResult is { IsHealthy: false } || _lastRepairResult.HasValue;
         if (showRepair)
         {
             ImGui.Separator();

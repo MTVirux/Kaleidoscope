@@ -31,7 +31,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearCharacterData failed: {ex.Message}", ex);
+                LogDbError("ClearCharacterData", ex);
                 return false;
             }
         }
@@ -63,7 +63,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllData failed: {ex.Message}", ex);
+                LogDbError("ClearAllData", ex);
                 return false;
             }
         }
@@ -122,7 +122,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ClearAllTables failed: {ex.Message}", ex);
+                LogDbError("ClearAllTables", ex);
                 return false;
             }
         }
@@ -183,7 +183,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsInRange failed: {ex.Message}");
+                LogDbDebug("GetPointsInRange", ex);
             }
         }
 
@@ -237,7 +237,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] CountPointsInRange failed: {ex.Message}");
+                LogDbDebug("CountPointsInRange", ex);
                 return (0, 0);
             }
         }
@@ -286,7 +286,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeletePointsInRange failed: {ex.Message}", ex);
+                LogDbError("DeletePointsInRange", ex);
                 return 0;
             }
         }
@@ -357,7 +357,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] ExportPointsInRangeToCsv failed: {ex.Message}", ex);
+                LogDbError("ExportPointsInRangeToCsv", ex);
             }
         }
 
@@ -386,7 +386,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] VACUUM failed: {ex.Message}", ex);
+                LogDbError("VACUUM", ex);
                 return false;
             }
         }
@@ -444,7 +444,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] CleanUnassociatedCharacters failed: {ex.Message}", ex);
+                LogDbError("CleanUnassociatedCharacters", ex);
                 return 0;
             }
         }
@@ -513,6 +513,7 @@ public sealed partial class KaleidoscopeDbService
                         }
                         catch (Exception ex)
                         {
+                            NotifyIfCorruption(ex);
                             LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
                         }
                     }
@@ -529,6 +530,7 @@ public sealed partial class KaleidoscopeDbService
                         }
                         catch (Exception ex)
                         {
+                            NotifyIfCorruption(ex);
                             LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
                         }
                     }
@@ -536,6 +538,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
+                NotifyIfCorruption(ex);
                 LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] MigrateStoredNames failed: {ex.Message}");
             }
         }

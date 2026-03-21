@@ -48,7 +48,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetRetainerItemCount failed: {ex.Message}", ex);
+                LogDbError("GetRetainerItemCount", ex);
                 return 0;
             }
         }
@@ -140,7 +140,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryCache failed: {ex.Message}", ex);
+                LogDbError("SaveInventoryCache", ex);
             }
         }
     }
@@ -214,7 +214,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetInventoryCache failed: {ex.Message}", ex);
+                LogDbError("GetInventoryCache", ex);
                 return null;
             }
         }
@@ -286,7 +286,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryCaches failed: {ex.Message}", ex);
+                LogDbError("GetAllInventoryCaches", ex);
             }
         }
 
@@ -354,7 +354,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetAllInventoryCachesAllCharacters failed: {ex.Message}", ex);
+                LogDbError("GetAllInventoryCachesAllCharacters", ex);
             }
         }
 
@@ -380,7 +380,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteInventoryCache failed: {ex.Message}", ex);
+                LogDbError("DeleteInventoryCache", ex);
             }
         }
     }
@@ -427,7 +427,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetItemCountSummary failed: {ex.Message}", ex);
+                LogDbError("GetItemCountSummary", ex);
             }
         }
 
@@ -492,7 +492,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveInventoryCachesBatched failed: {ex.Message}", ex);
+                LogDbError("SaveInventoryCachesBatched", ex);
             }
         }
     }

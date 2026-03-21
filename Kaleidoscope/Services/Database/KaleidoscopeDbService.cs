@@ -47,6 +47,34 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// Indicates that database corruption has been detected (SQLite error 11/26 or malformed disk image).
+    /// Set by the startup integrity check or by runtime corruption detection in catch blocks.
+    /// Remains true until a successful <see cref="RepairDatabase"/> call resets it.
+    /// </summary>
+    private volatile bool _isCorrupt;
+
+    /// <summary>
+    /// Set to true during RepairDatabase() to prevent concurrent threads from
+    /// reopening connections via EnsureConnection/EnsureReadConnection while file
+    /// operations (move/delete) are in progress. Without this guard, background
+    /// workers (price writes, currency samples) race to reopen the DB file the
+    /// instant the locks are released after closing connections.
+    /// </summary>
+    private volatile bool _repairing;
+
+    /// <summary>
+    /// Whether the database is currently in a corrupt state. Check this property to
+    /// show persistent warnings in the UI or to gracefully degrade functionality.
+    /// </summary>
+    public bool IsCorrupt => _isCorrupt;
+
+    /// <summary>
+    /// Raised when database corruption is first detected. Fires at most once per corruption episode.
+    /// Subscribers can use this to surface a persistent warning in the UI.
+    /// </summary>
+    public event Action? OnCorruptionDetected;
+
     public string? DbPath => _dbPath;
 
     /// <summary>
@@ -137,6 +165,52 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         }
     }
 
+    /// <summary>
+    /// Checks if an exception indicates SQLite database corruption and, if so, sets the
+    /// <see cref="IsCorrupt"/> flag and raises <see cref="OnCorruptionDetected"/>.
+    /// Call from catch blocks in query/write methods to enable runtime corruption detection.
+    /// </summary>
+    private void NotifyIfCorruption(Exception ex)
+    {
+        if (_isCorrupt) return; // Already flagged, don't re-fire event
+
+        bool isCorruption = ex is SqliteException sqliteEx &&
+            sqliteEx.SqliteErrorCode is 11 or 26; // SQLITE_CORRUPT or SQLITE_NOTADB
+
+        if (!isCorruption && ex.Message.Contains("database disk image is malformed", StringComparison.OrdinalIgnoreCase))
+            isCorruption = true;
+
+        if (isCorruption)
+        {
+            _isCorrupt = true;
+            LogService.Error(LogCategory.Database,
+                "[KaleidoscopeDb] DATABASE CORRUPTION DETECTED. " +
+                "Use Settings > Storage > Database Health > Repair to attempt recovery.");
+            try { OnCorruptionDetected?.Invoke(); }
+            catch { /* Don't let subscriber exceptions propagate */ }
+        }
+    }
+
+    /// <summary>
+    /// Logs a database error at Error level and checks for corruption.
+    /// Replaces direct LogService.Error calls in catch blocks for uniform corruption detection.
+    /// </summary>
+    private void LogDbError(string method, Exception ex)
+    {
+        NotifyIfCorruption(ex);
+        LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] {method} failed: {ex.Message}", ex);
+    }
+
+    /// <summary>
+    /// Logs a database error at Debug level and checks for corruption.
+    /// Replaces direct LogService.Debug calls in catch blocks for uniform corruption detection.
+    /// </summary>
+    private void LogDbDebug(string method, Exception ex)
+    {
+        NotifyIfCorruption(ex);
+        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] {method} failed: {ex.Message}");
+    }
+
     public KaleidoscopeDbService(FilenameService filenames, ConfigurationService configService)
     {
         _dbPath = filenames.DatabasePath;
@@ -144,15 +218,46 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         cacheSizeMb = Math.Clamp(cacheSizeMb, 1, 64);
         _cacheSizeKb = cacheSizeMb * 1024;
         EnsureConnection();
+
+        // Startup integrity check — detect corruption but do NOT auto-repair.
+        // Repair involves ClearAllPools + file moves which is unsafe during DI construction
+        // (can nuke connection pools for other services mid-resolution and cascade into
+        // ObjectDisposedException). Instead, just set the flag so the UI can direct the user
+        // to Settings > Storage > Database Health > Repair.
+        if (_connection != null)
+        {
+            try
+            {
+                var check = QuickCheck();
+                if (!check.IsHealthy)
+                {
+                    _isCorrupt = true;
+                    LogService.Error(LogCategory.Database,
+                        $"[KaleidoscopeDb] Startup integrity check FAILED ({check.Errors.Count} error(s)). " +
+                        "Use Settings > Storage > Database Health > Repair to attempt recovery.");
+                }
+                else
+                {
+                    LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Startup integrity check passed");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Database,
+                    $"[KaleidoscopeDb] Startup integrity check threw: {ex.Message}", ex);
+            }
+        }
     }
 
     private void EnsureConnection()
     {
         if (string.IsNullOrEmpty(_dbPath)) return;
+        if (_repairing) return; // Don't reopen while RepairDatabase is doing file operations
 
         lock (_writeLock)
         {
             if (_connection != null) return;
+            if (_repairing) return; // Re-check after acquiring lock
 
             try
             {
@@ -238,6 +343,7 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     private void EnsureReadConnection()
     {
         if (string.IsNullOrEmpty(_dbPath)) return;
+        if (_repairing) return; // Don't reopen while RepairDatabase is doing file operations
         if (_readConnection != null) return;
 
         try

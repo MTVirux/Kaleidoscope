@@ -159,32 +159,60 @@ public sealed partial class KaleidoscopeDbService
             _checkpointTimer?.Dispose();
             _checkpointTimer = null;
 
-            // 2. Close both connections
+            // 2. Prevent concurrent threads from reopening connections during repair.
+            //    Background workers (UniversalisService, CurrencyTrackerService) will
+            //    acquire _writeLock and call EnsureConnection the instant we release it.
+            //    The _repairing flag makes EnsureConnection/EnsureReadConnection return
+            //    immediately, keeping the file unlocked for File.Move operations.
+            _repairing = true;
+
+            // 3. Close both connections, THEN clear their pool entries.
+            //    Order matters: Close() returns the handle to the pool, then ClearPool()
+            //    evicts it. If ClearPool is called first, Close() just puts it back.
             lock (_writeLock)
             {
                 lock (_readLock)
                 {
-                    _readConnection?.Close();
-                    _readConnection?.Dispose();
-                    _readConnection = null;
+                    if (_readConnection != null)
+                    {
+                        _readConnection.Close();
+                        _readConnection.Dispose();
+                        SqliteConnection.ClearPool(_readConnection);
+                        _readConnection = null;
+                    }
 
-                    _connection?.Close();
-                    _connection?.Dispose();
-                    _connection = null;
+                    if (_connection != null)
+                    {
+                        _connection.Close();
+                        _connection.Dispose();
+                        SqliteConnection.ClearPool(_connection);
+                        _connection = null;
+                    }
                 }
             }
 
-            // 3. Open old DB in read-only mode with ignore-corruption workarounds
+            // Force GC to finalize any leaked native sqlite3 handles that might
+            // keep the file locked even after pool clearing (especially on large DBs).
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // 3. Open old DB in read-only mode with ignore-corruption workarounds.
+            //    Pooling=false ensures Close()/Dispose() immediately releases OS file handles
+            //    instead of returning them to the connection pool. This is critical —
+            //    without it, File.Move/Delete below will fail with "file in use" on Windows.
             var oldCsb = new SqliteConnectionStringBuilder
             {
                 DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadOnly
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false
             };
 
             var newCsb = new SqliteConnectionStringBuilder
             {
                 DataSource = recoveredPath,
-                Mode = SqliteOpenMode.ReadWriteCreate
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                Pooling = false
             };
 
             int tablesRecovered = 0;
@@ -306,33 +334,45 @@ public sealed partial class KaleidoscopeDbService
 
                 // Re-enable foreign keys
                 ExecutePragma(newConn, "PRAGMA foreign_keys = ON");
+
+                // Checkpoint WAL into the recovery file so it's a single self-contained DB.
+                // This avoids needing to move WAL/SHM files during the swap.
+                ExecutePragma(newConn, "PRAGMA wal_checkpoint(TRUNCATE)");
+
+                // Explicitly close connections. With Pooling=false (set above), this
+                // immediately releases the native SQLite handles and OS file locks.
+                newConn.Close();
+                oldConn.Close();
             }
 
-            // 4. Swap files: rename corrupt → .corrupt.bak, rename recovery → original
-            File.Move(_dbPath, corruptBackupPath);
+            // 4. Swap files: rename corrupt → .corrupt.bak, rename recovery → original.
+            //    Use retry loop because Windows may briefly hold file handles after close.
+            MoveFileWithRetry(_dbPath, corruptBackupPath);
 
             // Also move WAL/SHM files if they exist
             var walPath = _dbPath + "-wal";
             var shmPath = _dbPath + "-shm";
             if (File.Exists(walPath))
-                File.Move(walPath, corruptBackupPath + "-wal");
+                MoveFileWithRetry(walPath, corruptBackupPath + "-wal");
             if (File.Exists(shmPath))
-                File.Move(shmPath, corruptBackupPath + "-shm");
+                MoveFileWithRetry(shmPath, corruptBackupPath + "-shm");
 
-            File.Move(recoveredPath, _dbPath);
+            // Delete leftover recovery WAL/SHM (should be empty after TRUNCATE checkpoint above)
+            DeleteFileQuiet(recoveredPath + "-wal");
+            DeleteFileQuiet(recoveredPath + "-shm");
 
-            // Also move new WAL/SHM if they exist
-            if (File.Exists(recoveredPath + "-wal"))
-                File.Move(recoveredPath + "-wal", walPath);
-            if (File.Exists(recoveredPath + "-shm"))
-                File.Move(recoveredPath + "-shm", shmPath);
+            MoveFileWithRetry(recoveredPath, _dbPath);
 
-            // 5. Reopen connections
+            // 5. Allow connections to be reopened again, then reopen.
+            _repairing = false;
             EnsureConnection();
 
             // 6. Run migrations on the recovered database
             if (_connection != null)
                 RunMigrations();
+
+            // 7. Reset corruption flag after successful repair
+            _isCorrupt = false;
 
             var message = $"Recovery complete: {tablesRecovered} tables recovered, {tablesFailed} failed. Corrupt DB saved to {Path.GetFileName(corruptBackupPath)}\n{details}";
             LogService.Warning(message);
@@ -345,19 +385,27 @@ public sealed partial class KaleidoscopeDbService
             // Try to reopen the original file if still available
             try
             {
-                // Clean up partial recovery file
-                if (File.Exists(recoveredPath))
-                    File.Delete(recoveredPath);
+                // Clean up partial recovery file and its WAL/SHM siblings.
+                // With Pooling=false on repair connections, handles are already released.
+                DeleteFileQuiet(recoveredPath);
+                DeleteFileQuiet(recoveredPath + "-wal");
+                DeleteFileQuiet(recoveredPath + "-shm");
 
                 // If original was moved, move it back
                 if (!File.Exists(_dbPath) && File.Exists(corruptBackupPath))
                     File.Move(corruptBackupPath, _dbPath);
 
+                _repairing = false;
                 EnsureConnection();
             }
             catch (Exception reopenEx)
             {
                 LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Failed to restore connection after repair failure: {reopenEx.Message}", reopenEx);
+            }
+            finally
+            {
+                // Ensure _repairing is always cleared so the DB isn't permanently locked out
+                _repairing = false;
             }
 
             return (false, $"Repair failed: {ex.Message}");
@@ -369,6 +417,36 @@ public sealed partial class KaleidoscopeDbService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = pragma;
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Moves a file with retry logic. Windows may briefly hold file handles after
+    /// SQLite connections are closed, even with Pooling=false. Retries up to 5 times
+    /// with increasing delays (100ms, 200ms, 400ms, 800ms, 1600ms) before giving up.
+    /// </summary>
+    private static void MoveFileWithRetry(string source, string destination, int maxRetries = 5)
+    {
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                File.Move(source, destination);
+                return;
+            }
+            catch (IOException) when (attempt < maxRetries)
+            {
+                Thread.Sleep(100 * (1 << attempt)); // 100, 200, 400, 800, 1600ms
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deletes a file if it exists, silently ignoring any errors.
+    /// </summary>
+    private static void DeleteFileQuiet(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch { /* best effort */ }
     }
 
     /// <summary>

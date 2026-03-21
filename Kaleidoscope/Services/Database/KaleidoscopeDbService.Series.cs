@@ -44,7 +44,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] GetOrCreateSeries failed: {ex.Message}", ex);
+                LogDbError("GetOrCreateSeries", ex);
                 return null;
             }
         }
@@ -71,7 +71,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLastValue failed: {ex.Message}");
+                LogDbDebug("GetLastValue", ex);
                 return null;
             }
         }
@@ -102,7 +102,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLastValueForCharacter failed: {ex.Message}");
+                LogDbDebug("GetLastValueForCharacter", ex);
                 return null;
             }
         }
@@ -141,7 +141,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLastPointForCharacter failed: {ex.Message}");
+                LogDbDebug("GetLastPointForCharacter", ex);
                 return null;
             }
         }
@@ -193,7 +193,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetLatestValuesForVariable failed: {ex.Message}");
+                LogDbDebug("GetLatestValuesForVariable", ex);
             }
         }
 
@@ -218,7 +218,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] InsertPoint failed: {ex.Message}", ex);
+                LogDbError("InsertPoint", ex);
                 return false;
             }
         }
@@ -335,7 +335,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] SaveSamplesIfChangedBatched failed: {ex.Message}", ex);
+                LogDbError("SaveSamplesIfChangedBatched", ex);
                 return 0;
             }
         }
@@ -378,7 +378,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPoints failed: {ex.Message}");
+                LogDbDebug("GetPoints", ex);
             }
         }
 
@@ -419,7 +419,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsSince failed: {ex.Message}");
+                LogDbDebug("GetPointsSince", ex);
             }
         }
 
@@ -457,7 +457,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllPoints failed: {ex.Message}");
+                LogDbDebug("GetAllPoints", ex);
             }
         }
 
@@ -535,7 +535,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllPointsBatch failed: {ex.Message}");
+                LogDbDebug("GetAllPointsBatch", ex);
             }
         }
 
@@ -613,7 +613,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsBatchWithSuffix failed: {ex.Message}");
+                LogDbDebug("GetPointsBatchWithSuffix", ex);
             }
         }
 
@@ -697,7 +697,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetPointsInWindow failed: {ex.Message}");
+                LogDbDebug("GetPointsInWindow", ex);
             }
         }
 
@@ -737,7 +737,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetDataTimeRange failed: {ex.Message}");
+                LogDbDebug("GetDataTimeRange", ex);
             }
         }
 

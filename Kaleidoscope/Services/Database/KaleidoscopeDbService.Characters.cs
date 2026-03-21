@@ -31,7 +31,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAvailableCharacters failed: {ex.Message}");
+                LogDbDebug("GetAvailableCharacters", ex);
             }
         }
 
@@ -67,7 +67,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllVariablesWithPrefix failed: {ex.Message}");
+                LogDbDebug("GetAllVariablesWithPrefix", ex);
             }
         }
 
@@ -116,7 +116,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterName failed: {ex.Message}");
+                LogDbDebug("SaveCharacterName", ex);
                 return false;
             }
         }
@@ -150,7 +150,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterDisplayName failed: {ex.Message}");
+                LogDbDebug("SaveCharacterDisplayName", ex);
                 return false;
             }
         }
@@ -184,7 +184,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] SaveCharacterTimeSeriesColor failed: {ex.Message}");
+                LogDbDebug("SaveCharacterTimeSeriesColor", ex);
                 return false;
             }
         }
@@ -217,7 +217,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterName failed: {ex.Message}");
+                LogDbDebug("GetCharacterName", ex);
             }
         }
 
@@ -249,7 +249,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetCharacterTimeSeriesColor failed: {ex.Message}");
+                LogDbDebug("GetCharacterTimeSeriesColor", ex);
             }
         }
 
@@ -286,7 +286,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNames failed: {ex.Message}");
+                LogDbDebug("GetAllCharacterNames", ex);
             }
         }
 
@@ -323,7 +323,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNamesExtended failed: {ex.Message}");
+                LogDbDebug("GetAllCharacterNamesExtended", ex);
             }
         }
 
@@ -361,7 +361,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterDataExtended failed: {ex.Message}");
+                LogDbDebug("GetAllCharacterDataExtended", ex);
             }
         }
 
@@ -398,7 +398,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] GetAllCharacterNamesDict failed: {ex.Message}");
+                LogDbDebug("GetAllCharacterNamesDict", ex);
             }
         }
 
@@ -466,7 +466,7 @@ public sealed partial class KaleidoscopeDbService
             }
             catch (Exception ex)
             {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] DeleteAllCharacterData failed: {ex.Message}", ex);
+                LogDbError("DeleteAllCharacterData", ex);
                 return 0;
             }
         }
