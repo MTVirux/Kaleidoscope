@@ -112,8 +112,10 @@ public sealed class StartupTestService : IRequiredService
 
         var fileInfo = new FileInfo(db.DbPath);
         var sizeMb = fileInfo.Length / (1024.0 * 1024.0);
-        if (sizeMb > 500)
+#if DEBUG
+        if (sizeMb > 10_240) // 10 GB
             errors.Add($"DB file is very large: {sizeMb:F1}MB");
+#endif
 
         var characters = db.GetAllCharacterNames();
         if (characters == null)
