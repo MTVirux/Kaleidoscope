@@ -35,9 +35,14 @@ internal sealed class ContextMenuManager
         var isOverContent = mouse.X >= ctx.ContentMin.X && mouse.X <= ctx.ContentMax.X &&
                             mouse.Y >= ctx.ContentMin.Y && mouse.Y <= ctx.ContentMax.Y;
 
-        if (!isOverContent || !io.MouseClicked[1]) return;
+        // Fire on release (not press) so inner widgets like BeginPopupContextItem —
+        // which also fire on release — get a chance to open their own popup first.
+        // OpenPendingPopup then defers to whichever inner popup grabbed the click.
+        if (!isOverContent || !ImGui.IsMouseReleased(ImGuiMouseButton.Right)) return;
 
-        // Check if click is over an existing tool's header or border
+        // Any right-click inside a tool's bounds queues its context menu. Inner widgets
+        // (e.g. row-level BeginPopupContextItem in tables) can still grab the click for
+        // their own popup — OpenPendingPopup defers to them by checking IsPopupOpen.
         var clickedTool = -1;
         try
         {
@@ -50,20 +55,8 @@ internal sealed class ContextMenuManager
 
                 if (mouse.X >= tmin.X && mouse.X <= tmax.X && mouse.Y >= tmin.Y && mouse.Y <= tmax.Y)
                 {
-                    const float borderThickness = 4f;
-                    var titleHeight = MathF.Min(24f, tt.Size.Y);
-
-                    var isInHeader = tt.HeaderVisible && mouse.Y <= tmin.Y + titleHeight;
-                    var isInBorder = mouse.X <= tmin.X + borderThickness ||
-                                     mouse.X >= tmax.X - borderThickness ||
-                                     mouse.Y <= tmin.Y + borderThickness ||
-                                     mouse.Y >= tmax.Y - borderThickness;
-
-                    if (isInHeader || isInBorder)
-                    {
-                        clickedTool = ti;
-                        break;
-                    }
+                    clickedTool = ti;
+                    break;
                 }
             }
         }
@@ -90,12 +83,20 @@ internal sealed class ContextMenuManager
     /// <summary>Opens any popup that was queued in the previous frame.</summary>
     public void OpenPendingPopup()
     {
-        if (_pendingPopup != null)
+        if (_pendingPopup == null) return;
+
+        // If an inner widget already opened a popup for the same right-click
+        // (e.g. a table row's BeginPopupContextItem), defer to it rather than
+        // overriding it with the tool/content context menu.
+        if (ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId))
         {
-            ImGui.SetNextWindowPos(_pendingPopupPos);
-            ImGui.OpenPopup(_pendingPopup);
             _pendingPopup = null;
+            return;
         }
+
+        ImGui.SetNextWindowPos(_pendingPopupPos);
+        ImGui.OpenPopup(_pendingPopup);
+        _pendingPopup = null;
     }
 
     /// <summary>
