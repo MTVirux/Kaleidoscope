@@ -26,14 +26,18 @@ jobs:
         run: |
           $ver = '${{ github.ref_name }}' -replace 'testing_'
           invoke-expression 'dotnet build --no-restore --configuration Debug --nologo -p:Version=$ver -p:FileVersion=$ver -p:AssemblyVersion=$ver'
-      - name: Write version into json
+      - name: Verify repo.json matches tag
         run: |
-          $ver = '${{ github.ref_name }}' -replace 'testing_'
-          $path = './Kaleidoscope/bin/Debug/Kaleidoscope.json'
-          $json = Get-Content -Raw $path | ConvertFrom-Json
-          $json.AssemblyVersion = $ver
-          $content = $json | ConvertTo-Json
-          set-content -Path $path -Value $content
+          $expected = '${{ github.ref_name }}' -replace 'testing_'
+          $repo = (Get-Content -Raw './repo.json' | ConvertFrom-Json)[0]
+          if ($repo.TestingAssemblyVersion -ne $expected) {
+            Write-Error "repo.json TestingAssemblyVersion ($($repo.TestingAssemblyVersion)) does not match tag ($expected). Did testing.ps1 fail to commit?"
+            exit 1
+          }
+      - name: Generate bin manifest from repo.json
+        run: |
+          $repo = Get-Content -Raw './repo.json' | ConvertFrom-Json
+          $repo[0] | ConvertTo-Json -Depth 10 | Set-Content './Kaleidoscope/bin/Debug/Kaleidoscope.json'
       - name: Archive
         run: Compress-Archive -Path Kaleidoscope/bin/Debug/* -DestinationPath Kaleidoscope.zip
       - name: Upload a Build Artifact
