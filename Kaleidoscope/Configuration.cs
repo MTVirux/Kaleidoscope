@@ -18,6 +18,12 @@ public sealed class Configuration : IPluginConfiguration
     public bool PinConfigWindow { get; set; } = false;
 
     /// <summary>
+    /// SQLite page cache size in megabytes per database connection.
+    /// Range: 1-64. Higher values trade RAM for read performance.
+    /// </summary>
+    public int DatabaseCacheSizeMb { get; set; } = 8;
+
+    /// <summary>
     /// When enabled, the Kaleidoscope window stays visible during cutscenes and GPose.
     /// This overrides Dalamud's "Hide plugin UI during cutscenes" setting for this plugin.
     /// </summary>

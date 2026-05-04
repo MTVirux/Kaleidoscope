@@ -214,7 +214,7 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     public KaleidoscopeDbService(FilenameService filenames, ConfigurationService configService)
     {
         _dbPath = filenames.DatabasePath;
-        var cacheSizeMb = configService.CurrencyTrackerConfig.DatabaseCacheSizeMb;
+        var cacheSizeMb = configService.Config.DatabaseCacheSizeMb;
         cacheSizeMb = Math.Clamp(cacheSizeMb, 1, 64);
         _cacheSizeKb = cacheSizeMb * 1024;
         EnsureConnection();

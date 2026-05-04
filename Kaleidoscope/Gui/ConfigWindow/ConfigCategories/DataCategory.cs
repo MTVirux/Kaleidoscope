@@ -224,9 +224,9 @@ public sealed class DataCategory
         ImGui.Spacing();
         
         // Reference to Storage category for cache/size settings
-        var currencyTrackerConfig = _configService.CurrencyTrackerConfig;
-        ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
+        var cacheMb = _configService.Config.DatabaseCacheSizeMb;
+        ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
             "Database and cache size settings have been moved to the Storage category.");
-        ImGui.TextDisabled($"Current cache: {currencyTrackerConfig.DatabaseCacheSizeMb * 2} MB total (2 connections × {currencyTrackerConfig.DatabaseCacheSizeMb} MB)");
+        ImGui.TextDisabled($"Current cache: {cacheMb * 2} MB total (2 connections × {cacheMb} MB)");
     }
 }

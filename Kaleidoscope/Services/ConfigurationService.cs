@@ -11,10 +11,10 @@ namespace Kaleidoscope.Services;
 /// Configuration is held in memory (cache-first) with write-through persistence.
 /// </summary>
 /// <remarks>
-/// This follows a hybrid approach: the main Configuration uses Dalamud's standard
-/// IPluginConfiguration, while sub-configs use JSON files for modularity.
-/// 
-/// Phase 4 Cache Architecture:
+/// Configuration uses Dalamud's standard IPluginConfiguration as the single source of truth.
+/// Layouts are persisted separately to layouts.json to keep the main config small.
+///
+/// Cache architecture:
 /// - Config is loaded once on startup and kept in memory
 /// - All reads are instant (no disk I/O)
 /// - Writes are debounced to coalesce rapid changes
@@ -23,12 +23,12 @@ namespace Kaleidoscope.Services;
 public sealed class ConfigurationService : IConfigurationService, IRequiredService, IDisposable
 {
     private readonly IDalamudPluginInterface _pluginInterface;
-    
+
     private bool _isDirty;
     private System.Timers.Timer? _saveDebounceTimer;
     private readonly object _saveLock = new();
     private const int SaveDebounceMs = 500; // Coalesce saves within 500ms
-    
+
     private long _saveCount;
     private long _saveSkippedCount;
     private long _configAccessCount;
@@ -36,9 +36,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
     public Configuration Config { get; private set; }
     public ConfigManager ConfigManager { get; private set; }
-    public GeneralConfig GeneralConfig { get; private set; }
-    public CurrencyTrackerConfig CurrencyTrackerConfig { get; private set; }
-    public WindowConfig WindowConfig { get; private set; }
 
     /// <summary>
     /// Event raised when configuration is saved. Subscribe to this to react to config changes.
@@ -68,26 +65,71 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
 
         var saveDir = _pluginInterface.GetPluginConfigDirectory();
         ConfigManager = new ConfigManager(saveDir);
-        GeneralConfig = ConfigManager.LoadOrCreate("general.json", () => new GeneralConfig { ShowOnStart = Config.ShowOnStart });
-        CurrencyTrackerConfig = ConfigManager.LoadOrCreate("currencytracker.json", () => new CurrencyTrackerConfig());
-        WindowConfig = ConfigManager.LoadOrCreate("windows.json", () => new WindowConfig
-        {
-            PinMainWindow = Config.PinMainWindow,
-            PinConfigWindow = Config.PinConfigWindow,
-            MainWindowPos = Config.MainWindowPos,
-            MainWindowSize = Config.MainWindowSize,
-            ConfigWindowPos = Config.ConfigWindowPos,
-            ConfigWindowSize = Config.ConfigWindowSize
-        });
 
         _saveDebounceTimer = new System.Timers.Timer(SaveDebounceMs);
         _saveDebounceTimer.Elapsed += OnDebounceTimerElapsed;
         _saveDebounceTimer.AutoReset = false;
 
         LoadLayouts();
-        SyncFromSubConfigs();
+        MigrateLegacySubConfigs(saveDir);
 
         LogService.Debug(LogCategory.Config, "ConfigurationService initialized with debounced save support");
+    }
+
+    /// <summary>
+    /// One-time migration: previous versions stored a handful of properties in separate JSON
+    /// files (general.json / windows.json / currencytracker.json). Pull those values into the
+    /// main Configuration if they exist, then delete the files.
+    /// </summary>
+    private void MigrateLegacySubConfigs(string saveDir)
+    {
+        var migrated = false;
+        TryMigrate(Path.Combine(saveDir, "general.json"), (Newtonsoft.Json.Linq.JObject obj) =>
+        {
+            if (obj["ShowOnStart"]?.ToObject<bool?>() is { } showOnStart) Config.ShowOnStart = showOnStart;
+            if (obj["ExclusiveFullscreen"]?.ToObject<bool?>() is { } exclusive) Config.ExclusiveFullscreen = exclusive;
+            if (obj["ContentGridCellWidthPercent"]?.ToObject<float?>() is { } gw) Config.ContentGridCellWidthPercent = gw;
+            if (obj["ContentGridCellHeightPercent"]?.ToObject<float?>() is { } gh) Config.ContentGridCellHeightPercent = gh;
+            if (obj["EditMode"]?.ToObject<bool?>() is { } edit) Config.EditMode = edit;
+            migrated = true;
+        });
+        TryMigrate(Path.Combine(saveDir, "windows.json"), (Newtonsoft.Json.Linq.JObject obj) =>
+        {
+            if (obj["PinMainWindow"]?.ToObject<bool?>() is { } pinMain) Config.PinMainWindow = pinMain;
+            if (obj["PinConfigWindow"]?.ToObject<bool?>() is { } pinCfg) Config.PinConfigWindow = pinCfg;
+            if (obj["MainWindowPos"]?.ToObject<Vector2?>() is { } mp) Config.MainWindowPos = mp;
+            if (obj["MainWindowSize"]?.ToObject<Vector2?>() is { } ms) Config.MainWindowSize = ms;
+            if (obj["ConfigWindowPos"]?.ToObject<Vector2?>() is { } cp) Config.ConfigWindowPos = cp;
+            if (obj["ConfigWindowSize"]?.ToObject<Vector2?>() is { } cs) Config.ConfigWindowSize = cs;
+            migrated = true;
+        });
+        TryMigrate(Path.Combine(saveDir, "currencytracker.json"), (Newtonsoft.Json.Linq.JObject obj) =>
+        {
+            if (obj["DatabaseCacheSizeMb"]?.ToObject<int?>() is { } cacheMb) Config.DatabaseCacheSizeMb = cacheMb;
+            migrated = true;
+        });
+
+        if (migrated)
+        {
+            _pluginInterface.SavePluginConfig(Config);
+            LogService.Info(LogCategory.Config, "Migrated legacy sub-config files into main configuration");
+        }
+    }
+
+    private static void TryMigrate(string filePath, Action<Newtonsoft.Json.Linq.JObject> apply)
+    {
+        if (!File.Exists(filePath)) return;
+        try
+        {
+            var text = File.ReadAllText(filePath);
+            var obj = Newtonsoft.Json.Linq.JObject.Parse(text);
+            apply(obj);
+            File.Delete(filePath);
+        }
+        catch (Exception ex)
+        {
+            LogService.Warning(LogCategory.Config, $"Failed to migrate '{Path.GetFileName(filePath)}': {ex.Message}");
+        }
     }
 
     private void NormalizeLayouts()
@@ -228,21 +270,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         }
     }
 
-    private void SyncFromSubConfigs()
-    {
-        Config.ShowOnStart = GeneralConfig.ShowOnStart;
-        Config.ExclusiveFullscreen = GeneralConfig.ExclusiveFullscreen;
-        Config.ContentGridCellWidthPercent = GeneralConfig.ContentGridCellWidthPercent;
-        Config.ContentGridCellHeightPercent = GeneralConfig.ContentGridCellHeightPercent;
-        Config.EditMode = GeneralConfig.EditMode;
-        Config.PinMainWindow = WindowConfig.PinMainWindow;
-        Config.PinConfigWindow = WindowConfig.PinConfigWindow;
-        Config.MainWindowPos = WindowConfig.MainWindowPos;
-        Config.MainWindowSize = WindowConfig.MainWindowSize;
-        Config.ConfigWindowPos = WindowConfig.ConfigWindowPos;
-        Config.ConfigWindowSize = WindowConfig.ConfigWindowSize;
-    }
-
     /// <summary>
     /// Marks the configuration as dirty, scheduling a debounced save.
     /// Use this instead of calling Save() directly for non-critical changes.
@@ -297,7 +324,7 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         {
             _pluginInterface.SavePluginConfig(Config);
             LogService.Info(LogCategory.Config, $"Saved plugin config; layouts={Config.Layouts?.Count ?? 0} activeWindowed='{Config.ActiveWindowedLayoutName}' activeFullscreen='{Config.ActiveFullscreenLayoutName}'");
-            
+
             Interlocked.Increment(ref _saveCount);
             _lastSaveTime = DateTime.UtcNow;
             _isDirty = false;
@@ -306,8 +333,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         {
             LogService.Error(LogCategory.Config, $"Error saving plugin config: {ex}");
         }
-
-        SaveSubConfigs();
 
         try
         {
@@ -353,43 +378,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
         catch (Exception ex)
         {
             LogService.Error(LogCategory.Config, $"Error invoking OnActiveLayoutChanged: {ex}");
-        }
-    }
-
-    private void SaveSubConfigs()
-    {
-        try
-        {
-            var g = new GeneralConfig
-            {
-                ShowOnStart = Config.ShowOnStart,
-                ExclusiveFullscreen = Config.ExclusiveFullscreen,
-                ContentGridCellWidthPercent = Config.ContentGridCellWidthPercent,
-                ContentGridCellHeightPercent = Config.ContentGridCellHeightPercent,
-                EditMode = Config.EditMode
-            };
-            ConfigManager.Save("general.json", g);
-
-            var s = new CurrencyTrackerConfig
-            {
-                DatabaseCacheSizeMb = CurrencyTrackerConfig.DatabaseCacheSizeMb
-            };
-            ConfigManager.Save("currencytracker.json", s);
-
-            var w = new WindowConfig
-            {
-                PinMainWindow = Config.PinMainWindow,
-                PinConfigWindow = Config.PinConfigWindow,
-                MainWindowPos = Config.MainWindowPos,
-                MainWindowSize = Config.MainWindowSize,
-                ConfigWindowPos = Config.ConfigWindowPos,
-                ConfigWindowSize = Config.ConfigWindowSize
-            };
-            ConfigManager.Save("windows.json", w);
-        }
-        catch (Exception ex)
-        {
-            LogService.Error(LogCategory.Config, $"Error saving sub-configs: {ex.Message}");
         }
     }
 
@@ -444,7 +432,6 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
                 try
                 {
                     _pluginInterface.SavePluginConfig(Config);
-                    SaveSubConfigs();
                     _isDirty = false;
                     LogService.Info(LogCategory.Config, "Flushed pending config changes on dispose");
                 }

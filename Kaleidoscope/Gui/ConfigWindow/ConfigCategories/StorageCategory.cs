@@ -245,13 +245,12 @@ public sealed class StorageCategory : IDisposable
 
         ImGui.Indent();
 
-        var currencyTrackerConfig = _configService.CurrencyTrackerConfig;
-        var cacheSizeMb = currencyTrackerConfig.DatabaseCacheSizeMb;
+        var cacheSizeMb = _configService.Config.DatabaseCacheSizeMb;
 
         ImGui.SetNextItemWidth(150);
-        if (ImGui.SliderInt("Page Cache Size (MB)##DbCache", ref cacheSizeMb, 1, 512))
+        if (ImGui.SliderInt("Page Cache Size (MB)##DbCache", ref cacheSizeMb, 1, 64))
         {
-            currencyTrackerConfig.DatabaseCacheSizeMb = cacheSizeMb;
+            _configService.Config.DatabaseCacheSizeMb = cacheSizeMb;
             _configService.Save();
         }
         DrawHelpMarker(
