@@ -22,6 +22,7 @@ public static class LogService
 {
     private static IPluginLog? _log;
     private static Configuration? _config;
+    private static FilenameService? _filenames;
     
     // Main file writer (when not splitting)
     private static StreamWriter? _fileWriter;
@@ -53,9 +54,10 @@ public static class LogService
     /// <summary>
     /// Initializes the static log service. Should be called once during plugin startup.
     /// </summary>
-    public static void Initialize(IPluginLog log)
+    public static void Initialize(IPluginLog log, FilenameService filenames)
     {
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        _filenames = filenames ?? throw new ArgumentNullException(nameof(filenames));
     }
 
     /// <summary>
@@ -115,7 +117,7 @@ public static class LogService
                 // Close any split writers and use main writer only
                 CloseAllSplitWriters();
                 
-                var filePath = FilenameService.Instance?.LogFilePath;
+                var filePath = _filenames?.LogFilePath;
                 if (filePath != null)
                 {
                     if (_fileWriter == null)
@@ -302,7 +304,7 @@ public static class LogService
         if (_categoryWriters.TryGetValue(category, out var existing))
             return existing;
 
-        var filePath = FilenameService.Instance?.GetCategoryLogFilePath(category);
+        var filePath = _filenames?.GetCategoryLogFilePath(category);
         if (filePath == null) return null;
 
         var writer = new CategoryLogWriter(category, filePath, _config?.FileLoggingMaxSizeMB ?? 10);
@@ -324,11 +326,11 @@ public static class LogService
         string? filePath;
         if (category.HasValue)
         {
-            filePath = FilenameService.Instance?.GetCharacterCategoryLogFilePath(characterName, category.Value);
+            filePath = _filenames?.GetCharacterCategoryLogFilePath(characterName, category.Value);
         }
         else
         {
-            filePath = FilenameService.Instance?.GetCharacterLogFilePath(characterName);
+            filePath = _filenames?.GetCharacterLogFilePath(characterName);
         }
         
         if (filePath == null) return null;

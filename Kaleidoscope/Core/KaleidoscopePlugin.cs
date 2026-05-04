@@ -30,10 +30,10 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
 
             // Lightweight init — these are fast (Dalamud singletons / simple config reads).
             var dalamudLog = _services.GetService<IPluginLog>();
-            LogService.Initialize(dalamudLog);
+            var filenameService = _services.GetService<FilenameService>();
+            LogService.Initialize(dalamudLog, filenameService);
 
             var configService = _services.GetService<ConfigurationService>();
-            var filenameService = _services.GetService<FilenameService>();
             filenameService.SetConfiguration(configService.Config);
             LogService.SetConfiguration(configService.Config);
 

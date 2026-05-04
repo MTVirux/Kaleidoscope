@@ -6,22 +6,17 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Provides commonly used file paths for the plugin.
 /// </summary>
-public sealed class FilenameService : IService, IDisposable
+public sealed class FilenameService : IService
 {
-    /// <summary>
-    /// Static accessor for components without DI access.
-    /// </summary>
-    public static FilenameService? Instance { get; private set; }
-
     public string ConfigDirectory { get; }
     public string ConfigFile { get; }
     public string DatabasePath { get; }
-    
+
     /// <summary>
     /// Gets the log file path, using custom directory if configured.
     /// </summary>
     public string LogFilePath => GetLogFilePath();
-    
+
     /// <summary>
     /// Gets the default log file path (in plugin config directory).
     /// </summary>
@@ -40,7 +35,6 @@ public sealed class FilenameService : IService, IDisposable
         ConfigFile = pi.ConfigFile.FullName;
         DatabasePath = Path.Combine(ConfigDirectory, "kaleidoscope.sqlite");
         DefaultLogFilePath = Path.Combine(ConfigDirectory, "kaleidoscope.log");
-        Instance = this;
     }
 
     /// <summary>
@@ -144,8 +138,4 @@ public sealed class FilenameService : IService, IDisposable
         return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
 
-    public void Dispose()
-    {
-        Instance = null;
-    }
 }
