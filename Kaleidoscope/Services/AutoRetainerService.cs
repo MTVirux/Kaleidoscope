@@ -114,26 +114,17 @@ public sealed class AutoRetainerService : IDisposable, IService
                 var cids = _getRegisteredCIDs.InvokeFunc();
                 IsAvailable = true;
                 StopRetryTimer();
-#if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC connected, found {cids?.Count ?? 0} registered CIDs");
-#endif
             }
             catch (Exception)
             {
                 IsAvailable = false;
                 StartRetryTimer();
-#if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer not available: {ex.Message}");
-#endif
             }
             
             _initialized = true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to initialize AutoRetainer IPC: {ex.Message}");
-#endif
             IsAvailable = false;
             StartRetryTimer();
         }
@@ -144,9 +135,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         if (_retryTimer != null) return;
         
         _retryTimer = new Timer(_ => TryReconnect(), null, RetryIntervalMs, RetryIntervalMs);
-#if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC retry timer started (interval: {RetryIntervalMs}ms)");
-#endif
     }
 
     private void StopRetryTimer()
@@ -155,9 +143,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         
         _retryTimer.Dispose();
         _retryTimer = null;
-#if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer IPC retry timer stopped");
-#endif
     }
 
     private void TryReconnect()
@@ -176,9 +161,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             var cids = _getRegisteredCIDs.InvokeFunc();
             IsAvailable = true;
             StopRetryTimer();
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer IPC reconnected, found {cids?.Count ?? 0} registered CIDs");
-#endif
             
             // Re-initialize all subscribers now that AutoRetainer is available
             _initialized = false;
@@ -197,16 +179,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             var cids = _getRegisteredCIDs.InvokeFunc();
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer returned {cids?.Count ?? 0} CIDs");
-#endif
             return cids;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to get registered CIDs from AutoRetainer: {ex.Message}");
-#endif
             IsAvailable = false;
             return null;
         }
@@ -232,15 +208,9 @@ public sealed class AutoRetainerService : IDisposable, IService
             var data = _getOfflineCharacterData.InvokeFunc(cid);
             if (data == null)
             {
-#if AUTORETAINER_VERBOSE_LOGGING
-                LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer returned null data for CID {cid}");
-#endif
                 return null;
             }
             
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer data type for CID {cid}: {data.GetType().FullName}");
-#endif
             
             string name = "";
             string world = "";
@@ -345,18 +315,12 @@ public sealed class AutoRetainerService : IDisposable, IService
                     isSubmersible: false);
             }
             
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character: {name}@{world}, Gil: {gil}, FCID: {fcid}, Retainers: {retainers.Count}, Vessels: {vessels.Count}");
-#endif
             
             // Note: FC gil is not available via IPC - FCData is stored separately in AutoRetainer
             return new AutoRetainerCharacterData(name, world, gil, cid, enabled, workshopEnabled, retainers, vessels, fcid);
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to get character data from AutoRetainer for CID {cid}: {ex.Message}\n{ex.StackTrace}");
-#endif
             return null;
         }
     }
@@ -375,15 +339,9 @@ public sealed class AutoRetainerService : IDisposable, IService
         var cids = GetRegisteredCharacterIds();
         if (cids == null || cids.Count == 0)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer returned no CIDs");
-#endif
             return result;
         }
         
-#if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose(LogCategory.AutoRetainer, $"Processing {cids.Count} CIDs from AutoRetainer");
-#endif
         
         foreach (var cid in cids)
         {
@@ -394,9 +352,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             }
         }
         
-#if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose(LogCategory.AutoRetainer, $"Returning {result.Count} characters from AutoRetainer");
-#endif
         return result;
     }
 
@@ -406,72 +361,32 @@ public sealed class AutoRetainerService : IDisposable, IService
         Initialize();
     }
 
-    private T? SafeInvoke<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : class
+    private T? SafeInvoke<T>(ICallGateSubscriber<T>? subscriber) where T : class
     {
         if (!IsAvailable || subscriber == null) return null;
-        
-        try
-        {
-            return subscriber.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
+        try { return subscriber.InvokeFunc(); }
+        catch (Exception) { return null; }
     }
 
-    private T? SafeInvokeValue<T>(ICallGateSubscriber<T>? subscriber, string methodName) where T : struct
+    private T? SafeInvokeValue<T>(ICallGateSubscriber<T>? subscriber) where T : struct
     {
         if (!IsAvailable || subscriber == null) return null;
-        
-        try
-        {
-            return subscriber.InvokeFunc();
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
+        try { return subscriber.InvokeFunc(); }
+        catch (Exception) { return null; }
     }
 
-    private TResult? SafeInvokeValue<TArg, TResult>(ICallGateSubscriber<TArg, TResult>? subscriber, TArg arg, string methodName) where TResult : struct
+    private TResult? SafeInvokeValue<TArg, TResult>(ICallGateSubscriber<TArg, TResult>? subscriber, TArg arg) where TResult : struct
     {
         if (!IsAvailable || subscriber == null) return null;
-        
-        try
-        {
-            return subscriber.InvokeFunc(arg);
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
+        try { return subscriber.InvokeFunc(arg); }
+        catch (Exception) { return null; }
     }
 
-    private TResult? SafeInvokeNullable<TArg, TResult>(ICallGateSubscriber<TArg, TResult?>? subscriber, TArg arg, string methodName) where TResult : struct
+    private TResult? SafeInvokeNullable<TArg, TResult>(ICallGateSubscriber<TArg, TResult?>? subscriber, TArg arg) where TResult : struct
     {
         if (!IsAvailable || subscriber == null) return null;
-        
-        try
-        {
-            return subscriber.InvokeFunc(arg);
-        }
-        catch (Exception)
-        {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to invoke {methodName} from AutoRetainer: {ex.Message}");
-#endif
-            return null;
-        }
+        try { return subscriber.InvokeFunc(arg); }
+        catch (Exception) { return null; }
     }
 
     private static void ParseVesselsFromJArray(JArray? vesselArray, List<AutoRetainerVesselData> vessels, bool isSubmersible)
@@ -508,18 +423,18 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    public bool? IsBusy() => SafeInvokeValue(_isBusy, nameof(IsBusy));
-    public bool? GetSuppressed() => SafeInvokeValue(_getSuppressed, nameof(GetSuppressed));
-    public bool? GetMultiModeEnabled() => SafeInvokeValue(_getMultiModeEnabled, nameof(GetMultiModeEnabled));
-    public bool? AreAnyRetainersAvailable() => SafeInvokeValue(_areAnyRetainersAvailable, nameof(AreAnyRetainersAvailable));
-    public int? GetInventoryFreeSlotCount() => SafeInvokeValue(_getInventoryFreeSlotCount, nameof(GetInventoryFreeSlotCount));
-    public bool? CanAutoLogin() => SafeInvokeValue(_canAutoLogin, nameof(CanAutoLogin));
+    public bool? IsBusy() => SafeInvokeValue(_isBusy);
+    public bool? GetSuppressed() => SafeInvokeValue(_getSuppressed);
+    public bool? GetMultiModeEnabled() => SafeInvokeValue(_getMultiModeEnabled);
+    public bool? AreAnyRetainersAvailable() => SafeInvokeValue(_areAnyRetainersAvailable);
+    public int? GetInventoryFreeSlotCount() => SafeInvokeValue(_getInventoryFreeSlotCount);
+    public bool? CanAutoLogin() => SafeInvokeValue(_canAutoLogin);
 
-    public long? GetClosestRetainerVentureSecondsRemaining(ulong cid) 
-        => SafeInvokeNullable(_getClosestRetainerVentureSecondsRemaining, cid, nameof(GetClosestRetainerVentureSecondsRemaining));
+    public long? GetClosestRetainerVentureSecondsRemaining(ulong cid)
+        => SafeInvokeNullable(_getClosestRetainerVentureSecondsRemaining, cid);
 
-    public Dictionary<ulong, HashSet<string>>? GetEnabledRetainers() 
-        => SafeInvoke(_getEnabledRetainers, nameof(GetEnabledRetainers));
+    public Dictionary<ulong, HashSet<string>>? GetEnabledRetainers()
+        => SafeInvoke(_getEnabledRetainers);
 
     public HashSet<string> GetEnabledRetainersForCharacter(ulong cid)
     {
@@ -544,16 +459,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             _setSuppressed.InvokeAction(suppressed);
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer suppressed set to: {suppressed}");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set suppressed on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -565,16 +474,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             _setMultiModeEnabled.InvokeAction(enabled);
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer Multi-Mode set to: {enabled}");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set Multi-Mode on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -586,16 +489,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             _abortAllTasks.InvokeAction();
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer tasks aborted");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to abort tasks on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -610,16 +507,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             _disableAllFunctions.InvokeAction();
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer all functions disabled");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to disable all functions on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -631,16 +522,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             _enableMultiMode.InvokeAction();
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, "AutoRetainer Multi-Mode enabled");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to enable Multi-Mode on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -657,16 +542,10 @@ public sealed class AutoRetainerService : IDisposable, IService
         try
         {
             var result = _relog.InvokeFunc(characterNameWithWorld);
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer relog to {characterNameWithWorld}: {result}");
-#endif
             return result;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to relog via AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -700,16 +579,10 @@ public sealed class AutoRetainerService : IDisposable, IService
                 }
             }
             
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character {cid} retainers enabled set to: {enabled}");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set character retainers enabled on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -743,16 +616,10 @@ public sealed class AutoRetainerService : IDisposable, IService
                 }
             }
             
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"AutoRetainer character {cid} deployables enabled set to: {enabled}");
-#endif
             return true;
         }
         catch (Exception)
         {
-#if AUTORETAINER_VERBOSE_LOGGING
-            LogService.Verbose(LogCategory.AutoRetainer, $"Failed to set character deployables enabled on AutoRetainer: {ex.Message}");
-#endif
             return false;
         }
     }
@@ -772,9 +639,6 @@ public sealed class AutoRetainerService : IDisposable, IService
         // a Dictionary<ulong, HashSet<string>> mapping CID to enabled retainer names.
         // This is separate from OfflineCharacterData and there's no IPC exposed to modify it.
         // The WriteOfflineCharacterData IPC only writes character data, not the config.
-#if AUTORETAINER_VERBOSE_LOGGING
-        LogService.Verbose(LogCategory.AutoRetainer, $"Cannot set retainer '{retainerName}' enabled state via IPC - AutoRetainer does not expose this functionality. Use AutoRetainer UI directly.");
-#endif
         return false;
     }
 
