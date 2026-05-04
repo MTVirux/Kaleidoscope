@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Diagnostics;
 using System.Reflection;
 using Dalamud.Interface.ImGuiNotification;
@@ -31,12 +30,13 @@ internal sealed class DeferredStartupService : IDisposable
     private readonly IActiveNotification _notification;
     private readonly int _totalServices;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
-    private readonly IDictionary _timersDictionary;
+    private readonly CancellationTokenSource _cts = new();
 
     private string _currentMessage;
     private double _nextMessageTime;
 
     // Shared state between background thread and framework thread.
+    private int _resolvedCount;
     private volatile bool _completed;
     private volatile bool _failed;
     private volatile string? _errorMessage;
@@ -46,11 +46,6 @@ internal sealed class DeferredStartupService : IDisposable
     {
         _framework = services.GetService<IFramework>();
         _notificationManager = services.GetService<INotificationManager>();
-
-        // Get the internal timer dictionary from StartTimeTracker via reflection for progress.
-        var trackerType = typeof(OtterGui.Classes.StartTimeTracker);
-        var timersField = trackerType.GetField("_timers", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        _timersDictionary = (IDictionary)timersField.GetValue(services.Timers)!;
 
         // Collect IService types once for both the progress denominator and the resolve loop.
         var serviceTypes = pluginAssembly.ExportedTypes
@@ -74,23 +69,28 @@ internal sealed class DeferredStartupService : IDisposable
         });
 
         var provider = services.Provider!;
+        var token = _cts.Token;
 
         Task.Run(() =>
         {
             try
             {
                 foreach (var type in serviceTypes)
+                {
+                    if (token.IsCancellationRequested) return;
                     provider.GetRequiredService(type);
+                    Interlocked.Increment(ref _resolvedCount);
+                }
 
                 _completed = true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!token.IsCancellationRequested)
             {
                 _errorMessage = ex.InnerException?.Message ?? ex.Message;
                 _failed = true;
                 KaleidoscopePlugin.Log.Error($"Failed during deferred startup: {ex}");
             }
-        });
+        }, token);
 
         _framework.Update += OnFrameworkUpdate;
     }
@@ -102,6 +102,8 @@ internal sealed class DeferredStartupService : IDisposable
 
         _disposed = true;
         _framework.Update -= OnFrameworkUpdate;
+        _cts.Cancel();
+        _cts.Dispose();
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -148,8 +150,8 @@ internal sealed class DeferredStartupService : IDisposable
             _nextMessageTime = seconds + 1;
         }
 
-        var constructed = _timersDictionary.Count;
+        var resolved = Volatile.Read(ref _resolvedCount);
         _notification.Content  = $"{_currentMessage}... ({seconds:F0}s)";
-        _notification.Progress = Math.Min((float)constructed / _totalServices, 0.99f);
+        _notification.Progress = Math.Min((float)resolved / _totalServices, 0.99f);
     }
 }
