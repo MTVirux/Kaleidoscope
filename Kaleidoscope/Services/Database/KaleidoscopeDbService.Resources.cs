@@ -1,5 +1,3 @@
-using Microsoft.Data.Sqlite;
-
 namespace Kaleidoscope.Services.Database;
 
 public sealed partial class KaleidoscopeDbService
@@ -9,13 +7,6 @@ public sealed partial class KaleidoscopeDbService
     /// Idempotent — safe to run repeatedly via CREATE IF NOT EXISTS.
     /// </summary>
     private const string ResourcesSchemaSql = @"
-CREATE TABLE IF NOT EXISTS meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1');
-
 CREATE TABLE IF NOT EXISTS resources (
     owner_id        INTEGER NOT NULL,
     owner_kind      INTEGER NOT NULL,
@@ -66,38 +57,4 @@ CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, 
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// Read the current schema version from the meta table. Returns 1 if meta is missing
-    /// or empty (treats unversioned databases as version 1).
-    /// </summary>
-    public int GetSchemaVersion()
-    {
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 1;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT value FROM meta WHERE key = 'schema_version'";
-                var result = cmd.ExecuteScalar();
-                return result == null || result == DBNull.Value ? 1 : int.Parse((string)result);
-            }
-            catch
-            {
-                // meta table doesn't exist yet — pre-migration state
-                return 1;
-            }
-        }
-    }
-
-    private void SetSchemaVersion(int version, SqliteTransaction? tx = null)
-    {
-        if (_connection == null) return;
-        using var cmd = _connection.CreateCommand();
-        if (tx != null) cmd.Transaction = tx;
-        cmd.CommandText = "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', $v)";
-        cmd.Parameters.AddWithValue("$v", version.ToString());
-        cmd.ExecuteNonQuery();
-    }
 }

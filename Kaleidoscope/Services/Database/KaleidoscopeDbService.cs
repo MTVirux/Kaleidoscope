@@ -528,7 +528,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <summary>
     /// Current schema version. Increment this whenever a new migration is added.
     /// </summary>
-    private const int CurrentSchemaVersion = 5; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color
+    private const int CurrentSchemaVersion = 6; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources
 
     /// <summary>
     /// Runs database migrations for schema updates.
@@ -567,6 +567,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             if (currentVersion < 3) MigrateAddInventoryValueItemsTable();
             if (currentVersion < 4) MigrateAddDisplayNameColumn();
             if (currentVersion < 5) MigrateAddTimeSeriesColorColumn();
+            if (currentVersion < 6) MigrateAddUnifiedResources();
 
             using (var updateCmd = _connection.CreateCommand())
             {
@@ -708,6 +709,22 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             alterCmd.ExecuteNonQuery();
             LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added time_series_color column to character_names");
         }
+    }
+
+    /// <summary>
+    /// Migration v6: backfill from legacy inventory_cache/inventory_items and series/points
+    /// into the new resources/resource_history tables. The DDL itself runs unconditionally
+    /// via ApplyResourcesSchema() before this method (CREATE IF NOT EXISTS) — this method
+    /// only handles the data backfill. Tasks 13-15 add the actual backfill SQL; this stub
+    /// is a no-op so the version bump can happen while migration content is built up.
+    /// </summary>
+    private void MigrateAddUnifiedResources()
+    {
+        // Tasks 13-15 will add backfill calls here:
+        //   BackfillResourcesFromInventoryItems();
+        //   BackfillGilRowsFromInventoryCache();
+        //   BackfillResourceHistoryFromSeries();
+        LogService.Debug(LogCategory.Database, "[Migration v6] Unified resources DDL applied; backfill is no-op until Tasks 13-15 land");
     }
 
 
