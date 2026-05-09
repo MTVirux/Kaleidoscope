@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Kaleidoscope.Models.Resources;
 
 namespace Kaleidoscope.Services.Resources;
@@ -74,4 +75,112 @@ public static class ResourceCatalog
         };
         return (int)container != -1;
     }
+
+    public readonly record struct LegacyVariableMapping(
+        OwnerKind OwnerKind,
+        ulong     OwnerId,
+        Container Container,
+        uint      ItemId);
+
+    /// <summary>
+    /// Parse a legacy series.variable name into a structured mapping. Used by the schema 1→2
+    /// migration to convert magic-string time-series rows into resource_history rows.
+    /// Returns null if the name is unrecognized — caller is expected to log and skip.
+    /// </summary>
+    public static LegacyVariableMapping? ParseLegacyVariableName(string variable, ulong characterId)
+    {
+        if (string.IsNullOrEmpty(variable))
+            return null;
+
+        // Pattern: "ItemRetainerX_{rid}_{itemId}" — must be checked BEFORE "ItemRetainer_" prefix
+        if (variable.StartsWith("ItemRetainerX_", StringComparison.Ordinal))
+        {
+            var rest = variable.AsSpan(14);
+            var underscore = rest.IndexOf('_');
+            if (underscore <= 0 || underscore == rest.Length - 1) return null;
+            if (!ulong.TryParse(rest[..underscore], out var rid)) return null;
+            if (!uint.TryParse(rest[(underscore + 1)..], out var itemId)) return null;
+            return new LegacyVariableMapping(OwnerKind.Retainer, rid, Container.RetainerPage1, itemId);
+        }
+
+        // Pattern: "ItemRetainer_{itemId}"
+        if (variable.StartsWith("ItemRetainer_", StringComparison.Ordinal))
+        {
+            var rest = variable.AsSpan(13);
+            if (rest.IsEmpty) return null;
+            if (!uint.TryParse(rest, out var itemId)) return null;
+            return new LegacyVariableMapping(OwnerKind.Player, characterId, Container.RetainerAggregate, itemId);
+        }
+
+        // Pattern: "Item_{itemId}"
+        if (variable.StartsWith("Item_", StringComparison.Ordinal))
+        {
+            var rest = variable.AsSpan(5);
+            if (rest.IsEmpty) return null;
+            if (!uint.TryParse(rest, out var itemId)) return null;
+            return new LegacyVariableMapping(OwnerKind.Player, characterId, Container.PlayerAggregate, itemId);
+        }
+
+        // TrackedDataType enum-name lookup
+        if (TrackedDataLegacyMap.TryGetValue(variable, out var mapping))
+        {
+            return new LegacyVariableMapping(OwnerKind.Player, characterId, mapping.Container, mapping.ItemId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Mapping table for TrackedDataType enum names → (Container, ItemId). Mirrors registrations
+    /// in TrackedDataRegistry.RegisterAllTypes. ItemIds match the values used there; Container
+    /// is Currency for real-item currencies, SpecialPlayer for game-memory-only counters.
+    /// </summary>
+    private static readonly Dictionary<string, (Container Container, uint ItemId)> TrackedDataLegacyMap = new(StringComparer.Ordinal)
+    {
+        // Game-memory-only counters → SpecialPlayer with synthetic IDs
+        ["Gil"]                = (Container.SpecialPlayer,      GilItemId),
+        ["MGP"]                = (Container.SpecialPlayer,      MGPItemId),
+        ["WolfMarks"]          = (Container.SpecialPlayer,      WolfMarksItemId),
+        ["AlliedSeals"]        = (Container.SpecialPlayer,      AlliedSealsItemId),
+        ["FreeCompanyCredits"] = (Container.SpecialFreeCompany, FCCreditsItemId),
+
+        // Real Currency-container items — itemIds from TrackedDataRegistry registrations
+        ["TomestonePoetics"]    = (Container.Currency, 28),
+        ["TomestoneCapped"]     = (Container.Currency, 47),
+        ["TomestoneUncapped"]   = (Container.Currency, 46),
+        ["WhiteCraftersScrip"]  = (Container.Currency, 25199),
+        ["PurpleCraftersScrip"] = (Container.Currency, 33913),
+        ["OrangeCraftersScrip"] = (Container.Currency, 41784),
+        ["WhiteGatherersScrip"] = (Container.Currency, 25200),
+        ["PurpleGatherersScrip"]= (Container.Currency, 33914),
+        ["OrangeGatherersScrip"]= (Container.Currency, 41785),
+        ["SkybuildersScrip"]    = (Container.Currency, 28063),
+        ["MaelstromSeals"]      = (Container.Currency, 20),
+        ["TwinAdderSeals"]      = (Container.Currency, 21),
+        ["ImmortalFlamesSeals"] = (Container.Currency, 22),
+        ["TrophyCrystals"]      = (Container.Currency, 36656),
+        ["CenturioSeals"]       = (Container.Currency, 10307),
+        ["SackOfNuts"]          = (Container.Currency, 26533),
+        ["BicolorGemstone"]     = (Container.Currency, 26807),
+        ["Ventures"]            = (Container.Currency, 21072),
+
+        // FreeCompanyGil → its own container, gil item id
+        ["FreeCompanyGil"]      = (Container.FreeCompanyGil, GilItemId),
+
+        // Crystals — aggregate. Map to PlayerAggregate with the lowest-tier item id of each element.
+        ["CrystalsTotal"]      = (Container.PlayerAggregate, 2),
+        ["FireCrystals"]       = (Container.PlayerAggregate, 2),
+        ["IceCrystals"]        = (Container.PlayerAggregate, 3),
+        ["WindCrystals"]       = (Container.PlayerAggregate, 4),
+        ["EarthCrystals"]      = (Container.PlayerAggregate, 5),
+        ["LightningCrystals"]  = (Container.PlayerAggregate, 6),
+        ["WaterCrystals"]      = (Container.PlayerAggregate, 7),
+
+        // RetainerGil → SpecialPlayer with gil id (retainer attribution lost — acceptable per spec)
+        ["RetainerGil"]        = (Container.SpecialPlayer, GilItemId),
+
+        // Synthetic per-character metrics with reserved synthetic IDs
+        ["InventoryFreeSlots"]  = (Container.SpecialPlayer, 1_000_006),
+        ["InventoryValueItems"] = (Container.SpecialPlayer, 1_000_007),
+    };
 }

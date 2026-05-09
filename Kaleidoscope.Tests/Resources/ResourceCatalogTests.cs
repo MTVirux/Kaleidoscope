@@ -54,4 +54,68 @@ public class ResourceCatalogTests
     {
         Assert.False(ResourceCatalog.TryMapContainer(99999, out _));
     }
+
+    [Fact]
+    public void ParseLegacyVariableName_ItemPlayer_MapsToPlayerAggregate()
+    {
+        var r = ResourceCatalog.ParseLegacyVariableName("Item_5057", characterId: 0xABCD);
+        Assert.NotNull(r);
+        Assert.Equal(OwnerKind.Player, r!.Value.OwnerKind);
+        Assert.Equal(0xABCDul, r.Value.OwnerId);
+        Assert.Equal(Container.PlayerAggregate, r.Value.Container);
+        Assert.Equal(5057u, r.Value.ItemId);
+    }
+
+    [Fact]
+    public void ParseLegacyVariableName_ItemRetainerAggregate_MapsToRetainerAggregateOnPlayer()
+    {
+        var r = ResourceCatalog.ParseLegacyVariableName("ItemRetainer_5057", characterId: 0xABCD);
+        Assert.NotNull(r);
+        Assert.Equal(OwnerKind.Player, r!.Value.OwnerKind);
+        Assert.Equal(0xABCDul, r.Value.OwnerId);
+        Assert.Equal(Container.RetainerAggregate, r.Value.Container);
+        Assert.Equal(5057u, r.Value.ItemId);
+    }
+
+    [Fact]
+    public void ParseLegacyVariableName_PerRetainerSeries_ReassignsOwnerToRetainer()
+    {
+        var r = ResourceCatalog.ParseLegacyVariableName("ItemRetainerX_99887766_5057", characterId: 0xABCD);
+        Assert.NotNull(r);
+        Assert.Equal(OwnerKind.Retainer, r!.Value.OwnerKind);
+        Assert.Equal(99887766ul, r.Value.OwnerId);
+        Assert.Equal(Container.RetainerPage1, r.Value.Container);
+        Assert.Equal(5057u, r.Value.ItemId);
+    }
+
+    [Fact]
+    public void ParseLegacyVariableName_Gil_MapsToSpecialPlayerWithGilSyntheticId()
+    {
+        var r = ResourceCatalog.ParseLegacyVariableName("Gil", characterId: 0xABCD);
+        Assert.NotNull(r);
+        Assert.Equal(OwnerKind.Player, r!.Value.OwnerKind);
+        Assert.Equal(Container.SpecialPlayer, r.Value.Container);
+        Assert.Equal(ResourceCatalog.GilItemId, r.Value.ItemId);
+    }
+
+    [Fact]
+    public void ParseLegacyVariableName_TomestonePoetics_MapsToCurrencyContainer()
+    {
+        var r = ResourceCatalog.ParseLegacyVariableName("TomestonePoetics", characterId: 0xABCD);
+        Assert.NotNull(r);
+        Assert.Equal(OwnerKind.Player, r!.Value.OwnerKind);
+        Assert.Equal(Container.Currency, r.Value.Container);
+        Assert.Equal(28u, r.Value.ItemId);
+    }
+
+    [Fact]
+    public void ParseLegacyVariableName_Unknown_ReturnsNull()
+    {
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("",                 0xABCD));
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("RandomGarbage",    0xABCD));
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("Item_",            0xABCD));
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("Item_NotANumber", 0xABCD));
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("ItemRetainerX_5_", 0xABCD));
+        Assert.Null(ResourceCatalog.ParseLegacyVariableName("ItemRetainerX__5", 0xABCD));
+    }
 }
