@@ -13,6 +13,44 @@ public sealed class ResourceStore
     private readonly Dictionary<ResourceKey, Resource> _state = new();
     private long _version;
 
+    private readonly Dictionary<(ulong OwnerId, uint ItemId), Queue<TimeSeriesPoint>> _history = new();
+    private readonly int _historyCapacityPerSeries;
+
+    public ResourceStore() : this(historyCapacityPerSeries: 256) { }
+
+    public ResourceStore(int historyCapacityPerSeries)
+    {
+        _historyCapacityPerSeries = historyCapacityPerSeries;
+    }
+
+    /// <summary>Append an observation to the in-memory time-series cache. Evicts oldest if capacity reached.</summary>
+    public void AppendHistory(ResourceKey key, DateTime timestamp, long quantity, long changeAmount, SourceKind source)
+    {
+        var seriesKey = (key.OwnerId, key.ItemId);
+        if (!_history.TryGetValue(seriesKey, out var queue))
+        {
+            queue = new Queue<TimeSeriesPoint>(_historyCapacityPerSeries);
+            _history[seriesKey] = queue;
+        }
+        while (queue.Count >= _historyCapacityPerSeries)
+            queue.Dequeue();
+        queue.Enqueue(new TimeSeriesPoint
+        {
+            Timestamp    = timestamp,
+            Quantity     = quantity,
+            ChangeAmount = changeAmount,
+            Source       = source,
+        });
+    }
+
+    /// <summary>Recent in-memory history for an item-owner pair. Returns oldest-first.</summary>
+    public IReadOnlyList<TimeSeriesPoint> GetRecentHistory(ulong ownerId, uint itemId)
+    {
+        if (!_history.TryGetValue((ownerId, itemId), out var queue))
+            return Array.Empty<TimeSeriesPoint>();
+        return queue.ToArray();
+    }
+
     /// <summary>Monotonic counter incremented on every real change (idempotent updates do not bump it).</summary>
     public long Version => _version;
 

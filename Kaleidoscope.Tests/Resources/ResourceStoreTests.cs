@@ -100,4 +100,39 @@ public class ResourceStoreTests
         store.ApplyWithAggregate(new Resource { Key = k, Quantity = 0,  UpdatedAt = DateTime.UtcNow });
         Assert.Equal(0,  store.GetAggregate(5057));
     }
+
+    [Fact]
+    public void TimeSeriesCache_RecordsRecentPoints()
+    {
+        var store = new ResourceStore();
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.SpecialPlayer, ItemId = ResourceCatalog.GilItemId, Slot = -1 };
+
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        store.AppendHistory(k, t0,                  100, 100, SourceKind.Unknown);
+        store.AppendHistory(k, t0.AddSeconds(10),   150,  50, SourceKind.DutyReward);
+        store.AppendHistory(k, t0.AddSeconds(20),   140, -10, SourceKind.Vendor);
+
+        var pts = store.GetRecentHistory(1001, ResourceCatalog.GilItemId);
+
+        Assert.Equal(3, pts.Count);
+        Assert.Equal(100, pts[0].Quantity);
+        Assert.Equal(SourceKind.DutyReward, pts[1].Source);
+        Assert.Equal(-10, pts[2].ChangeAmount);
+    }
+
+    [Fact]
+    public void TimeSeriesCache_BoundedAtCapacity()
+    {
+        var store = new ResourceStore(historyCapacityPerSeries: 3);
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.SpecialPlayer, ItemId = ResourceCatalog.GilItemId, Slot = -1 };
+        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        for (int i = 0; i < 5; i++)
+            store.AppendHistory(k, t0.AddSeconds(i), i * 100, 100, SourceKind.Unknown);
+
+        var pts = store.GetRecentHistory(1001, ResourceCatalog.GilItemId);
+        Assert.Equal(3, pts.Count);
+        Assert.Equal(200, pts[0].Quantity);   // 0,100 evicted
+        Assert.Equal(400, pts[2].Quantity);
+    }
 }
