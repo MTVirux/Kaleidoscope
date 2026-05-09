@@ -28,5 +28,6 @@
     <Compile Include="..\Kaleidoscope\Services\Resources\ResourceStore.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\ResourceDbWriter.cs" />
     <Compile Include="..\Kaleidoscope\Services\Database\MigrationSql.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Resources\SourceTagSink.cs" />
   </ItemGroup>
 </Project>
