@@ -1,39 +1,50 @@
 namespace Kaleidoscope.Models.Resources;
 
 /// <summary>
-/// Where a Resource lives. Real values mirror Dalamud's GameInventoryType for documentation;
-/// synthetic values (40000+) cover hidden containers and game-memory-only counters that have
-/// no corresponding GameInventoryType.
+/// Where a Resource lives. Real-container values mirror FFXIVClientStructs
+/// InventoryType / Dalamud GameInventoryType exactly so legacy
+/// inventory_items.container_type values round-trip into our resources.container column
+/// without translation. Synthetic values (40000+) cover hidden containers and game-
+/// memory-only counters that have no corresponding GameInventoryType.
 /// </summary>
 public enum Container : int
 {
-    // Player main inventory (0-999)
+    // Player main inventory
     Inventory1 = 0,
     Inventory2 = 1,
     Inventory3 = 2,
     Inventory4 = 3,
 
-    // Player equipped / currency / crystals / key items (1000-2999)
+    // Player equipped / currency / crystals / key items
     EquippedItems = 1000,
-    Crystals      = 2000,
-    Currency      = 2001,
-    KeyItems      = 2002,
+    Currency      = 2000,
+    Crystals      = 2001,
+    KeyItems      = 2004,
 
-    // Player armory slots (3000-3999)
-    ArmoryMainHand    = 3000,
-    ArmoryOffHand     = 3001,
-    ArmoryHead        = 3002,
-    ArmoryBody        = 3003,
-    ArmoryHands       = 3004,
-    ArmoryLegs        = 3005,
-    ArmoryFeets       = 3006,
-    ArmoryEar         = 3007,
-    ArmoryNeck        = 3008,
-    ArmoryWrist       = 3009,
-    ArmoryRings       = 3010,
-    ArmorySoulCrystal = 3011,
+    // Player armory slots
+    ArmoryOffHand     = 3200,
+    ArmoryHead        = 3201,
+    ArmoryBody        = 3202,
+    ArmoryHands       = 3203,
+    ArmoryWaist       = 3204,
+    ArmoryLegs        = 3205,
+    ArmoryFeets       = 3206,
+    ArmoryEar         = 3207,
+    ArmoryNeck        = 3208,
+    ArmoryWrist       = 3209,
+    ArmoryRings       = 3300,
+    ArmorySoulCrystal = 3400,
+    ArmoryMainHand    = 3500,
 
-    // Retainer (10000-11999)
+    // Saddlebags + cosmopouch
+    SaddleBag1        = 4000,
+    SaddleBag2        = 4001,
+    PremiumSaddleBag1 = 4100,
+    PremiumSaddleBag2 = 4101,
+    Cosmopouch1       = 5000,
+    Cosmopouch2       = 5001,
+
+    // Retainer
     RetainerPage1         = 10000,
     RetainerPage2         = 10001,
     RetainerPage3         = 10002,
@@ -42,31 +53,24 @@ public enum Container : int
     RetainerPage6         = 10005,
     RetainerPage7         = 10006,
     RetainerEquippedItems = 11000,
-    RetainerCrystals      = 11001,
-    RetainerMarket        = 11002,
+    RetainerGil           = 12000,
+    RetainerCrystals      = 12001,
+    RetainerMarket        = 12002,
 
-    // Saddlebags + cosmopouch (20000-20999)
-    SaddleBag1        = 20000,
-    SaddleBag2        = 20001,
-    PremiumSaddleBag1 = 20002,
-    PremiumSaddleBag2 = 20003,
-    Cosmopouch1       = 20100,
-    Cosmopouch2       = 20101,
+    // Free Company
+    FreeCompanyPage1    = 20000,
+    FreeCompanyPage2    = 20001,
+    FreeCompanyPage3    = 20002,
+    FreeCompanyPage4    = 20003,
+    FreeCompanyPage5    = 20004,
+    FreeCompanyGil      = 22000,
+    FreeCompanyCrystals = 22001,
 
-    // Free Company (30000-30999)
-    FreeCompanyPage1    = 30000,
-    FreeCompanyPage2    = 30001,
-    FreeCompanyPage3    = 30002,
-    FreeCompanyPage4    = 30003,
-    FreeCompanyPage5    = 30004,
-    FreeCompanyCrystals = 30100,
-    FreeCompanyGil      = 30101,
-
-    // Hidden — read directly, no GameInventoryType (40000-49999)
+    // Hidden — read directly, no GameInventoryType
     GlamourChest = 40000,
     Armoire      = 40001,
 
-    // Synthetic specials — no real container (90000-99999)
+    // Synthetic specials — no real container
     SpecialPlayer      = 90000,
     SpecialFreeCompany = 90001,
     PlayerAggregate    = 90100, // Migration only — preserves Item_{id} time-series
