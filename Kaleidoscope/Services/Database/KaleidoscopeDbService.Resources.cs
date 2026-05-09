@@ -57,4 +57,13 @@ CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, 
         cmd.ExecuteNonQuery();
     }
 
+    private void BackfillResourcesFromInventoryItems()
+    {
+        if (_connection == null) return;
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = MigrationSql.BackfillResourcesFromInventoryItemsSql;
+        var rows = cmd.ExecuteNonQuery();
+        LogService.Debug(LogCategory.Database, $"[Migration v6] Backfilled {rows} resources rows from inventory_items");
+    }
+
 }
