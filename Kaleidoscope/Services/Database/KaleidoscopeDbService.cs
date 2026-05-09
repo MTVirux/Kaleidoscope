@@ -520,6 +520,8 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 ";
         cmd.ExecuteNonQuery();
 
+        ApplyResourcesSchema();
+
         RunMigrations();
     }
 
