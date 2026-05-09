@@ -30,5 +30,6 @@
     <Compile Include="..\Kaleidoscope\Services\Database\MigrationSql.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\SourceTagSink.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\ResourceObservationService.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Resources\LoadedContainerSet.cs" />
   </ItemGroup>
 </Project>
