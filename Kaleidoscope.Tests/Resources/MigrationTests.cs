@@ -113,4 +113,44 @@ public class MigrationTests
 
         Assert.False(r.Read());
     }
+
+    [Fact]
+    public void BackfillGilRows_CreatesSpecialPlayerEntriesForPlayerAndRetainerGil_SkipsZero()
+    {
+        using var conn = NewLegacyDb();
+
+        using (var seed = conn.CreateCommand())
+        {
+            seed.CommandText = @"
+                INSERT INTO inventory_cache (character_id, source_type, retainer_id, name, world, gil, updated_at)
+                    VALUES (1001, 0, 0, 'Player1', 'Cerberus', 1234567, 638000000000000000),
+                           (1001, 1, 5001, 'Retainer1', NULL,        50000,   638000000000000000),
+                           (1002, 0, 0, 'Player2', 'Cerberus', 0,       638000000000000000);";  // 0 gil — skip
+            seed.ExecuteNonQuery();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = MigrationSqlExposed.BackfillGilRowsSql;
+            cmd.ExecuteNonQuery();
+        }
+
+        using var countCmd = conn.CreateCommand();
+        countCmd.CommandText = "SELECT COUNT(*) FROM resources";
+        Assert.Equal(2L, (long)countCmd.ExecuteScalar()!);
+
+        using var playerCmd = conn.CreateCommand();
+        playerCmd.CommandText = "SELECT quantity, parent_owner_id FROM resources WHERE owner_id = 1001 AND owner_kind = 0";
+        using var pr = playerCmd.ExecuteReader();
+        Assert.True(pr.Read());
+        Assert.Equal(1234567L, pr.GetInt64(0));
+        Assert.Equal(0L,       pr.GetInt64(1));
+
+        using var retCmd = conn.CreateCommand();
+        retCmd.CommandText = "SELECT quantity, parent_owner_id FROM resources WHERE owner_id = 5001 AND owner_kind = 1";
+        using var rr = retCmd.ExecuteReader();
+        Assert.True(rr.Read());
+        Assert.Equal(50000L, rr.GetInt64(0));
+        Assert.Equal(1001L,  rr.GetInt64(1));
+    }
 }

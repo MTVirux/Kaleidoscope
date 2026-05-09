@@ -720,11 +720,10 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// </summary>
     private void MigrateAddUnifiedResources()
     {
-        // Note: ApplyResourcesSchema() runs unconditionally before RunMigrations() so the
-        // resources/resource_history tables already exist by the time we get here.
         BackfillResourcesFromInventoryItems();
-        // Tasks 14-15 will add: BackfillGilRowsFromInventoryCache(); BackfillResourceHistoryFromSeries();
-        LogService.Debug(LogCategory.Database, "[Migration v6] Unified resources backfill: items step complete");
+        BackfillGilRowsFromInventoryCache();
+        // Task 15 will add: BackfillResourceHistoryFromSeries();
+        LogService.Debug(LogCategory.Database, "[Migration v6] Unified resources backfill: items + gil steps complete");
     }
 
 

@@ -9,4 +9,7 @@ internal static class MigrationSqlExposed
 {
     public const string BackfillResourcesFromInventoryItemsSql =
         Kaleidoscope.Services.Database.MigrationSql.BackfillResourcesFromInventoryItemsSql;
+
+    public const string BackfillGilRowsSql =
+        Kaleidoscope.Services.Database.MigrationSql.BackfillGilRowsSql;
 }
