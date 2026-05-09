@@ -66,4 +66,35 @@ public sealed class ResourceStore
         foreach (var r in _state.Values) list.Add(r);
         return list;
     }
+
+    // Aggregates: per (item_id, owner_kind) totals — recomputed incrementally on every change.
+    // "All kinds" aggregate is the sum of all per-kind buckets.
+    private readonly Dictionary<(uint ItemId, OwnerKind Kind), long> _byItemAndKind = new();
+    private readonly Dictionary<uint, long> _byItem = new();
+
+    /// <summary>Apply an observation and update aggregates incrementally. Returns true if changed.</summary>
+    public bool ApplyWithAggregate(Resource observation)
+    {
+        var changed = Apply(observation, out var previous);
+        var delta = observation.Quantity - previous;
+        if (delta != 0)
+        {
+            var key = (observation.Key.ItemId, observation.Key.OwnerKind);
+            _byItemAndKind.TryGetValue(key, out var current);
+            _byItemAndKind[key] = current + delta;
+
+            _byItem.TryGetValue(observation.Key.ItemId, out var total);
+            _byItem[observation.Key.ItemId] = total + delta;
+        }
+        return changed;
+    }
+
+    /// <summary>Total quantity of an item across all owners (or filtered to one owner kind).</summary>
+    public long GetAggregate(uint itemId, OwnerKind? scope = null)
+    {
+        if (scope is null)
+            return _byItem.TryGetValue(itemId, out var total) ? total : 0;
+
+        return _byItemAndKind.TryGetValue((itemId, scope.Value), out var v) ? v : 0;
+    }
 }

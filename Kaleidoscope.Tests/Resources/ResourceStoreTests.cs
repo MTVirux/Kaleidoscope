@@ -71,4 +71,33 @@ public class ResourceStoreTests
         var store = new ResourceStore();
         Assert.Null(store.Get(K()));
     }
+
+    [Fact]
+    public void Aggregates_SumAcrossOwners_ReflectsAllApplications()
+    {
+        var store = new ResourceStore();
+
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 }, Quantity = 10, UpdatedAt = DateTime.UtcNow });
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 1 }, Quantity = 5,  UpdatedAt = DateTime.UtcNow });
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 5001, OwnerKind = OwnerKind.Retainer, Container = Container.RetainerPage1, ItemId = 5057, Slot = 0 }, Quantity = 7, UpdatedAt = DateTime.UtcNow });
+
+        Assert.Equal(22, store.GetAggregate(5057));
+        Assert.Equal(15, store.GetAggregate(5057, OwnerKind.Player));
+        Assert.Equal(7,  store.GetAggregate(5057, OwnerKind.Retainer));
+    }
+
+    [Fact]
+    public void Aggregates_QuantityChange_DeltaApplied()
+    {
+        var store = new ResourceStore();
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 };
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 10, UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(10, store.GetAggregate(5057));
+
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 25, UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(25, store.GetAggregate(5057));
+
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 0,  UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(0,  store.GetAggregate(5057));
+    }
 }
