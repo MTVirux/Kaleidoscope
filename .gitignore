@@ -9,3 +9,5 @@ build.lock
 .vscode/settings.json
 docs/
 logs
+CLAUDE.md
+.claude/
