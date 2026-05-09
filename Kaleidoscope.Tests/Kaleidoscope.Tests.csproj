@@ -25,6 +25,7 @@
   <ItemGroup>
     <Compile Include="..\Kaleidoscope\Models\Resources\*.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\ResourceCatalog.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Resources\ResourceStore.cs" />
     <Compile Include="..\Kaleidoscope\Services\Database\MigrationSql.cs" />
   </ItemGroup>
 </Project>
