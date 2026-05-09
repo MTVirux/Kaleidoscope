@@ -153,4 +153,65 @@ public class MigrationTests
         Assert.Equal(50000L, rr.GetInt64(0));
         Assert.Equal(1001L,  rr.GetInt64(1));
     }
+
+    [Fact]
+    public void BackfillResourceHistoryFromSeries_PreservesItemHistoryWithComputedDeltas()
+    {
+        using var conn = NewLegacyDb();
+
+        using (var ddl = conn.CreateCommand())
+        {
+            ddl.CommandText = @"
+                CREATE TABLE IF NOT EXISTS resource_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_id INTEGER NOT NULL, owner_kind INTEGER NOT NULL,
+                    container INTEGER NOT NULL, item_id INTEGER NOT NULL,
+                    timestamp INTEGER NOT NULL, quantity INTEGER NOT NULL,
+                    change_amount INTEGER NOT NULL, source_kind INTEGER NOT NULL DEFAULT 0,
+                    source_detail TEXT);";
+            ddl.ExecuteNonQuery();
+        }
+
+        using (var seed = conn.CreateCommand())
+        {
+            seed.CommandText = @"
+                INSERT INTO series (variable, character_id) VALUES ('Item_5057', 1001);
+                INSERT INTO points (series_id, timestamp, value) VALUES
+                    (1, 638000000000000000, 10),
+                    (1, 638000010000000000, 25),
+                    (1, 638000020000000000, 25);
+                INSERT INTO series (variable, character_id) VALUES ('UnknownVar', 1001);
+                INSERT INTO points (series_id, timestamp, value) VALUES
+                    (2, 638000000000000000, 99);";
+            seed.ExecuteNonQuery();
+        }
+
+        var (written, skipped) = Kaleidoscope.Services.Database.MigrationSql.BackfillResourceHistoryFromSeries(conn, null);
+
+        Assert.Equal(3, written);
+        Assert.Equal(1, skipped);
+
+        using var verify = conn.CreateCommand();
+        verify.CommandText = "SELECT timestamp, quantity, change_amount, container, item_id FROM resource_history ORDER BY timestamp";
+        using var r = verify.ExecuteReader();
+
+        Assert.True(r.Read());
+        Assert.Equal(638000000000000000L, r.GetInt64(0));
+        Assert.Equal(10L,                 r.GetInt64(1));
+        Assert.Equal(10L,                 r.GetInt64(2));   // first point: change = quantity
+        Assert.Equal(90100L,              r.GetInt64(3));   // Container.PlayerAggregate
+        Assert.Equal(5057L,               r.GetInt64(4));
+
+        Assert.True(r.Read());
+        Assert.Equal(638000010000000000L, r.GetInt64(0));
+        Assert.Equal(25L,                 r.GetInt64(1));
+        Assert.Equal(15L,                 r.GetInt64(2));   // 25 − 10
+
+        Assert.True(r.Read());
+        Assert.Equal(638000020000000000L, r.GetInt64(0));
+        Assert.Equal(25L,                 r.GetInt64(1));
+        Assert.Equal(0L,                  r.GetInt64(2));   // unchanged
+
+        Assert.False(r.Read());
+    }
 }

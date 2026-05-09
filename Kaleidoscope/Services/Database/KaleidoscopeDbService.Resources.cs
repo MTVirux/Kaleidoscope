@@ -75,4 +75,11 @@ CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, 
         LogService.Debug(LogCategory.Database, $"[Migration v6] Backfilled {rows} gil rows");
     }
 
+    private void BackfillResourceHistoryFromSeries()
+    {
+        if (_connection == null) return;
+        var (written, skipped) = MigrationSql.BackfillResourceHistoryFromSeries(_connection, null);
+        LogService.Info(LogCategory.Database, $"[Migration v6] resource_history: wrote {written} rows, skipped {skipped} unrecognized series");
+    }
+
 }

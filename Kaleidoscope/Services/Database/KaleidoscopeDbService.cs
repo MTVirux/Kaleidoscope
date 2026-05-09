@@ -722,8 +722,8 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     {
         BackfillResourcesFromInventoryItems();
         BackfillGilRowsFromInventoryCache();
-        // Task 15 will add: BackfillResourceHistoryFromSeries();
-        LogService.Debug(LogCategory.Database, "[Migration v6] Unified resources backfill: items + gil steps complete");
+        BackfillResourceHistoryFromSeries();
+        LogService.Debug(LogCategory.Database, "[Migration v6] Unified resources backfill complete");
     }
 
 
