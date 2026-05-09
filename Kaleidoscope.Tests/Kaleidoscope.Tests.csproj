@@ -24,5 +24,6 @@
   <!-- Compile only the Dalamud-free resource model types from the main project -->
   <ItemGroup>
     <Compile Include="..\Kaleidoscope\Models\Resources\*.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Resources\ResourceCatalog.cs" />
   </ItemGroup>
 </Project>
