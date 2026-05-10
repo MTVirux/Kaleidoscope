@@ -30,11 +30,12 @@ public sealed class Configuration : IPluginConfiguration
     public bool ShowDuringCutscenes { get; set; } = true;
 
     /// <summary>
-    /// Phase 1 dual-write feature flag. When true, the new ResourceObservationService pipeline
-    /// is exercised by tests / dev validation. Old InventoryCacheService path keeps running
-    /// regardless (writes to old tables for safety until Phase 2 flips reads).
+    /// Phase 2 default: true. When true, all UI consumers read from the unified resources
+    /// pipeline (ResourceStore + resource_history) and the legacy capture loops are disabled.
+    /// When false, the legacy paths run instead (kept as a rollback option). Phase 3 will
+    /// remove this flag and the legacy paths entirely.
     /// </summary>
-    public bool UseUnifiedResources { get; set; } = false;
+    public bool UseUnifiedResources { get; set; } = true;
 
     public bool ProfilerEnabled { get; set; } = false;
 
