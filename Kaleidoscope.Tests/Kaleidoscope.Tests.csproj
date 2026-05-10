@@ -31,5 +31,6 @@
     <Compile Include="..\Kaleidoscope\Services\Resources\SourceTagSink.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\ResourceObservationService.cs" />
     <Compile Include="..\Kaleidoscope\Services\Resources\LoadedContainerSet.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Resources\Adapters\LegacyVariableTranslator.cs" />
   </ItemGroup>
 </Project>
