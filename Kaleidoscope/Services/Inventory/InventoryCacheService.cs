@@ -1,7 +1,6 @@
 using Kaleidoscope.Models.Inventory;
 using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Resources;
-using Kaleidoscope.Services.Resources.Adapters;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Inventory;
@@ -22,7 +21,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Initialized");
     }
 
-    public List<InventoryCacheEntry> GetAllInventories() => ResourceToLegacyAdapter.Adapt(_resourceStore);
+    public List<InventoryCacheEntry> GetAllInventories() => _dbService.GetAllInventoryCachesFromResources();
 
     public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
         => characterId == 0 ? new List<InventoryCacheEntry>() : _dbService.GetAllInventoryCachesFromResources(characterId);

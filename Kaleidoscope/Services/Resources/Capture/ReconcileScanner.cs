@@ -89,6 +89,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
                 Condition      = slot->Condition,
                 GlamourId      = slot->GlamourId,
                 UpdatedAt      = DateTime.UtcNow,
+                ParentOwnerId  = kind == OwnerKind.Retainer ? GameStateService.PlayerContentId : 0UL,
             });
         }
     }

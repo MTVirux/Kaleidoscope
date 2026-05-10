@@ -47,6 +47,8 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
             if (isCollectable)
                 flags |= ResourceFlags.Collectable;
 
+            var parentId = ownerKind == OwnerKind.Player ? 0UL : GameStateService.PlayerContentId;
+
             _service.RecordObservation(new ResourceObservation
             {
                 Key = new ResourceKey
@@ -64,6 +66,7 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
                 Condition      = (ushort)e.Item.Condition,
                 GlamourId      = e.Item.GlamourId,
                 UpdatedAt      = DateTime.UtcNow,
+                ParentOwnerId  = parentId,
             });
         }
     }

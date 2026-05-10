@@ -18,12 +18,14 @@ public readonly record struct ResourceObservation
     public ushort Condition { get; init; }
     public uint GlamourId { get; init; }
     public DateTime UpdatedAt { get; init; }
+    public ulong ParentOwnerId { get; init; }   // 0 for player owners; owning character's ContentId for retainer/FC owners
 
     public Resource ToResource() => new()
     {
         Key = Key, Quantity = Quantity, Flags = Flags,
         Spiritbond = Spiritbond, Collectability = Collectability,
         Condition = Condition, GlamourId = GlamourId, UpdatedAt = UpdatedAt,
+        // ParentOwnerId intentionally NOT propagated to Resource — in-memory model stays minimal.
     };
 }
 
@@ -75,6 +77,7 @@ public sealed class ResourceObservationService : IRequiredService
                 ChangeAmount = changeAmount,
                 SourceKind = tag?.Kind ?? SourceKind.Unknown,
                 SourceDetail = tag?.Detail,
+                ParentOwnerId = obs.ParentOwnerId,
             });
         }
     }

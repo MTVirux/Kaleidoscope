@@ -11,6 +11,7 @@ public readonly record struct ResourceWrite
     public long ChangeAmount { get; init; }   // 0 means no history row appended
     public SourceKind SourceKind { get; init; }
     public string? SourceDetail { get; init; }
+    public ulong ParentOwnerId { get; init; }   // 0 for player owners; owning character's ContentId for retainer/FC owners
 }
 
 /// <summary>
@@ -137,7 +138,7 @@ public sealed partial class ResourceDbWriter : IDisposable
         var k = r.Key;
         _upsert!.Parameters["$oid"].Value   = (long)k.OwnerId;
         _upsert.Parameters["$okind"].Value  = (int)k.OwnerKind;
-        _upsert.Parameters["$pid"].Value    = 0L;
+        _upsert.Parameters["$pid"].Value    = (long)w.ParentOwnerId;
         _upsert.Parameters["$cont"].Value   = (int)k.Container;
         _upsert.Parameters["$iid"].Value    = (long)k.ItemId;
         _upsert.Parameters["$slot"].Value   = (int)k.Slot;

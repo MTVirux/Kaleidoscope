@@ -59,8 +59,9 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
                     ItemId    = ResourceCatalog.GilItemId,
                     Slot      = -1,
                 },
-                Quantity  = gil,
-                UpdatedAt = DateTime.UtcNow,
+                Quantity      = gil,
+                UpdatedAt     = DateTime.UtcNow,
+                ParentOwnerId = pid,
             });
         }
     }
