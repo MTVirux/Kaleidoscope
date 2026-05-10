@@ -15,13 +15,14 @@ public sealed class ResourceStore : IRequiredService
     private long _version;
 
     private readonly Dictionary<(ulong OwnerId, uint ItemId), Queue<TimeSeriesPoint>> _history = new();
-    private readonly int _historyCapacityPerSeries;
+    private int _historyCapacityPerSeries = 256;
 
-    public ResourceStore() : this(historyCapacityPerSeries: 256) { }
+    public ResourceStore() { }
 
-    public ResourceStore(int historyCapacityPerSeries)
+    /// <summary>Test-only override of the time-series cache capacity. Must be called before any AppendHistory.</summary>
+    internal void SetHistoryCapacityForTests(int capacity)
     {
-        _historyCapacityPerSeries = historyCapacityPerSeries;
+        _historyCapacityPerSeries = capacity;
     }
 
     /// <summary>Append an observation to the in-memory time-series cache. Evicts oldest if capacity reached.</summary>

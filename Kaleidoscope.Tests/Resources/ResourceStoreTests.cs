@@ -123,7 +123,8 @@ public class ResourceStoreTests
     [Fact]
     public void TimeSeriesCache_BoundedAtCapacity()
     {
-        var store = new ResourceStore(historyCapacityPerSeries: 3);
+        var store = new ResourceStore();
+        store.SetHistoryCapacityForTests(3);
         var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.SpecialPlayer, ItemId = ResourceCatalog.GilItemId, Slot = -1 };
         var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 

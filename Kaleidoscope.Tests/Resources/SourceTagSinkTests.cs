@@ -9,7 +9,8 @@ public class SourceTagSinkTests
     [Fact]
     public void Stamp_ThenConsume_ReturnsTagAndClears()
     {
-        var sink = new SourceTagSink(now: () => new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var sink = new SourceTagSink();
+        sink.SetClockForTests(() => new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         sink.Stamp(new SourceTag { Kind = SourceKind.DutyReward, Detail = "The Praetorium", StampedAt = sink.Now() }, ttl: TimeSpan.FromSeconds(5));
 
         var tag = sink.ConsumeIfFresh();
@@ -25,7 +26,8 @@ public class SourceTagSinkTests
     {
         var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var clock = t;
-        var sink = new SourceTagSink(now: () => clock);
+        var sink = new SourceTagSink();
+        sink.SetClockForTests(() => clock);
 
         sink.Stamp(new SourceTag { Kind = SourceKind.DutyReward, StampedAt = t }, ttl: TimeSpan.FromSeconds(5));
         clock = t.AddSeconds(6);
@@ -38,7 +40,8 @@ public class SourceTagSinkTests
     public void Stamp_OverwritesExistingTag()
     {
         var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var sink = new SourceTagSink(now: () => t);
+        var sink = new SourceTagSink();
+        sink.SetClockForTests(() => t);
 
         sink.Stamp(new SourceTag { Kind = SourceKind.Trade, StampedAt = t },     ttl: TimeSpan.FromSeconds(5));
         sink.Stamp(new SourceTag { Kind = SourceKind.DutyReward, StampedAt = t }, ttl: TimeSpan.FromSeconds(5));

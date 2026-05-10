@@ -10,13 +10,17 @@ namespace Kaleidoscope.Services.Resources;
 /// </summary>
 public sealed class SourceTagSink : IRequiredService
 {
-    private readonly Func<DateTime> _now;
+    private Func<DateTime> _now = () => DateTime.UtcNow;
     private SourceTag? _tag;
     private DateTime _expiresAt;
 
-    public SourceTagSink() : this(() => DateTime.UtcNow) { }
+    public SourceTagSink() { }
 
-    public SourceTagSink(Func<DateTime> now) => _now = now;
+    /// <summary>Test-only override of the clock — used to make TTL tests deterministic.</summary>
+    internal void SetClockForTests(Func<DateTime> now)
+    {
+        _now = now;
+    }
 
     public DateTime Now() => _now();
 

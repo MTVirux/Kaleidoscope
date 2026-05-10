@@ -62,7 +62,8 @@ public class ResourceObservationServiceTests
         var store  = new ResourceStore();
         var writer = new ResourceDbWriter(conn);
         var clock  = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var sink   = new SourceTagSink(now: () => clock);
+        var sink   = new SourceTagSink();
+        sink.SetClockForTests(() => clock);
         var svc    = new ResourceObservationService(store, writer, sink);
 
         sink.Stamp(new SourceTag { Kind = SourceKind.DutyReward, Detail = "TestDuty", StampedAt = clock }, ttl: TimeSpan.FromSeconds(5));
