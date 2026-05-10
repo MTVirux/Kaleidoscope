@@ -425,17 +425,51 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// Gets the current value for a data type from the ResourceStore.
     /// Gil and RetainerGil share the same ItemId so they are scoped by OwnerKind to avoid
     /// cross-contamination in the aggregate.
+    /// Crystal types span three tiers (shard/crystal/cluster) per element and are summed
+    /// across all owners via GetAggregate — they don't fit the single-mapping pattern.
     /// </summary>
     public long? GetCurrentValue(TrackedDataType type)
     {
         return type switch
         {
-            TrackedDataType.Gil         => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Player),
-            TrackedDataType.RetainerGil => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Retainer),
+            TrackedDataType.Gil               => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Player),
+            TrackedDataType.RetainerGil       => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Retainer),
+
+            TrackedDataType.FireCrystals      => SumCrystalsForElement(0),
+            TrackedDataType.IceCrystals       => SumCrystalsForElement(1),
+            TrackedDataType.WindCrystals      => SumCrystalsForElement(2),
+            TrackedDataType.EarthCrystals     => SumCrystalsForElement(3),
+            TrackedDataType.LightningCrystals => SumCrystalsForElement(4),
+            TrackedDataType.WaterCrystals     => SumCrystalsForElement(5),
+            TrackedDataType.CrystalsTotal     => SumAllCrystals(),
+
             _ => Resources.ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping)
                     ? _resourceStore.GetAggregate(mapping.ItemId)
                     : null,
         };
+    }
+
+    /// <summary>
+    /// Sums all three tiers (shard, crystal, cluster) for one element across all owners.
+    /// Element index (0–5): Fire=0, Ice=1, Wind=2, Earth=3, Lightning=4, Water=5.
+    /// Item IDs: shard = 2+element, crystal = 8+element, cluster = 14+element.
+    /// </summary>
+    private long SumCrystalsForElement(int element)
+    {
+        return _resourceStore.GetAggregate((uint)(2 + element))
+             + _resourceStore.GetAggregate((uint)(8 + element))
+             + _resourceStore.GetAggregate((uint)(14 + element));
+    }
+
+    /// <summary>
+    /// Sums all 18 crystal item IDs (2–19) across all owners.
+    /// </summary>
+    private long SumAllCrystals()
+    {
+        long total = 0;
+        for (uint id = 2; id <= 19; id++)
+            total += _resourceStore.GetAggregate(id);
+        return total;
     }
 
     /// <summary>
