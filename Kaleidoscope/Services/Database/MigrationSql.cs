@@ -13,6 +13,11 @@ namespace Kaleidoscope.Services.Database;
 /// </summary>
 internal static class MigrationSql
 {
+    /// <summary>
+    /// One-shot migration SQL for the v5→v6 upgrade. Reads from the legacy inventory_cache
+    /// and inventory_items tables (dropped by migration v7). On a v6+ DB, this code never runs.
+    /// Kept for reference and for users upgrading from a v5 backup.
+    /// </summary>
     public const string BackfillResourcesFromInventoryItemsSql = @"
 INSERT OR REPLACE INTO resources (owner_id, owner_kind, parent_owner_id, container, item_id, slot,
                                   quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at)
@@ -35,10 +40,8 @@ JOIN inventory_cache ic ON ii.cache_id = ic.id;
 ";
 
     /// <summary>
-    /// SQL for migration v6 step 2: backfill gil quantities as resources rows under
-    /// Container.SpecialPlayer (90000), item_id ResourceCatalog.GilItemId (1000001).
-    /// Player gil rows have parent_owner_id = 0; retainer gil rows have parent_owner_id
-    /// set to the owning character. Skips rows with gil = 0 to avoid noise.
+    /// One-shot migration SQL for the v5→v6 upgrade. Reads gil values from the legacy
+    /// inventory_cache table (dropped by migration v7). On a v6+ DB, this code never runs.
     /// </summary>
     public const string BackfillGilRowsSql = @"
 INSERT OR REPLACE INTO resources (owner_id, owner_kind, parent_owner_id, container, item_id, slot,
@@ -58,15 +61,9 @@ WHERE ic.gil > 0;
 ";
 
     /// <summary>
-    /// Migration v6 step 3: backfill resource_history from legacy series × points.
-    /// For each series row, parses series.variable via ResourceCatalog.ParseLegacyVariableName.
-    /// Recognized variables produce one resource_history row per point with computed
-    /// change_amount (= quantity − previous quantity in the same series; first point's
-    /// change_amount equals its quantity since there's no prior known value).
-    /// Unrecognized variables are skipped (caller's log shows the count).
-    ///
-    /// Stateless — exposed for tests + production migration. Caller supplies the
-    /// connection and optional transaction.
+    /// One-shot migration helper for the v5→v6 upgrade. Reads from the legacy series and
+    /// points tables (dropped by migration v7) and writes corresponding rows into
+    /// resource_history. On a v6+ DB, this code never runs.
     /// </summary>
     /// <returns>(written, skipped) — count of resource_history rows written and series skipped due to unknown variable names.</returns>
     public static (int Written, int Skipped) BackfillResourceHistoryFromSeries(SqliteConnection conn, SqliteTransaction? tx)
