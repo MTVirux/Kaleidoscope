@@ -1,3 +1,4 @@
+using Kaleidoscope.Services.Resources;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -10,13 +11,16 @@ public sealed class StartupTestService : IRequiredService
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
+    private readonly ResourceObservationService _resourcesService;
 
     public StartupTestService(
         CurrencyTrackerService currencyTrackerService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ResourceObservationService resourcesService)
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
+        _resourcesService = resourcesService;
 
         Task.Run(RunStartupTests);
     }
@@ -31,7 +35,9 @@ public sealed class StartupTestService : IRequiredService
             ("DB Integrity", TestDbIntegrity),
             ("Cache Service", TestCacheService),
             ("Tracked Data Registry", TestRegistry),
-            ("Config Service", TestConfigService),
+            ("Config Service",          TestConfigService),
+            ("Resources Schema",        TestResourcesSchema),
+            ("Resources Service Live",  TestResourcesService),
         };
 
         var passed = 0;
@@ -179,5 +185,32 @@ public sealed class StartupTestService : IRequiredService
         var version = config.Version;
 
         return (true, "Config loaded", $"Config version: {version}");
+    }
+
+    private (bool Passed, string Message, string? Details) TestResourcesSchema()
+    {
+        var db = _currencyTrackerService.DbService;
+        if (db == null) return (false, "DbService is null", null);
+
+        try
+        {
+            var conn = db.GetWriterConnection();
+            if (conn == null) return (false, "Writer connection is null", null);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM resources";
+            var count = (long)(cmd.ExecuteScalar() ?? 0L);
+            return (true, $"resources table reachable, {count} rows", null);
+        }
+        catch (Exception ex)
+        {
+            return (false, "Schema probe threw", ex.Message);
+        }
+    }
+
+    private (bool Passed, string Message, string? Details) TestResourcesService()
+    {
+        if (_resourcesService == null) return (false, "ResourceObservationService is null", null);
+        var v = _resourcesService.Version;
+        return (true, $"Version counter at {v}", null);
     }
 }
