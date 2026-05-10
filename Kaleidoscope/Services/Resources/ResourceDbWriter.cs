@@ -29,7 +29,7 @@ public sealed partial class ResourceDbWriter : IDisposable
     public const int MaxBatchSize = 5000;
     public const int BackpressureCap = 50_000;
 
-    public ResourceDbWriter(SqliteConnection openConnection)
+    internal ResourceDbWriter(SqliteConnection openConnection)
     {
         _conn = openConnection;
         PreparedStatements();
