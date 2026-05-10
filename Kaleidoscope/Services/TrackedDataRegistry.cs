@@ -1,4 +1,5 @@
 using Kaleidoscope.Models;
+using Kaleidoscope.Services.Resources;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -11,7 +12,10 @@ namespace Kaleidoscope.Services;
 public sealed class TrackedDataRegistry : IRequiredService
 {
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
-    
+
+    private readonly ConfigurationService _configService;
+    private readonly ResourceStore _resourceStore;
+
     private Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>? _byCategory;
     private Dictionary<uint, TrackedDataDefinition>? _byItemId;
     private List<TrackedDataType>? _allTypes;
@@ -19,8 +23,10 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     public IReadOnlyDictionary<TrackedDataType, TrackedDataDefinition> Definitions => _definitions;
 
-    public TrackedDataRegistry()
+    public TrackedDataRegistry(ConfigurationService configService, ResourceStore resourceStore)
     {
+        _configService = configService;
+        _resourceStore = resourceStore;
         RegisterAllTypes();
         BuildCaches();
     }
@@ -424,6 +430,16 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// </summary>
     public unsafe long? GetCurrentValue(TrackedDataType type)
     {
+        if (_configService.Config.UseUnifiedResources)
+        {
+            if (ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping))
+            {
+                return _resourceStore.GetAggregate(mapping.ItemId);
+            }
+            // Fall through if no mapping (shouldn't happen — every TrackedDataType has a mapping
+            // entry in ResourceCatalog as of Phase 1)
+        }
+
         try
         {
             var im = GameStateService.InventoryManagerInstance();
@@ -467,24 +483,37 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// <returns>Dictionary of type to current value. Types that couldn't be read are omitted.</returns>
     public unsafe Dictionary<TrackedDataType, long> GetCurrentValuesSnapshot(IEnumerable<TrackedDataType> types)
     {
-        var results = new Dictionary<TrackedDataType, long>();
-        
+        if (_configService.Config.UseUnifiedResources)
+        {
+            var results = new Dictionary<TrackedDataType, long>();
+            foreach (var type in types)
+            {
+                if (ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping))
+                {
+                    results[type] = _resourceStore.GetAggregate(mapping.ItemId);
+                }
+            }
+            return results;
+        }
+
+        var results2 = new Dictionary<TrackedDataType, long>();
+
         try
         {
             var im = GameStateService.InventoryManagerInstance();
-            if (im == null) return results;
-            
+            if (im == null) return results2;
+
             // Pre-fetch expensive retainer data once for the entire snapshot
             var retainerGil = GameStateService.GetAllRetainersGil();
             var retainerCrystals = GameStateService.GetAllRetainersCrystals();
             var cache = new RetainerDataCache(retainerGil, retainerCrystals);
-            
+
             foreach (var type in types)
             {
                 var value = GetValueWithCache(im, type, cache);
                 if (value.HasValue)
                 {
-                    results[type] = value.Value;
+                    results2[type] = value.Value;
                 }
             }
         }
@@ -492,8 +521,8 @@ public sealed class TrackedDataRegistry : IRequiredService
         {
             LogService.Debug(LogCategory.GameState, $"[TrackedDataRegistry] GetCurrentValuesSnapshot failed: {ex.Message}");
         }
-        
-        return results;
+
+        return results2;
     }
     
     /// <summary>

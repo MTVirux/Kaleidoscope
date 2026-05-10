@@ -131,6 +131,15 @@ public static class ResourceCatalog
     }
 
     /// <summary>
+    /// Public accessor for the TrackedDataType → (Container, ItemId) mapping. Used by
+    /// TrackedDataRegistry when reading live values from ResourceStore.
+    /// </summary>
+    public static bool TryGetMappingForTrackedDataType(Kaleidoscope.Models.TrackedDataType type, out (Container Container, uint ItemId) mapping)
+    {
+        return TrackedDataLegacyMap.TryGetValue(type.ToString(), out mapping);
+    }
+
+    /// <summary>
     /// Mapping table for TrackedDataType enum names → (Container, ItemId). Mirrors registrations
     /// in TrackedDataRegistry.RegisterAllTypes. ItemIds match the values used there; Container
     /// is Currency for real-item currencies, SpecialPlayer for game-memory-only counters.
