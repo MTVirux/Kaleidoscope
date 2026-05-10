@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Kaleidoscope.Models.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources;
 
@@ -9,7 +10,7 @@ namespace Kaleidoscope.Services.Resources;
 /// The poller and reconcile-scan never observe an owner+container that isn't in this set.
 /// Events from IGameInventory implicitly respect this — the game only fires for loaded containers.
 /// </summary>
-public sealed class LoadedContainerSet
+public sealed class LoadedContainerSet : IRequiredService
 {
     private readonly object _lock = new();
     private readonly HashSet<(ulong OwnerId, Container Container)> _set = new();

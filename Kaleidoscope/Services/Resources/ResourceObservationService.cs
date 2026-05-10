@@ -1,5 +1,6 @@
 using System;
 using Kaleidoscope.Models.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources;
 
@@ -31,7 +32,7 @@ public readonly record struct ResourceObservation
 /// through RecordObservation, which atomically updates the in-memory store + aggregates
 /// + time-series cache + DB write queue under one lock.
 /// </summary>
-public sealed class ResourceObservationService
+public sealed class ResourceObservationService : IRequiredService
 {
     private readonly ResourceStore _store;
     private readonly ResourceDbWriter _writer;

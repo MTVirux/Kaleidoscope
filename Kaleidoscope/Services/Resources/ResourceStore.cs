@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Kaleidoscope.Models.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources;
 
@@ -8,7 +9,7 @@ namespace Kaleidoscope.Services.Resources;
 /// All mutations are gated by a single lock owned by ResourceObservationService —
 /// ResourceStore itself is unsynchronized and assumes single-threaded access.
 /// </summary>
-public sealed class ResourceStore
+public sealed class ResourceStore : IRequiredService
 {
     private readonly Dictionary<ResourceKey, Resource> _state = new();
     private long _version;

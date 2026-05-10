@@ -1,4 +1,5 @@
 using Kaleidoscope.Models.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources;
 
@@ -7,7 +8,7 @@ namespace Kaleidoscope.Services.Resources;
 /// Last-writer-wins on stamp; expired tags self-clear on consume.
 /// All access serialized externally by ResourceObservationService's lock.
 /// </summary>
-public sealed class SourceTagSink
+public sealed class SourceTagSink : IRequiredService
 {
     private readonly Func<DateTime> _now;
     private SourceTag? _tag;
