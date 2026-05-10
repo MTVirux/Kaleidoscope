@@ -125,7 +125,8 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         FileDialogService fileDialogService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
-        ResourceDbWriter resourceWriter)
+        ResourceDbWriter resourceWriter,
+        AutoRetainerHydrator autoRetainerHydrator)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -178,7 +179,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
 
         // Create category renderers
         _generalCategory = new GeneralCategory(_configService, frameLimiterService, uiBuilder);
-        _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService);
+        _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService, resourceStore, autoRetainerHydrator);
         _layoutsCategory = new LayoutsCategory(_configService);
         _customizationCategory = new CustomizationCategory(Config, _configService.Save, _layoutEditingService);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);

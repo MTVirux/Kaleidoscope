@@ -18,29 +18,52 @@ namespace Kaleidoscope.Services.Resources;
 /// </summary>
 public sealed class AutoRetainerHydrator : IRequiredService
 {
+    private readonly AutoRetainerService _ar;
+    private readonly KaleidoscopeDbService _db;
+    private readonly ResourceStore _store;
+
     public AutoRetainerHydrator(
         AutoRetainerService ar,
         KaleidoscopeDbService db,
         ResourceStore store,
         ResourceStoreHydrator _ /* DI ordering: ensure ResourceStore is hydrated from DB before we check it */)
     {
+        _ar = ar;
+        _db = db;
+        _store = store;
+
         // Skip on non-fresh DB. ResourceStore is hydrated from `resources` before we run, so
         // an empty snapshot is the canonical signal for "fresh DB or freshly-deleted DB".
-        if (store.Snapshot().Count > 0)
+        if (_store.Snapshot().Count > 0)
         {
             LogService.Debug(LogCategory.Inventory, "[AutoRetainerHydrator] resources table not empty; skipping initial AR seed");
             return;
         }
 
-        if (!ar.IsAvailable)
+        SeedNamesFromAutoRetainer("initial");
+    }
+
+    /// <summary>
+    /// Public entry point — call after Clear DB to re-seed names from AutoRetainer without
+    /// requiring a plugin reload. Caller is responsible for ensuring the DB has been cleared
+    /// and ResourceStore has been wiped before calling this.
+    /// </summary>
+    public void Reseed()
+    {
+        SeedNamesFromAutoRetainer("clear-db reseed");
+    }
+
+    private void SeedNamesFromAutoRetainer(string reason)
+    {
+        if (!_ar.IsAvailable)
         {
-            LogService.Debug(LogCategory.Inventory, "[AutoRetainerHydrator] AutoRetainer IPC not available; skipping initial seed");
+            LogService.Debug(LogCategory.Inventory, $"[AutoRetainerHydrator] AutoRetainer IPC not available; skipping {reason} seed");
             return;
         }
 
         try
         {
-            var characters = ar.GetAllFullCharacterData();
+            var characters = _ar.GetAllFullCharacterData();
             int charSeeded = 0;
             int retainerSeeded = 0;
             int retainersWithoutId = 0;
@@ -49,7 +72,7 @@ public sealed class AutoRetainerHydrator : IRequiredService
             {
                 if (ch.CID == 0 || string.IsNullOrEmpty(ch.Name)) continue;
 
-                db.UpsertOwnerName(ch.CID, OwnerKind.Player, ch.Name, ch.World);
+                _db.UpsertOwnerName(ch.CID, OwnerKind.Player, ch.Name, ch.World);
                 charSeeded++;
 
                 foreach (var ret in ch.Retainers)
@@ -61,12 +84,12 @@ public sealed class AutoRetainerHydrator : IRequiredService
                         continue;
                     }
 
-                    db.UpsertOwnerName(ret.RetainerId, OwnerKind.Retainer, ret.Name);
+                    _db.UpsertOwnerName(ret.RetainerId, OwnerKind.Retainer, ret.Name);
                     retainerSeeded++;
                 }
             }
 
-            LogService.Info(LogCategory.Inventory, $"[AutoRetainerHydrator] Initial seed: {charSeeded} characters and {retainerSeeded} retainers from AutoRetainer IPC");
+            LogService.Info(LogCategory.Inventory, $"[AutoRetainerHydrator] {reason}: seeded {charSeeded} characters and {retainerSeeded} retainers from AutoRetainer IPC");
             if (retainersWithoutId > 0)
             {
                 LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] {retainersWithoutId} retainers from AR had no RetainerId — name not seeded");
@@ -74,7 +97,7 @@ public sealed class AutoRetainerHydrator : IRequiredService
         }
         catch (Exception ex)
         {
-            LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] Initial seed failed: {ex.Message}");
+            LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] {reason} seed failed: {ex.Message}");
         }
     }
 }

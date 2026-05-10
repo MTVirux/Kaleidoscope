@@ -2,6 +2,7 @@ using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Resources;
 
 namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 
@@ -14,6 +15,8 @@ public sealed class DataCategory
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerService _autoRetainerIpc;
     private readonly ConfigurationService _configService;
+    private readonly ResourceStore _resourceStore;
+    private readonly AutoRetainerHydrator _autoRetainerHydrator;
 
     private bool _clearDbOpen = false;
     private bool _sanitizeDbOpen = false;
@@ -21,11 +24,18 @@ public sealed class DataCategory
     private string _importStatus = "";
     private int _importCount = 0;
 
-    public DataCategory(CurrencyTrackerService currencyTrackerService, AutoRetainerService autoRetainerIpc, ConfigurationService configService)
+    public DataCategory(
+        CurrencyTrackerService currencyTrackerService,
+        AutoRetainerService autoRetainerIpc,
+        ConfigurationService configService,
+        ResourceStore resourceStore,
+        AutoRetainerHydrator autoRetainerHydrator)
     {
         _currencyTrackerService = currencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;
         _configService = configService;
+        _resourceStore = resourceStore;
+        _autoRetainerHydrator = autoRetainerHydrator;
     }
 
     public void Draw()
@@ -101,7 +111,9 @@ public sealed class DataCategory
                 try
                 {
                     _currencyTrackerService.ClearAllData();
-                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data");
+                    _resourceStore.Clear();
+                    _autoRetainerHydrator.Reseed();
+                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data and re-seeded names from AutoRetainer");
                 }
                 catch (Exception ex)
                 {

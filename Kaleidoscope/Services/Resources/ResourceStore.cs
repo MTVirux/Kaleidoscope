@@ -99,6 +99,20 @@ public sealed class ResourceStore : IRequiredService
         return false;
     }
 
+    /// <summary>
+    /// Clear all in-memory state — current resources, aggregates, and the time-series cache.
+    /// Used when the underlying DB is wiped (e.g., the Clear DB button) so the in-memory store
+    /// matches the now-empty DB.
+    /// </summary>
+    public void Clear()
+    {
+        _state.Clear();
+        _byItemAndKind.Clear();
+        _byItem.Clear();
+        _history.Clear();
+        _version++;   // bump so consumers detect the reset
+    }
+
     /// <summary>Snapshot copy — caller iterates without holding any lock.</summary>
     public IReadOnlyList<Resource> Snapshot()
     {
