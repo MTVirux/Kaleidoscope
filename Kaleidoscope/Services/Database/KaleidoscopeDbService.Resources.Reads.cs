@@ -208,4 +208,74 @@ public sealed partial class KaleidoscopeDbService
         }
         return result;
     }
+
+    /// <summary>
+    /// All historical points for a given (item, owner, container) tuple, optionally filtered
+    /// to points after a timestamp. Returns (timestamp, quantity) tuples ordered by timestamp.
+    /// Used by TimeSeriesCacheService when UseUnifiedResources is enabled.
+    /// </summary>
+    public List<(long Timestamp, long Value)> GetHistoryPoints(uint itemId, ulong ownerId, int container, DateTime? since = null)
+    {
+        var result = new List<(long, long)>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                var sql = @"
+                    SELECT timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND owner_id = $oid AND container = $cont";
+                cmd.Parameters.AddWithValue("$iid", (long)itemId);
+                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+                cmd.Parameters.AddWithValue("$cont", container);
+                if (since.HasValue)
+                {
+                    sql += " AND timestamp >= $since";
+                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+                }
+                sql += " ORDER BY timestamp";
+                cmd.CommandText = sql;
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) result.Add((r.GetInt64(0), r.GetInt64(1)));
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetHistoryPoints", ex);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Most recent quantity for a (item, owner, container) tuple, or null if no data.
+    /// Used by callers that only care about the current value.
+    /// </summary>
+    public long? GetLatestHistoryValue(uint itemId, ulong ownerId, int container)
+    {
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return null;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT quantity FROM resource_history
+                    WHERE item_id = $iid AND owner_id = $oid AND container = $cont
+                    ORDER BY timestamp DESC LIMIT 1";
+                cmd.Parameters.AddWithValue("$iid", (long)itemId);
+                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+                cmd.Parameters.AddWithValue("$cont", container);
+                var v = cmd.ExecuteScalar();
+                return v != null && v != DBNull.Value ? (long?)(long)v : null;
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetLatestHistoryValue", ex);
+                return null;
+            }
+        }
+    }
 }
