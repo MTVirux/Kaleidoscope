@@ -86,33 +86,35 @@ public sealed partial class KaleidoscopeDbService
                     using var cmd = _connection!.CreateCommand();
                     cmd.Transaction = tx;
 
-                    cmd.CommandText = "DELETE FROM points";
+                    // Unified resources tables (Phase 1+)
+                    cmd.CommandText = "DELETE FROM resource_history";
                     cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM series";
+                    cmd.CommandText = "DELETE FROM resources";
                     cmd.ExecuteNonQuery();
 
+                    cmd.CommandText = "DELETE FROM owner_names";
+                    cmd.ExecuteNonQuery();
+
+                    // Character/identity registry
                     cmd.CommandText = "DELETE FROM character_names";
                     cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM inventory_items";
-                    cmd.ExecuteNonQuery();
-
-                    cmd.CommandText = "DELETE FROM inventory_cache";
-                    cmd.ExecuteNonQuery();
-
+                    // Price tracking
                     cmd.CommandText = "DELETE FROM item_prices";
                     cmd.ExecuteNonQuery();
 
                     cmd.CommandText = "DELETE FROM price_history";
                     cmd.ExecuteNonQuery();
 
+                    // Inventory value history
                     cmd.CommandText = "DELETE FROM inventory_value_items";
                     cmd.ExecuteNonQuery();
 
                     cmd.CommandText = "DELETE FROM inventory_value_history";
                     cmd.ExecuteNonQuery();
 
+                    // Sales tracking
                     cmd.CommandText = "DELETE FROM sale_records";
                     cmd.ExecuteNonQuery();
 
