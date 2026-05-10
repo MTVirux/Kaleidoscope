@@ -10,7 +10,9 @@ public record AutoRetainerRetainerData(
     long VentureEndsAt,
     int Level,
     uint Job,
-    bool HasVenture);
+    bool HasVenture,
+    ulong RetainerId,
+    long Gil);
 
 /// <summary>
 /// Vessel (airship/submersible) data from AutoRetainer.
@@ -247,10 +249,24 @@ public sealed class AutoRetainerService : IDisposable, IService
                         var level = retainer["Level"]?.Value<int>() ?? 0;
                         var job = retainer["Job"]?.Value<uint>() ?? 0;
                         var hasVenture = retainer["HasVenture"]?.Value<bool>() ?? false;
-                        
+
+                        // RetainerId — try multiple field names (AR may expose any of these)
+                        ulong retainerId = 0;
+                        foreach (var key in new[] { "RetainerID", "RetainerId", "Id" })
+                        {
+                            var token = retainer[key];
+                            if (token != null)
+                            {
+                                try { retainerId = token.Value<ulong>(); if (retainerId != 0) break; }
+                                catch { }
+                            }
+                        }
+
+                        var retainerGil = retainer["Gil"]?.Value<long>() ?? 0L;
+
                         if (!string.IsNullOrEmpty(retainerName))
                         {
-                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture));
+                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture, retainerId, retainerGil));
                         }
                     }
                 }
@@ -297,10 +313,30 @@ public sealed class AutoRetainerService : IDisposable, IService
                         var job = jobProp != null ? Convert.ToUInt32(jobProp) : 0u;
                         var hasVentureProp = rType.GetProperty("HasVenture")?.GetValue(retainer);
                         var hasVenture = hasVentureProp is bool hv && hv;
-                        
+
+                        // RetainerId — try multiple property names (AR may expose any of these)
+                        ulong retainerId = 0;
+                        foreach (var propName in new[] { "RetainerID", "RetainerId", "Id" })
+                        {
+                            var ridProp = rType.GetProperty(propName)?.GetValue(retainer);
+                            if (ridProp != null)
+                            {
+                                try { retainerId = Convert.ToUInt64(ridProp); if (retainerId != 0) break; }
+                                catch { }
+                            }
+                        }
+
+                        long retainerGil = 0;
+                        var retainerGilProp = rType.GetProperty("Gil")?.GetValue(retainer);
+                        if (retainerGilProp != null)
+                        {
+                            try { retainerGil = Convert.ToInt64(retainerGilProp); }
+                            catch { }
+                        }
+
                         if (!string.IsNullOrEmpty(retainerName))
                         {
-                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture));
+                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture, retainerId, retainerGil));
                         }
                     }
                 }
