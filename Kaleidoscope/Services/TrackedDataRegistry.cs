@@ -65,7 +65,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             ItemId = 1,
             MaxValue = 999_999_999,
             EnabledByDefault = true,
-            Description = "The primary currency in FFXIV."
+            Description = "Gil held by the active character (excludes retainers and FC)."
         });
 
         RegisterTrackedType(new TrackedDataDefinition
@@ -505,8 +505,8 @@ public sealed class TrackedDataRegistry : IRequiredService
         {
             return type switch
             {
-                // Gil: player + all retainers (using cached retainer gil)
-                TrackedDataType.Gil => im->GetGil() + cache.RetainerGil,
+                // Gil: character only — retainers tracked separately under TrackedDataType.RetainerGil
+                TrackedDataType.Gil => im->GetGil(),
                 
                 // Tomestones - player only (currency, not tradeable)
                 TrackedDataType.TomestonePoetics => im->GetTomestoneCount(28),
