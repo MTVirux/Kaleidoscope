@@ -531,7 +531,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <summary>
     /// Current schema version. Increment this whenever a new migration is added.
     /// </summary>
-    private const int CurrentSchemaVersion = 6; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources
+    private const int CurrentSchemaVersion = 7; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources, 7=drop_legacy_tables
 
     /// <summary>
     /// Runs database migrations for schema updates.
@@ -571,6 +571,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             if (currentVersion < 4) MigrateAddDisplayNameColumn();
             if (currentVersion < 5) MigrateAddTimeSeriesColorColumn();
             if (currentVersion < 6) MigrateAddUnifiedResources();
+            if (currentVersion < 7) MigrateDropLegacyTables();
 
             using (var updateCmd = _connection.CreateCommand())
             {

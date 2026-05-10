@@ -94,4 +94,48 @@ CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, 
         return new ResourceDbWriter(_connection);
     }
 
+    /// <summary>
+    /// Migration v7: drop the legacy inventory_cache, inventory_items, series, and points
+    /// tables. Phase 2 disabled all writers to these tables; Phase 3 removes them entirely.
+    /// VACUUMs after the drop to reclaim disk space.
+    /// </summary>
+    private void MigrateDropLegacyTables()
+    {
+        if (_connection == null) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                // Drop dependent tables before parents (FK cascade is enabled per existing schema).
+                ExecuteDropDdl("DROP TABLE IF EXISTS inventory_items;");
+                ExecuteDropDdl("DROP TABLE IF EXISTS inventory_cache;");
+                ExecuteDropDdl("DROP TABLE IF EXISTS points;");
+                ExecuteDropDdl("DROP TABLE IF EXISTS series;");
+
+                // VACUUM forbids running inside a transaction. The existing RunMigrations
+                // chain runs each migration as a direct ExecuteNonQuery (not wrapped in a
+                // transaction), so VACUUM is safe here.
+                ExecuteDropDdl("VACUUM;");
+
+                LogService.Info(LogCategory.Database, "[Migration v7] Dropped inventory_cache/inventory_items/series/points and VACUUMed");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error(LogCategory.Database, $"[Migration v7] Failed: {ex.Message}", ex);
+                throw;
+            }
+        }
+    }
+
+    private void ExecuteDropDdl(string sql)
+    {
+        using var cmd = _connection!.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
 }
