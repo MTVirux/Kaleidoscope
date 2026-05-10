@@ -1,0 +1,211 @@
+using System.Collections.Generic;
+using Kaleidoscope.Models.Inventory;
+using Kaleidoscope.Models.Resources;
+
+namespace Kaleidoscope.Services.Database;
+
+public sealed partial class KaleidoscopeDbService
+{
+    /// <summary>
+    /// Read all inventory data from the new resources table, grouped into legacy
+    /// InventoryCacheEntry shape. Used by InventoryCacheService when UseUnifiedResources
+    /// is enabled. Excludes synthetic rows (Container ≥ 40000) — legacy entry shape
+    /// doesn't carry them — except the SpecialPlayer/Gil row which becomes the Gil field.
+    /// </summary>
+    public List<InventoryCacheEntry> GetAllInventoryCachesFromResources()
+    {
+        var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return new List<InventoryCacheEntry>();
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT owner_id, owner_kind, parent_owner_id, container, item_id, slot,
+                           quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
+                    FROM resources
+                    WHERE container < 40000 OR (container = 90000 AND item_id = $gilId)
+                    ORDER BY owner_kind, owner_id, container, slot";
+                cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
+                ReadResourcesIntoEntries(cmd, result);
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetAllInventoryCachesFromResources", ex);
+            }
+        }
+
+        return new List<InventoryCacheEntry>(result.Values);
+    }
+
+    /// <summary>
+    /// Same as GetAllInventoryCachesFromResources but filtered to the given character
+    /// and their retainers (via parent_owner_id).
+    /// </summary>
+    public List<InventoryCacheEntry> GetAllInventoryCachesFromResources(ulong characterId)
+    {
+        var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return new List<InventoryCacheEntry>();
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT owner_id, owner_kind, parent_owner_id, container, item_id, slot,
+                           quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
+                    FROM resources
+                    WHERE (container < 40000 OR (container = 90000 AND item_id = $gilId))
+                      AND (owner_id = $cid OR parent_owner_id = $cid)
+                    ORDER BY owner_kind, owner_id, container, slot";
+                cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                ReadResourcesIntoEntries(cmd, result);
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetAllInventoryCachesFromResources(characterId)", ex);
+            }
+        }
+
+        return new List<InventoryCacheEntry>(result.Values);
+    }
+
+    /// <summary>
+    /// Shared row-reader for both GetAllInventoryCachesFromResources overloads. Mutates
+    /// the provided dictionary in place: groups rows into entries by (OwnerId, OwnerKind),
+    /// promotes the SpecialPlayer/Gil row into the entry's Gil field, and converts
+    /// non-synthetic rows into InventoryItemSnapshot entries.
+    /// </summary>
+    private static void ReadResourcesIntoEntries(
+        Microsoft.Data.Sqlite.SqliteCommand cmd,
+        Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry> result)
+    {
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var ownerId = (ulong)r.GetInt64(0);
+            var ownerKind = (OwnerKind)r.GetInt32(1);
+            var parentId = (ulong)r.GetInt64(2);
+            var container = r.GetInt32(3);
+            var itemId = (uint)r.GetInt64(4);
+            var slot = (short)r.GetInt32(5);
+            var qty = r.GetInt64(6);
+            var flags = (ResourceFlags)r.GetInt32(7);
+            var sb = (ushort)r.GetInt32(8);
+            var col = (ushort)r.GetInt32(9);
+            var cond = (ushort)r.GetInt32(10);
+            var glam = (uint)r.GetInt64(11);
+            var ts = new DateTime(r.GetInt64(12), DateTimeKind.Utc);
+
+            var key = (ownerId, ownerKind);
+            if (!result.TryGetValue(key, out var entry))
+            {
+                entry = new InventoryCacheEntry
+                {
+                    CharacterId = ownerKind == OwnerKind.Player ? ownerId : parentId,
+                    RetainerId = ownerKind == OwnerKind.Retainer ? ownerId : 0,
+                    SourceType = ownerKind == OwnerKind.Player ? InventorySourceType.Player : InventorySourceType.Retainer,
+                    UpdatedAt = ts,
+                };
+                result[key] = entry;
+            }
+
+            if (container == 90000 && itemId == Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId)
+            {
+                entry.Gil = qty;
+                continue;
+            }
+
+            entry.Items.Add(new InventoryItemSnapshot
+            {
+                ItemId = itemId,
+                Quantity = (int)qty,
+                IsHq = (flags & ResourceFlags.HQ) != 0,
+                IsCollectable = (flags & ResourceFlags.Collectable) != 0,
+                Slot = slot,
+                ContainerType = (uint)container,
+                SpiritbondOrCollectability = (flags & ResourceFlags.Collectable) != 0 ? col : sb,
+                Condition = cond,
+                GlamourId = glam,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Sum quantity for an item across all retainers belonging to a character.
+    /// Mirrors legacy GetRetainerItemCount.
+    /// </summary>
+    public long GetTotalRetainerItemFromResources(ulong characterId, uint itemId)
+    {
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT COALESCE(SUM(quantity), 0)
+                    FROM resources
+                    WHERE owner_kind = 1 AND parent_owner_id = $cid AND item_id = $iid";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.Parameters.AddWithValue("$iid", (long)itemId);
+                var v = cmd.ExecuteScalar();
+                return v != null && v != DBNull.Value ? (long)v : 0;
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetTotalRetainerItemFromResources", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Per-item totals across all owners (or filtered to one character/item).
+    /// Mirrors legacy GetItemCountSummary.
+    /// </summary>
+    public Dictionary<uint, long> GetItemCountSummaryFromResources(ulong? characterId = null, uint? itemId = null)
+    {
+        var result = new Dictionary<uint, long>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                var sql = "SELECT item_id, SUM(quantity) FROM resources WHERE container < 40000";
+                if (characterId.HasValue)
+                {
+                    sql += " AND (owner_id = $cid OR parent_owner_id = $cid)";
+                    cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
+                }
+                if (itemId.HasValue)
+                {
+                    sql += " AND item_id = $iid";
+                    cmd.Parameters.AddWithValue("$iid", (long)itemId.Value);
+                }
+                sql += " GROUP BY item_id";
+                cmd.CommandText = sql;
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    result[(uint)r.GetInt64(0)] = r.GetInt64(1);
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetItemCountSummaryFromResources", ex);
+            }
+        }
+        return result;
+    }
+}
