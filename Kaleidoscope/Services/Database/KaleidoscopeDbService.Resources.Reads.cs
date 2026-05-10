@@ -280,6 +280,59 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Read every row from the resources table and apply it to the given ResourceStore.
+    /// Used at startup to pre-populate the in-memory store with offline character data
+    /// (since the new capture pipeline only fires for the active character + open retainers).
+    /// </summary>
+    public int LoadAllResourcesInto(Kaleidoscope.Services.Resources.ResourceStore store)
+    {
+        var loaded = 0;
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return 0;
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT owner_id, owner_kind, container, item_id, slot,
+                           quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
+                    FROM resources";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    var resource = new Kaleidoscope.Models.Resources.Resource
+                    {
+                        Key = new Kaleidoscope.Models.Resources.ResourceKey
+                        {
+                            OwnerId   = (ulong)r.GetInt64(0),
+                            OwnerKind = (Kaleidoscope.Models.Resources.OwnerKind)r.GetInt32(1),
+                            Container = (Kaleidoscope.Models.Resources.Container)r.GetInt32(2),
+                            ItemId    = (uint)r.GetInt64(3),
+                            Slot      = (short)r.GetInt32(4),
+                        },
+                        Quantity = r.GetInt64(5),
+                        Flags = (Kaleidoscope.Models.Resources.ResourceFlags)r.GetInt32(6),
+                        Spiritbond = (ushort)r.GetInt32(7),
+                        Collectability = (ushort)r.GetInt32(8),
+                        Condition = (ushort)r.GetInt32(9),
+                        GlamourId = (uint)r.GetInt64(10),
+                        UpdatedAt = new DateTime(r.GetInt64(11), DateTimeKind.Utc),
+                    };
+                    store.ApplyWithAggregate(resource);
+                    loaded++;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDbError("LoadAllResourcesInto", ex);
+            }
+        }
+        return loaded;
+    }
+
+    /// <summary>
     /// Returns all (variable, character_id) pairs from the legacy <c>series</c> table
     /// whose variable name starts with <paramref name="prefix"/> and, when
     /// <paramref name="suffix"/> is non-null/empty, also ends with that suffix.
