@@ -77,6 +77,9 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
 
     public string? DbPath => _dbPath;
 
+    /// <summary>Public accessor for the writer connection — used by services that need direct access (e.g., ResourceDbWriter).</summary>
+    public Microsoft.Data.Sqlite.SqliteConnection? GetWriterConnection() => _connection;
+
     /// <summary>
     /// Generates parameterized IN clause placeholders ($p0, $p1, ...) and adds corresponding parameters to the command.
     /// Returns the placeholder string for use in SQL (e.g., "$p0, $p1, $p2").

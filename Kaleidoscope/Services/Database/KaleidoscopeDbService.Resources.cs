@@ -1,3 +1,5 @@
+using Kaleidoscope.Services.Resources;
+
 namespace Kaleidoscope.Services.Database;
 
 public sealed partial class KaleidoscopeDbService
@@ -80,6 +82,16 @@ CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, 
         if (_connection == null) return;
         var (written, skipped) = MigrationSql.BackfillResourceHistoryFromSeries(_connection, null);
         LogService.Info(LogCategory.Database, $"[Migration v6] resource_history: wrote {written} rows, skipped {skipped} unrecognized series");
+    }
+
+    /// <summary>
+    /// Construct the ResourceDbWriter for production use against this DB service's
+    /// writer connection. Returns null if the connection isn't open yet (caller must defer).
+    /// </summary>
+    public ResourceDbWriter? CreateResourceDbWriter()
+    {
+        if (_connection == null) return null;
+        return new ResourceDbWriter(_connection);
     }
 
 }

@@ -17,7 +17,7 @@ public readonly record struct ResourceWrite
 /// Drains a pending-writes queue into batched SQLite transactions. Caller is responsible
 /// for invoking FlushOnce() periodically (e.g., on framework tick) — this class owns no timer.
 /// </summary>
-public sealed class ResourceDbWriter : IDisposable
+public sealed partial class ResourceDbWriter : IDisposable
 {
     private readonly SqliteConnection _conn;
     private readonly object _queueLock = new();

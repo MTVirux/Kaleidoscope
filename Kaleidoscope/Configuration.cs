@@ -29,6 +29,13 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShowDuringCutscenes { get; set; } = true;
 
+    /// <summary>
+    /// Phase 1 dual-write feature flag. When true, the new ResourceObservationService pipeline
+    /// is exercised by tests / dev validation. Old InventoryCacheService path keeps running
+    /// regardless (writes to old tables for safety until Phase 2 flips reads).
+    /// </summary>
+    public bool UseUnifiedResources { get; set; } = false;
+
     public bool ProfilerEnabled { get; set; } = false;
 
     public bool ProfilerLogSlowOperations { get; set; } = true;
