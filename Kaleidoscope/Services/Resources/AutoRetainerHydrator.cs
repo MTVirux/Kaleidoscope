@@ -5,21 +5,16 @@ using OtterGui.Services;
 namespace Kaleidoscope.Services.Resources;
 
 /// <summary>
-/// On startup, pulls character and retainer metadata from AutoRetainer's IPC and
-/// populates owner_names (so the data table shows real names for offline owners)
-/// plus the SpecialPlayer/Gil and RetainerGil rows in `resources` (so cross-character
-/// gil totals are accurate without requiring user to log into each character).
+/// On a FRESH DB (empty resources table — first install or after the user deletes the
+/// DB), pulls character + retainer name metadata from AutoRetainer's IPC and populates
+/// owner_names. The seeded names let the data table show meaningful identifiers for
+/// owners we haven't observed yet through our own capture pipeline.
 ///
-/// Inventory items are NOT pulled from AutoRetainer — those continue to come from
-/// our own capture pipeline. AutoRetainer's data is best-effort: stale (as of last
-/// AR run) but better than nothing for offline owners.
+/// Does NOT seed gil or any quantity data — those flow exclusively from our own capture
+/// (MemoryPoller, ReconcileScanner, InventoryEventCapture).
 ///
-/// Live captures from our own pipeline always win on conflict — they upsert and
-/// overwrite AR-seeded data when the user actually logs into / opens an owner.
-///
-/// ResourceStoreHydrator is listed as an explicit constructor dependency to ensure
-/// DI constructs it first, so the "skip if already exists" guard checks against
-/// the most recent live data already loaded from the DB.
+/// Skips entirely if the DB already has resources rows — on normal startups this is a
+/// no-op. The hydrator's only job is initial-state seeding from AR's offline knowledge.
 /// </summary>
 public sealed class AutoRetainerHydrator : IRequiredService
 {
@@ -27,12 +22,19 @@ public sealed class AutoRetainerHydrator : IRequiredService
         AutoRetainerService ar,
         KaleidoscopeDbService db,
         ResourceStore store,
-        ResourceObservationService obs,
-        ResourceStoreHydrator _ /* explicit dep to force ordering */)
+        ResourceStoreHydrator _ /* DI ordering: ensure ResourceStore is hydrated from DB before we check it */)
     {
+        // Skip on non-fresh DB. ResourceStore is hydrated from `resources` before we run, so
+        // an empty snapshot is the canonical signal for "fresh DB or freshly-deleted DB".
+        if (store.Snapshot().Count > 0)
+        {
+            LogService.Debug(LogCategory.Inventory, "[AutoRetainerHydrator] resources table not empty; skipping initial AR seed");
+            return;
+        }
+
         if (!ar.IsAvailable)
         {
-            LogService.Debug(LogCategory.Inventory, "[AutoRetainerHydrator] AutoRetainer IPC not available; skipping seed");
+            LogService.Debug(LogCategory.Inventory, "[AutoRetainerHydrator] AutoRetainer IPC not available; skipping initial seed");
             return;
         }
 
@@ -41,86 +43,38 @@ public sealed class AutoRetainerHydrator : IRequiredService
             var characters = ar.GetAllFullCharacterData();
             int charSeeded = 0;
             int retainerSeeded = 0;
-            int retainerIdsMissing = 0;
+            int retainersWithoutId = 0;
 
             foreach (var ch in characters)
             {
                 if (ch.CID == 0 || string.IsNullOrEmpty(ch.Name)) continue;
 
-                // Player owner name + world
                 db.UpsertOwnerName(ch.CID, OwnerKind.Player, ch.Name, ch.World);
-
-                // Player gil — only seed if we don't already have a fresher live row.
-                // ResourceStore is hydrated from DB before this hydrator runs (DI ordering),
-                // so we can check it.
-                var playerGilKey = new ResourceKey
-                {
-                    OwnerId = ch.CID,
-                    OwnerKind = OwnerKind.Player,
-                    Container = Container.SpecialPlayer,
-                    ItemId = ResourceCatalog.GilItemId,
-                    Slot = -1,
-                };
-                var existingPlayerGil = store.Get(playerGilKey);
-                if (existingPlayerGil == null)
-                {
-                    obs.RecordObservation(new ResourceObservation
-                    {
-                        Key = playerGilKey,
-                        Quantity = ch.Gil,
-                        UpdatedAt = DateTime.UtcNow,
-                        ParentOwnerId = 0,
-                    });
-                }
-
                 charSeeded++;
 
-                // Retainers
                 foreach (var ret in ch.Retainers)
                 {
                     if (string.IsNullOrEmpty(ret.Name)) continue;
-
                     if (ret.RetainerId == 0)
                     {
-                        retainerIdsMissing++;
-                        // Can't write owner_names or resources without a valid ID — skip
+                        retainersWithoutId++;
                         continue;
                     }
 
                     db.UpsertOwnerName(ret.RetainerId, OwnerKind.Retainer, ret.Name);
-
-                    var retainerGilKey = new ResourceKey
-                    {
-                        OwnerId = ret.RetainerId,
-                        OwnerKind = OwnerKind.Retainer,
-                        Container = Container.RetainerGil,
-                        ItemId = ResourceCatalog.GilItemId,
-                        Slot = -1,
-                    };
-                    var existingRetainerGil = store.Get(retainerGilKey);
-                    if (existingRetainerGil == null && ret.Gil > 0)
-                    {
-                        obs.RecordObservation(new ResourceObservation
-                        {
-                            Key = retainerGilKey,
-                            Quantity = ret.Gil,
-                            UpdatedAt = DateTime.UtcNow,
-                            ParentOwnerId = ch.CID,
-                        });
-                    }
-
                     retainerSeeded++;
                 }
             }
 
-            if (retainerIdsMissing > 0)
-                LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] {retainerIdsMissing} retainer(s) had no ID (AR IPC may not expose RetainerID/RetainerId/Id); retainer name/gil seeding skipped for those");
-
-            LogService.Info(LogCategory.Inventory, $"[AutoRetainerHydrator] Seeded {charSeeded} characters and {retainerSeeded} retainers from AutoRetainer IPC");
+            LogService.Info(LogCategory.Inventory, $"[AutoRetainerHydrator] Initial seed: {charSeeded} characters and {retainerSeeded} retainers from AutoRetainer IPC");
+            if (retainersWithoutId > 0)
+            {
+                LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] {retainersWithoutId} retainers from AR had no RetainerId — name not seeded");
+            }
         }
         catch (Exception ex)
         {
-            LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] Seed failed: {ex.Message}");
+            LogService.Warning(LogCategory.Inventory, $"[AutoRetainerHydrator] Initial seed failed: {ex.Message}");
         }
     }
 }
