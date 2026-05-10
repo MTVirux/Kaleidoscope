@@ -1,6 +1,8 @@
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Models;
+using Kaleidoscope.Models.Resources;
 using Kaleidoscope.Services;
+using Kaleidoscope.Services.Resources;
 using Kaleidoscope.Gui.Widgets.Tree;
 using System.Diagnostics;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -72,6 +74,9 @@ public sealed class TestsCategory
     private bool _layoutStatsTested = false;
 
     private readonly LayoutEditingService _layoutEditingService;
+    private readonly ResourceObservationService _resourcesService;
+    private readonly ResourceStore _resourceStore;
+    private readonly ResourceDbWriter _resourceWriter;
 
     public TestsCategory(
         CurrencyTrackerService currencyTrackerService,
@@ -80,7 +85,10 @@ public sealed class TestsCategory
         UniversalisWebSocketService webSocketService,
         ConfigurationService configService,
         MarketDataCacheService marketDataCacheService,
-        LayoutEditingService layoutEditingService)
+        LayoutEditingService layoutEditingService,
+        ResourceObservationService resourcesService,
+        ResourceStore resourceStore,
+        ResourceDbWriter resourceWriter)
     {
         _currencyTrackerService = currencyTrackerService;
         _arIpcService = arIpcService;
@@ -89,6 +97,9 @@ public sealed class TestsCategory
         _configService = configService;
         _marketDataCacheService = marketDataCacheService;
         _layoutEditingService = layoutEditingService;
+        _resourcesService = resourcesService;
+        _resourceStore = resourceStore;
+        _resourceWriter = resourceWriter;
     }
 
     public void Draw()
@@ -136,6 +147,8 @@ public sealed class TestsCategory
         DrawServiceTests();
         ImGui.Spacing();
         DrawCacheArchitectureTests();
+        ImGui.Spacing();
+        DrawResourcesPanel();
         ImGui.Spacing();
 
         // Test results display
@@ -593,6 +606,53 @@ public sealed class TestsCategory
         {
             ImGui.TextColored(new System.Numerics.Vector4(1f, 0.5f, 0.5f, 1f), $"Error reading cache stats: {ex.Message}");
         }
+    }
+
+    private void DrawResourcesPanel()
+    {
+        if (!TreeHelpers.DrawCollapsingSection("Unified Resources", false))
+            return;
+
+        ImGui.Indent();
+
+        if (_resourcesService == null || _resourceStore == null || _resourceWriter == null)
+        {
+            ImGui.TextDisabled("Resources services not available");
+            ImGui.Unindent();
+            return;
+        }
+
+        ImGui.TextUnformatted($"Version:           {_resourcesService.Version}");
+        ImGui.TextUnformatted($"Live resources:    {_resourceStore.Snapshot().Count}");
+        ImGui.TextUnformatted($"Pending DB writes: {_resourceWriter.PendingCount}");
+
+        ImGui.Spacing();
+
+        var pid = GameStateService.PlayerContentId;
+        var gilKey = new ResourceKey
+        {
+            OwnerId   = pid,
+            OwnerKind = OwnerKind.Player,
+            Container = Container.SpecialPlayer,
+            ItemId    = ResourceCatalog.GilItemId,
+            Slot      = -1,
+        };
+        var stored = _resourceStore.Get(gilKey)?.Quantity ?? 0;
+        long live;
+        unsafe { var im = GameStateService.InventoryManagerInstance(); live = im == null ? 0 : (long)im->GetGil(); }
+        var match = stored == live;
+
+        ImGui.TextUnformatted($"Stored Gil: {stored:N0}  |  Live Gil: {live:N0}  |  ");
+        ImGui.SameLine();
+        var col = match ? new System.Numerics.Vector4(0, 1, 0, 1) : new System.Numerics.Vector4(1, 0.4f, 0.4f, 1);
+        ImGui.TextColored(col, match ? "MATCH" : "MISMATCH");
+
+        ImGui.Spacing();
+
+        if (ImGui.Button("Force flush"))
+            _resourceWriter.FlushOnce();
+
+        ImGui.Unindent();
     }
 
     private void DrawTestResults()

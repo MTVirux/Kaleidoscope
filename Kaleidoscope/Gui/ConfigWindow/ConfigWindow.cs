@@ -10,6 +10,7 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Characters;
 using Kaleidoscope.Services.Inventory;
 using Kaleidoscope.Services.Universalis;
+using Kaleidoscope.Services.Resources;
 
 namespace Kaleidoscope.Gui.ConfigWindow;
 
@@ -121,7 +122,10 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         MessageService messageService,
         StateService stateService,
         FilenameService filenameService,
-        FileDialogService fileDialogService)
+        FileDialogService fileDialogService,
+        ResourceObservationService resourcesService,
+        ResourceStore resourceStore,
+        ResourceDbWriter resourceWriter)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -191,7 +195,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             _messageService,
             _arIpc,
             _priceTrackingService);
-        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService);
+        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService, resourcesService, resourceStore, resourceWriter);
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
         _loggingCategory = new LoggingCategory(_configService, filenameService, fileDialogService);
         _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
