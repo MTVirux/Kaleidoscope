@@ -280,6 +280,33 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// One-shot cleanup: the Phase 1 migration backfilled retainer gil into Container.SpecialPlayer
+    /// (synthetic = 90000) rows owned by retainers. The new live pipeline writes retainer gil under
+    /// Container.RetainerGil (12000). Without this purge, both rows coexist and aggregate-by-owner-
+    /// kind double-counts the retainer gil.
+    /// </summary>
+    public int PurgeStaleRetainerGilRows()
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND container = 90000 AND item_id = $gilId";
+                cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
+                return cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogDbError("PurgeStaleRetainerGilRows", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
     /// Read every row from the resources table and apply it to the given ResourceStore.
     /// Used at startup to pre-populate the in-memory store with offline character data
     /// (since the new capture pipeline only fires for the active character + open retainers).

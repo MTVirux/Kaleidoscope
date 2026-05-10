@@ -423,12 +423,19 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     /// <summary>
     /// Gets the current value for a data type from the ResourceStore.
+    /// Gil and RetainerGil share the same ItemId so they are scoped by OwnerKind to avoid
+    /// cross-contamination in the aggregate.
     /// </summary>
     public long? GetCurrentValue(TrackedDataType type)
     {
-        if (ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping))
-            return _resourceStore.GetAggregate(mapping.ItemId);
-        return null;
+        return type switch
+        {
+            TrackedDataType.Gil         => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Player),
+            TrackedDataType.RetainerGil => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Retainer),
+            _ => Resources.ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping)
+                    ? _resourceStore.GetAggregate(mapping.ItemId)
+                    : null,
+        };
     }
 
     /// <summary>
@@ -441,8 +448,8 @@ public sealed class TrackedDataRegistry : IRequiredService
         var results = new Dictionary<TrackedDataType, long>();
         foreach (var type in types)
         {
-            if (ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping))
-                results[type] = _resourceStore.GetAggregate(mapping.ItemId);
+            var v = GetCurrentValue(type);
+            if (v.HasValue) results[type] = v.Value;
         }
         return results;
     }

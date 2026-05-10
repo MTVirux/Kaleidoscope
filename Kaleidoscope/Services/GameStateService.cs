@@ -151,6 +151,39 @@ public static unsafe class GameStateService
     }
 
     /// <summary>
+    /// Gets per-retainer gil from RetainerManager cached data.
+    /// Returns (RetainerId, Gil) for each available retainer with a non-zero id.
+    /// </summary>
+    public static IReadOnlyList<(ulong RetainerId, long Gil)> GetPerRetainerGil()
+    {
+        try
+        {
+            return GetPerRetainerGilUnsafe();
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"GetPerRetainerGil failed: {ex.Message}");
+            return Array.Empty<(ulong, long)>();
+        }
+    }
+
+    private static List<(ulong RetainerId, long Gil)> GetPerRetainerGilUnsafe()
+    {
+        var result = new List<(ulong, long)>();
+        var rm = RetainerManagerInstance();
+        if (rm == null || !rm->IsReady) return result;
+        var count = rm->GetRetainerCount();
+        for (uint i = 0; i < count; i++)
+        {
+            var retainer = rm->GetRetainerBySortedIndex(i);
+            if (retainer == null || !retainer->Available) continue;
+            if (retainer->RetainerId == 0) continue;
+            result.Add((retainer->RetainerId, retainer->Gil));
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Gets the item count from the currently active retainer's inventory.
     /// Only works when a retainer is selected/open.
     /// </summary>

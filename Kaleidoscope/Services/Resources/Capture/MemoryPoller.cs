@@ -45,6 +45,24 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         var fcCredits = GameStateService.GetFreeCompanyCredits();
         if (fcCredits.HasValue)
             Observe(pid, ResourceCatalog.FCCreditsItemId, fcCredits.Value, Container.SpecialFreeCompany);
+
+        // Per-retainer gil — available whenever RetainerManager cache is populated.
+        foreach (var (retainerId, gil) in GameStateService.GetPerRetainerGil())
+        {
+            _service.RecordObservation(new ResourceObservation
+            {
+                Key = new ResourceKey
+                {
+                    OwnerId   = retainerId,
+                    OwnerKind = OwnerKind.Retainer,
+                    Container = Container.RetainerGil,
+                    ItemId    = ResourceCatalog.GilItemId,
+                    Slot      = -1,
+                },
+                Quantity  = gil,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
     }
 
     private void Observe(ulong ownerId, uint itemId, long quantity, Container container)

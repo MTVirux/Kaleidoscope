@@ -185,8 +185,8 @@ public static class ResourceCatalog
         ["LightningCrystals"]  = (Container.PlayerAggregate, 6),
         ["WaterCrystals"]      = (Container.PlayerAggregate, 7),
 
-        // RetainerGil → SpecialPlayer with gil id (retainer attribution lost — acceptable per spec)
-        ["RetainerGil"]        = (Container.SpecialPlayer, GilItemId),
+        // RetainerGil → RetainerGil container (12000); scoped to OwnerKind.Retainer in TrackedDataRegistry
+        ["RetainerGil"]        = (Container.RetainerGil, GilItemId),
 
         // Synthetic per-character metrics with reserved synthetic IDs
         ["InventoryFreeSlots"]  = (Container.SpecialPlayer, 1_000_006),

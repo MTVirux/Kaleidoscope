@@ -13,6 +13,9 @@ public sealed class ResourceStoreHydrator : IRequiredService
 {
     public ResourceStoreHydrator(ResourceStore store, KaleidoscopeDbService db)
     {
+        var purged = db.PurgeStaleRetainerGilRows();
+        if (purged > 0)
+            LogService.Info(LogCategory.Inventory, $"[ResourceStoreHydrator] Purged {purged} stale Phase 1 retainer-gil rows");
         var loaded = db.LoadAllResourcesInto(store);
         LogService.Info(LogCategory.Inventory, $"[ResourceStoreHydrator] Pre-loaded {loaded} resources into in-memory store");
     }
