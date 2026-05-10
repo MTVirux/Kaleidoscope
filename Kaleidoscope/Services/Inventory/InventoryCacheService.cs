@@ -4,6 +4,8 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Models.Inventory;
 using OtterGui.Services;
 using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Resources;
+using Kaleidoscope.Services.Resources.Adapters;
 
 namespace Kaleidoscope.Services.Inventory;
 
@@ -29,6 +31,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     private readonly InventoryChangeService _inventoryChangeService;
     private readonly IClientState _clientState;
     private readonly ConfigurationService _configService;
+    private readonly ResourceStore _resourceStore;
     
     // In-memory cache for inventory data - avoids repeated DB reads for offline characters.
     // Uses plain Dictionary (not ConcurrentDictionary) because all access is synchronized
@@ -72,7 +75,8 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         IFramework framework,
         InventoryChangeService inventoryChangeService,
         IClientState clientState,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        ResourceStore resourceStore)
     {
         _log = log;
         _dbService = dbService;
@@ -82,6 +86,7 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _inventoryChangeService = inventoryChangeService;
         _configService = configService;
         _clientState = clientState;
+        _resourceStore = resourceStore;
 
         _framework.Update += OnFrameworkUpdate;
         _inventoryChangeService.OnRetainerInventoryReady += OnRetainerInventoryReady;
@@ -597,7 +602,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
     {
         if (characterId == 0) return new List<InventoryCacheEntry>();
-        
+
+        if (_configService.Config.UseUnifiedResources)
+        {
+            return _dbService.GetAllInventoryCachesFromResources(characterId);
+        }
+
         lock (_cacheLock)
         {
             if (_inventoryMemoryCache.TryGetValue(characterId, out var cached))
@@ -652,6 +662,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventories()
     {
+        if (_configService.Config.UseUnifiedResources)
+        {
+            return ResourceToLegacyAdapter.Adapt(_resourceStore);
+        }
+
         // If cache is populating on background thread, return empty list (non-blocking)
         if (_cachePopulating)
         {
@@ -681,6 +696,12 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         var characterId = GameStateService.PlayerContentId;
         if (characterId == 0) return 0;
 
+        if (_configService.Config.UseUnifiedResources)
+        {
+            var summary = _dbService.GetItemCountSummaryFromResources(characterId, itemId);
+            return summary.TryGetValue(itemId, out var v) ? v : 0;
+        }
+
         // Use memory cache instead of DB call
         var inventories = GetInventoriesForCharacter(characterId);
         return inventories
@@ -691,6 +712,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     public long GetTotalItemCountAllCharacters(uint itemId)
     {
+        if (_configService.Config.UseUnifiedResources)
+        {
+            return _resourceStore.GetAggregate(itemId);
+        }
+
         // Use memory cache instead of DB call
         var allInventories = GetAllInventories();
         return allInventories
@@ -908,8 +934,14 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary of variable name to list of (characterId, timestamp, value) tuples.</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPendingSamples(string prefix, string suffix)
     {
+        if (_configService.Config.UseUnifiedResources)
+        {
+            // New pipeline flushes every ~1s via ResourceFlushTicker; nothing is queued in this service.
+            return new Dictionary<string, List<(ulong, DateTime, long)>>();
+        }
+
         var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
-        
+
         foreach (var kvp in _pendingSamples)
         {
             var variableName = kvp.Key.VariableName;
@@ -933,31 +965,49 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     public InventoryCacheStatistics GetCacheStatistics()
     {
-        int characterCount;
-        int entryCount;
-        int itemCount;
+        if (_configService.Config.UseUnifiedResources)
+        {
+            var snapshot = _resourceStore.Snapshot();
+            var characterCount = snapshot.Select(r => r.Key.OwnerId).Distinct().Count();
+            var entryCount = snapshot.Select(r => (r.Key.OwnerId, r.Key.OwnerKind)).Distinct().Count();
+            var itemCount = snapshot.Count;
+
+            return new InventoryCacheStatistics
+            {
+                CachedCharacterCount = characterCount,
+                CachedEntryCount = entryCount,
+                CachedItemCount = itemCount,
+                AllCharactersCacheCount = entryCount,
+                PendingSamplesCount = 0,
+                EstimatedMemoryBytes = (characterCount * 50L) + (entryCount * 100L) + (itemCount * 64L),
+            };
+        }
+
+        int characterCount2;
+        int entryCount2;
+        int itemCount2;
         lock (_cacheLock)
         {
-            characterCount = _inventoryMemoryCache.Count;
-            entryCount = _inventoryMemoryCache.Values.Sum(list => list.Count);
-            itemCount = _inventoryMemoryCache.Values.Sum(list => list.Sum(e => e.Items.Count));
+            characterCount2 = _inventoryMemoryCache.Count;
+            entryCount2 = _inventoryMemoryCache.Values.Sum(list => list.Count);
+            itemCount2 = _inventoryMemoryCache.Values.Sum(list => list.Sum(e => e.Items.Count));
         }
         var allCharactersCacheCount = _allCharactersCache?.Count ?? 0;
         var pendingSamplesCount = _pendingSamples.Count;
-        
+
         // Estimate memory usage:
         // - InventoryCacheEntry: ~100 bytes base (strings, timestamps, etc.)
         // - InventoryItemSnapshot: ~24 bytes each (readonly record struct, stored inline in List<T> array)
         // - Dictionary overhead per character: ~50 bytes
-        var estimatedBytes = (characterCount * 50L) +
-                             (entryCount * 100L) +
-                             (itemCount * 24L);
-        
+        var estimatedBytes = (characterCount2 * 50L) +
+                             (entryCount2 * 100L) +
+                             (itemCount2 * 24L);
+
         return new InventoryCacheStatistics
         {
-            CachedCharacterCount = characterCount,
-            CachedEntryCount = entryCount,
-            CachedItemCount = itemCount,
+            CachedCharacterCount = characterCount2,
+            CachedEntryCount = entryCount2,
+            CachedItemCount = itemCount2,
             AllCharactersCacheCount = allCharactersCacheCount,
             PendingSamplesCount = pendingSamplesCount,
             EstimatedMemoryBytes = estimatedBytes
