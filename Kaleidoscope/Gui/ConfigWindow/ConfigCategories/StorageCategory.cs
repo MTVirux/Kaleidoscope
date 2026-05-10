@@ -181,7 +181,7 @@ public sealed class StorageCategory : IDisposable
             CleanupDataMode.Currencies when _cleanupCurrencyCombo?.SelectedType != default
                 => _cleanupCurrencyCombo!.SelectedType.ToString(),
             CleanupDataMode.Items when _cleanupItemCombo?.SelectedItemId > 0
-                => InventoryCacheService.GetItemVariableName(_cleanupItemCombo!.SelectedItemId),
+                => $"Item_{_cleanupItemCombo!.SelectedItemId}",
             _ => null
         };
     }
@@ -202,8 +202,8 @@ public sealed class StorageCategory : IDisposable
                 
             case CleanupDataMode.Items when _cleanupItemCombo?.SelectedItemId > 0:
                 var itemId = _cleanupItemCombo!.SelectedItemId;
-                result.Add(InventoryCacheService.GetItemVariableName(itemId));
-                result.Add(InventoryCacheService.GetRetainerItemVariableName(itemId));
+                result.Add($"Item_{itemId}");
+                result.Add($"ItemRetainer_{itemId}");
                 break;
         }
         

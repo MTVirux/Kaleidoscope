@@ -151,14 +151,6 @@ public sealed class CachesCategory
         ImGui.SameLine();
         ImGui.TextDisabled("Clears all cached time series data. Will reload from DB on next access.");
         
-        if (ImGui.Button("Invalidate Inventory Cache"))
-        {
-            _inventoryCacheService.InvalidateAllCaches();
-            LogService.Info(LogCategory.Cache, "[CachesCategory] Invalidated inventory cache");
-        }
-        ImGui.SameLine();
-        ImGui.TextDisabled("Marks inventory cache as dirty. Will reload from DB on next access.");
-        
         if (ImGui.Button("Refresh Character Data"))
         {
             _characterDataService.MarkDirty();

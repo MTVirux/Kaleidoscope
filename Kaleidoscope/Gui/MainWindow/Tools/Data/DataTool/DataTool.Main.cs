@@ -70,7 +70,6 @@ public sealed partial class DataTool : ToolComponent
     // Version counters for cache change detection (replaces blind timer polling)
     private long _lastTimeSeriesVersion;
     private long _lastCharacterVersion;
-    private long _lastInventoryVersion;
     
     // Retainer names cache (refreshed periodically)
     private Dictionary<ulong, string>? _cachedRetainerNames;
@@ -517,15 +516,12 @@ public sealed partial class DataTool : ToolComponent
     {
         var tsVersion = CacheService.Version;
         var charVersion = CharacterDataCache.Version;
-        var invVersion = _inventoryCacheService?.Version ?? 0;
-        
-        if (tsVersion != _lastTimeSeriesVersion || 
-            charVersion != _lastCharacterVersion || 
-            invVersion != _lastInventoryVersion)
+
+        if (tsVersion != _lastTimeSeriesVersion ||
+            charVersion != _lastCharacterVersion)
         {
             _lastTimeSeriesVersion = tsVersion;
             _lastCharacterVersion = charVersion;
-            _lastInventoryVersion = invVersion;
             return true;
         }
         return false;

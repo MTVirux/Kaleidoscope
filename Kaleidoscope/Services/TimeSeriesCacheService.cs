@@ -265,42 +265,12 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Gets the latest cached value for each character for a given variable.
-    /// Cache-first: returns only cached data, no DB fallback.
-    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
+    /// Reads from resource_history via the resources pipeline.
     /// </summary>
     /// <returns>Dictionary of characterId -> latest value.</returns>
     public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
     {
-        if (_configService.Config.UseUnifiedResources)
-            return GetLatestValuesForVariableViaResources(variable);
-
-        var result = new Dictionary<ulong, long>();
-        var foundAny = false;
-
-        foreach (var kvp in _cache)
-        {
-            if (kvp.Key.Variable != variable) continue;
-            foundAny = true;
-
-            var lastPoint = kvp.Value.GetLastPoint();
-            if (lastPoint.HasValue)
-            {
-                result[kvp.Key.CharacterId] = lastPoint.Value.value;
-            }
-        }
-
-        if (foundAny)
-        {
-            Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetLatestValuesForVariable({variable}) - {result.Count} characters");
-        }
-        else
-        {
-            Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetLatestValuesForVariable({variable})");
-        }
-
-        return result;
+        return GetLatestValuesForVariableViaResources(variable);
     }
 
     private Dictionary<ulong, long> GetLatestValuesForVariableViaResources(string variable)
@@ -319,9 +289,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     }
 
     /// <summary>
-    /// Gets all cached points for a variable, grouped by variable name.
-    /// Cache-first: returns only cached data, no DB fallback.
-    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
+    /// Gets all points for a variable from resource_history, grouped by variable name.
     /// Compatible with DbService.GetAllPointsBatch signature.
     /// </summary>
     /// <param name="variable">The variable name to query.</param>
@@ -329,51 +297,11 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary with variable name as key and list of points as value.</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variable, DateTime? since)
     {
-        if (_configService.Config.UseUnifiedResources)
-            return GetPointsBatchViaResources(variable, suffix: null, since);
-
-        var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
-        var points = new List<(ulong characterId, DateTime timestamp, long value)>();
-        var foundAny = false;
-
-        foreach (var kvp in _cache)
-        {
-            if (kvp.Key.Variable != variable) continue;
-            foundAny = true;
-
-            var characterId = kvp.Key.CharacterId;
-            var cachedPoints = since.HasValue
-                ? kvp.Value.GetPointsSince(since.Value)
-                : kvp.Value.GetPoints();
-            foreach (var (ts, val) in cachedPoints)
-            {
-                points.Add((characterId, ts, val));
-            }
-        }
-
-        if (points.Count > 0)
-        {
-            result[variable] = points;
-        }
-
-        if (foundAny)
-        {
-            Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetAllPointsBatch({variable}) - {points.Count} points");
-        }
-        else
-        {
-            Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetAllPointsBatch({variable})");
-        }
-
-        return result;
+        return GetPointsBatchViaResources(variable, suffix: null, since);
     }
 
     /// <summary>
-    /// Gets all cached points for variables matching a prefix+suffix pattern.
-    /// Cache-first: returns only cached data, no DB fallback.
-    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
+    /// Gets all points for variables matching a prefix+suffix pattern from resource_history.
     /// Compatible with DbService.GetPointsBatchWithSuffix signature.
     /// </summary>
     /// <param name="prefix">Variable name prefix (e.g., "ItemRetainerX_").</param>
@@ -382,46 +310,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary with variable name as key and list of points as value.</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchWithSuffix(string prefix, string suffix, DateTime? since)
     {
-        if (_configService.Config.UseUnifiedResources)
-            return GetPointsBatchViaResources(prefix, suffix, since);
-
-        var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
-        var foundAny = false;
-
-        foreach (var kvp in _cache)
-        {
-            var variable = kvp.Key.Variable;
-            if (!variable.StartsWith(prefix) || !variable.EndsWith(suffix)) continue;
-            foundAny = true;
-
-            if (!result.TryGetValue(variable, out var points))
-            {
-                points = new List<(ulong characterId, DateTime timestamp, long value)>();
-                result[variable] = points;
-            }
-
-            var characterId = kvp.Key.CharacterId;
-            var cachedPoints = since.HasValue
-                ? kvp.Value.GetPointsSince(since.Value)
-                : kvp.Value.GetPoints();
-            foreach (var (ts, val) in cachedPoints)
-            {
-                points.Add((characterId, ts, val));
-            }
-        }
-
-        if (foundAny)
-        {
-            Interlocked.Increment(ref _cacheHits);
-            LogService.Verbose(LogCategory.Cache, $"[Cache HIT] GetPointsBatchWithSuffix({prefix}*{suffix}) - {result.Count} variables");
-        }
-        else
-        {
-            Interlocked.Increment(ref _cacheMisses);
-            LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
-        }
-
-        return result;
+        return GetPointsBatchViaResources(prefix, suffix, since);
     }
 
     private Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchViaResources(

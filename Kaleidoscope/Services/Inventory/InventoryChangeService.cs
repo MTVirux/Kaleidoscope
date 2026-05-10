@@ -85,9 +85,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         // Skip processing if not logged in to prevent invalid data
         if (!_clientState.IsLoggedIn)
             return;
-        if (_configService.Config.UseUnifiedResources)
-            return;
-
         // Dalamud's inventory change event fired
         // This covers player inventory, armory, crystals, retainer inventories, etc.
         var hasCrystalChange = false;
@@ -264,10 +261,6 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         {
             return;
         }
-
-        // Value-polling is redundant with MemoryPoller when unified resources are active
-        if (_configService.Config.UseUnifiedResources)
-            return;
 
         if (now - _lastValueCheck >= _valueCheckInterval)
         {

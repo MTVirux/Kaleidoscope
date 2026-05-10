@@ -456,11 +456,11 @@ public sealed class ItemsCategory
         var dbService = _currencyTrackerService.DbService;
         
         // Delete player inventory history
-        var playerVariable = InventoryCacheService.GetItemVariableName(itemId);
+        var playerVariable = $"Item_{itemId}";
         var playerDeleted = dbService.ClearAllData(playerVariable);
-        
+
         // Delete retainer inventory history
-        var retainerVariable = InventoryCacheService.GetRetainerItemVariableName(itemId);
+        var retainerVariable = $"ItemRetainer_{itemId}";
         var retainerDeleted = dbService.ClearAllData(retainerVariable);
         
         // Invalidate the time-series cache for these variables

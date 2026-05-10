@@ -29,14 +29,6 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShowDuringCutscenes { get; set; } = true;
 
-    /// <summary>
-    /// Phase 2 default: true. When true, all UI consumers read from the unified resources
-    /// pipeline (ResourceStore + resource_history) and the legacy capture loops are disabled.
-    /// When false, the legacy paths run instead (kept as a rollback option). Phase 3 will
-    /// remove this flag and the legacy paths entirely.
-    /// </summary>
-    public bool UseUnifiedResources { get; set; } = true;
-
     public bool ProfilerEnabled { get; set; } = false;
 
     public bool ProfilerLogSlowOperations { get; set; } = true;
