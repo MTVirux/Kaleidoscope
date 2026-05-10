@@ -88,15 +88,17 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
         _clientState = clientState;
         _resourceStore = resourceStore;
 
-        _framework.Update += OnFrameworkUpdate;
-        _inventoryChangeService.OnRetainerInventoryReady += OnRetainerInventoryReady;
-        _inventoryChangeService.OnRetainerClosed += OnRetainerClosed;
-        _inventoryChangeService.OnValuesChanged += OnValuesChanged;
-        
-        _clientState.Login += OnLogin;
-        _clientState.Logout += OnLogout;
-        
-        PopulateCacheAsync();
+        if (!_configService.Config.UseUnifiedResources)
+        {
+            _framework.Update += OnFrameworkUpdate;
+            _inventoryChangeService.OnRetainerInventoryReady += OnRetainerInventoryReady;
+            _inventoryChangeService.OnRetainerClosed += OnRetainerClosed;
+            _inventoryChangeService.OnValuesChanged += OnValuesChanged;
+            _clientState.Login += OnLogin;
+            _clientState.Logout += OnLogout;
+
+            PopulateCacheAsync();
+        }
 
         LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Initialized");
     }
@@ -1016,39 +1018,43 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 
     public void Dispose()
     {
-        _framework.Update -= OnFrameworkUpdate;
-        _inventoryChangeService.OnRetainerInventoryReady -= OnRetainerInventoryReady;
-        _inventoryChangeService.OnRetainerClosed -= OnRetainerClosed;
-        _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
-        _clientState.Login -= OnLogin;
-        _clientState.Logout -= OnLogout;
-        
-        // Flush dirty inventory caches with a timeout to avoid blocking dispose indefinitely.
-        // Data in the WAL is not lost — it will be recovered automatically on next startup.
-        try
+        if (!_configService.Config.UseUnifiedResources)
         {
-            var flushTask = Task.Run(() =>
+            _framework.Update -= OnFrameworkUpdate;
+            _inventoryChangeService.OnRetainerInventoryReady -= OnRetainerInventoryReady;
+            _inventoryChangeService.OnRetainerClosed -= OnRetainerClosed;
+            _inventoryChangeService.OnValuesChanged -= OnValuesChanged;
+            _clientState.Login -= OnLogin;
+            _clientState.Logout -= OnLogout;
+
+            // Flush dirty inventory caches with a timeout to avoid blocking dispose indefinitely.
+            // Data in the WAL is not lost — it will be recovered automatically on next startup.
+            try
             {
-                FlushDirtyInventoryCaches("dispose", runAsync: false);
-                FlushPendingSamples("dispose");
-            });
-            if (!flushTask.Wait(TimeSpan.FromSeconds(3)))
+                var flushTask = Task.Run(() =>
+                {
+                    FlushDirtyInventoryCaches("dispose", runAsync: false);
+                    FlushPendingSamples("dispose");
+                });
+                if (!flushTask.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Inventory flush timed out during dispose (3s) — data is safe in WAL");
+                }
+            }
+            catch (Exception ex)
             {
-                LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Inventory flush timed out during dispose (3s) — data is safe in WAL");
+                LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Inventory flush on dispose failed: {ex.Message}");
             }
         }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.Inventory, $"[InventoryCacheService] Inventory flush on dispose failed: {ex.Message}");
-        }
-        
+
+        // Cache cleanup runs regardless (in case the flag changed during runtime — ensures we don't leak)
         lock (_cacheLock)
         {
             _inventoryMemoryCache.Clear();
             _allCharactersCache = null;
         }
         _pendingSamples.Clear();
-        
+
         lock (_dirtyLock)
         {
             _dirtyInventoryCaches.Clear();
