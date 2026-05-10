@@ -1,6 +1,7 @@
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Kaleidoscope.Models.Resources;
+using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
 using OtterGui.Services;
 
@@ -20,6 +21,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
     private readonly InventoryChangeService _changes;
     private readonly LoadedContainerSet _loaded;
     private readonly ResourceObservationService _service;
+    private readonly KaleidoscopeDbService _db;
 
     private static readonly InventoryType[] RetainerContainers =
     {
@@ -29,11 +31,12 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         InventoryType.RetainerEquippedItems, InventoryType.RetainerCrystals, InventoryType.RetainerMarket,
     };
 
-    public ReconcileScanner(InventoryChangeService changes, LoadedContainerSet loaded, ResourceObservationService service)
+    public ReconcileScanner(InventoryChangeService changes, LoadedContainerSet loaded, ResourceObservationService service, KaleidoscopeDbService db)
     {
         _changes = changes;
         _loaded = loaded;
         _service = service;
+        _db = db;
         _changes.OnRetainerInventoryReady += OnRetainerReady;
         _changes.OnRetainerClosed         += OnRetainerClosed;
     }
@@ -44,6 +47,11 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         if (im == null) return;
         var rid = GameStateService.GetActiveRetainerId();
         if (rid == 0) return;
+
+        // Persist the retainer's name so the data table can display it.
+        var retainerName = GameStateService.GetActiveRetainerName();
+        if (!string.IsNullOrEmpty(retainerName))
+            _db.UpsertOwnerName(rid, OwnerKind.Retainer, retainerName);
 
         foreach (var type in RetainerContainers)
         {

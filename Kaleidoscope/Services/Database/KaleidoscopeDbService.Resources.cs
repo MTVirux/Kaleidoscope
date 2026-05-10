@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS resource_history (
 
 CREATE INDEX IF NOT EXISTS idx_history_item_time  ON resource_history(item_id, owner_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_history_owner_time ON resource_history(owner_id, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS owner_names (
+    owner_id    INTEGER NOT NULL,
+    owner_kind  INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    world       TEXT,
+    updated_at  INTEGER NOT NULL,
+    PRIMARY KEY (owner_id, owner_kind)
+);
 ";
 
     /// <summary>

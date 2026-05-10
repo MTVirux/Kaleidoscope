@@ -7,6 +7,41 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
     /// <summary>
+    /// Insert or update the human-readable name for an owner (player character or retainer).
+    /// Called from capture sources when they observe an owner whose name is known.
+    /// </summary>
+    public void UpsertOwnerName(ulong ownerId, Kaleidoscope.Models.Resources.OwnerKind ownerKind, string name, string? world = null)
+    {
+        if (ownerId == 0 || string.IsNullOrEmpty(name)) return;
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO owner_names (owner_id, owner_kind, name, world, updated_at)
+                    VALUES ($oid, $okind, $n, $w, $ts)
+                    ON CONFLICT(owner_id, owner_kind) DO UPDATE SET
+                        name       = excluded.name,
+                        world      = COALESCE(excluded.world, owner_names.world),
+                        updated_at = excluded.updated_at;";
+                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+                cmd.Parameters.AddWithValue("$okind", (int)ownerKind);
+                cmd.Parameters.AddWithValue("$n", name);
+                cmd.Parameters.AddWithValue("$w", (object?)world ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.Ticks);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                LogDbError("UpsertOwnerName", ex);
+            }
+        }
+    }
+
+    /// <summary>
     /// Read all inventory data from the new resources table, grouped into legacy
     /// InventoryCacheEntry shape. Used by InventoryCacheService when UseUnifiedResources
     /// is enabled. Excludes synthetic rows (Container ≥ 40000) — legacy entry shape
@@ -25,11 +60,13 @@ public sealed partial class KaleidoscopeDbService
             {
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT owner_id, owner_kind, parent_owner_id, container, item_id, slot,
-                           quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
-                    FROM resources
-                    WHERE container < 40000 OR (container = 90000 AND item_id = $gilId)
-                    ORDER BY owner_kind, owner_id, container, slot";
+                    SELECT r.owner_id, r.owner_kind, r.parent_owner_id, r.container, r.item_id, r.slot,
+                           r.quantity, r.flags, r.spiritbond, r.collectability, r.condition, r.glamour_id, r.updated_at,
+                           n.name, n.world
+                    FROM resources r
+                    LEFT JOIN owner_names n ON n.owner_id = r.owner_id AND n.owner_kind = r.owner_kind
+                    WHERE r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId)
+                    ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
                 cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
                 ReadResourcesIntoEntries(cmd, result);
             }
@@ -59,12 +96,14 @@ public sealed partial class KaleidoscopeDbService
             {
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT owner_id, owner_kind, parent_owner_id, container, item_id, slot,
-                           quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
-                    FROM resources
-                    WHERE (container < 40000 OR (container = 90000 AND item_id = $gilId))
-                      AND (owner_id = $cid OR parent_owner_id = $cid)
-                    ORDER BY owner_kind, owner_id, container, slot";
+                    SELECT r.owner_id, r.owner_kind, r.parent_owner_id, r.container, r.item_id, r.slot,
+                           r.quantity, r.flags, r.spiritbond, r.collectability, r.condition, r.glamour_id, r.updated_at,
+                           n.name, n.world
+                    FROM resources r
+                    LEFT JOIN owner_names n ON n.owner_id = r.owner_id AND n.owner_kind = r.owner_kind
+                    WHERE (r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId))
+                      AND (r.owner_id = $cid OR r.parent_owner_id = $cid)
+                    ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
                 cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
                 cmd.Parameters.AddWithValue("$cid", (long)characterId);
                 ReadResourcesIntoEntries(cmd, result);
@@ -114,6 +153,8 @@ public sealed partial class KaleidoscopeDbService
                     RetainerId = ownerKind == OwnerKind.Retainer ? ownerId : 0,
                     SourceType = ownerKind == OwnerKind.Player ? InventorySourceType.Player : InventorySourceType.Retainer,
                     UpdatedAt = ts,
+                    Name = r.IsDBNull(13) ? null : r.GetString(13),
+                    World = r.IsDBNull(14) ? null : r.GetString(14),
                 };
                 result[key] = entry;
             }

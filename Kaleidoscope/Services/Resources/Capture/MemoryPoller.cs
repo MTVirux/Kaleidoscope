@@ -1,5 +1,6 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Resources;
+using Kaleidoscope.Services.Database;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources.Capture;
@@ -14,14 +15,17 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
     private readonly IFramework _framework;
     private readonly IClientState _clientState;
     private readonly ResourceObservationService _service;
+    private readonly KaleidoscopeDbService _db;
     private DateTime _nextPoll;
     private const int PollIntervalMs = 500;
+    private ulong _lastNameStampedPid;
 
-    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service)
+    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service, KaleidoscopeDbService db)
     {
         _framework = framework;
         _clientState = clientState;
         _service = service;
+        _db = db;
         _framework.Update += OnFrameworkUpdate;
     }
 
@@ -35,6 +39,17 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         if (im == null) return;
         var pid = GameStateService.PlayerContentId;
         if (pid == 0) return;
+
+        // Stamp the player's name once per character switch so the data table can display it.
+        if (_lastNameStampedPid != pid)
+        {
+            var playerName = GameStateService.LocalPlayerName;
+            if (!string.IsNullOrEmpty(playerName))
+            {
+                _db.UpsertOwnerName(pid, OwnerKind.Player, playerName);
+                _lastNameStampedPid = pid;
+            }
+        }
 
         Observe(pid, ResourceCatalog.GilItemId,         im->GetGil(),              Container.SpecialPlayer);
         Observe(pid, ResourceCatalog.MGPItemId,         im->GetGoldSaucerCoin(),   Container.SpecialPlayer);
