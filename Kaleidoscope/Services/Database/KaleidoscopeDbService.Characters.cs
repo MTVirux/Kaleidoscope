@@ -10,6 +10,12 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<ulong>();
 
+        // Translate legacy variable name to resource_history coordinates
+        // characterId=0 is used here because we want all characters; the
+        // mapping only needs the variable type, not a specific owner.
+        var mapping = Kaleidoscope.Services.Resources.Adapters.LegacyVariableTranslator.Translate(variable, 0);
+        if (mapping == null) return result;
+
         lock (_readLock)
         {
             var conn = _readConnection ?? _connection;
@@ -18,8 +24,15 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT DISTINCT character_id FROM series WHERE variable = $v ORDER BY character_id";
-                cmd.Parameters.AddWithValue("$v", variable);
+                // For retainer-aggregate variables (ItemRetainer_) owner_id is the character,
+                // so we join owner_names to discover the real character owners.
+                // For all other variables, owner_id IS the character_id.
+                cmd.CommandText = @"
+                    SELECT DISTINCT owner_id FROM resource_history
+                    WHERE item_id = $iid AND container = $cont AND owner_id != 0
+                    ORDER BY owner_id";
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -44,6 +57,12 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public List<string> GetAllVariablesWithPrefix(string prefix)
     {
+        // After Phase 3 the series table no longer exists. Reconstruct distinct legacy
+        // variable names from resource_history by reading distinct (item_id, container,
+        // owner_id) rows and reverse-mapping to the Item_* / ItemRetainer_* / ItemRetainerX_*
+        // naming convention.  Used only for startup cache pre-population; callers tolerate
+        // an empty list gracefully.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var result = new List<string>();
 
         lock (_readLock)
@@ -54,16 +73,43 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT DISTINCT variable FROM series WHERE variable LIKE $prefix ORDER BY variable";
-                cmd.Parameters.AddWithValue("$prefix", prefix + "%");
+                // Containers of interest (int values from Container enum):
+                //   PlayerAggregate   = item from player inventory  → "Item_{itemId}"
+                //   RetainerAggregate = item from retainer (agg)    → "ItemRetainer_{itemId}"
+                //   RetainerPage1-7   = item per-retainer row       → "ItemRetainerX_{ownerId}_{itemId}"
+                // We distinguish them by container value.
+                cmd.CommandText = @"
+                    SELECT DISTINCT item_id, container, owner_id FROM resource_history
+                    WHERE owner_id != 0 AND item_id < 1000000";
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
-                    var variable = reader.GetString(0);
-                    if (!string.IsNullOrEmpty(variable))
-                        result.Add(variable);
+                    var itemId  = (uint)reader.GetInt64(0);
+                    var cont    = (Kaleidoscope.Models.Resources.Container)reader.GetInt32(1);
+                    var ownerId = (ulong)reader.GetInt64(2);
+
+                    string? legacyName = cont switch
+                    {
+                        Kaleidoscope.Models.Resources.Container.PlayerAggregate    => $"Item_{itemId}",
+                        Kaleidoscope.Models.Resources.Container.RetainerAggregate  => $"ItemRetainer_{itemId}",
+                        Kaleidoscope.Models.Resources.Container.RetainerPage1 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage2 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage3 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage4 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage5 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage6 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage7      => $"ItemRetainerX_{ownerId}_{itemId}",
+                        _ => null,
+                    };
+
+                    if (legacyName != null
+                        && legacyName.StartsWith(prefix, StringComparison.Ordinal)
+                        && seen.Add(legacyName))
+                        result.Add(legacyName);
                 }
+
+                result.Sort(StringComparer.Ordinal);
             }
             catch (Exception ex)
             {
@@ -407,8 +453,8 @@ public sealed partial class KaleidoscopeDbService
 
     /// <summary>
     /// Deletes all data associated with a character across all character-scoped tables:
-    /// time-series (points + series), character names, inventory cache + items (CASCADE),
-    /// and inventory value history + items (CASCADE).
+    /// resource_history, resources, owner_names (character + its retainers),
+    /// character_names, and inventory value history + items (CASCADE).
     /// World-scoped tables (sale_records, price_history, item_prices) are not affected.
     /// Returns the total number of rows deleted.
     /// </summary>
@@ -429,19 +475,34 @@ public sealed partial class KaleidoscopeDbService
                     cmd.Transaction = tx;
                     cmd.Parameters.AddWithValue("$c", (long)characterId);
 
-                    // Time-series data
-                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE character_id = $c)";
+                    // Unified resources tables — character-owned rows
+                    cmd.CommandText = "DELETE FROM resource_history WHERE owner_id = $c";
                     totalDeleted += cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM series WHERE character_id = $c";
+                    // Retainer-owned resource_history rows (retainers whose parent is this character)
+                    cmd.CommandText = @"DELETE FROM resource_history
+                        WHERE owner_id IN (
+                            SELECT owner_id FROM resources WHERE parent_owner_id = $c AND owner_kind = 1
+                        )";
                     totalDeleted += cmd.ExecuteNonQuery();
 
-                    // Character name
+                    cmd.CommandText = "DELETE FROM resources WHERE owner_id = $c OR parent_owner_id = $c";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // owner_names: character itself (owner_kind = 0)
+                    cmd.CommandText = "DELETE FROM owner_names WHERE owner_id = $c AND owner_kind = 0";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // owner_names: retainers that belong to this character
+                    cmd.CommandText = @"DELETE FROM owner_names
+                        WHERE owner_kind = 1
+                          AND owner_id IN (
+                              SELECT owner_id FROM resources WHERE parent_owner_id = $c AND owner_kind = 1
+                          )";
+                    totalDeleted += cmd.ExecuteNonQuery();
+
+                    // Character name registry
                     cmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
-                    totalDeleted += cmd.ExecuteNonQuery();
-
-                    // Inventory cache (CASCADE deletes inventory_items)
-                    cmd.CommandText = "DELETE FROM inventory_cache WHERE character_id = $c";
                     totalDeleted += cmd.ExecuteNonQuery();
 
                     // Inventory value history (CASCADE deletes inventory_value_items)
@@ -449,7 +510,7 @@ public sealed partial class KaleidoscopeDbService
                     int batchDeleted;
                     do
                     {
-                        cmd.CommandText = @"DELETE FROM inventory_value_history 
+                        cmd.CommandText = @"DELETE FROM inventory_value_history
                             WHERE id IN (SELECT id FROM inventory_value_history WHERE character_id = $c LIMIT 100)";
                         batchDeleted = cmd.ExecuteNonQuery();
                         totalDeleted += batchDeleted;

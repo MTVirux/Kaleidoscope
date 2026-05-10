@@ -1,119 +1,68 @@
+using Kaleidoscope.Models.Resources;
+using Kaleidoscope.Services.Resources;
+using Kaleidoscope.Services.Resources.Adapters;
 using Microsoft.Data.Sqlite;
 using System.Text;
 
 namespace Kaleidoscope.Services.Database;
 
+/// <summary>
+/// Time-series query methods, rewritten for Phase 3 to operate against
+/// resource_history / resources / owner_names rather than the dropped
+/// legacy series / points tables.
+///
+/// Public API is preserved so callers (CurrencyTrackerService,
+/// TimeSeriesCacheService, dev-UI) continue to compile unchanged.
+/// Legacy variable names are translated via LegacyVariableTranslator.
+/// </summary>
 public sealed partial class KaleidoscopeDbService
 {
 
     /// <summary>
-    /// Gets or creates a series ID for the given variable and character.
-    /// When creating a new series, inserts an initial data point with value 0.
+    /// Ensures a resource_history entry can be stored for the given variable/character pair.
+    /// After Phase 3 there is no separate "series" concept — this is a no-op that returns a
+    /// synthetic non-null sentinel (1L) so callers that check for null still work.
     /// </summary>
+    [Obsolete("Series table removed in Phase 3. Use SaveSampleIfChanged directly.")]
     public long? GetOrCreateSeries(string variable, ulong characterId)
     {
-        if (string.IsNullOrEmpty(_dbPath)) return null;
-
-        lock (_writeLock)
-        {
-            EnsureConnection();
-            if (_connection == null) return null;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                var result = cmd.ExecuteScalar();
-
-                if (result != null && result != DBNull.Value)
-                    return (long)result;
-
-                cmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
-                var newSeriesId = (long)cmd.ExecuteScalar()!;
-
-                // Insert initial 0 value for the new series
-                cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, 0)";
-                cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("$s", newSeriesId);
-                cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.Ticks);
-                cmd.ExecuteNonQuery();
-
-                return newSeriesId;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetOrCreateSeries", ex);
-                return null;
-            }
-        }
-    }
-
-    public long? GetLastValue(long seriesId)
-    {
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
-                cmd.Parameters.AddWithValue("$s", seriesId);
-                var result = cmd.ExecuteScalar();
-
-                if (result != null && result != DBNull.Value)
-                    return (long)result;
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetLastValue", ex);
-                return null;
-            }
-        }
-    }
-
-    public long? GetLastValueForCharacter(string variable, ulong characterId)
-    {
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT p.value FROM points p 
-                    JOIN series s ON p.series_id = s.id 
-                    WHERE s.variable = $v AND s.character_id = $c 
-                    ORDER BY p.timestamp DESC LIMIT 1";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                var result = cmd.ExecuteScalar();
-
-                if (result != null && result != DBNull.Value)
-                    return (long)result;
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetLastValueForCharacter", ex);
-                return null;
-            }
-        }
+        // No series table exists; return a non-null sentinel so callers can proceed.
+        // The actual insert is handled by SaveSampleIfChanged / SaveSamplesIfChangedBatched.
+        return 1L;
     }
 
     /// <summary>
-    /// Gets the last recorded point (timestamp and value) for a character.
-    /// Used to ensure the cache always has the most recent data point regardless of time window.
+    /// Not meaningful after Phase 3 (no series-id concept). Returns null.
+    /// </summary>
+    [Obsolete("Series table removed in Phase 3. Use GetLatestHistoryValue instead.")]
+    public long? GetLastValue(long seriesId)
+    {
+        // The seriesId concept is gone. Callers that used this in combination with
+        // GetOrCreateSeries should migrate to GetLatestHistoryValue(itemId, ownerId, container).
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the most recent quantity for the given variable and character.
+    /// Translates the legacy variable name to resource_history coordinates.
+    /// </summary>
+    public long? GetLastValueForCharacter(string variable, ulong characterId)
+    {
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null) return null;
+
+        return GetLatestHistoryValue(mapping.Value.ItemId, mapping.Value.OwnerId, (int)mapping.Value.Container);
+    }
+
+    /// <summary>
+    /// Returns the most recent (timestamp, quantity) for the given variable and character.
+    /// Used by cache pre-population on startup.
     /// </summary>
     public (DateTime timestamp, long value)? GetLastPointForCharacter(string variable, ulong characterId)
     {
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null) return null;
+
         lock (_readLock)
         {
             var conn = _readConnection ?? _connection;
@@ -122,12 +71,13 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p 
-                    JOIN series s ON p.series_id = s.id 
-                    WHERE s.variable = $v AND s.character_id = $c 
-                    ORDER BY p.timestamp DESC LIMIT 1";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.CommandText = @"
+                    SELECT timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND owner_id = $oid AND container = $cont
+                    ORDER BY timestamp DESC LIMIT 1";
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
@@ -148,47 +98,43 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Gets the latest recorded value for each character for a given variable.
-    /// Much more efficient than GetAllPointsBatch when only the current values are needed.
-    /// Uses a single optimized SQL query with window functions to avoid fetching full history.
+    /// Returns the latest recorded quantity per owner for the given variable.
+    /// Used by the table-view UI to display current values.
     /// </summary>
-    /// <param name="variable">The variable name to query (e.g., "Gil")</param>
-    /// <returns>Dictionary mapping characterId to their latest value</returns>
     public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
     {
         var result = new Dictionary<ulong, long>();
 
+        // characterId=0 — we want all owners, mapping only needs the type part.
+        var mapping = LegacyVariableTranslator.Translate(variable, 0);
+        if (mapping == null) return result;
+
         lock (_readLock)
         {
-            // Fall back to write connection if read connection not available
             var conn = _readConnection ?? _connection;
             if (conn == null) return result;
 
             try
             {
                 using var cmd = conn.CreateCommand();
-                // Use window function to get latest point per series efficiently.
-                // ROW_NUMBER avoids the correlated subquery (SELECT MAX per row) which
-                // scales quadratically with the number of points.
                 cmd.CommandText = @"
-                    SELECT character_id, value FROM (
-                        SELECT s.character_id, p.value,
-                               ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY p.timestamp DESC) AS rn
-                        FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $var
+                    SELECT owner_id, quantity FROM (
+                        SELECT owner_id, quantity,
+                               ROW_NUMBER() OVER (PARTITION BY owner_id ORDER BY timestamp DESC) AS rn
+                        FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id != 0
                     ) ranked
                     WHERE rn = 1";
-                cmd.Parameters.AddWithValue("$var", variable);
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
-                    var charId = (ulong)reader.GetInt64(0);
+                    var ownerId = (ulong)reader.GetInt64(0);
                     var value = reader.GetInt64(1);
-                    
-                    if (charId == 0) continue;
-                    result[charId] = value;
+                    if (ownerId == 0) continue;
+                    result[ownerId] = value;
                 }
             }
             catch (Exception ex)
@@ -200,54 +146,64 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
+    /// <summary>
+    /// Not used after Phase 3 (no series-id concept). Returns false.
+    /// Callers should use SaveSampleIfChanged instead.
+    /// </summary>
+    [Obsolete("Series table removed in Phase 3. Use SaveSampleIfChanged instead.")]
     public bool InsertPoint(long seriesId, long value, DateTime? timestamp = null)
     {
+        return false;
+    }
+
+    /// <summary>
+    /// Saves a sample value for a variable/character pair, only inserting if different
+    /// from the last recorded value. Returns true if a new row was inserted.
+    /// After Phase 3 writes to resource_history instead of the dropped points table.
+    /// </summary>
+    public bool SaveSampleIfChanged(string variable, ulong characterId, long value)
+    {
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null) return false;
+
+        var lastValue = GetLatestHistoryValue(mapping.Value.ItemId, mapping.Value.OwnerId, (int)mapping.Value.Container);
+        if (lastValue.HasValue && lastValue.Value == value)
+            return false;
+
         lock (_writeLock)
         {
+            EnsureConnection();
             if (_connection == null) return false;
 
             try
             {
                 using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
-                cmd.Parameters.AddWithValue("$s", seriesId);
-                cmd.Parameters.AddWithValue("$t", (timestamp ?? DateTime.UtcNow).Ticks);
-                cmd.Parameters.AddWithValue("$v", value);
+                cmd.CommandText = @"
+                    INSERT INTO resource_history (owner_id, owner_kind, container, item_id, timestamp, quantity, change_amount, source_kind, source_detail)
+                    VALUES ($oid, $okind, $cont, $iid, $ts, $qty, 0, 0, NULL)";
+                cmd.Parameters.AddWithValue("$oid",   (long)mapping.Value.OwnerId);
+                cmd.Parameters.AddWithValue("$okind", (int)mapping.Value.OwnerKind);
+                cmd.Parameters.AddWithValue("$cont",  (int)mapping.Value.Container);
+                cmd.Parameters.AddWithValue("$iid",   (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$ts",    DateTime.UtcNow.Ticks);
+                cmd.Parameters.AddWithValue("$qty",   value);
                 cmd.ExecuteNonQuery();
                 return true;
             }
             catch (Exception ex)
             {
-                LogDbError("InsertPoint", ex);
+                LogDbError("SaveSampleIfChanged", ex);
                 return false;
             }
         }
     }
 
     /// <summary>
-    /// Saves a sample value, only inserting if different from the last value.
-    /// Returns true if a new point was inserted.
+    /// Saves multiple sample values in a single transaction, only inserting those that
+    /// differ from their last recorded value.
+    /// After Phase 3 writes to resource_history instead of the dropped points table.
+    /// Returns the number of rows actually inserted.
     /// </summary>
-    public bool SaveSampleIfChanged(string variable, ulong characterId, long value)
-    {
-        var seriesId = GetOrCreateSeries(variable, characterId);
-        if (seriesId == null) return false;
-
-        var lastValue = GetLastValue(seriesId.Value);
-        if (lastValue.HasValue && lastValue.Value == value)
-            return false;
-
-        return InsertPoint(seriesId.Value, value);
-    }
-
-    /// <summary>
-    /// Saves multiple sample values in a single transaction, only inserting those that differ from their last value.
-    /// Much more efficient than calling SaveSampleIfChanged per item (avoids N separate lock acquisitions).
-    /// All operations (series resolution, last-value checks, and inserts) are performed under a single
-    /// _writeLock acquisition to eliminate lock ordering issues between _writeLock and _readLock.
-    /// Returns the number of points actually inserted.
-    /// </summary>
-    /// <param name="samples">List of (variable, characterId, value) tuples to save.</param>
     public int SaveSamplesIfChangedBatched(List<(string Variable, ulong CharacterId, long Value)> samples)
     {
         if (samples == null || samples.Count == 0) return 0;
@@ -259,78 +215,63 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
-                // Phase 1: Resolve series IDs and check last values using the write connection
-                // (avoids acquiring _readLock while holding _writeLock — see lock ordering invariant)
-                var pointsToInsert = new List<(long SeriesId, long Value)>();
-                
+                // Phase 1: resolve mappings and check last values under the write lock.
+                var rowsToInsert = new List<(long ItemId, long OwnerId, int OwnerKind, int Container, long Value)>();
+
                 foreach (var (variable, characterId, value) in samples)
                 {
-                    // Inline GetOrCreateSeries logic to stay within _writeLock
-                    long seriesId;
-                    using (var findCmd = _connection.CreateCommand())
-                    {
-                        findCmd.CommandText = "SELECT id FROM series WHERE variable = $v AND character_id = $c LIMIT 1";
-                        findCmd.Parameters.AddWithValue("$v", variable);
-                        findCmd.Parameters.AddWithValue("$c", (long)characterId);
-                        var result = findCmd.ExecuteScalar();
+                    var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+                    if (mapping == null) continue;
 
-                        if (result != null && result != DBNull.Value)
-                        {
-                            seriesId = (long)result;
-                        }
-                        else
-                        {
-                            // Create new series
-                            findCmd.CommandText = "INSERT INTO series(variable, character_id) VALUES($v, $c); SELECT last_insert_rowid();";
-                            seriesId = (long)findCmd.ExecuteScalar()!;
+                    // Inline last-value check using the write connection (avoids _readLock
+                    // while holding _writeLock — see lock-ordering invariant).
+                    using var lastCmd = _connection.CreateCommand();
+                    lastCmd.CommandText = @"
+                        SELECT quantity FROM resource_history
+                        WHERE item_id = $iid AND owner_id = $oid AND container = $cont
+                        ORDER BY timestamp DESC LIMIT 1";
+                    lastCmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                    lastCmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                    lastCmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                    var lastResult = lastCmd.ExecuteScalar();
+                    if (lastResult != null && lastResult != DBNull.Value && (long)lastResult == value)
+                        continue;
 
-                            // Insert initial 0 value
-                            using var initCmd = _connection.CreateCommand();
-                            initCmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, 0)";
-                            initCmd.Parameters.AddWithValue("$s", seriesId);
-                            initCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.Ticks);
-                            initCmd.ExecuteNonQuery();
-                        }
-                    }
-
-                    // Inline GetLastValue logic using write connection to avoid _readLock
-                    using (var lastCmd = _connection.CreateCommand())
-                    {
-                        lastCmd.CommandText = "SELECT value FROM points WHERE series_id = $s ORDER BY timestamp DESC LIMIT 1";
-                        lastCmd.Parameters.AddWithValue("$s", seriesId);
-                        var lastResult = lastCmd.ExecuteScalar();
-
-                        if (lastResult != null && lastResult != DBNull.Value && (long)lastResult == value)
-                            continue;
-                    }
-
-                    pointsToInsert.Add((seriesId, value));
+                    rowsToInsert.Add(((long)mapping.Value.ItemId, (long)mapping.Value.OwnerId, (int)mapping.Value.OwnerKind, (int)mapping.Value.Container, value));
                 }
 
-                if (pointsToInsert.Count == 0) return 0;
+                if (rowsToInsert.Count == 0) return 0;
 
-                // Phase 2: Batch insert all changed points in a single transaction
+                // Phase 2: batch-insert all changed rows in a single transaction.
                 return RunInTransaction(tx =>
                 {
                     using var cmd = _connection.CreateCommand();
                     cmd.Transaction = tx;
-                    cmd.CommandText = "INSERT INTO points(series_id, timestamp, value) VALUES($s, $t, $v)";
+                    cmd.CommandText = @"
+                        INSERT INTO resource_history(owner_id, owner_kind, container, item_id, timestamp, quantity, change_amount, source_kind, source_detail)
+                        VALUES($oid, $okind, $cont, $iid, $ts, $qty, 0, 0, NULL)";
 
-                    var sParam = cmd.Parameters.Add("$s", SqliteType.Integer);
-                    var tParam = cmd.Parameters.Add("$t", SqliteType.Integer);
-                    var vParam = cmd.Parameters.Add("$v", SqliteType.Integer);
+                    var oidParam   = cmd.Parameters.Add("$oid",   SqliteType.Integer);
+                    var okindParam = cmd.Parameters.Add("$okind", SqliteType.Integer);
+                    var contParam  = cmd.Parameters.Add("$cont",  SqliteType.Integer);
+                    var iidParam   = cmd.Parameters.Add("$iid",   SqliteType.Integer);
+                    var tsParam    = cmd.Parameters.Add("$ts",    SqliteType.Integer);
+                    var qtyParam   = cmd.Parameters.Add("$qty",   SqliteType.Integer);
 
                     var now = DateTime.UtcNow.Ticks;
 
-                    foreach (var (seriesId, value) in pointsToInsert)
+                    foreach (var (iid, oid, okind, cont, qty) in rowsToInsert)
                     {
-                        sParam.Value = seriesId;
-                        tParam.Value = now;
-                        vParam.Value = value;
+                        oidParam.Value   = oid;
+                        okindParam.Value = okind;
+                        contParam.Value  = cont;
+                        iidParam.Value   = iid;
+                        tsParam.Value    = now;
+                        qtyParam.Value   = qty;
                         cmd.ExecuteNonQuery();
                     }
 
-                    return pointsToInsert.Count;
+                    return rowsToInsert.Count;
                 });
             }
             catch (Exception ex)
@@ -341,9 +282,16 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
+    /// <summary>
+    /// Returns history points for a variable/character in ascending timestamp order.
+    /// After Phase 3 queries resource_history instead of the dropped points table.
+    /// </summary>
     public List<(DateTime timestamp, long value)> GetPoints(string variable, ulong characterId, int? limit = null)
     {
         var result = new List<(DateTime, long)>();
+
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null) return result;
 
         lock (_readLock)
         {
@@ -353,20 +301,20 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                var sql = @"SELECT p.timestamp, p.value FROM points p
-                    JOIN series s ON p.series_id = s.id
-                    WHERE s.variable = $v AND s.character_id = $c
-                    ORDER BY p.timestamp ASC";
-                
+                var sql = @"SELECT timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND owner_id = $oid AND container = $cont
+                    ORDER BY timestamp ASC";
+
                 if (limit.HasValue)
                 {
                     sql += " LIMIT $lim";
                     cmd.Parameters.AddWithValue("$lim", limit.Value);
                 }
-                
+
                 cmd.CommandText = sql;
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -386,12 +334,16 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Gets points for a character filtered by time.
+    /// Returns history points for a variable/character after a cutoff time.
     /// Used for cache population on startup.
+    /// After Phase 3 queries resource_history instead of the dropped points table.
     /// </summary>
     public List<(DateTime timestamp, long value)> GetPointsSince(string variable, ulong characterId, DateTime since)
     {
         var result = new List<(DateTime, long)>();
+
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null) return result;
 
         lock (_readLock)
         {
@@ -401,12 +353,13 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
-                    JOIN series s ON p.series_id = s.id
-                    WHERE s.variable = $v AND s.character_id = $c AND p.timestamp >= $since
-                    ORDER BY p.timestamp ASC";
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
+                cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND owner_id = $oid AND container = $cont
+                      AND timestamp >= $since
+                    ORDER BY timestamp ASC";
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
                 cmd.Parameters.AddWithValue("$since", since.Ticks);
 
                 using var reader = cmd.ExecuteReader();
@@ -426,33 +379,39 @@ public sealed partial class KaleidoscopeDbService
         return result;
     }
 
+    /// <summary>
+    /// Returns all history points for a variable across all owners.
+    /// After Phase 3 queries resource_history instead of the dropped points table.
+    /// </summary>
     public List<(ulong characterId, DateTime timestamp, long value)> GetAllPoints(string variable)
     {
         var result = new List<(ulong, DateTime, long)>();
 
+        var mapping = LegacyVariableTranslator.Translate(variable, 0);
+        if (mapping == null) return result;
+
         lock (_readLock)
         {
-            // Fall back to write connection if read connection not available
             var conn = _readConnection ?? _connection;
             if (conn == null) return result;
 
             try
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
-                    JOIN series s ON p.series_id = s.id
-                    WHERE s.variable = $v
-                    ORDER BY p.timestamp ASC";
-                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND container = $cont AND owner_id != 0
+                    ORDER BY timestamp ASC";
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
-                    var charId = (ulong)reader.GetInt64(0);
+                    var ownerId = (ulong)reader.GetInt64(0);
                     var ticks = reader.GetInt64(1);
                     var value = reader.GetInt64(2);
-                    if (charId != 0)
-                        result.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                    if (ownerId != 0)
+                        result.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), value));
                 }
             }
             catch (Exception ex)
@@ -465,72 +424,74 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Gets all points for multiple variables in a single batch query.
-    /// More efficient than calling GetAllPoints multiple times.
-    /// Always includes the latest point for each series regardless of time filter.
+    /// Gets all history points for variables matching a prefix, optionally filtered
+    /// by a start time.  After Phase 3 queries resource_history using reverse-mapped
+    /// (item_id, container) tuples derived from the prefix.
     /// </summary>
-    /// <param name="variablePrefix">Variable name prefix to match (e.g., "Crystal_" to get all crystal variables)</param>
-    /// <param name="since">Optional: only get points after this timestamp (latest point per series always included)</param>
-    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
-    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variablePrefix, DateTime? since = null)
+    public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(
+        string variablePrefix, DateTime? since = null)
     {
         var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
 
+        // Resolve all (item_id, container) pairs that match the prefix by querying
+        // resource_history directly, then reverse-map to legacy variable names.
         lock (_readLock)
         {
-            // Fall back to write connection if read connection not available
             var conn = _readConnection ?? _connection;
             if (conn == null) return result;
 
             try
             {
                 using var cmd = conn.CreateCommand();
-                
+
+                // For legacy compatibility we need to return results keyed by variable name.
+                // We determine the variable name from the (item_id, container, owner_id) triple
+                // using the same reverse logic as GetAllVariablesWithPrefix.
+                // First, find all candidate (item_id, container, owner_id) rows.
                 if (since.HasValue)
                 {
-                    // Optimized query: First compute max timestamp per series in a CTE,
-                    // then fetch points >= since OR at max timestamp in single pass
                     cmd.CommandText = @"
                         WITH series_max AS (
-                            SELECT s.id AS series_id, s.variable, s.character_id, MAX(p.timestamp) AS max_ts
-                            FROM series s
-                            JOIN points p ON p.series_id = s.id
-                            WHERE s.variable LIKE $prefix
-                            GROUP BY s.id
+                            SELECT item_id, owner_id, container, MAX(timestamp) AS max_ts
+                            FROM resource_history WHERE owner_id != 0
+                            GROUP BY item_id, owner_id, container
                         )
-                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
+                        SELECT rh.item_id, rh.owner_id, rh.container, rh.timestamp, rh.quantity
                         FROM series_max sm
-                        JOIN points p ON p.series_id = sm.series_id
-                        WHERE p.timestamp >= $since OR p.timestamp = sm.max_ts
-                        ORDER BY sm.variable, p.timestamp";
-                    cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                        JOIN resource_history rh
+                            ON rh.item_id = sm.item_id AND rh.owner_id = sm.owner_id AND rh.container = sm.container
+                        WHERE rh.timestamp >= $since OR rh.timestamp = sm.max_ts
+                        ORDER BY rh.item_id, rh.owner_id, rh.timestamp";
                     cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
                 }
                 else
                 {
-                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable LIKE $prefix
-                        ORDER BY s.variable, p.timestamp ASC";
-                    cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                    cmd.CommandText = @"SELECT item_id, owner_id, container, timestamp, quantity
+                        FROM resource_history WHERE owner_id != 0
+                        ORDER BY item_id, owner_id, timestamp ASC";
                 }
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
-                    var variable = reader.GetString(0);
-                    var charId = (ulong)reader.GetInt64(1);
-                    var ticks = reader.GetInt64(2);
-                    var value = reader.GetInt64(3);
-                    
-                    if (charId == 0) continue;
-                    
-                    if (!result.TryGetValue(variable, out var list))
+                    var itemId  = (uint)reader.GetInt64(0);
+                    var ownerId = (ulong)reader.GetInt64(1);
+                    var cont    = (Container)reader.GetInt32(2);
+                    var ticks   = reader.GetInt64(3);
+                    var qty     = reader.GetInt64(4);
+
+                    if (ownerId == 0) continue;
+
+                    var varName = ReverseMapToVariableName(itemId, cont, ownerId);
+                    if (varName == null || !varName.StartsWith(variablePrefix, StringComparison.Ordinal))
+                        continue;
+
+                    if (!result.TryGetValue(varName, out var list))
                     {
                         list = new List<(ulong, DateTime, long)>();
-                        result[variable] = list;
+                        result[varName] = list;
                     }
-                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                    list.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), qty));
                 }
             }
             catch (Exception ex)
@@ -541,94 +502,33 @@ public sealed partial class KaleidoscopeDbService
 
         return result;
     }
-    
+
     /// <summary>
-    /// Gets all points for variables matching both a prefix and suffix pattern.
-    /// More efficient than fetching all data and filtering client-side.
+    /// Gets all history points for variables matching both a prefix and suffix.
+    /// After Phase 3 queries resource_history using reverse-mapped variable names.
     /// </summary>
-    /// <param name="variablePrefix">Variable name prefix to match (e.g., "ItemRetainerX_")</param>
-    /// <param name="variableSuffix">Variable name suffix to match (e.g., "_1234" for item ID)</param>
-    /// <param name="since">Optional: only get points after this timestamp</param>
-    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchWithSuffix(
         string variablePrefix, string variableSuffix, DateTime? since = null)
     {
+        var all = GetAllPointsBatch(variablePrefix, since);
+
+        if (string.IsNullOrEmpty(variableSuffix))
+            return all;
+
         var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
-
-        lock (_readLock)
+        foreach (var kvp in all)
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                // Use LIKE with both prefix% and %suffix pattern via GLOB or compound WHERE
-                var pattern = variablePrefix + "%" + variableSuffix;
-                
-                if (since.HasValue)
-                {
-                    cmd.CommandText = @"
-                        WITH series_max AS (
-                            SELECT s.id AS series_id, s.variable, s.character_id, MAX(p.timestamp) AS max_ts
-                            FROM series s
-                            JOIN points p ON p.series_id = s.id
-                            WHERE s.variable LIKE $pattern
-                            GROUP BY s.id
-                        )
-                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
-                        FROM series_max sm
-                        JOIN points p ON p.series_id = sm.series_id
-                        WHERE p.timestamp >= $since OR p.timestamp = sm.max_ts
-                        ORDER BY sm.variable, p.timestamp";
-                    cmd.Parameters.AddWithValue("$pattern", pattern);
-                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
-                }
-                else
-                {
-                    cmd.CommandText = @"SELECT s.variable, s.character_id, p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable LIKE $pattern
-                        ORDER BY s.variable, p.timestamp ASC";
-                    cmd.Parameters.AddWithValue("$pattern", pattern);
-                }
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var variable = reader.GetString(0);
-                    var charId = (ulong)reader.GetInt64(1);
-                    var ticks = reader.GetInt64(2);
-                    var value = reader.GetInt64(3);
-                    
-                    if (charId == 0) continue;
-                    
-                    if (!result.TryGetValue(variable, out var list))
-                    {
-                        list = new List<(ulong, DateTime, long)>();
-                        result[variable] = list;
-                    }
-                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetPointsBatchWithSuffix", ex);
-            }
+            if (kvp.Key.EndsWith(variableSuffix, StringComparison.Ordinal))
+                result[kvp.Key] = kvp.Value;
         }
-
         return result;
     }
-    
+
     /// <summary>
-    /// Gets points within a specific time window for multiple variables.
-    /// Optimized for virtualized/windowed loading - only fetches visible data.
-    /// For each series, also includes the latest point BEFORE the window for line continuity.
+    /// Gets history points within a visible time window for variables matching a prefix,
+    /// also including the latest point before the window for graph-line continuity.
+    /// After Phase 3 queries resource_history.
     /// </summary>
-    /// <param name="variablePrefix">Variable name prefix to match (e.g., "Crystal_")</param>
-    /// <param name="windowStart">Start of the visible time window</param>
-    /// <param name="windowEnd">End of the visible time window</param>
-    /// <returns>Dictionary keyed by variable name, containing list of (characterId, timestamp, value) tuples</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsInWindow(
         string variablePrefix, DateTime windowStart, DateTime windowEnd)
     {
@@ -636,63 +536,66 @@ public sealed partial class KaleidoscopeDbService
 
         lock (_readLock)
         {
-            // Fall back to write connection if read connection not available
             var conn = _readConnection ?? _connection;
             if (conn == null) return result;
 
             try
             {
-                // First, get all points within the window
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    WITH series_match AS (
-                        SELECT id, variable, character_id FROM series WHERE variable LIKE $prefix
+                    WITH series_ids AS (
+                        SELECT DISTINCT item_id, owner_id, container
+                        FROM resource_history WHERE owner_id != 0
                     ),
-                    -- Get the latest point before window for each series (for line continuity)
-                    -- Uses ROW_NUMBER to correctly select the single most recent point per series
                     last_before AS (
-                        SELECT variable, character_id, timestamp, value
-                        FROM (
-                            SELECT sm.variable, sm.character_id, p.timestamp, p.value,
-                                   ROW_NUMBER() OVER (PARTITION BY sm.id ORDER BY p.timestamp DESC) AS rn
-                            FROM series_match sm
-                            JOIN points p ON p.series_id = sm.id
-                            WHERE p.timestamp < $windowStart
-                        )
-                        WHERE rn = 1
+                        SELECT variable_row.item_id, variable_row.owner_id, variable_row.container,
+                               rh.timestamp, rh.quantity
+                        FROM series_ids variable_row
+                        JOIN (
+                            SELECT item_id, owner_id, container, timestamp, quantity,
+                                   ROW_NUMBER() OVER (PARTITION BY item_id, owner_id, container ORDER BY timestamp DESC) AS rn
+                            FROM resource_history
+                            WHERE timestamp < $windowStart
+                        ) rh ON rh.item_id = variable_row.item_id
+                             AND rh.owner_id = variable_row.owner_id
+                             AND rh.container = variable_row.container
+                             AND rh.rn = 1
                     ),
-                    -- Get all points within the window
                     in_window AS (
-                        SELECT sm.variable, sm.character_id, p.timestamp, p.value
-                        FROM series_match sm
-                        JOIN points p ON p.series_id = sm.id
-                        WHERE p.timestamp >= $windowStart AND p.timestamp <= $windowEnd
+                        SELECT item_id, owner_id, container, timestamp, quantity
+                        FROM resource_history
+                        WHERE owner_id != 0
+                          AND timestamp >= $windowStart AND timestamp <= $windowEnd
                     )
-                    SELECT * FROM last_before
+                    SELECT item_id, owner_id, container, timestamp, quantity FROM last_before
                     UNION ALL
-                    SELECT * FROM in_window
-                    ORDER BY variable, timestamp ASC";
-                
-                cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                    SELECT item_id, owner_id, container, timestamp, quantity FROM in_window
+                    ORDER BY item_id, owner_id, timestamp ASC";
+
                 cmd.Parameters.AddWithValue("$windowStart", windowStart.Ticks);
                 cmd.Parameters.AddWithValue("$windowEnd", windowEnd.Ticks);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
-                    var variable = reader.GetString(0);
-                    var charId = (ulong)reader.GetInt64(1);
-                    var ticks = reader.GetInt64(2);
-                    var value = reader.GetInt64(3);
-                    
-                    if (charId == 0) continue;
-                    
-                    if (!result.TryGetValue(variable, out var list))
+                    var itemId  = (uint)reader.GetInt64(0);
+                    var ownerId = (ulong)reader.GetInt64(1);
+                    var cont    = (Container)reader.GetInt32(2);
+                    var ticks   = reader.GetInt64(3);
+                    var qty     = reader.GetInt64(4);
+
+                    if (ownerId == 0) continue;
+
+                    var varName = ReverseMapToVariableName(itemId, cont, ownerId);
+                    if (varName == null || !varName.StartsWith(variablePrefix, StringComparison.Ordinal))
+                        continue;
+
+                    if (!result.TryGetValue(varName, out var list))
                     {
                         list = new List<(ulong, DateTime, long)>();
-                        result[variable] = list;
+                        result[varName] = list;
                     }
-                    list.Add((charId, new DateTime(ticks, DateTimeKind.Utc), value));
+                    list.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), qty));
                 }
             }
             catch (Exception ex)
@@ -703,13 +606,11 @@ public sealed partial class KaleidoscopeDbService
 
         return result;
     }
-    
+
     /// <summary>
-    /// Gets the time range of available data for a variable prefix.
-    /// Useful for determining scroll bounds without loading all data.
+    /// Returns the time range of available data for a variable prefix.
+    /// After Phase 3 queries resource_history.
     /// </summary>
-    /// <param name="variablePrefix">Variable name prefix to match</param>
-    /// <returns>Tuple of (earliest timestamp, latest timestamp), or null if no data</returns>
     public (DateTime earliest, DateTime latest)? GetDataTimeRange(string variablePrefix)
     {
         lock (_readLock)
@@ -719,19 +620,44 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
+                // We need to find rows whose reverse-mapped variable name starts with the prefix.
+                // For efficiency, handle the common case where the prefix is a TrackedDataType name
+                // (e.g. "Gil") or an item prefix (e.g. "Item_", "ItemRetainer_").
+                // Fall back to full scan if the prefix is short/ambiguous.
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT MIN(p.timestamp), MAX(p.timestamp)
-                    FROM points p
-                    JOIN series s ON p.series_id = s.id
-                    WHERE s.variable LIKE $prefix";
-                cmd.Parameters.AddWithValue("$prefix", variablePrefix + "%");
+                    SELECT MIN(timestamp), MAX(timestamp) FROM resource_history
+                    WHERE owner_id != 0";
+
+                // Apply container filter for known prefix patterns to avoid scanning all rows.
+                if (variablePrefix.StartsWith("Item_", StringComparison.Ordinal))
+                {
+                    cmd.CommandText = @"
+                        SELECT MIN(timestamp), MAX(timestamp) FROM resource_history
+                        WHERE owner_id != 0 AND container = $cont AND item_id < 1000000";
+                    cmd.Parameters.AddWithValue("$cont", (int)Container.PlayerAggregate);
+                }
+                else if (variablePrefix.StartsWith("ItemRetainerX_", StringComparison.Ordinal))
+                {
+                    cmd.CommandText = @"
+                        SELECT MIN(timestamp), MAX(timestamp) FROM resource_history
+                        WHERE owner_id != 0 AND container = $cont AND item_id < 1000000";
+                    cmd.Parameters.AddWithValue("$cont", (int)Container.RetainerPage1);
+                }
+                else if (variablePrefix.StartsWith("ItemRetainer_", StringComparison.Ordinal))
+                {
+                    cmd.CommandText = @"
+                        SELECT MIN(timestamp), MAX(timestamp) FROM resource_history
+                        WHERE owner_id != 0 AND container = $cont AND item_id < 1000000";
+                    cmd.Parameters.AddWithValue("$cont", (int)Container.RetainerAggregate);
+                }
+                // else: full-table min/max is already set above.
 
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read() && !reader.IsDBNull(0) && !reader.IsDBNull(1))
                 {
                     var earliest = new DateTime(reader.GetInt64(0), DateTimeKind.Utc);
-                    var latest = new DateTime(reader.GetInt64(1), DateTimeKind.Utc);
+                    var latest   = new DateTime(reader.GetInt64(1), DateTimeKind.Utc);
                     return (earliest, latest);
                 }
             }
@@ -742,6 +668,37 @@ public sealed partial class KaleidoscopeDbService
         }
 
         return null;
+    }
+
+    // ── helpers ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reverse-maps a (item_id, container, owner_id) triple to a legacy variable name.
+    /// Returns null for unrecognised combinations (synthetic IDs handled via TrackedDataLegacyMap).
+    /// </summary>
+    private static string? ReverseMapToVariableName(uint itemId, Container container, ulong ownerId)
+    {
+        // TrackedDataType variables (synthetic item IDs ≥ 1_000_000)
+        if (itemId >= 1_000_000)
+        {
+            // Reverse the TrackedDataLegacyMap: find enum name by (container, itemId).
+            return ResourceCatalog.GetLegacyVariableName(itemId, container);
+        }
+
+        // Real item variables
+        return container switch
+        {
+            Container.PlayerAggregate   => $"Item_{itemId}",
+            Container.RetainerAggregate => $"ItemRetainer_{itemId}",
+            Container.RetainerPage1 or
+            Container.RetainerPage2 or
+            Container.RetainerPage3 or
+            Container.RetainerPage4 or
+            Container.RetainerPage5 or
+            Container.RetainerPage6 or
+            Container.RetainerPage7     => $"ItemRetainerX_{ownerId}_{itemId}",
+            _ => null,
+        };
     }
 
 }

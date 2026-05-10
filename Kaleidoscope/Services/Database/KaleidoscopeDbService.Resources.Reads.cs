@@ -401,15 +401,17 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Returns all (variable, character_id) pairs from the legacy <c>series</c> table
-    /// whose variable name starts with <paramref name="prefix"/> and, when
-    /// <paramref name="suffix"/> is non-null/empty, also ends with that suffix.
-    /// Used by <see cref="TimeSeriesCacheService"/> to discover which characters have
-    /// history for a given variable pattern when routing through resource_history.
+    /// Returns all (variable, owner_id) pairs from resource_history whose reverse-mapped legacy
+    /// variable name starts with <paramref name="prefix"/> and, when <paramref name="suffix"/>
+    /// is non-null/non-empty, also ends with that suffix.
+    /// Used by <see cref="TimeSeriesCacheService"/> to discover which owners have history for a
+    /// given variable pattern.  After Phase 3 the legacy <c>series</c> table no longer exists.
     /// </summary>
     public List<(string Variable, ulong CharacterId)> GetSeriesByVariablePrefixSuffix(string prefix, string? suffix)
     {
         var result = new List<(string, ulong)>();
+        var seen   = new HashSet<(string, ulong)>();
+
         lock (_readLock)
         {
             var conn = _readConnection ?? _connection;
@@ -417,17 +419,42 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-                var sql = "SELECT variable, character_id FROM series WHERE variable LIKE $prefix || '%'";
-                cmd.Parameters.AddWithValue("$prefix", prefix);
-                if (!string.IsNullOrEmpty(suffix))
-                {
-                    sql += " AND variable LIKE '%' || $suffix";
-                    cmd.Parameters.AddWithValue("$suffix", suffix);
-                }
-                cmd.CommandText = sql;
+                cmd.CommandText = @"
+                    SELECT DISTINCT item_id, owner_id, container FROM resource_history
+                    WHERE owner_id != 0";
+                cmd.CommandText = cmd.CommandText; // force assignment (no-op; keeps pattern)
                 using var r = cmd.ExecuteReader();
                 while (r.Read())
-                    result.Add((r.GetString(0), (ulong)r.GetInt64(1)));
+                {
+                    var itemId  = (uint)r.GetInt64(0);
+                    var ownerId = (ulong)r.GetInt64(1);
+                    var cont    = (Kaleidoscope.Models.Resources.Container)r.GetInt32(2);
+
+                    if (ownerId == 0) continue;
+
+                    string? varName = cont switch
+                    {
+                        Kaleidoscope.Models.Resources.Container.PlayerAggregate   => $"Item_{itemId}",
+                        Kaleidoscope.Models.Resources.Container.RetainerAggregate => $"ItemRetainer_{itemId}",
+                        Kaleidoscope.Models.Resources.Container.RetainerPage1 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage2 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage3 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage4 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage5 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage6 or
+                        Kaleidoscope.Models.Resources.Container.RetainerPage7     => $"ItemRetainerX_{ownerId}_{itemId}",
+                        _ => itemId >= 1_000_000
+                            ? Kaleidoscope.Services.Resources.ResourceCatalog.GetLegacyVariableName(itemId, cont)
+                            : null,
+                    };
+
+                    if (varName == null) continue;
+                    if (!varName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    if (!string.IsNullOrEmpty(suffix) && !varName.EndsWith(suffix, StringComparison.Ordinal)) continue;
+
+                    if (seen.Add((varName, ownerId)))
+                        result.Add((varName, ownerId));
+                }
             }
             catch (Exception ex)
             {

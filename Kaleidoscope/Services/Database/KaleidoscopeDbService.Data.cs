@@ -1,3 +1,4 @@
+using Kaleidoscope.Services.Resources.Adapters;
 using Microsoft.Data.Sqlite;
 using System.Text;
 
@@ -8,6 +9,13 @@ public sealed partial class KaleidoscopeDbService
 
     public bool ClearCharacterData(string variable, ulong characterId)
     {
+        var mapping = LegacyVariableTranslator.Translate(variable, characterId);
+        if (mapping == null)
+        {
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] ClearCharacterData: unknown variable '{variable}', nothing to clear");
+            return false;
+        }
+
         lock (_writeLock)
         {
             EnsureConnection();
@@ -19,12 +27,11 @@ public sealed partial class KaleidoscopeDbService
                 {
                     using var cmd = _connection!.CreateCommand();
                     cmd.Transaction = tx;
-                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)";
-                    cmd.Parameters.AddWithValue("$v", variable);
-                    cmd.Parameters.AddWithValue("$c", (long)characterId);
-                    cmd.ExecuteNonQuery();
-
-                    cmd.CommandText = "DELETE FROM series WHERE variable = $v AND character_id = $c";
+                    cmd.CommandText = @"DELETE FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid";
+                    cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                    cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
                     cmd.ExecuteNonQuery();
                     return true;
                 });
@@ -39,6 +46,16 @@ public sealed partial class KaleidoscopeDbService
 
     public bool ClearAllData(string variable)
     {
+        // characterId=0 is intentional — ParseLegacyVariableName only needs it for
+        // character-scoped retainer variables; for global clears the owner is irrelevant
+        // because we delete by (item_id, container) without an owner filter.
+        var mapping = LegacyVariableTranslator.Translate(variable, 0);
+        if (mapping == null)
+        {
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] ClearAllData: unknown variable '{variable}', nothing to clear");
+            return false;
+        }
+
         lock (_writeLock)
         {
             EnsureConnection();
@@ -50,11 +67,9 @@ public sealed partial class KaleidoscopeDbService
                 {
                     using var cmd = _connection!.CreateCommand();
                     cmd.Transaction = tx;
-                    cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v)";
-                    cmd.Parameters.AddWithValue("$v", variable);
-                    cmd.ExecuteNonQuery();
-
-                    cmd.CommandText = "DELETE FROM series WHERE variable = $v";
+                    cmd.CommandText = "DELETE FROM resource_history WHERE item_id = $iid AND container = $cont";
+                    cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                    cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
                     cmd.ExecuteNonQuery();
 
                     LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
@@ -131,17 +146,22 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Gets points within a date range for a variable, optionally filtered by character.
+    /// Gets history rows within a date range for a variable, optionally filtered by character.
+    /// After Phase 3 this queries resource_history rather than the dropped points/series tables.
     /// </summary>
-    /// <param name="variable">The variable name (e.g., "Gil").</param>
+    /// <param name="variable">The legacy variable name (e.g., "Gil", "Item_12345").</param>
     /// <param name="characterId">Character ID, or null for all characters.</param>
     /// <param name="start">Start of range (inclusive).</param>
     /// <param name="end">End of range (inclusive).</param>
-    /// <returns>List of points with character ID, timestamp, and value.</returns>
+    /// <returns>List of rows with owner ID, timestamp, and quantity.</returns>
     public List<(ulong characterId, DateTime timestamp, long value)> GetPointsInRange(
         string variable, ulong? characterId, DateTime start, DateTime end)
     {
         var result = new List<(ulong, DateTime, long)>();
+
+        var resolvedOwnerId = characterId.HasValue && characterId.Value != 0 ? characterId.Value : (ulong)0;
+        var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
+        if (mapping == null) return result;
 
         lock (_readLock)
         {
@@ -151,28 +171,26 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
 
                 if (characterId.HasValue && characterId.Value != 0)
                 {
-                    cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v AND s.character_id = $c
-                          AND p.timestamp >= $start AND p.timestamp <= $end
-                        ORDER BY p.timestamp DESC";
-                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                    cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid
+                          AND timestamp >= $start AND timestamp <= $end
+                        ORDER BY timestamp DESC";
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
                 }
                 else
                 {
-                    cmd.CommandText = @"SELECT s.character_id, p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v
-                          AND p.timestamp >= $start AND p.timestamp <= $end
-                        ORDER BY p.timestamp DESC";
+                    cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+                        WHERE item_id = $iid AND container = $cont
+                          AND timestamp >= $start AND timestamp <= $end
+                        ORDER BY timestamp DESC";
                 }
-
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -193,9 +211,10 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Counts points within a date range and estimates storage size.
+    /// Counts history rows within a date range and estimates storage size.
+    /// After Phase 3 this queries resource_history rather than the dropped points/series tables.
     /// </summary>
-    /// <param name="variable">The variable name.</param>
+    /// <param name="variable">The legacy variable name.</param>
     /// <param name="characterId">Character ID, or null for all characters.</param>
     /// <param name="start">Start of range (inclusive).</param>
     /// <param name="end">End of range (inclusive).</param>
@@ -203,7 +222,11 @@ public sealed partial class KaleidoscopeDbService
     public (int count, long estimatedBytes) CountPointsInRange(
         string variable, ulong? characterId, DateTime start, DateTime end)
     {
-        const int BytesPerPoint = 24; // series_id (8) + timestamp (8) + value (8)
+        const int BytesPerRow = 32; // item_id(8)+owner_id(8)+container(4)+timestamp(8)+quantity(8)
+
+        var resolvedOwnerId = characterId.HasValue && characterId.Value != 0 ? characterId.Value : (ulong)0;
+        var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
+        if (mapping == null) return (0, 0);
 
         lock (_readLock)
         {
@@ -213,29 +236,27 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    cmd.CommandText = @"SELECT COUNT(*) FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v AND s.character_id = $c
-                          AND p.timestamp >= $start AND p.timestamp <= $end";
-                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
-                }
-                else
-                {
-                    cmd.CommandText = @"SELECT COUNT(*) FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v
-                          AND p.timestamp >= $start AND p.timestamp <= $end";
-                }
-
-                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
                 cmd.Parameters.AddWithValue("$start", start.Ticks);
                 cmd.Parameters.AddWithValue("$end", end.Ticks);
 
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid
+                          AND timestamp >= $start AND timestamp <= $end";
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                }
+                else
+                {
+                    cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
+                        WHERE item_id = $iid AND container = $cont
+                          AND timestamp >= $start AND timestamp <= $end";
+                }
+
                 var count = Convert.ToInt32(cmd.ExecuteScalar());
-                return (count, count * BytesPerPoint);
+                return (count, count * BytesPerRow);
             }
             catch (Exception ex)
             {
@@ -246,15 +267,20 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Deletes points within a date range for a variable.
+    /// Deletes history rows within a date range for a variable.
+    /// After Phase 3 this deletes from resource_history rather than the dropped points/series tables.
     /// </summary>
-    /// <param name="variable">The variable name.</param>
+    /// <param name="variable">The legacy variable name.</param>
     /// <param name="characterId">Character ID, or null for all characters.</param>
     /// <param name="start">Start of range (inclusive).</param>
     /// <param name="end">End of range (inclusive).</param>
-    /// <returns>Number of points deleted.</returns>
+    /// <returns>Number of rows deleted.</returns>
     public int DeletePointsInRange(string variable, ulong? characterId, DateTime start, DateTime end)
     {
+        var resolvedOwnerId = characterId.HasValue && characterId.Value != 0 ? characterId.Value : (ulong)0;
+        var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
+        if (mapping == null) return 0;
+
         lock (_writeLock)
         {
             EnsureConnection();
@@ -263,27 +289,27 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = _connection.CreateCommand();
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    cmd.CommandText = @"DELETE FROM points 
-                        WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)
-                          AND timestamp >= $start AND timestamp <= $end";
-                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
-                }
-                else
-                {
-                    cmd.CommandText = @"DELETE FROM points 
-                        WHERE series_id IN (SELECT id FROM series WHERE variable = $v)
-                          AND timestamp >= $start AND timestamp <= $end";
-                }
-
-                cmd.Parameters.AddWithValue("$v", variable);
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
                 cmd.Parameters.AddWithValue("$start", start.Ticks);
                 cmd.Parameters.AddWithValue("$end", end.Ticks);
 
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    cmd.CommandText = @"DELETE FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid
+                          AND timestamp >= $start AND timestamp <= $end";
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                }
+                else
+                {
+                    cmd.CommandText = @"DELETE FROM resource_history
+                        WHERE item_id = $iid AND container = $cont
+                          AND timestamp >= $start AND timestamp <= $end";
+                }
+
                 var deleted = cmd.ExecuteNonQuery();
-                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Deleted {deleted} points for '{variable}' between {start:O} and {end:O}");
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Deleted {deleted} history rows for '{variable}' between {start:O} and {end:O}");
                 return deleted;
             }
             catch (Exception ex)
@@ -295,9 +321,10 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Exports points within a date range to a CSV string.
+    /// Exports history rows within a date range to a CSV string.
+    /// After Phase 3 this queries resource_history rather than the dropped points/series tables.
     /// </summary>
-    /// <param name="variable">The variable name.</param>
+    /// <param name="variable">The legacy variable name.</param>
     /// <param name="characterId">Character ID, or null for all characters.</param>
     /// <param name="start">Start of range (inclusive).</param>
     /// <param name="end">End of range (inclusive).</param>
@@ -305,6 +332,10 @@ public sealed partial class KaleidoscopeDbService
     public string ExportPointsInRangeToCsv(string variable, ulong? characterId, DateTime start, DateTime end)
     {
         var sb = new StringBuilder();
+
+        var resolvedOwnerId = characterId.HasValue && characterId.Value != 0 ? characterId.Value : (ulong)0;
+        var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
+        if (mapping == null) return sb.ToString();
 
         lock (_readLock)
         {
@@ -314,30 +345,28 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                cmd.Parameters.AddWithValue("$start", start.Ticks);
+                cmd.Parameters.AddWithValue("$end", end.Ticks);
 
                 if (characterId.HasValue && characterId.Value != 0)
                 {
-                    sb.AppendLine("timestamp_utc,value");
-                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v AND s.character_id = $c
-                          AND p.timestamp >= $start AND p.timestamp <= $end
-                        ORDER BY p.timestamp ASC";
-                    cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+                    sb.AppendLine("timestamp_utc,quantity");
+                    cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid
+                          AND timestamp >= $start AND timestamp <= $end
+                        ORDER BY timestamp ASC";
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
                 }
                 else
                 {
-                    sb.AppendLine("timestamp_utc,value,character_id");
-                    cmd.CommandText = @"SELECT p.timestamp, p.value, s.character_id FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v
-                          AND p.timestamp >= $start AND p.timestamp <= $end
-                        ORDER BY p.timestamp ASC";
+                    sb.AppendLine("timestamp_utc,quantity,owner_id");
+                    cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
+                        WHERE item_id = $iid AND container = $cont
+                          AND timestamp >= $start AND timestamp <= $end
+                        ORDER BY timestamp ASC";
                 }
-
-                cmd.Parameters.AddWithValue("$v", variable);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -395,11 +424,17 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Removes data for characters that don't have a name association.
-    /// Returns the number of characters removed.
+    /// Removes resource_history rows for owners that have no entry in character_names
+    /// and no entry in owner_names (i.e., completely unrecognised characters).
+    /// The <paramref name="variable"/> parameter is retained for API compatibility but
+    /// the cleanup is now owner-scoped rather than variable-scoped.
+    /// Returns the number of distinct owners whose data was removed.
     /// </summary>
     public int CleanUnassociatedCharacters(string variable)
     {
+        var mapping = LegacyVariableTranslator.Translate(variable, 0);
+        if (mapping == null) return 0;
+
         lock (_writeLock)
         {
             EnsureConnection();
@@ -407,19 +442,25 @@ public sealed partial class KaleidoscopeDbService
 
             try
             {
+                // Find owner_ids that appear in resource_history for this (item, container) but
+                // have no matching entry in either character_names or owner_names.
                 var idsToRemove = new List<long>();
                 using (var selectCmd = _connection.CreateCommand())
                 {
-                    selectCmd.CommandText = @"SELECT DISTINCT character_id FROM series 
-                        WHERE variable = $v 
-                        AND character_id NOT IN (SELECT character_id FROM character_names)";
-                    selectCmd.Parameters.AddWithValue("$v", variable);
+                    selectCmd.CommandText = @"
+                        SELECT DISTINCT rh.owner_id FROM resource_history rh
+                        WHERE rh.item_id = $iid AND rh.container = $cont
+                          AND rh.owner_id != 0
+                          AND rh.owner_id NOT IN (SELECT character_id FROM character_names)
+                          AND rh.owner_id NOT IN (SELECT owner_id FROM owner_names)";
+                    selectCmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                    selectCmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                     using var reader = selectCmd.ExecuteReader();
                     while (reader.Read())
                     {
-                        var cid = reader.GetInt64(0);
-                        if (cid != 0) idsToRemove.Add(cid);
+                        var oid = reader.GetInt64(0);
+                        if (oid != 0) idsToRemove.Add(oid);
                     }
                 }
 
@@ -427,21 +468,20 @@ public sealed partial class KaleidoscopeDbService
 
                 RunInTransaction(tx =>
                 {
-                    foreach (var cid in idsToRemove)
+                    foreach (var oid in idsToRemove)
                     {
                         using var cmd = _connection!.CreateCommand();
                         cmd.Transaction = tx;
-                        cmd.CommandText = "DELETE FROM points WHERE series_id IN (SELECT id FROM series WHERE variable = $v AND character_id = $c)";
-                        cmd.Parameters.AddWithValue("$v", variable);
-                        cmd.Parameters.AddWithValue("$c", cid);
-                        cmd.ExecuteNonQuery();
-
-                        cmd.CommandText = "DELETE FROM series WHERE variable = $v AND character_id = $c";
+                        cmd.CommandText = @"DELETE FROM resource_history
+                            WHERE item_id = $iid AND container = $cont AND owner_id = $oid";
+                        cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                        cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                        cmd.Parameters.AddWithValue("$oid", oid);
                         cmd.ExecuteNonQuery();
                     }
                 });
 
-                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated characters");
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated character/owner entries for '{variable}'");
                 return idsToRemove.Count;
             }
             catch (Exception ex)

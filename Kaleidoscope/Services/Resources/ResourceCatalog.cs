@@ -192,4 +192,26 @@ public static class ResourceCatalog
         ["InventoryFreeSlots"]  = (Container.SpecialPlayer, 1_000_006),
         ["InventoryValueItems"] = (Container.SpecialPlayer, 1_000_007),
     };
+
+    /// <summary>
+    /// Lazy reverse index: (itemId, container) → legacy variable name.
+    /// Built once on first use from <see cref="TrackedDataLegacyMap"/>.
+    /// </summary>
+    private static readonly Lazy<Dictionary<(uint ItemId, Container Container), string>> _reverseMap =
+        new(() =>
+        {
+            var d = new Dictionary<(uint, Container), string>();
+            foreach (var (name, mapping) in TrackedDataLegacyMap)
+                d.TryAdd((mapping.ItemId, mapping.Container), name);
+            return d;
+        });
+
+    /// <summary>
+    /// Reverse-maps a synthetic (itemId ≥ 1_000_000) + container pair back to the legacy
+    /// variable name used in time-series operations.  Returns null if not found.
+    /// </summary>
+    public static string? GetLegacyVariableName(uint itemId, Container container)
+    {
+        return _reverseMap.Value.TryGetValue((itemId, container), out var name) ? name : null;
+    }
 }

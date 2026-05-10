@@ -31,16 +31,16 @@ public sealed class SqlQueryCategory
     // Example queries for quick access
     private static readonly (string Name, string Query)[] ExampleQueries =
     {
-        ("List all tables", "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"),
-        ("Count all series", "SELECT COUNT(*) as count FROM series;"),
-        ("Series by character", "SELECT s.id, s.variable, cn.game_name, s.character_id FROM series s LEFT JOIN character_names cn ON s.character_id = cn.character_id ORDER BY s.variable;"),
-        ("Recent data points (100)", "SELECT p.id, s.variable, p.timestamp, p.value FROM points p JOIN series s ON p.series_id = s.id ORDER BY p.timestamp DESC LIMIT 100;"),
-        ("Database size info", "SELECT page_count * page_size as size_bytes FROM pragma_page_count(), pragma_page_size();"),
-        ("Character names", "SELECT character_id, game_name, display_name FROM character_names ORDER BY game_name;"),
-        ("Item prices (top 50)", "SELECT * FROM item_prices ORDER BY last_updated DESC LIMIT 50;"),
+        ("List all tables",            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"),
+        ("Recent history rows (100)",  "SELECT rh.item_id, rh.owner_id, rh.container, rh.timestamp, rh.quantity FROM resource_history rh ORDER BY rh.timestamp DESC LIMIT 100;"),
+        ("Latest value per owner",     "SELECT item_id, owner_id, container, quantity FROM (SELECT item_id, owner_id, container, quantity, ROW_NUMBER() OVER (PARTITION BY item_id, owner_id, container ORDER BY timestamp DESC) AS rn FROM resource_history) WHERE rn = 1 ORDER BY item_id LIMIT 100;"),
+        ("Database size info",         "SELECT page_count * page_size as size_bytes FROM pragma_page_count(), pragma_page_size();"),
+        ("Character names",            "SELECT character_id, game_name, display_name FROM character_names ORDER BY game_name;"),
+        ("Owner names",                "SELECT owner_id, owner_kind, name FROM owner_names ORDER BY owner_kind, name LIMIT 100;"),
+        ("Resources (current)",        "SELECT owner_id, owner_kind, container, item_id, quantity FROM resources ORDER BY owner_id, container LIMIT 100;"),
+        ("Item prices (top 50)",       "SELECT * FROM item_prices ORDER BY last_updated DESC LIMIT 50;"),
         ("Inventory value history (100)", "SELECT * FROM inventory_value_history ORDER BY timestamp DESC LIMIT 100;"),
-        ("Sale records (100)", "SELECT * FROM sale_records ORDER BY timestamp DESC LIMIT 100;"),
-        ("Inventory caches", "SELECT id, character_id, source_type, retainer_id, timestamp FROM inventory_cache ORDER BY timestamp DESC LIMIT 50;"),
+        ("Sale records (100)",         "SELECT * FROM sale_records ORDER BY timestamp DESC LIMIT 100;"),
     };
 
     private static readonly Vector4 HeaderColor = new(1f, 0.8f, 0.2f, 1f);
@@ -55,16 +55,15 @@ public sealed class SqlQueryCategory
     /// </summary>
     private static readonly Dictionary<string, string> TableDescriptions = new()
     {
-        ["series"] = "Time-series metadata. Each row defines a tracked variable (e.g. Gil, Tomestones) for a specific character.",
-        ["points"] = "Time-series data points. Stores timestamped values linked to a series. Only inserted when the value changes.",
-        ["character_names"] = "Character identity mapping. Stores game name, display name, and time-series color per character ID.",
-        ["inventory_cache"] = "Inventory snapshot headers. One row per character/source/retainer, replaced on each save (UPSERT).",
-        ["inventory_items"] = "Inventory snapshot items. Individual item entries linked to an inventory_cache row.",
-        ["item_prices"] = "Current market prices. At most one row per (item, world) pair, updated via UPSERT from Universalis.",
-        ["price_history"] = "Historical market price snapshots. Appended on each Universalis WebSocket update. Pruned by retention policy.",
+        ["resources"]              = "Current resource quantities. One row per (owner, container, item) triple — the live snapshot.",
+        ["resource_history"]       = "Historical resource quantities. Append-only; one row per observed change event.",
+        ["owner_names"]            = "Owner identity mapping. Stores names for players (owner_kind=0) and retainers (owner_kind=1).",
+        ["character_names"]        = "Character identity mapping. Stores game name, display name, and time-series color per character ID.",
+        ["item_prices"]            = "Current market prices. At most one row per (item, world) pair, updated via UPSERT from Universalis.",
+        ["price_history"]          = "Historical market price snapshots. Appended on each Universalis WebSocket update. Pruned by retention policy.",
         ["inventory_value_history"] = "Periodic inventory value snapshots. Stores total_value = gil_value + item_value per character per timestamp.",
-        ["inventory_value_items"] = "Per-item breakdown of inventory value snapshots. Linked to inventory_value_history via CASCADE DELETE.",
-        ["sale_records"] = "Market sale records from Universalis. Pruned by retention policy.",
+        ["inventory_value_items"]  = "Per-item breakdown of inventory value snapshots. Linked to inventory_value_history via CASCADE DELETE.",
+        ["sale_records"]           = "Market sale records from Universalis. Pruned by retention policy.",
     };
 
     public SqlQueryCategory(CurrencyTrackerService currencyTrackerService)

@@ -1,3 +1,4 @@
+using Kaleidoscope.Services.Resources.Adapters;
 using Microsoft.Data.Sqlite;
 using System.Text;
 
@@ -6,9 +7,17 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
+    /// <summary>
+    /// Exports all history rows for a variable to a CSV string.
+    /// After Phase 3 this queries resource_history rather than the dropped points/series tables.
+    /// </summary>
     public string ExportToCsv(string variable, ulong? characterId = null)
     {
         var sb = new StringBuilder();
+
+        var resolvedOwnerId = characterId.HasValue && characterId.Value != 0 ? characterId.Value : (ulong)0;
+        var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
+        if (mapping == null) return sb.ToString();
 
         lock (_readLock)
         {
@@ -18,15 +27,15 @@ public sealed partial class KaleidoscopeDbService
             try
             {
                 using var cmd = conn.CreateCommand();
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
                 if (characterId == null || characterId == 0)
                 {
-                    sb.AppendLine("timestamp_utc,value,character_id");
-                    cmd.CommandText = @"SELECT p.timestamp, p.value, s.character_id FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v
-                        ORDER BY p.timestamp ASC";
-                    cmd.Parameters.AddWithValue("$v", variable);
+                    sb.AppendLine("timestamp_utc,quantity,owner_id");
+                    cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
+                        WHERE item_id = $iid AND container = $cont
+                        ORDER BY timestamp ASC";
 
                     using var reader = cmd.ExecuteReader();
                     while (reader.Read())
@@ -39,13 +48,11 @@ public sealed partial class KaleidoscopeDbService
                 }
                 else
                 {
-                    sb.AppendLine("timestamp_utc,value");
-                    cmd.CommandText = @"SELECT p.timestamp, p.value FROM points p
-                        JOIN series s ON p.series_id = s.id
-                        WHERE s.variable = $v AND s.character_id = $c
-                        ORDER BY p.timestamp ASC";
-                    cmd.Parameters.AddWithValue("$v", variable);
-                    cmd.Parameters.AddWithValue("$c", (long)characterId);
+                    sb.AppendLine("timestamp_utc,quantity");
+                    cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+                        WHERE item_id = $iid AND container = $cont AND owner_id = $oid
+                        ORDER BY timestamp ASC";
+                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
 
                     using var reader = cmd.ExecuteReader();
                     while (reader.Read())
