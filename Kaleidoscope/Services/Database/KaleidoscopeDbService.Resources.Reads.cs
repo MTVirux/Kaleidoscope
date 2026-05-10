@@ -278,4 +278,41 @@ public sealed partial class KaleidoscopeDbService
             }
         }
     }
+
+    /// <summary>
+    /// Returns all (variable, character_id) pairs from the legacy <c>series</c> table
+    /// whose variable name starts with <paramref name="prefix"/> and, when
+    /// <paramref name="suffix"/> is non-null/empty, also ends with that suffix.
+    /// Used by <see cref="TimeSeriesCacheService"/> to discover which characters have
+    /// history for a given variable pattern when routing through resource_history.
+    /// </summary>
+    public List<(string Variable, ulong CharacterId)> GetSeriesByVariablePrefixSuffix(string prefix, string? suffix)
+    {
+        var result = new List<(string, ulong)>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                var sql = "SELECT variable, character_id FROM series WHERE variable LIKE $prefix || '%'";
+                cmd.Parameters.AddWithValue("$prefix", prefix);
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    sql += " AND variable LIKE '%' || $suffix";
+                    cmd.Parameters.AddWithValue("$suffix", suffix);
+                }
+                cmd.CommandText = sql;
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    result.Add((r.GetString(0), (ulong)r.GetInt64(1)));
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetSeriesByVariablePrefixSuffix", ex);
+            }
+        }
+        return result;
+    }
 }

@@ -1,5 +1,7 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
+using Kaleidoscope.Services.Database;
+using Kaleidoscope.Services.Resources.Adapters;
 using OtterGui.Services;
 using System.Collections.Concurrent;
 using Kaleidoscope.Services.Characters;
@@ -21,6 +23,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
+    private readonly KaleidoscopeDbService _dbService;
     private readonly CharacterDataCacheService _characterDataCache;
 
     private readonly ConcurrentDictionary<CacheKey, TimeSeriesCache> _cache = new();
@@ -52,10 +55,11 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public int CachedSeriesCount => _cache.Count;
     public long TotalCachedPoints => _cache.Values.Sum(c => c.PointCount);
 
-    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, CharacterDataCacheService characterDataCache)
+    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, KaleidoscopeDbService dbService, CharacterDataCacheService characterDataCache)
     {
         _log = log;
         _configService = configService;
+        _dbService = dbService;
         _characterDataCache = characterDataCache;
         LogService.Debug(LogCategory.Cache, "[TimeSeriesCacheService] Initialized");
     }
@@ -262,10 +266,14 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <summary>
     /// Gets the latest cached value for each character for a given variable.
     /// Cache-first: returns only cached data, no DB fallback.
+    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
     /// </summary>
     /// <returns>Dictionary of characterId -> latest value.</returns>
     public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
     {
+        if (_configService.Config.UseUnifiedResources)
+            return GetLatestValuesForVariableViaResources(variable);
+
         var result = new Dictionary<ulong, long>();
         var foundAny = false;
 
@@ -295,9 +303,25 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         return result;
     }
 
+    private Dictionary<ulong, long> GetLatestValuesForVariableViaResources(string variable)
+    {
+        var result = new Dictionary<ulong, long>();
+        var pairs = _dbService.GetSeriesByVariablePrefixSuffix(variable, null);
+        foreach (var (v, charId) in pairs)
+        {
+            if (v != variable) continue;
+            var spec = LegacyVariableTranslator.Translate(variable, charId);
+            if (spec == null) continue;
+            var latest = _dbService.GetLatestHistoryValue(spec.Value.ItemId, spec.Value.OwnerId, (int)spec.Value.Container);
+            if (latest.HasValue) result[charId] = latest.Value;
+        }
+        return result;
+    }
+
     /// <summary>
     /// Gets all cached points for a variable, grouped by variable name.
     /// Cache-first: returns only cached data, no DB fallback.
+    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
     /// Compatible with DbService.GetAllPointsBatch signature.
     /// </summary>
     /// <param name="variable">The variable name to query.</param>
@@ -305,6 +329,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary with variable name as key and list of points as value.</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetAllPointsBatch(string variable, DateTime? since)
     {
+        if (_configService.Config.UseUnifiedResources)
+            return GetPointsBatchViaResources(variable, suffix: null, since);
+
         var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
         var points = new List<(ulong characterId, DateTime timestamp, long value)>();
         var foundAny = false;
@@ -315,7 +342,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             foundAny = true;
 
             var characterId = kvp.Key.CharacterId;
-            var cachedPoints = since.HasValue 
+            var cachedPoints = since.HasValue
                 ? kvp.Value.GetPointsSince(since.Value)
                 : kvp.Value.GetPoints();
             foreach (var (ts, val) in cachedPoints)
@@ -346,6 +373,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <summary>
     /// Gets all cached points for variables matching a prefix+suffix pattern.
     /// Cache-first: returns only cached data, no DB fallback.
+    /// When <see cref="Configuration.UseUnifiedResources"/> is true, reads from resource_history instead.
     /// Compatible with DbService.GetPointsBatchWithSuffix signature.
     /// </summary>
     /// <param name="prefix">Variable name prefix (e.g., "ItemRetainerX_").</param>
@@ -354,6 +382,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     /// <returns>Dictionary with variable name as key and list of points as value.</returns>
     public Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchWithSuffix(string prefix, string suffix, DateTime? since)
     {
+        if (_configService.Config.UseUnifiedResources)
+            return GetPointsBatchViaResources(prefix, suffix, since);
+
         var result = new Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>>();
         var foundAny = false;
 
@@ -370,7 +401,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
             }
 
             var characterId = kvp.Key.CharacterId;
-            var cachedPoints = since.HasValue 
+            var cachedPoints = since.HasValue
                 ? kvp.Value.GetPointsSince(since.Value)
                 : kvp.Value.GetPoints();
             foreach (var (ts, val) in cachedPoints)
@@ -388,6 +419,33 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         {
             Interlocked.Increment(ref _cacheMisses);
             LogService.Verbose(LogCategory.Cache, $"[Cache MISS] GetPointsBatchWithSuffix({prefix}*{suffix})");
+        }
+
+        return result;
+    }
+
+    private Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> GetPointsBatchViaResources(
+        string prefix, string? suffix, DateTime? since)
+    {
+        var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
+        var pairs = _dbService.GetSeriesByVariablePrefixSuffix(prefix, suffix);
+
+        foreach (var (variable, charId) in pairs)
+        {
+            var spec = LegacyVariableTranslator.Translate(variable, charId);
+            if (spec == null) continue;
+
+            var points = _dbService.GetHistoryPoints(spec.Value.ItemId, spec.Value.OwnerId, (int)spec.Value.Container, since);
+            if (points.Count == 0) continue;
+
+            if (!result.TryGetValue(variable, out var list))
+            {
+                list = new List<(ulong, DateTime, long)>();
+                result[variable] = list;
+            }
+
+            foreach (var (ts, val) in points)
+                list.Add((charId, new DateTime(ts, DateTimeKind.Utc), val));
         }
 
         return result;
