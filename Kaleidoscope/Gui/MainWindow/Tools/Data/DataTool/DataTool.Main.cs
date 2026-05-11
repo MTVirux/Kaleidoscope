@@ -11,6 +11,7 @@ using Kaleidoscope.Gui.Widgets.Graph;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Characters;
 using Kaleidoscope.Services.Inventory;
+using Kaleidoscope.Services.Resources;
 using Kaleidoscope.Services.Universalis;
 
 namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
@@ -42,6 +43,7 @@ public sealed partial class DataTool : ToolComponent
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly FavoritesService? _favoritesService;
     private readonly ITextureProvider? _textureProvider;
+    private readonly ResourceObservationService? _resourceObservationService;
     
     // Widgets
     private readonly ItemTableWidget _tableWidget;
@@ -70,6 +72,7 @@ public sealed partial class DataTool : ToolComponent
     // Version counters for cache change detection (replaces blind timer polling)
     private long _lastTimeSeriesVersion;
     private long _lastCharacterVersion;
+    private long _lastResourcesVersion;
     
     // Retainer names cache (refreshed periodically)
     private Dictionary<ulong, string>? _cachedRetainerNames;
@@ -101,7 +104,8 @@ public sealed partial class DataTool : ToolComponent
         AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null,
         LifestreamService? lifestreamService = null,
-        INotificationManager? notificationManager = null)
+        INotificationManager? notificationManager = null,
+        ResourceObservationService? resourceObservationService = null)
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
@@ -113,6 +117,7 @@ public sealed partial class DataTool : ToolComponent
         _priceTrackingService = priceTrackingService;
         _favoritesService = favoritesService;
         _textureProvider = textureProvider;
+        _resourceObservationService = resourceObservationService;
 
         
         // Initialize instance-specific settings with global defaults
@@ -516,12 +521,15 @@ public sealed partial class DataTool : ToolComponent
     {
         var tsVersion = CacheService.Version;
         var charVersion = CharacterDataCache.Version;
+        var resourcesVersion = _resourceObservationService?.Version ?? 0;
 
         if (tsVersion != _lastTimeSeriesVersion ||
-            charVersion != _lastCharacterVersion)
+            charVersion != _lastCharacterVersion ||
+            resourcesVersion != _lastResourcesVersion)
         {
             _lastTimeSeriesVersion = tsVersion;
             _lastCharacterVersion = charVersion;
+            _lastResourcesVersion = resourcesVersion;
             return true;
         }
         return false;
