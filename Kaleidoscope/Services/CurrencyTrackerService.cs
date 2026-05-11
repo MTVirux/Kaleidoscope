@@ -392,6 +392,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     public void ClearAllData()
     {
         _dbService.ClearAllTables();
+        _cacheService.ClearAll();
+        _characterDataCache.ClearAll();
         LogService.Info(LogCategory.CurrencyTracker, "Cleared all tracking data");
     }
 
