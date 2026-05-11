@@ -25,6 +25,7 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     private readonly ConfigurationService _configService;
     private readonly KaleidoscopeDbService _dbService;
     private readonly CharacterDataCacheService _characterDataCache;
+    private readonly Kaleidoscope.Services.Resources.ResourceStore? _resourceStore;
 
     private readonly ConcurrentDictionary<CacheKey, TimeSeriesCache> _cache = new();
 
@@ -55,12 +56,14 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
     public int CachedSeriesCount => _cache.Count;
     public long TotalCachedPoints => _cache.Values.Sum(c => c.PointCount);
 
-    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, KaleidoscopeDbService dbService, CharacterDataCacheService characterDataCache)
+    public TimeSeriesCacheService(IPluginLog log, ConfigurationService configService, KaleidoscopeDbService dbService, CharacterDataCacheService characterDataCache,
+        Kaleidoscope.Services.Resources.ResourceStore? resourceStore = null)
     {
         _log = log;
         _configService = configService;
         _dbService = dbService;
         _characterDataCache = characterDataCache;
+        _resourceStore = resourceStore;
         LogService.Debug(LogCategory.Cache, "[TimeSeriesCacheService] Initialized");
     }
 
@@ -278,6 +281,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         switch (variable)
         {
             case "Gil":
+                // In-memory store — sub-frame latency vs. ~1s DB batching.
+                if (_resourceStore != null)
+                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
                 return _dbService.GetItemSumPerCharacterPlayerOnly(
                     Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId,
                     (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
@@ -287,14 +293,20 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 // FC gil is per-FC, not per-character; the active-character live path handles it.
                 return new Dictionary<ulong, long>();
             case "MGP":
+                if (_resourceStore != null)
+                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
                 return _dbService.GetItemSumPerCharacterPlayerOnly(
                     Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId,
                     (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
             case "WolfMarks":
+                if (_resourceStore != null)
+                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
                 return _dbService.GetItemSumPerCharacterPlayerOnly(
                     Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId,
                     (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
             case "AlliedSeals":
+                if (_resourceStore != null)
+                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
                 return _dbService.GetItemSumPerCharacterPlayerOnly(
                     Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId,
                     (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);

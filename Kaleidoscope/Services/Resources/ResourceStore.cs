@@ -169,4 +169,28 @@ public sealed class ResourceStore : IRequiredService
 
         return _byItemAndKind.TryGetValue((itemId, scope.Value), out var v) ? v : 0;
     }
+
+    /// <summary>
+    /// Per-character sum of an item across player + their retainers, given a set of item IDs.
+    /// Player rows are matched by (OwnerKind=Player, OwnerId=charId). Retainer rows are matched
+    /// by (OwnerKind=Retainer) — but in-memory Resource doesn't carry parent_owner_id, so this
+    /// helper does NOT attribute retainer-owned rows to a parent. Callers that need retainer
+    /// inclusion under a specific parent character should either fall back to the DB query OR
+    /// the future ParentOwnerId-aware version of this method.
+    ///
+    /// For the common case of Player-only items (Gil, MGP, etc.) this is exactly right.
+    /// </summary>
+    public Dictionary<ulong, long> GetPerOwnerSum(uint itemId, OwnerKind ownerKind)
+    {
+        var result = new Dictionary<ulong, long>();
+        foreach (var r in _state.Values)
+        {
+            if (r.Key.OwnerKind != ownerKind) continue;
+            if (r.Key.ItemId != itemId) continue;
+            if (!result.TryGetValue(r.Key.OwnerId, out var current))
+                current = 0;
+            result[r.Key.OwnerId] = current + r.Quantity;
+        }
+        return result;
+    }
 }
