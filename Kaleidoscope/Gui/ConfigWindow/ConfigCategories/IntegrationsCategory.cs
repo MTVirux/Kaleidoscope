@@ -157,6 +157,25 @@ public sealed class IntegrationsCategory
                 {
                     if (ret.RetainerId == 0 || string.IsNullOrEmpty(ret.Name)) continue;
                     _dbService.UpsertOwnerName(ret.RetainerId, OwnerKind.Retainer, ret.Name);
+
+                    // Placeholder resource row so the retainer is enumerable in the data table
+                    // immediately after import. MemoryPoller will upsert this with the real gil
+                    // value the next time the retainer is observed. Quantity=0 is honest about
+                    // the unknown state until first observation.
+                    _obsService.RecordObservation(new ResourceObservation
+                    {
+                        Key = new ResourceKey
+                        {
+                            OwnerId = ret.RetainerId,
+                            OwnerKind = OwnerKind.Retainer,
+                            Container = Container.RetainerGil,
+                            ItemId = ResourceCatalog.GilItemId,
+                            Slot = -1,
+                        },
+                        Quantity = 0,
+                        UpdatedAt = DateTime.UtcNow,
+                        ParentOwnerId = ch.CID,
+                    });
                     retainers++;
 
                     if (_importGil && ret.Gil > 0)
