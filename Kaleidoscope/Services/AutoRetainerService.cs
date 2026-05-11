@@ -72,7 +72,6 @@ public sealed class AutoRetainerService : IDisposable, IService
     private bool _initialized = false;
     private Timer? _retryTimer;
     private const int RetryIntervalMs = 5000;
-    private static bool _loggedSampleJObject = false;
 
     public bool IsAvailable { get; private set; } = false;
 
@@ -227,20 +226,6 @@ public sealed class AutoRetainerService : IDisposable, IService
             
             if (data is JObject jObject)
             {
-                // ONE-SHOT diagnostic: log the full JObject the first time we parse it. Used to discover
-                // any fields beyond what the existing parser extracts. Remove after FC gil field name
-                // is identified.
-                if (!_loggedSampleJObject)
-                {
-                    _loggedSampleJObject = true;
-                    try
-                    {
-                        var summary = string.Join(", ", jObject.Properties().Select(p => $"{p.Name}={(p.Value.Type == JTokenType.Array ? "[array]" : p.Value.Type == JTokenType.Object ? "{obj}" : p.Value.ToString())}"));
-                        LogService.Info(LogCategory.AutoRetainer, $"[AutoRetainerService] Sample OfflineCharacterData keys: {summary}");
-                    }
-                    catch { /* best-effort diagnostic */ }
-                }
-
                 name = jObject["Name"]?.Value<string>() ?? "";
                 world = jObject["World"]?.Value<string>() ?? "";
                 gil = jObject["Gil"]?.Value<long>() ?? 0L;

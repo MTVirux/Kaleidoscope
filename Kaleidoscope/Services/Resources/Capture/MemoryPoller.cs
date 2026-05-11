@@ -61,6 +61,27 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         if (fcCredits.HasValue)
             Observe(pid, ResourceCatalog.FCCreditsItemId, fcCredits.Value, Container.SpecialFreeCompany);
 
+        // Free Company gil — only meaningful when player is in an FC.
+        var fcId = GameStateService.GetFreeCompanyId();
+        if (fcId != 0)
+        {
+            var fcGil = im->GetFreeCompanyGil();
+            _service.RecordObservation(new ResourceObservation
+            {
+                Key = new ResourceKey
+                {
+                    OwnerId   = fcId,
+                    OwnerKind = OwnerKind.FreeCompany,
+                    Container = Container.FreeCompanyGil,
+                    ItemId    = ResourceCatalog.GilItemId,
+                    Slot      = -1,
+                },
+                Quantity      = fcGil,
+                UpdatedAt     = DateTime.UtcNow,
+                ParentOwnerId = pid,
+            });
+        }
+
         // Per-retainer gil — available whenever RetainerManager cache is populated.
         foreach (var (retainerId, gil) in GameStateService.GetPerRetainerGil())
         {

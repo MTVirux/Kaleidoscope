@@ -3,6 +3,7 @@ using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Kaleidoscope.Services.Inventory;
@@ -313,6 +314,27 @@ public static unsafe class GameStateService
         }
         
         return totals;
+    }
+
+    /// <summary>
+    /// Gets the current player's Free Company ID via InfoProxyFreeCompany.
+    /// Returns 0 if the player is not in an FC or the proxy is unavailable.
+    /// </summary>
+    public static ulong GetFreeCompanyId()
+    {
+        try
+        {
+            var infoModule = InfoModule.Instance();
+            if (infoModule == null) return 0;
+            var fcProxy = (InfoProxyFreeCompany*)infoModule->GetInfoProxyById(InfoProxyId.FreeCompany);
+            if (fcProxy == null) return 0;
+            return fcProxy->Id;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"GetFreeCompanyId failed: {ex.Message}");
+            return 0;
+        }
     }
 
     /// <summary>
