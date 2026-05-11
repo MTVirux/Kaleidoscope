@@ -265,11 +265,59 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
     /// <summary>
     /// Gets the latest cached value for each character for a given variable.
-    /// Reads from resource_history via the resources pipeline.
+    /// Special cases for variables that require parent-owner aggregation or multi-itemId summing
+    /// are dispatched directly to resources-table queries. Everything else falls through to the
+    /// legacy translator path via resource_history.
     /// </summary>
     /// <returns>Dictionary of characterId -> latest value.</returns>
     public Dictionary<ulong, long> GetLatestValuesForVariable(string variable)
     {
+        // Special cases: these variables cannot be resolved through the single-(item,container,owner)
+        // translator path because they either span multiple owners (retainer gil → parent_owner_id)
+        // or multiple item IDs (crystals). Query the resources table directly.
+        switch (variable)
+        {
+            case "Gil":
+                return _dbService.GetItemSumPerCharacterPlayerOnly(
+                    Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId,
+                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
+            case "RetainerGil":
+                return _dbService.GetRetainerGilPerCharacter();
+            case "FreeCompanyGil":
+                // FC gil is per-FC, not per-character; the active-character live path handles it.
+                return new Dictionary<ulong, long>();
+            case "MGP":
+                return _dbService.GetItemSumPerCharacterPlayerOnly(
+                    Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId,
+                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
+            case "WolfMarks":
+                return _dbService.GetItemSumPerCharacterPlayerOnly(
+                    Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId,
+                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
+            case "AlliedSeals":
+                return _dbService.GetItemSumPerCharacterPlayerOnly(
+                    Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId,
+                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
+            case "FireCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 2, 8, 14 });
+            case "IceCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 3, 9, 15 });
+            case "WindCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 4, 10, 16 });
+            case "EarthCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 5, 11, 17 });
+            case "LightningCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 6, 12, 18 });
+            case "WaterCrystals":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 7, 13, 19 });
+            case "CrystalsTotal":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    Enumerable.Range(2, 18).Select(i => (uint)i));
+            case "Ventures":
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 21072 });
+        }
+
+        // Existing translator-based path for everything else (tomestones, scrips, GC seals, etc.)
         return GetLatestValuesForVariableViaResources(variable);
     }
 

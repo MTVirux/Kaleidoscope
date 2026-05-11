@@ -401,6 +401,124 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Per-character sum of their retainers' gil. Used by the Retainer Gil currency column
+    /// in the data table. Requires parent_owner_id to be correctly populated on retainer rows
+    /// (Phase 3.5 fix ensures this for live captures; AR seed paths must also set it).
+    /// </summary>
+    public Dictionary<ulong, long> GetRetainerGilPerCharacter()
+    {
+        var result = new Dictionary<ulong, long>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT parent_owner_id, COALESCE(SUM(quantity), 0)
+                    FROM resources
+                    WHERE owner_kind = 1
+                      AND container = 12000
+                      AND item_id = $gilId
+                      AND parent_owner_id != 0
+                    GROUP BY parent_owner_id";
+                cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetRetainerGilPerCharacter", ex);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Per-character sum of an item across the player's containers AND their retainers'
+    /// containers. Used for item-bearing TrackedDataTypes like Ventures and Crystals where
+    /// the value spans multiple owners + multiple item IDs.
+    /// </summary>
+    public Dictionary<ulong, long> GetItemSumPerCharacterIncludingRetainers(IEnumerable<uint> itemIds)
+    {
+        var ids = itemIds.Select(id => (long)id).ToList();
+        if (ids.Count == 0) return new Dictionary<ulong, long>();
+
+        var result = new Dictionary<ulong, long>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                // Build IN clause
+                var inClause = string.Join(",", ids);
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+                    SELECT
+                        CASE owner_kind WHEN 0 THEN owner_id ELSE parent_owner_id END AS character_id,
+                        COALESCE(SUM(quantity), 0) AS total
+                    FROM resources
+                    WHERE item_id IN ({inClause})
+                      AND (owner_kind = 0 OR (owner_kind = 1 AND parent_owner_id != 0))
+                    GROUP BY character_id
+                    HAVING character_id != 0";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetItemSumPerCharacterIncludingRetainers", ex);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Per-character latest value for a single (item, container) — scoped to OwnerKind.Player.
+    /// Used for player-only currencies (Gil, MGP, Wolf Marks, Allied Seals, all Currency-container
+    /// items like Tomestones/Scrips/GC Seals/etc.).
+    /// </summary>
+    public Dictionary<ulong, long> GetItemSumPerCharacterPlayerOnly(uint itemId, int container)
+    {
+        var result = new Dictionary<ulong, long>();
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT owner_id, COALESCE(SUM(quantity), 0)
+                    FROM resources
+                    WHERE owner_kind = 0 AND item_id = $iid AND container = $cont
+                    GROUP BY owner_id";
+                cmd.Parameters.AddWithValue("$iid", (long)itemId);
+                cmd.Parameters.AddWithValue("$cont", container);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetItemSumPerCharacterPlayerOnly", ex);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Returns all (variable, owner_id) pairs from resource_history whose reverse-mapped legacy
     /// variable name starts with <paramref name="prefix"/> and, when <paramref name="suffix"/>
     /// is non-null/non-empty, also ends with that suffix.
