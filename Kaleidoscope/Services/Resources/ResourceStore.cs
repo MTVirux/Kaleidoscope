@@ -143,6 +143,24 @@ public sealed class ResourceStore : IRequiredService
         return changed;
     }
 
+    /// <summary>
+    /// Sum the quantity of an item across all entries for a specific owner. Used when the
+    /// caller knows the owner (e.g., active character) and wants a scoped total — distinct
+    /// from the cross-character GetAggregate.
+    /// </summary>
+    public long GetSumForOwner(ulong ownerId, OwnerKind ownerKind, uint itemId)
+    {
+        long total = 0;
+        foreach (var r in _state.Values)
+        {
+            if (r.Key.OwnerKind != ownerKind) continue;
+            if (r.Key.OwnerId != ownerId) continue;
+            if (r.Key.ItemId != itemId) continue;
+            total += r.Quantity;
+        }
+        return total;
+    }
+
     /// <summary>Total quantity of an item across all owners (or filtered to one owner kind).</summary>
     public long GetAggregate(uint itemId, OwnerKind? scope = null)
     {

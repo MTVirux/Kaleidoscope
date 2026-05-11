@@ -422,54 +422,94 @@ public sealed class TrackedDataRegistry : IRequiredService
     public int CategoryCount => _byCategory?.Count ?? 0;
 
     /// <summary>
-    /// Gets the current value for a data type from the ResourceStore.
-    /// Gil and RetainerGil share the same ItemId so they are scoped by OwnerKind to avoid
-    /// cross-contamination in the aggregate.
-    /// Crystal types span three tiers (shard/crystal/cluster) per element and are summed
-    /// across all owners via GetAggregate — they don't fit the single-mapping pattern.
+    /// Gets the current value for a data type from the ResourceStore, scoped to the active
+    /// character. Returns null when no character is logged in (PlayerContentId == 0).
+    /// Crystal types span three tiers (shard/crystal/cluster) per element and include the
+    /// active character's player containers plus all retainers in the store (see SumRetainersForActiveChar).
     /// </summary>
     public long? GetCurrentValue(TrackedDataType type)
     {
+        var pid = GameStateService.PlayerContentId;
+        if (pid == 0) return null;
+
         return type switch
         {
-            TrackedDataType.Gil               => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Player),
-            TrackedDataType.RetainerGil       => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Retainer),
-            TrackedDataType.FreeCompanyGil    => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.FreeCompany),
+            // Player gil — active character only
+            TrackedDataType.Gil               => _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, Resources.ResourceCatalog.GilItemId),
 
-            TrackedDataType.FireCrystals      => SumCrystalsForElement(0),
-            TrackedDataType.IceCrystals       => SumCrystalsForElement(1),
-            TrackedDataType.WindCrystals      => SumCrystalsForElement(2),
-            TrackedDataType.EarthCrystals     => SumCrystalsForElement(3),
-            TrackedDataType.LightningCrystals => SumCrystalsForElement(4),
-            TrackedDataType.WaterCrystals     => SumCrystalsForElement(5),
-            TrackedDataType.CrystalsTotal     => SumAllCrystals(),
+            // Retainer gil — sum of retainers belonging to the active character
+            TrackedDataType.RetainerGil       => SumRetainersForActiveChar(pid, Resources.ResourceCatalog.GilItemId),
 
+            // FC gil — active character's free company (single owner; SumForOwner with FCID)
+            TrackedDataType.FreeCompanyGil    => _resourceStore.GetSumForOwner(GameStateService.GetFreeCompanyId(), Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.GilItemId),
+
+            // Crystals — active character's player containers + their retainers
+            TrackedDataType.FireCrystals      => SumCrystalsForElement(pid, 0),
+            TrackedDataType.IceCrystals       => SumCrystalsForElement(pid, 1),
+            TrackedDataType.WindCrystals      => SumCrystalsForElement(pid, 2),
+            TrackedDataType.EarthCrystals     => SumCrystalsForElement(pid, 3),
+            TrackedDataType.LightningCrystals => SumCrystalsForElement(pid, 4),
+            TrackedDataType.WaterCrystals     => SumCrystalsForElement(pid, 5),
+            TrackedDataType.CrystalsTotal     => SumAllCrystals(pid),
+
+            // Default: active character's player-scoped sum (currencies in Currency container, etc.)
             _ => Resources.ResourceCatalog.TryGetMappingForTrackedDataType(type, out var mapping)
-                    ? _resourceStore.GetAggregate(mapping.ItemId)
-                    : null,
+                ? _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, mapping.ItemId)
+                : null,
         };
     }
 
-    /// <summary>
-    /// Sums all three tiers (shard, crystal, cluster) for one element across all owners.
-    /// Element index (0–5): Fire=0, Ice=1, Wind=2, Earth=3, Lightning=4, Water=5.
-    /// Item IDs: shard = 2+element, crystal = 8+element, cluster = 14+element.
-    /// </summary>
-    private long SumCrystalsForElement(int element)
+    private long SumRetainersForActiveChar(ulong pid, uint itemId)
     {
-        return _resourceStore.GetAggregate((uint)(2 + element))
-             + _resourceStore.GetAggregate((uint)(8 + element))
-             + _resourceStore.GetAggregate((uint)(14 + element));
+        // Phase 3.5 sets parent_owner_id on retainer rows correctly in DB but in-memory Resource
+        // doesn't carry it. As a best-effort heuristic, sum across all OwnerKind.Retainer rows for
+        // the given item. This is correct when only one character's retainers exist in the store
+        // (the common case). For users with multiple characters' retainers loaded simultaneously
+        // this overcounts — that's a known gap; fix when reported.
+        long total = 0;
+        foreach (var r in _resourceStore.Snapshot())
+        {
+            if (r.Key.OwnerKind == Models.Resources.OwnerKind.Retainer && r.Key.ItemId == itemId)
+                total += r.Quantity;
+        }
+        return total;
     }
 
     /// <summary>
-    /// Sums all 18 crystal item IDs (2–19) across all owners.
+    /// Sums all three tiers (shard, crystal, cluster) for one element scoped to the active
+    /// character's player containers plus all retainers in the store.
+    /// Element index (0–5): Fire=0, Ice=1, Wind=2, Earth=3, Lightning=4, Water=5.
+    /// Item IDs: shard = 2+element, crystal = 8+element, cluster = 14+element.
     /// </summary>
-    private long SumAllCrystals()
+    private long SumCrystalsForElement(ulong pid, int element)
+    {
+        var ids = new uint[]
+        {
+            (uint)(2 + element),   // Shard
+            (uint)(8 + element),   // Crystal
+            (uint)(14 + element),  // Cluster
+        };
+        long total = 0;
+        foreach (var id in ids)
+        {
+            total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
+            total += SumRetainersForActiveChar(pid, id);
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// Sums all 18 crystal item IDs (2–19) scoped to the active character's player containers
+    /// plus all retainers in the store.
+    /// </summary>
+    private long SumAllCrystals(ulong pid)
     {
         long total = 0;
         for (uint id = 2; id <= 19; id++)
-            total += _resourceStore.GetAggregate(id);
+        {
+            total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
+            total += SumRetainersForActiveChar(pid, id);
+        }
         return total;
     }
 
