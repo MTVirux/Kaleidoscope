@@ -16,7 +16,6 @@ public sealed class DataCategory
     private readonly AutoRetainerService _autoRetainerIpc;
     private readonly ConfigurationService _configService;
     private readonly ResourceStore _resourceStore;
-    private readonly AutoRetainerHydrator _autoRetainerHydrator;
 
     private bool _clearDbOpen = false;
     private bool _sanitizeDbOpen = false;
@@ -28,14 +27,12 @@ public sealed class DataCategory
         CurrencyTrackerService currencyTrackerService,
         AutoRetainerService autoRetainerIpc,
         ConfigurationService configService,
-        ResourceStore resourceStore,
-        AutoRetainerHydrator autoRetainerHydrator)
+        ResourceStore resourceStore)
     {
         _currencyTrackerService = currencyTrackerService;
         _autoRetainerIpc = autoRetainerIpc;
         _configService = configService;
         _resourceStore = resourceStore;
-        _autoRetainerHydrator = autoRetainerHydrator;
     }
 
     public void Draw()
@@ -112,8 +109,7 @@ public sealed class DataCategory
                 {
                     _currencyTrackerService.ClearAllData();
                     _resourceStore.Clear();
-                    _autoRetainerHydrator.Reseed();
-                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data and re-seeded names from AutoRetainer");
+                    LogService.Info(LogCategory.UI, "Cleared all Kaleidoscope data");
                 }
                 catch (Exception ex)
                 {

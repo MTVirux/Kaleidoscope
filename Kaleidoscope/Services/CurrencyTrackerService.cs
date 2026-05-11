@@ -121,8 +121,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 
         _dbService.MigrateStoredNames();
 
-        ImportFromAutoRetainer();
-
         PopulateCacheFromDatabase();
 
         _inventoryChangeService.OnValuesChanged += OnValuesChanged;
