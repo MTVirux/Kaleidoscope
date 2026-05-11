@@ -434,6 +434,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         {
             TrackedDataType.Gil               => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Player),
             TrackedDataType.RetainerGil       => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.Retainer),
+            TrackedDataType.FreeCompanyGil    => _resourceStore.GetAggregate(Resources.ResourceCatalog.GilItemId, Models.Resources.OwnerKind.FreeCompany),
 
             TrackedDataType.FireCrystals      => SumCrystalsForElement(0),
             TrackedDataType.IceCrystals       => SumCrystalsForElement(1),
