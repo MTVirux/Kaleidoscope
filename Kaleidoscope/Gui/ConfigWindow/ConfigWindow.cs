@@ -56,6 +56,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private CachesCategory? _cachesCategory;
     private LoggingCategory? _loggingCategory;
     private SqlQueryCategory? _sqlQueryCategory;
+    private IntegrationsCategory? _integrationsCategory;
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -76,6 +77,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         public const int Caches = 11; // Hidden tab, only shown with CTRL+ALT
         public const int Logging = 12; // Hidden tab, only shown with CTRL+ALT
         public const int SqlQuery = 13; // Hidden tab, only shown with CTRL+ALT
+        public const int Integrations = 14;
     }
 
     /// <summary>
@@ -178,7 +180,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
 
         // Create category renderers
         _generalCategory = new GeneralCategory(_configService, frameLimiterService, uiBuilder);
-        _dataCategory = new DataCategory(_currencyTrackerService, _arIpc, _configService, resourceStore);
+        _dataCategory = new DataCategory(_currencyTrackerService, _configService, resourceStore);
         _layoutsCategory = new LayoutsCategory(_configService);
         _customizationCategory = new CustomizationCategory(Config, _configService.Save, _layoutEditingService);
         _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
@@ -199,6 +201,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
         _loggingCategory = new LoggingCategory(_configService, filenameService, fileDialogService);
         _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
+        _integrationsCategory = new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -276,7 +279,8 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         if (ImGui.Selectable("Customization", _selectedTab == TabIndex.Customization)) _selectedTab = TabIndex.Customization;
         if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
         if (ImGui.Selectable("Storage", _selectedTab == TabIndex.Storage)) _selectedTab = TabIndex.Storage;
-        
+        if (ImGui.Selectable("Integrations", _selectedTab == TabIndex.Integrations)) _selectedTab = TabIndex.Integrations;
+
         // Only show Developer section when CTRL+ALT are held or developer mode is enabled
         if (showProfiler)
         {
@@ -323,6 +327,9 @@ public sealed class ConfigWindow : Window, IService, IDisposable
                 break;
             case TabIndex.Storage:
                 _storageCategory?.Draw();
+                break;
+            case TabIndex.Integrations:
+                _integrationsCategory?.Draw();
                 break;
             case TabIndex.Profiler:
                 // Only draw profiler if CTRL+ALT are still held, otherwise reset to General
