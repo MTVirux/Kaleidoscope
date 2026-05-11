@@ -258,20 +258,22 @@ public sealed partial class DataTool
                             row.ItemCounts[column.Id] += count;
                         }
                         
-                        // If showing breakdown, track per-retainer counts
-                        if (showRetainerBreakdown && count > 0)
+                        // If showing breakdown, always register the retainer so it appears as a tree
+                        // child even when it has 0 of this item (e.g. freshly imported retainers).
+                        if (showRetainerBreakdown)
                         {
                             var retainerKey = (cache.RetainerId, cache.Name ?? $"Retainer {cache.RetainerId}");
                             row.RetainerBreakdown ??= new Dictionary<(ulong, string), Dictionary<uint, long>>();
-                            
+
                             if (!row.RetainerBreakdown.TryGetValue(retainerKey, out var retainerCounts))
                             {
                                 retainerCounts = new Dictionary<uint, long>();
                                 row.RetainerBreakdown[retainerKey] = retainerCounts;
                             }
-                            
+
                             retainerCounts.TryAdd(column.Id, 0);
-                            retainerCounts[column.Id] += count;
+                            if (count > 0)
+                                retainerCounts[column.Id] += count;
                         }
                     }
                 }

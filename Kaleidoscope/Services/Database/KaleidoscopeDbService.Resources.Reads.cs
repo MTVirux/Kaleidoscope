@@ -159,7 +159,9 @@ public sealed partial class KaleidoscopeDbService
                 result[key] = entry;
             }
 
-            if (container == 90000 && itemId == Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId)
+            // Gil rows: player gil lives in Container.SpecialPlayer (90000); retainer gil lives in
+            // Container.RetainerGil (12000). Both populate the entry's Gil field, not Items.
+            if ((container == 90000 || container == 12000) && itemId == Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId)
             {
                 entry.Gil = qty;
                 continue;
