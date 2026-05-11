@@ -72,6 +72,7 @@ public sealed class AutoRetainerService : IDisposable, IService
     private bool _initialized = false;
     private Timer? _retryTimer;
     private const int RetryIntervalMs = 5000;
+    private static bool _loggedSampleJObject = false;
 
     public bool IsAvailable { get; private set; } = false;
 
@@ -220,17 +221,32 @@ public sealed class AutoRetainerService : IDisposable, IService
             bool enabled = false;
             bool workshopEnabled = false;
             ulong fcid = 0;
+            long fcGil = 0;
             var retainers = new List<AutoRetainerRetainerData>();
             var vessels = new List<AutoRetainerVesselData>();
             
             if (data is JObject jObject)
             {
+                // ONE-SHOT diagnostic: log the full JObject the first time we parse it. Used to discover
+                // any fields beyond what the existing parser extracts. Remove after FC gil field name
+                // is identified.
+                if (!_loggedSampleJObject)
+                {
+                    _loggedSampleJObject = true;
+                    try
+                    {
+                        var summary = string.Join(", ", jObject.Properties().Select(p => $"{p.Name}={(p.Value.Type == JTokenType.Array ? "[array]" : p.Value.Type == JTokenType.Object ? "{obj}" : p.Value.ToString())}"));
+                        LogService.Info(LogCategory.AutoRetainer, $"[AutoRetainerService] Sample OfflineCharacterData keys: {summary}");
+                    }
+                    catch { /* best-effort diagnostic */ }
+                }
+
                 name = jObject["Name"]?.Value<string>() ?? "";
                 world = jObject["World"]?.Value<string>() ?? "";
                 gil = jObject["Gil"]?.Value<long>() ?? 0L;
                 enabled = jObject["Enabled"]?.Value<bool>() ?? false;
                 workshopEnabled = jObject["WorkshopEnabled"]?.Value<bool>() ?? false;
-                
+
                 // FCID needs careful parsing as it's a ulong
                 var fcidToken = jObject["FCID"];
                 if (fcidToken != null)
@@ -238,7 +254,35 @@ public sealed class AutoRetainerService : IDisposable, IService
                     try { fcid = fcidToken.Value<ulong>(); }
                     catch (Exception) { fcid = 0; } // FCID can be in various formats, default to 0 on parse failure
                 }
-                
+
+                // Probe for FC gil — try multiple likely field names since field name is unconfirmed.
+                // The diagnostic log above will reveal the actual key once the user triggers a fetch.
+                try
+                {
+                    // Direct top-level field
+                    var fcGilToken = jObject["FCGil"] ?? jObject["FreeCompanyGil"];
+                    if (fcGilToken != null)
+                    {
+                        fcGil = fcGilToken.Value<long>();
+                    }
+                    else
+                    {
+                        // Try nested object — AR may store FC data under a child key
+                        foreach (var nested in new[] { "FCData", "FreeCompanyData", "OfflineFCData" })
+                        {
+                            var fcObj = jObject[nested] as JObject;
+                            if (fcObj == null) continue;
+                            var inner = fcObj["Gil"] ?? fcObj["FCGil"];
+                            if (inner != null)
+                            {
+                                fcGil = inner.Value<long>();
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { /* best-effort */ }
+
                 var retainerData = jObject["RetainerData"] as JArray;
                 if (retainerData != null)
                 {
@@ -297,7 +341,36 @@ public sealed class AutoRetainerService : IDisposable, IService
                     fcid = fcidProp != null ? Convert.ToUInt64(fcidProp) : 0UL;
                 }
                 catch (Exception) { fcid = 0; } // FCID type may vary, default to 0 on conversion failure
-                
+
+                // Probe for FC gil via reflection — same field names as JObject branch
+                try
+                {
+                    var fcGilProp = type.GetProperty("FCGil")?.GetValue(data)
+                        ?? type.GetProperty("FreeCompanyGil")?.GetValue(data);
+                    if (fcGilProp != null)
+                    {
+                        fcGil = Convert.ToInt64(fcGilProp);
+                    }
+                    else
+                    {
+                        // Try nested object (FCData / FreeCompanyData / OfflineFCData)
+                        foreach (var nestedPropName in new[] { "FCData", "FreeCompanyData", "OfflineFCData" })
+                        {
+                            var nestedObj = type.GetProperty(nestedPropName)?.GetValue(data);
+                            if (nestedObj == null) continue;
+                            var nestedType = nestedObj.GetType();
+                            var innerProp = nestedType.GetProperty("Gil")?.GetValue(nestedObj)
+                                ?? nestedType.GetProperty("FCGil")?.GetValue(nestedObj);
+                            if (innerProp != null)
+                            {
+                                fcGil = Convert.ToInt64(innerProp);
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { /* best-effort */ }
+
                 var retainerDataProp = type.GetProperty("RetainerData")?.GetValue(data);
                 if (retainerDataProp is System.Collections.IEnumerable retainerList)
                 {
@@ -352,8 +425,7 @@ public sealed class AutoRetainerService : IDisposable, IService
             }
             
             
-            // Note: FC gil is not available via IPC - FCData is stored separately in AutoRetainer
-            return new AutoRetainerCharacterData(name, world, gil, cid, enabled, workshopEnabled, retainers, vessels, fcid);
+            return new AutoRetainerCharacterData(name, world, gil, cid, enabled, workshopEnabled, retainers, vessels, fcid, fcGil);
         }
         catch (Exception)
         {
