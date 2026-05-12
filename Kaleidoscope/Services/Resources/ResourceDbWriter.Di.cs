@@ -16,7 +16,7 @@ public sealed partial class ResourceDbWriter : IRequiredService
     /// throws if the connection is not yet open (forces correct service init ordering).
     /// </summary>
     public ResourceDbWriter(KaleidoscopeDbService db)
-        : this(db.GetWriterConnection() ?? throw new InvalidOperationException("KaleidoscopeDb writer connection not open"))
+        : this(db.GetWriterConnection() ?? throw new InvalidOperationException("KaleidoscopeDb writer connection not open"), db.WriteLock)
     {
     }
 }

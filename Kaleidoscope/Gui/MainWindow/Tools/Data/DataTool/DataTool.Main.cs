@@ -521,7 +521,7 @@ public sealed partial class DataTool : ToolComponent
     {
         var tsVersion = CacheService.Version;
         var charVersion = CharacterDataCache.Version;
-        var resourcesVersion = _resourceObservationService?.Version ?? 0;
+        var resourcesVersion = _resourceObservationService?.DbVersion ?? 0;
 
         if (tsVersion != _lastTimeSeriesVersion ||
             charVersion != _lastCharacterVersion ||

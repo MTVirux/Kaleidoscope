@@ -40,14 +40,41 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
             var ownerKind = ResolveOwnerKind(e.Item.ContainerType);
             if (ownerId == 0) continue;
 
+            var slot = (short)e.Item.InventorySlot;
+            var parentId = ownerKind == OwnerKind.Player ? 0UL : GameStateService.PlayerContentId;
+
+            // ItemId=0 means the slot was cleared (all items traded/consumed). Translate to a
+            // zero-quantity observation on whatever real item was previously in that slot so the
+            // store entry for the real item is zeroed out rather than leaving a stale quantity.
+            if (e.Item.ItemId == 0)
+            {
+                var previousItemId = _service.Store.GetItemIdForSlot(ownerId, ownerKind, container, slot);
+                if (previousItemId is null) continue;
+
+                _service.RecordObservation(new ResourceObservation
+                {
+                    Key = new ResourceKey
+                    {
+                        OwnerId   = ownerId,
+                        OwnerKind = ownerKind,
+                        Container = container,
+                        ItemId    = previousItemId.Value,
+                        Slot      = slot,
+                    },
+                    Quantity      = 0,
+                    Flags         = ResourceFlags.None,
+                    UpdatedAt     = DateTime.UtcNow,
+                    ParentOwnerId = parentId,
+                });
+                continue;
+            }
+
             var flags = ResourceFlags.None;
             if (e.Item.IsHq)
                 flags |= ResourceFlags.HQ;
             var isCollectable = e.Item.IsCollectable;
             if (isCollectable)
                 flags |= ResourceFlags.Collectable;
-
-            var parentId = ownerKind == OwnerKind.Player ? 0UL : GameStateService.PlayerContentId;
 
             _service.RecordObservation(new ResourceObservation
             {
@@ -57,7 +84,7 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
                     OwnerKind = ownerKind,
                     Container = container,
                     ItemId    = e.Item.ItemId,
-                    Slot      = (short)e.Item.InventorySlot,
+                    Slot      = slot,
                 },
                 Quantity       = e.Item.Quantity,
                 Flags          = flags,

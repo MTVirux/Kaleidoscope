@@ -30,9 +30,15 @@ public sealed partial class ResourceDbWriter : IDisposable
     public const int MaxBatchSize = 5000;
     public const int BackpressureCap = 50_000;
 
-    internal ResourceDbWriter(SqliteConnection openConnection)
+    private long _dbFlushedVersion;
+    public long DbFlushedVersion => Volatile.Read(ref _dbFlushedVersion);
+
+    private readonly object? _writeLock;
+
+    internal ResourceDbWriter(SqliteConnection openConnection, object? writeLock = null)
     {
         _conn = openConnection;
+        _writeLock = writeLock;
         PreparedStatements();
     }
 
@@ -62,6 +68,21 @@ public sealed partial class ResourceDbWriter : IDisposable
             _pending.RemoveRange(0, take);
         }
 
+        if (_writeLock != null)
+        {
+            lock (_writeLock)
+            {
+                FlushBatch(batch);
+            }
+        }
+        else
+        {
+            FlushBatch(batch);
+        }
+    }
+
+    private void FlushBatch(List<ResourceWrite> batch)
+    {
         using var tx = _conn.BeginTransaction();
         _upsert!.Transaction = tx;
         _historyInsert!.Transaction = tx;
@@ -78,6 +99,7 @@ public sealed partial class ResourceDbWriter : IDisposable
             }
         }
         tx.Commit();
+        Interlocked.Increment(ref _dbFlushedVersion);
     }
 
     private void PreparedStatements()

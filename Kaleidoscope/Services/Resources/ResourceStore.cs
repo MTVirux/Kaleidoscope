@@ -113,6 +113,22 @@ public sealed class ResourceStore : IRequiredService
         _version++;   // bump so consumers detect the reset
     }
 
+    /// <summary>
+    /// Returns the ItemId of whichever real item currently occupies a given slot, or null
+    /// if the slot is empty or not tracked. Used to translate empty-slot inventory events
+    /// (ItemId=0) back to the item that was cleared so its quantity can be zeroed.
+    /// </summary>
+    public uint? GetItemIdForSlot(ulong ownerId, OwnerKind ownerKind, Container container, short slot)
+    {
+        foreach (var key in _state.Keys)
+        {
+            if (key.ItemId != 0 && key.Slot == slot &&
+                key.OwnerId == ownerId && key.OwnerKind == ownerKind && key.Container == container)
+                return key.ItemId;
+        }
+        return null;
+    }
+
     /// <summary>Snapshot copy — caller iterates without holding any lock.</summary>
     public IReadOnlyList<Resource> Snapshot()
     {

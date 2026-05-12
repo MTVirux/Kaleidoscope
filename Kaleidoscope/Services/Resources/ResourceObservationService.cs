@@ -51,6 +51,7 @@ public sealed class ResourceObservationService : IRequiredService
     public ResourceStore Store => _store;
     public SourceTagSink Sink => _sink;
     public long Version => _store.Version;
+    public long DbVersion => _writer.DbFlushedVersion;
 
     /// <summary>
     /// Record one observation. Idempotent if (quantity, flags) are unchanged; in that case

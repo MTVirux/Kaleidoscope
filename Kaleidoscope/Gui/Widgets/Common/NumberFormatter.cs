@@ -51,12 +51,17 @@ public static class NumberFormatter
         decimals = Math.Clamp(decimals, 0, 2);
         var format = GetDecimalFormat(decimals);
         var absValue = Math.Abs(value);
-        
+        var sign = value < 0 ? -1.0 : 1.0;
+        var factor = Math.Pow(10, decimals);
+
+        double Trunc(double divided) =>
+            Math.Truncate(divided * factor) / factor * sign;
+
         return absValue switch
         {
-            >= 1_000_000_000 => $"{(value / 1_000_000_000).ToString(format, InvariantCulture)}B",
-            >= 1_000_000 => $"{(value / 1_000_000).ToString(format, InvariantCulture)}M",
-            >= 1_000 => $"{(value / 1_000).ToString(format, InvariantCulture)}K",
+            >= 1_000_000_000 => $"{Trunc(absValue / 1_000_000_000).ToString(format, InvariantCulture)}B",
+            >= 1_000_000 => $"{Trunc(absValue / 1_000_000).ToString(format, InvariantCulture)}M",
+            >= 1_000 => $"{Trunc(absValue / 1_000).ToString(format, InvariantCulture)}K",
             _ => value.ToString(format, InvariantCulture)
         };
     }
