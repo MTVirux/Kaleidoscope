@@ -65,7 +65,8 @@ public sealed partial class KaleidoscopeDbService
                            n.name, n.world
                     FROM resources r
                     LEFT JOIN owner_names n ON n.owner_id = r.owner_id AND n.owner_kind = r.owner_kind
-                    WHERE r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId)
+                    WHERE (r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId))
+                      AND NOT (r.owner_kind = 1 AND r.owner_id = 0)
                     ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
                 cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
                 ReadResourcesIntoEntries(cmd, result);
@@ -103,6 +104,7 @@ public sealed partial class KaleidoscopeDbService
                     LEFT JOIN owner_names n ON n.owner_id = r.owner_id AND n.owner_kind = r.owner_kind
                     WHERE (r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId))
                       AND (r.owner_id = $cid OR r.parent_owner_id = $cid)
+                      AND NOT (r.owner_kind = 1 AND r.owner_id = 0)
                     ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
                 cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
                 cmd.Parameters.AddWithValue("$cid", (long)characterId);
@@ -344,6 +346,43 @@ public sealed partial class KaleidoscopeDbService
             catch (Exception ex)
             {
                 LogDbError("PurgeStaleRetainerGilRows", ex);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// One-shot cleanup: the v5→v6 backfill (see <see cref="MigrationSql.BackfillResourcesFromInventoryItemsSql"/>)
+    /// mapped legacy <c>inventory_cache.retainer_id</c> straight to <c>resources.owner_id</c>, including the
+    /// default-0 rows that the old schema permitted. Those phantom rows surface in the data table as
+    /// "Retainer 0" because no <c>owner_names</c> entry exists for ownerId=0. Live captures all reject
+    /// retainerId=0, so this only cleans up historical drift.
+    /// Returns the total rows removed across resources + resource_history.
+    /// </summary>
+    public int PurgeZeroOwnerRetainerRows()
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return 0;
+            try
+            {
+                int removed = 0;
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND owner_id = 0";
+                    removed += cmd.ExecuteNonQuery();
+                }
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = @"DELETE FROM resource_history WHERE owner_kind = 1 AND owner_id = 0";
+                    removed += cmd.ExecuteNonQuery();
+                }
+                return removed;
+            }
+            catch (Exception ex)
+            {
+                LogDbError("PurgeZeroOwnerRetainerRows", ex);
                 return 0;
             }
         }

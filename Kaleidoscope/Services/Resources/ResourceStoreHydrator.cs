@@ -16,6 +16,9 @@ public sealed class ResourceStoreHydrator : IRequiredService
         var purged = db.PurgeStaleRetainerGilRows();
         if (purged > 0)
             LogService.Info(LogCategory.Inventory, $"[ResourceStoreHydrator] Purged {purged} stale Phase 1 retainer-gil rows");
+        var purgedZero = db.PurgeZeroOwnerRetainerRows();
+        if (purgedZero > 0)
+            LogService.Info(LogCategory.Inventory, $"[ResourceStoreHydrator] Purged {purgedZero} legacy retainer rows with owner_id=0");
         var loaded = db.LoadAllResourcesInto(store);
         LogService.Info(LogCategory.Inventory, $"[ResourceStoreHydrator] Pre-loaded {loaded} resources into in-memory store");
     }
