@@ -11,3 +11,4 @@ docs/
 logs
 CLAUDE.md
 .claude/
+*.lscache
