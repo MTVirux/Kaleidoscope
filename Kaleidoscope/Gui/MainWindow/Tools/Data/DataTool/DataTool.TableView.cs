@@ -252,12 +252,14 @@ public sealed partial class DataTool
                     }
                     else if (cache.SourceType == Kaleidoscope.Models.Inventory.InventorySourceType.Retainer)
                     {
+                        if (cache.RetainerId == 0) continue;
+
                         // Add retainer inventory to total if includeRetainers is enabled
                         if (includeRetainers)
                         {
                             row.ItemCounts[column.Id] += count;
                         }
-                        
+
                         // If showing breakdown, always register the retainer so it appears as a tree
                         // child even when it has 0 of this item (e.g. freshly imported retainers).
                         if (showRetainerBreakdown)

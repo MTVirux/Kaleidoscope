@@ -352,12 +352,8 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// One-shot cleanup: the v5→v6 backfill (see <see cref="MigrationSql.BackfillResourcesFromInventoryItemsSql"/>)
-    /// mapped legacy <c>inventory_cache.retainer_id</c> straight to <c>resources.owner_id</c>, including the
-    /// default-0 rows that the old schema permitted. Those phantom rows surface in the data table as
-    /// "Retainer 0" because no <c>owner_names</c> entry exists for ownerId=0. Live captures all reject
-    /// retainerId=0, so this only cleans up historical drift.
-    /// Returns the total rows removed across resources + resource_history.
+    /// Removes legacy retainer rows with owner_id=0 left by the v5→v6 backfill. Returns rows removed
+    /// across resources + resource_history.
     /// </summary>
     public int PurgeZeroOwnerRetainerRows()
     {
