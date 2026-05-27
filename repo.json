@@ -1,32 +1,32 @@
 [
-{
-  "Author": "MTVirux",
-  "Name": "Kaleidoscope",
-  "Punchline": "May the line go up :prayge:",
-  "Description": "DM @mtvirux on discord for assistance or bug reports.",
-  "Tags": [
-    "Terror",
-    "Tools",
-    "Kaleidoscope",
-    "Gil",
-    "Money",
-    "Tracker",
-    "Finance"
-  ],
-  "InternalName": "Kaleidoscope",
-  "AssemblyVersion": "1.1.1.6",
-  "TestingAssemblyVersion": "1.1.1.7",
-  "RepoUrl": "https://github.com/MTVirux/Kaleidoscope",
-  "ApplicableVersion": "any",
-  "DalamudApiLevel": 15,
-  "TestingDalamudApiLevel": 15,
-  "IsHide": "False",
-  "IsTestingExclusive": "False",
-  "DownloadCount": 69,
-  "LastUpdate": 1779865854,
-  "DownloadLinkInstall": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.1.1.6/Kaleidoscope.zip",
-  "DownloadLinkUpdate": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.1.1.6/Kaleidoscope.zip",
-  "DownloadLinkTesting": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.1.1.6/Kaleidoscope.zip",
-  "IconUrl": "https://raw.githubusercontent.com/MTVirux/Kaleidoscope/main/images/icon.png"
-}
+  {
+    "Author": "MTVirux",
+    "Name": "Kaleidoscope",
+    "Punchline": "May the line go up :prayge:",
+    "Description": "DM @mtvirux on discord for assistance or bug reports.",
+    "Tags": [
+      "Terror",
+      "Tools",
+      "Kaleidoscope",
+      "Gil",
+      "Money",
+      "Tracker",
+      "Finance"
+    ],
+    "InternalName": "Kaleidoscope",
+    "AssemblyVersion": "1.1.1.6",
+    "TestingAssemblyVersion": "1.1.1.7",
+    "RepoUrl": "https://github.com/MTVirux/Kaleidoscope",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "TestingDalamudApiLevel": 15,
+    "IsHide": "False",
+    "IsTestingExclusive": "False",
+    "DownloadCount": 69,
+    "LastUpdate": 1779865967,
+    "DownloadLinkInstall": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.1.1.6/Kaleidoscope.zip",
+    "DownloadLinkUpdate": "https://github.com/MTVirux/Kaleidoscope/releases/download/1.1.1.6/Kaleidoscope.zip",
+    "DownloadLinkTesting": "https://github.com/MTVirux/Kaleidoscope/releases/download/testing_1.1.1.7/Kaleidoscope.zip",
+    "IconUrl": "https://raw.githubusercontent.com/MTVirux/Kaleidoscope/main/images/icon.png"
+  }
 ]
