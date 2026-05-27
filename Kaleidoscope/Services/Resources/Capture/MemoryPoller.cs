@@ -72,7 +72,13 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
             }
         }
 
-        Observe(pid, ResourceCatalog.GilItemId,         im->GetGil(),              Container.SpecialPlayer);
+        // During the login/logout transition IsLoggedIn is true while the gil container is not yet
+        // loaded (or is being torn down), so GetGil() transiently returns 0. A real character never
+        // holds 0 gil, so a 0 read means "not loaded" — skip it. Recording it would overwrite the
+        // stored value and persist across restarts (characters showing 0 gil on game restart).
+        var playerGil = im->GetGil();
+        if (playerGil > 0)
+            Observe(pid, ResourceCatalog.GilItemId,     playerGil,                 Container.SpecialPlayer);
         Observe(pid, ResourceCatalog.MGPItemId,         im->GetGoldSaucerCoin(),   Container.SpecialPlayer);
         Observe(pid, ResourceCatalog.WolfMarksItemId,   im->GetWolfMarks(),        Container.SpecialPlayer);
         Observe(pid, ResourceCatalog.AlliedSealsItemId, im->GetAlliedSeals(),      Container.SpecialPlayer);
