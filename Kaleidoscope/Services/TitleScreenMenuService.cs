@@ -39,9 +39,8 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
     {
         try
         {
-            // Title screen menu requires a 64x64 texture
-            // Use the icon.png file from the plugin directory
-            var iconPath = Path.Combine(_pluginInterface.AssemblyLocation.DirectoryName!, "icon.png");
+            // Title screen menu requires a 64x64 texture (a downscale of the plugin's images/icon.png)
+            var iconPath = Path.Combine(_pluginInterface.AssemblyLocation.DirectoryName!, "title_screen_icon.png");
 
             if (!File.Exists(iconPath))
             {
