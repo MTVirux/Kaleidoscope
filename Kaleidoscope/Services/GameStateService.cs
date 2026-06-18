@@ -352,13 +352,18 @@ public static unsafe class GameStateService
             var agent = agentModule->GetAgentByInternalId(AgentId.FreeCompanyCreditShop);
             if (agent == null) return null;
 
-            // FC Credits are stored at offset 256 in the FreeCompanyCreditShop agent
-            // This approach is used by AutoRetainer and is the reliable way to get FC credits
+            // The agent only holds the current character's FC credits while the FC Credit Shop is
+            // open. When it isn't active, offset 256 is either unset (0) or stale from a previously
+            // opened shop — possibly a different character's FC — so reading it then yields wrong
+            // data. Gate on IsAgentActive so we only trust a current, in-context value.
+            if (!agent->IsAgentActive()) return null;
+
+            // FC Credits are stored at offset 256 in the FreeCompanyCreditShop agent.
             var credits = *(int*)((nint)agent + 256);
-            
+
             // Return null if credits is 0 or negative (likely means no FC or data not loaded)
             if (credits <= 0) return null;
-            
+
             return credits;
         }
         catch (Exception ex)

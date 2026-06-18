@@ -83,7 +83,9 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         Observe(pid, ResourceCatalog.WolfMarksItemId,   im->GetWolfMarks(),        Container.SpecialPlayer);
         Observe(pid, ResourceCatalog.AlliedSealsItemId, im->GetAlliedSeals(),      Container.SpecialPlayer);
 
-        // FC Credits — long? return; skip silently if null (not in an FC).
+        // FC Credits — null unless the FC Credit Shop is open (the only time the value is current
+        // and in-context); skip silently then. Offline FCs are filled in from AutoRetainer's config
+        // by AutoRetainerFcPointsSyncService instead.
         var fcCredits = GameStateService.GetFreeCompanyCredits();
         if (fcCredits.HasValue)
             Observe(pid, ResourceCatalog.FCCreditsItemId, fcCredits.Value, Container.SpecialFreeCompany);

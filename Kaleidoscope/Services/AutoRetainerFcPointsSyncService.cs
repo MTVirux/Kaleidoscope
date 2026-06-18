@@ -105,10 +105,14 @@ public sealed class AutoRetainerFcPointsSyncService : IDisposable, IRequiredServ
 
     /// <summary>
     /// Records parsed FC points as observations. MUST run on the framework thread (mutates the
-    /// single-threaded resource store). Returns the number of FCs whose value was recorded;
-    /// entries whose stored value is already as fresh or fresher are skipped.
+    /// single-threaded resource store). Returns the number of FCs whose value was recorded.
     /// </summary>
-    public int Apply(IReadOnlyList<FcPointsEntry> entries)
+    /// <param name="force">
+    /// When false (the background sync), an entry is skipped if the stored value is already as fresh
+    /// or fresher, so genuine live captures aren't clobbered and the 1-minute re-read is a no-op when
+    /// nothing changed. When true (the manual import), config values are applied unconditionally.
+    /// </param>
+    public int Apply(IReadOnlyList<FcPointsEntry> entries, bool force = false)
     {
         var recorded = 0;
         foreach (var entry in entries)
@@ -122,10 +126,7 @@ public sealed class AutoRetainerFcPointsSyncService : IDisposable, IRequiredServ
                 Slot      = -1,
             };
 
-            // Never let stale config data overwrite a fresher value (live capture, or an
-            // already-applied newer read). Also makes the 1-minute re-read a no-op when nothing changed.
-            var existing = _obs.Store.Get(key);
-            if (existing != null && existing.Value.UpdatedAt >= entry.UpdatedAt) continue;
+            if (!AutoRetainerFcPointsSyncPolicy.ShouldRecord(_obs.Store.Get(key), entry.UpdatedAt, force)) continue;
 
             _obs.RecordObservation(new ResourceObservation
             {
@@ -143,8 +144,10 @@ public sealed class AutoRetainerFcPointsSyncService : IDisposable, IRequiredServ
     /// <summary>
     /// Reads and applies FC points immediately on the calling thread. Intended for the manual
     /// Integrations import, which already runs on the framework thread. Returns the number recorded.
+    /// The manual import is authoritative: it overwrites stored values even if they look fresher,
+    /// because the live FC-credit read is only reliable while the FC Credit Shop is open.
     /// </summary>
-    public int ImportNow() => Apply(ReadFcPoints());
+    public int ImportNow() => Apply(ReadFcPoints(), force: true);
 
     public void Dispose() => _timer.Dispose();
 }
