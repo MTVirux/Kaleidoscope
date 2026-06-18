@@ -524,6 +524,44 @@ public sealed partial class KaleidoscopeDbService
     /// Used for player-only currencies (Gil, MGP, Wolf Marks, Allied Seals, all Currency-container
     /// items like Tomestones/Scrips/GC Seals/etc.).
     /// </summary>
+    /// <summary>
+    /// Per-character FC credits from the resources table (current state, last-write-wins), scoped to
+    /// OwnerKind.FreeCompany. FC credits are keyed by the holding character's content id, so owner_id
+    /// is the character id. Used instead of the timestamp-ordered history path so a stale live point
+    /// doesn't shadow an imported AutoRetainer value that carries an older timestamp.
+    /// </summary>
+    public Dictionary<ulong, long> GetFreeCompanyCreditsPerCharacter()
+    {
+        var result = new Dictionary<ulong, long>();
+
+        lock (_readLock)
+        {
+            var conn = _readConnection ?? _connection;
+            if (conn == null) return result;
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT owner_id, COALESCE(SUM(quantity), 0)
+                    FROM resources
+                    WHERE owner_kind = $okind AND item_id = $iid AND container = $cont
+                    GROUP BY owner_id";
+                cmd.Parameters.AddWithValue("$okind", (int)Kaleidoscope.Models.Resources.OwnerKind.FreeCompany);
+                cmd.Parameters.AddWithValue("$iid", (long)Resources.ResourceCatalog.FCCreditsItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)Kaleidoscope.Models.Resources.Container.SpecialFreeCompany);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+            }
+            catch (Exception ex)
+            {
+                LogDbError("GetFreeCompanyCreditsPerCharacter", ex);
+            }
+        }
+
+        return result;
+    }
+
     public Dictionary<ulong, long> GetItemSumPerCharacterPlayerOnly(uint itemId, int container)
     {
         var result = new Dictionary<ulong, long>();

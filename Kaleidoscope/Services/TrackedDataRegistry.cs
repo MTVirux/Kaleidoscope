@@ -443,6 +443,10 @@ public sealed class TrackedDataRegistry : IRequiredService
             // FC gil — active character's free company (single owner; SumForOwner with FCID)
             TrackedDataType.FreeCompanyGil    => _resourceStore.GetSumForOwner(GameStateService.GetFreeCompanyId(), Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.GilItemId),
 
+            // FC credits — stored under the active character's content id but with OwnerKind.FreeCompany
+            // (see MemoryPoller / AutoRetainerFcPointsSyncService), so the default Player-scoped read misses them.
+            TrackedDataType.FreeCompanyCredits => _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.FCCreditsItemId),
+
             // Crystals — active character's player containers + their retainers
             TrackedDataType.FireCrystals      => SumCrystalsForElement(pid, 0),
             TrackedDataType.IceCrystals       => SumCrystalsForElement(pid, 1),

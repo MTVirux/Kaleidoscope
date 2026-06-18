@@ -310,6 +310,16 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
                 return _dbService.GetItemSumPerCharacterPlayerOnly(
                     Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId,
                     (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
+            case "FreeCompanyCredits":
+                // Current-state read (last-write-wins), NOT timestamp-ordered history: a stale live
+                // history point (stamped UtcNow) would otherwise shadow an imported value stamped with
+                // AutoRetainer's older FCPointsLastUpdate. FC credits are keyed by the holding
+                // character's content id under OwnerKind.FreeCompany.
+                if (_resourceStore != null)
+                    return _resourceStore.GetPerOwnerSum(
+                        Kaleidoscope.Services.Resources.ResourceCatalog.FCCreditsItemId,
+                        Kaleidoscope.Models.Resources.OwnerKind.FreeCompany);
+                return _dbService.GetFreeCompanyCreditsPerCharacter();
             case "FireCrystals":
                 return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 2, 8, 14 });
             case "IceCrystals":
