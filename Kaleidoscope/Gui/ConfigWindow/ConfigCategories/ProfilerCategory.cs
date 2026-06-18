@@ -82,7 +82,7 @@ public sealed class ProfilerCategory
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("When enabled, operations that exceed the threshold will be logged to the Dalamud log.");
+            ImGui.SetTooltip("When enabled, operations that exceed the threshold are logged to the destination selected below.");
         }
         
         ImGui.SameLine();
@@ -96,6 +96,50 @@ public sealed class ProfilerCategory
         {
             ImGui.SetTooltip("Operations taking longer than this will be logged. Lower values = more verbose logging.");
         }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(110);
+        var targetIndex = (int)_configService.Config.ProfilerSlowOpLogTarget;
+        string[] targetOptions = { "File", "IPluginLog", "Both" };
+        if (ImGui.Combo("Destination", ref targetIndex, targetOptions, targetOptions.Length))
+        {
+            _configService.Config.ProfilerSlowOpLogTarget = (ProfilerLogTarget)targetIndex;
+            _configService.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("File = Kaleidoscope rotating log only (default, no dalamud.log). IPluginLog = dalamud.log + /xllog. Both = both.");
+        }
+
+        ImGui.Spacing();
+
+        var writeSnapshots = _configService.Config.ProfilerWriteSnapshots;
+        if (ImGui.Checkbox("Write Profiler Snapshots", ref writeSnapshots))
+        {
+            _configService.Config.ProfilerWriteSnapshots = writeSnapshots;
+            _configService.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Periodically append aggregate profiler stats to a rotating CSV file. Independent of dalamud.log.");
+        }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(80);
+        var snapshotInterval = (float)_configService.Config.ProfilerSnapshotIntervalSeconds;
+        if (ImGui.InputFloat("Interval (s)", ref snapshotInterval, 1f, 5f, "%.0f"))
+        {
+            _configService.Config.ProfilerSnapshotIntervalSeconds = Math.Max(1.0, snapshotInterval);
+            _configService.Save();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Snapshot Now"))
+        {
+            _profilerService.WriteSnapshotNow();
+        }
+
+        ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), $"CSV: {_profilerService.SnapshotFilePath}");
 
         ImGui.Spacing();
 
