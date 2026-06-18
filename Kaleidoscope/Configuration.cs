@@ -31,7 +31,12 @@ public sealed class Configuration : IPluginConfiguration
 
     public bool ProfilerEnabled { get; set; } = false;
 
-    public bool ProfilerLogSlowOperations { get; set; } = true;
+    public bool ProfilerLogSlowOperations { get; set; } =
+#if DEBUG
+        true;
+#else
+        false;
+#endif
 
     /// <summary>
     /// Slow operation threshold in milliseconds. Operations exceeding this will be logged.
