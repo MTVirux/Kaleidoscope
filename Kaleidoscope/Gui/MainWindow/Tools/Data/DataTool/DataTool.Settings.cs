@@ -187,7 +187,7 @@ public sealed partial class DataTool
         ColumnManagementWidget.Draw(
             settings.Columns,
             settings.MergedColumnGroups,
-            column => GetSeriesDisplayName(column),
+            column => _tableWidget.GetColumnHeader(column),
             onSettingsChanged: () => NotifyToolSettingsChanged(),
             onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
             sectionTitle: "Item / Currency Management",
