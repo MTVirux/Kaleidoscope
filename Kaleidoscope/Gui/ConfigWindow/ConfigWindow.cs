@@ -127,7 +127,8 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         FileDialogService fileDialogService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
-        ResourceDbWriter resourceWriter)
+        ResourceDbWriter resourceWriter,
+        AutoRetainerFcPointsSyncService fcPointsSync)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -201,7 +202,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
         _loggingCategory = new LoggingCategory(_configService, filenameService, fileDialogService);
         _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
-        _integrationsCategory = new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService);
+        _integrationsCategory = new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService, fcPointsSync);
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }

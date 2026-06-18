@@ -18,11 +18,13 @@ public sealed class IntegrationsCategory
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly KaleidoscopeDbService _dbService;
     private readonly ResourceObservationService _obsService;
+    private readonly AutoRetainerFcPointsSyncService _fcPointsSync;
 
     // User-chosen import options. Default all unchecked — opt-in only.
     private bool _importCharacterNames = false;
     private bool _importRetainerNames = false;
     private bool _importGil = false;
+    private bool _importFcPoints = false;
 
     private bool _importPopupOpen = false;
     private string _importStatus = "";
@@ -31,12 +33,14 @@ public sealed class IntegrationsCategory
         AutoRetainerService autoRetainerIpc,
         CurrencyTrackerService currencyTrackerService,
         KaleidoscopeDbService dbService,
-        ResourceObservationService obsService)
+        ResourceObservationService obsService,
+        AutoRetainerFcPointsSyncService fcPointsSync)
     {
         _autoRetainerIpc = autoRetainerIpc;
         _currencyTrackerService = currencyTrackerService;
         _dbService = dbService;
         _obsService = obsService;
+        _fcPointsSync = fcPointsSync;
     }
 
     public void Draw()
@@ -61,10 +65,11 @@ public sealed class IntegrationsCategory
         ImGui.Checkbox("Character names + worlds", ref _importCharacterNames);
         ImGui.Checkbox("Retainer names (with owning-character link)", ref _importRetainerNames);
         ImGui.Checkbox("Gil values (character + retainer where available)", ref _importGil);
+        ImGui.Checkbox("FC points (read from AutoRetainer's config)", ref _importFcPoints);
 
         ImGui.Spacing();
 
-        var anySelected = _importCharacterNames || _importRetainerNames || _importGil;
+        var anySelected = _importCharacterNames || _importRetainerNames || _importGil || _importFcPoints;
         if (!anySelected) ImGui.BeginDisabled();
         if (ImGui.Button("Import Selected"))
         {
@@ -86,6 +91,7 @@ public sealed class IntegrationsCategory
             if (_importCharacterNames) ImGui.BulletText("Character names + worlds");
             if (_importRetainerNames)  ImGui.BulletText("Retainer names");
             if (_importGil)            ImGui.BulletText("Gil values");
+            if (_importFcPoints)       ImGui.BulletText("FC points");
             ImGui.Spacing();
             ImGui.TextUnformatted("Proceed?");
 
@@ -93,8 +99,8 @@ public sealed class IntegrationsCategory
             {
                 try
                 {
-                    var (chars, retainers, gilUpdates) = RunSelectiveImport();
-                    _importStatus = $"Imported: {chars} characters, {retainers} retainers, {gilUpdates} gil updates.";
+                    var (chars, retainers, gilUpdates, fcPointUpdates) = RunSelectiveImport();
+                    _importStatus = $"Imported: {chars} characters, {retainers} retainers, {gilUpdates} gil updates, {fcPointUpdates} FC point updates.";
                     LogService.Info(LogCategory.UI, $"[IntegrationsCategory] {_importStatus}");
                 }
                 catch (Exception ex)
@@ -113,11 +119,16 @@ public sealed class IntegrationsCategory
         }
     }
 
-    private (int chars, int retainers, int gilUpdates) RunSelectiveImport()
+    private (int chars, int retainers, int gilUpdates, int fcPointUpdates) RunSelectiveImport()
     {
         int chars = 0;
         int retainers = 0;
         int gilUpdates = 0;
+        int fcPointUpdates = 0;
+
+        // FC points come from AutoRetainer's config file rather than its IPC offline data.
+        if (_importFcPoints)
+            fcPointUpdates = _fcPointsSync.ImportNow();
 
         var characters = _autoRetainerIpc.GetAllFullCharacterData();
         foreach (var ch in characters)
@@ -200,6 +211,6 @@ public sealed class IntegrationsCategory
             }
         }
 
-        return (chars, retainers, gilUpdates);
+        return (chars, retainers, gilUpdates, fcPointUpdates);
     }
 }
