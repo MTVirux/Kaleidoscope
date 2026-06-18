@@ -36,5 +36,6 @@
     <Compile Include="..\Kaleidoscope\Services\Resources\Adapters\ResourceToLegacyAdapter.cs" />
     <Compile Include="..\Kaleidoscope\Models\Inventory\InventoryCacheEntry.cs" />
     <Compile Include="..\Kaleidoscope\Models\Inventory\InventoryItemSnapshot.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Profiler\RotatingFileWriter.cs" />
   </ItemGroup>
 </Project>
