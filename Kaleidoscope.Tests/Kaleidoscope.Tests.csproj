@@ -37,5 +37,7 @@
     <Compile Include="..\Kaleidoscope\Models\Inventory\InventoryCacheEntry.cs" />
     <Compile Include="..\Kaleidoscope\Models\Inventory\InventoryItemSnapshot.cs" />
     <Compile Include="..\Kaleidoscope\Services\Profiler\RotatingFileWriter.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Profiler\ProfilerSnapshot.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Profiler\ProfilerCsvFormatter.cs" />
   </ItemGroup>
 </Project>
