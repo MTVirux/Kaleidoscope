@@ -38,6 +38,12 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public double ProfilerSlowOperationThresholdMs { get; set; } = 5.0;
 
+    public ProfilerLogTarget ProfilerSlowOpLogTarget { get; set; } = ProfilerLogTarget.File;
+
+    public bool ProfilerWriteSnapshots { get; set; } = false;
+
+    public double ProfilerSnapshotIntervalSeconds { get; set; } = 10;
+
     /// <summary>
     /// Which stats view to show in the profiler (0=Basic, 1=Percentiles, 2=Rolling, 3=All).
     /// </summary>

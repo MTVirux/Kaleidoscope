@@ -73,6 +73,17 @@ public enum DataToolViewMode
     Graph = 1
 }
 
+/// <summary>Destination for profiler slow-operation log lines.</summary>
+public enum ProfilerLogTarget
+{
+    /// <summary>Kaleidoscope-owned rotating file only (default; no dalamud.log contribution).</summary>
+    File = 0,
+    /// <summary>Dalamud's IPluginLog (dalamud.log + /xllog).</summary>
+    PluginLog = 1,
+    /// <summary>Both the Kaleidoscope file and IPluginLog.</summary>
+    Both = 2,
+}
+
 /// <summary>
 /// Categories for filtering debug/verbose log output.
 /// Each category corresponds to a major subsystem or service.

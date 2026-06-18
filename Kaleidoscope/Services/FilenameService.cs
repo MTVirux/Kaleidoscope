@@ -96,6 +96,12 @@ public sealed class FilenameService : IService
         return Path.Combine(charDir, $"kaleidoscope_{categoryName}.log");
     }
 
+    /// <summary>Rotating events log for profiler slow operations (independent of dalamud.log).</summary>
+    public string ProfilerEventsLogFilePath => Path.Combine(GetLogDirectory(), "kaleidoscope_profiler.log");
+
+    /// <summary>Rotating CSV for periodic profiler snapshots.</summary>
+    public string ProfilerSnapshotCsvFilePath => Path.Combine(GetLogDirectory(), "kaleidoscope_profiler_snapshots.csv");
+
     /// <summary>
     /// Converts a LogCategory enum value to a safe file name suffix.
     /// </summary>
