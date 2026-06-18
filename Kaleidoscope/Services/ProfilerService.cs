@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Dalamud.Plugin.Services;
 using OtterGui.Services;
+using Kaleidoscope.Services.Profiler;
 
 namespace Kaleidoscope.Services;
 
@@ -12,6 +13,7 @@ public sealed class ProfilerService : IDisposable, IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
+    private readonly ProfilerExportService _export;
     private readonly object _lock = new();
     
     /// <summary>
@@ -288,10 +290,11 @@ public sealed class ProfilerService : IDisposable, IService
         }
     }
 
-    public ProfilerService(IPluginLog log, ConfigurationService configService)
+    public ProfilerService(IPluginLog log, ConfigurationService configService, ProfilerExportService export)
     {
         _log = log;
         _configService = configService;
+        _export = export;
         LogService.Debug(LogCategory.UI, "ProfilerService initialized");
     }
 
@@ -428,6 +431,59 @@ public sealed class ProfilerService : IDisposable, IService
 
     public long GetTotalManagedMemory() => GC.GetTotalMemory(forceFullCollection: false);
 
+    public string SnapshotFilePath => _export.SnapshotFilePath;
+
+    public string SlowOpFilePath => _export.SlowOpFilePath;
+
+    /// <summary>Captures aggregate stats for all profiled targets on the calling (framework) thread.</summary>
+    public ProfilerSnapshot CaptureSnapshot()
+    {
+        var rows = new List<ProfilerSnapshot.Row>();
+        AddRow(rows, _mainWindowStats, "window", null);
+        AddRow(rows, _fullscreenWindowStats, "window", null);
+
+        lock (_lock)
+        {
+            foreach (var tool in _toolStats.Values)
+            {
+                if (tool.SampleCount == 0) continue;
+                AddRow(rows, tool, "tool", null);
+                foreach (var child in tool.ChildScopes.Values)
+                    AddRow(rows, child, "child", tool.Name);
+            }
+        }
+
+        var memMb = GetTotalManagedMemory() / (1024.0 * 1024.0);
+        var (gen0, gen1, gen2) = GetGcCollectionCounts();
+        return new ProfilerSnapshot(DateTime.UtcNow, rows, memMb, gen0, gen1, gen2);
+    }
+
+    /// <summary>Captures on the calling thread and writes the snapshot off-thread.</summary>
+    public void WriteSnapshotNow()
+    {
+        var snapshot = CaptureSnapshot();
+        Task.Run(() => _export.Write(snapshot));
+    }
+
+    private static void AddRow(List<ProfilerSnapshot.Row> rows, ProfileStats s, string kind, string? parent)
+    {
+        if (s.SampleCount == 0) return;
+        rows.Add(new ProfilerSnapshot.Row(
+            s.Name, kind, parent, s.SampleCount,
+            s.AverageDrawTimeMs, s.P50Ms, s.P95Ms, s.P99Ms,
+            s.MaxDrawTimeMs == double.MinValue ? 0 : s.MaxDrawTimeMs,
+            s.JitterMs));
+    }
+
+    private void LogSlowOperation(string message)
+    {
+        var target = Config.ProfilerSlowOpLogTarget;
+        if (target is ProfilerLogTarget.PluginLog or ProfilerLogTarget.Both)
+            _log.Debug(message);
+        if (target is ProfilerLogTarget.File or ProfilerLogTarget.Both)
+            _export.WriteSlowOp(message);
+    }
+
     public void Dispose()
     {
         LogService.Debug(LogCategory.UI, "ProfilerService disposed");
@@ -513,7 +569,7 @@ public sealed class ProfilerService : IDisposable, IService
                     // Log slow tool draws
                     if (_service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
                     {
-                        LogService.Debug(LogCategory.UI, $"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
+                        _service.LogSlowOperation($"[Profiler] Slow tool draw: {_toolName} took {elapsedMs:F2}ms");
                     }
                     break;
             }
@@ -550,7 +606,7 @@ public sealed class ProfilerService : IDisposable, IService
             // Log slow child operations
             if (_service != null && _service.LogSlowOperations && elapsedMs > _service.SlowOperationThresholdMs)
             {
-                LogService.Debug(LogCategory.UI, $"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
+                _service.LogSlowOperation($"[Profiler] Slow operation: {_toolName}/{_scopeName} took {elapsedMs:F2}ms");
             }
         }
     }
