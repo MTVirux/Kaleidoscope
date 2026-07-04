@@ -1,5 +1,4 @@
 using Kaleidoscope.Config;
-using Kaleidoscope.Interfaces;
 using Dalamud.Plugin;
 using OtterGui.Services;
 using System.Timers;
@@ -20,7 +19,7 @@ namespace Kaleidoscope.Services;
 /// - Writes are debounced to coalesce rapid changes
 /// - Dirty tracking prevents unnecessary saves
 /// </remarks>
-public sealed class ConfigurationService : IConfigurationService, IRequiredService, IDisposable
+public sealed class ConfigurationService : IRequiredService, IDisposable
 {
     private readonly IDalamudPluginInterface _pluginInterface;
 

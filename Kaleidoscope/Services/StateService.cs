@@ -1,5 +1,4 @@
 using Dalamud.Plugin.Services;
-using Kaleidoscope.Interfaces;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -7,7 +6,7 @@ namespace Kaleidoscope.Services;
 /// <summary>
 /// Tracks UI mode states: fullscreen, edit, locked, and drag states.
 /// </summary>
-public sealed class StateService : IStateService, IService
+public sealed class StateService : IService
 {
     private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
