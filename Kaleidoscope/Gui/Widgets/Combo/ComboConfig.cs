@@ -19,31 +19,6 @@ public interface IComboItem<TId> where TId : notnull
 }
 
 /// <summary>
-/// Extended interface for items that support grouping.
-/// </summary>
-/// <typeparam name="TId">The type of the item's unique identifier.</typeparam>
-public interface IGroupableComboItem<TId> : IComboItem<TId> where TId : notnull
-{
-    /// <summary>
-    /// Gets the primary group key (e.g., Region, Category).
-    /// Null means ungrouped.
-    /// </summary>
-    string? Group { get; }
-    
-    /// <summary>
-    /// Gets the secondary group key (e.g., DataCenter, SubCategory).
-    /// Null means no sub-group.
-    /// </summary>
-    string? SubGroup { get; }
-    
-    /// <summary>
-    /// Gets the tertiary group key (e.g., World).
-    /// Null means no tertiary grouping.
-    /// </summary>
-    string? TertiaryGroup { get; }
-}
-
-/// <summary>
 /// Configuration for ComboWidget behavior and appearance.
 /// </summary>
 public class ComboConfig
@@ -117,11 +92,6 @@ public class ComboConfig
     /// Whether to show "Invert" bulk select button in multi-select.
     /// </summary>
     public bool ShowInvertBulkAction { get; init; } = true;
-    
-    /// <summary>
-    /// Maximum number of items to display (for performance). 0 = unlimited.
-    /// </summary>
-    public int MaxDisplayedItems { get; init; } = 100;
     
     /// <summary>
     /// Height of the item list in pixels. 0 = auto.

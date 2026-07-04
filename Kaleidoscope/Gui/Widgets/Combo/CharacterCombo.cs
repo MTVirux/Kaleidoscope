@@ -6,7 +6,6 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
-using Kaleidoscope.Gui.Widgets.Combo;
 using OtterGui.Raii;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -17,79 +16,60 @@ namespace Kaleidoscope.Gui.Widgets.Combo;
 /// A character combo widget using ComboWidget.
 /// Provides the same public interface as the legacy CharacterCombo.
 /// </summary>
-public sealed class CharacterCombo : IDisposable
+public sealed class CharacterCombo : ComboDropdownBase<CharacterItem, ulong>
 {
-    private readonly FavoritesService _favoritesService;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService? _configService;
     private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
-    
-    private readonly ComboWidget<CharacterItem, ulong> _widget;
-    private readonly ComboState<ulong> _state;
-    
-    private bool _disposed;
-    private bool _needsRebuild = true;
+
     private CharacterNameFormat _cachedNameFormat;
-    
+
     // Special "All" entry ID
     private const ulong AllCharactersId = 0;
-    
-    /// <summary>
-    /// The label for this combo (used for ImGui ID).
-    /// </summary>
-    public string Label { get; }
-    
+
     /// <summary>
     /// Whether multi-select mode is enabled.
     /// </summary>
     public bool MultiSelectEnabled
     {
-        get => _widget.Config.MultiSelect;
-        set
-        {
-            // Can't change after construction in ComboWidget, but we can ignore single/multi draw
-        }
+        get => Widget.Config.MultiSelect;
+        set { } // Multi-select is fixed at construction; setter retained for API compatibility.
     }
-    
+
     /// <summary>
     /// Gets the currently selected character (single-select mode).
     /// </summary>
-    public ComboCharacter? SelectedCharacter => _widget.SelectedItem != null 
-        ? ToComboCharacter(_widget.SelectedItem) 
+    public ComboCharacter? SelectedCharacter => Widget.SelectedItem != null
+        ? ToComboCharacter(Widget.SelectedItem)
         : null;
-    
+
     /// <summary>
     /// Gets the currently selected character ID, or 0 for "All" (single-select mode).
     /// </summary>
-    public ulong SelectedCharacterId => _widget.SelectedItem?.Id ?? AllCharactersId;
-    
+    public ulong SelectedCharacterId => Widget.SelectedItem?.Id ?? AllCharactersId;
+
     /// <summary>
     /// Whether "All Characters" is selected.
     /// </summary>
-    public bool IsAllSelected => _widget.IsAllSelected;
-    
+    public bool IsAllSelected => Widget.IsAllSelected;
+
     /// <summary>
     /// Gets the set of selected character IDs (multi-select mode).
     /// </summary>
-    public IReadOnlySet<ulong> SelectedCharacterIds => _state.SelectedIds;
-    
+    public IReadOnlySet<ulong> SelectedCharacterIds => State.SelectedIds;
+
     /// <summary>
     /// Gets the list of selected character IDs for data loading.
     /// Returns null if "All" is selected.
     /// </summary>
-    public IReadOnlyList<ulong>? GetSelectedIdsForLoading() => _widget.GetSelectedIdsForLoading()?.ToList();
-    
+    public IReadOnlyList<ulong>? GetSelectedIdsForLoading() => Widget.GetSelectedIdsForLoading()?.ToList();
+
     /// <summary>
     /// Event fired when selection changes (single-select mode).
     /// </summary>
     public event Action<ComboCharacter?, ComboCharacter?>? SelectionChanged;
-    
-    /// <summary>
-    /// Event fired when multi-selection changes.
-    /// </summary>
-    public event Action<IReadOnlySet<ulong>>? MultiSelectionChanged;
-    
+
     public CharacterCombo(
         CurrencyTrackerService currencyTrackerService,
         FavoritesService favoritesService,
@@ -98,23 +78,20 @@ public sealed class CharacterCombo : IDisposable
         bool multiSelect = false,
         AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
+        : base(favoritesService, label)
     {
         _currencyTrackerService = currencyTrackerService;
-        _favoritesService = favoritesService;
         _configService = configService;
         _autoRetainerService = autoRetainerService;
         _priceTrackingService = priceTrackingService;
-        Label = label;
-        
-        // Create state
-        _state = new ComboState<ulong>
+
+        State = new ComboState<ulong>
         {
             SortOrder = ComboSortOrder.Alphabetical,
             GroupMode = MTComboGroupDisplayMode.Flat,
             AllSelected = true
         };
-        
-        // Create config
+
         var config = new ComboConfig
         {
             ComboId = label,
@@ -135,120 +112,101 @@ public sealed class CharacterCombo : IDisposable
             AllOptionLabel = "All Characters",
             DefaultGroupMode = MTComboGroupDisplayMode.Flat
         };
-        
-        // Create widget
-        _widget = new ComboWidget<CharacterItem, ulong>(config, _state);
-        
+
+        Widget = new ComboWidget<CharacterItem, ulong>(config, State);
+
         // Configure grouping (Region → DC → World)
-        _widget.WithGrouping(
+        Widget.WithGrouping(
             item => item.Region,
             item => item.DataCenter,
             item => item.World);
-        
+
         // Configure secondary text (shows @ World)
-        _widget.WithSecondaryText(item => 
+        Widget.WithSecondaryText(item =>
             !string.IsNullOrEmpty(item.World) ? $"@ {item.World}" : null);
-        
+
         // Configure filter to search name, world, DC, region
-        _widget.WithFilter((item, filter) =>
+        Widget.WithFilter((item, filter) =>
         {
             var nameLower = item.Name.ToLowerInvariant();
             var worldLower = item.World?.ToLowerInvariant();
             var dcLower = item.DataCenter?.ToLowerInvariant();
             var regionLower = item.Region?.ToLowerInvariant();
-            
+
             return nameLower.Contains(filter) ||
                    (worldLower?.Contains(filter) ?? false) ||
                    (dcLower?.Contains(filter) ?? false) ||
                    (regionLower?.Contains(filter) ?? false);
         });
-        
-        // Subscribe to events
-        _widget.SelectionChanged += OnWidgetSelectionChanged;
-        _widget.MultiSelectionChanged += OnWidgetMultiSelectionChanged;
-        _widget.FavoriteToggled += OnWidgetFavoriteToggled;
-        
-        // Sync favorites from service (must be after widget is created)
-        SyncFavoritesFromService();
-        
-        _favoritesService.OnFavoritesChanged += OnFavoritesChanged;
-        
+
+        Initialize();
+
         if (_priceTrackingService != null)
         {
             _priceTrackingService.OnWorldDataLoaded += OnWorldDataLoaded;
         }
     }
-    
-    private void SyncFavoritesFromService()
+
+    protected override IEnumerable<ulong> GetFavoriteIds() => FavoritesService.FavoriteCharacters;
+
+    protected override List<CharacterItem> BuildItems() => BuildCharacterList();
+
+    protected override void OnWidgetSelectionChanged(ulong id)
     {
-        _widget.SyncFavorites(_favoritesService.FavoriteCharacters);
-    }
-    
-    private void OnFavoritesChanged()
-    {
-        SyncFavoritesFromService();
-        _needsRebuild = true;
-    }
-    
-    private void OnWorldDataLoaded()
-    {
-        _needsRebuild = true;
-    }
-    
-    private void OnWidgetSelectionChanged(ulong id)
-    {
-        // Fire legacy event
-        // Note: we don't have the old selection easily available
+        // Fire legacy event. The previous selection isn't tracked here, so the old value is null.
         SelectionChanged?.Invoke(null, CreateCharacterFromId(id));
     }
-    
-    private void OnWidgetMultiSelectionChanged(IReadOnlySet<ulong> ids)
-    {
-        MultiSelectionChanged?.Invoke(ids);
-    }
-    
-    private void OnWidgetFavoriteToggled(ulong id, bool isFavorite)
+
+    protected override void OnWidgetFavoriteToggled(ulong id, bool isFavorite)
     {
         // Sync back to favorites service
         if (isFavorite)
-            _favoritesService.AddCharacter(id);
+            FavoritesService.AddCharacter(id);
         else
-            _favoritesService.RemoveCharacter(id);
+            FavoritesService.RemoveCharacter(id);
     }
-    
+
+    protected override void DisposeCore()
+    {
+        if (_priceTrackingService != null)
+        {
+            _priceTrackingService.OnWorldDataLoaded -= OnWorldDataLoaded;
+        }
+    }
+
+    private void OnWorldDataLoaded()
+    {
+        NeedsRebuild = true;
+    }
+
     private ComboCharacter? CreateCharacterFromId(ulong id)
     {
         if (id == AllCharactersId)
             return new ComboCharacter(0, "All Characters", null);
-        
+
         // Find in items
-        var item = _widget.SelectedItem;
+        var item = Widget.SelectedItem;
         if (item != null && item.Id == id)
             return ToComboCharacter(item);
-        
+
         return null;
     }
-    
+
     private static ComboCharacter ToComboCharacter(CharacterItem item) =>
         new(item.Id, item.Name, item.World, item.DataCenter, item.Region);
-    
-    private void EnsureCharactersLoaded()
+
+    protected override void EnsureItemsLoaded()
     {
         var currentFormat = _configService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
         if (_cachedNameFormat != currentFormat)
         {
-            _needsRebuild = true;
+            NeedsRebuild = true;
             _cachedNameFormat = currentFormat;
         }
-        
-        if (!_needsRebuild)
-            return;
-        
-        var items = BuildCharacterList();
-        _widget.SetItems(items);
-        _needsRebuild = false;
+
+        base.EnsureItemsLoaded();
     }
-    
+
     private List<CharacterItem> BuildCharacterList()
     {
         var items = new List<CharacterItem>();
@@ -256,7 +214,7 @@ public sealed class CharacterCombo : IDisposable
         var nameFormat = _configService?.Config.CharacterNameFormat ?? CharacterNameFormat.FullName;
         var worldData = _priceTrackingService?.WorldData;
         var characterWorlds = AutoRetainerIpcHelper.GetCharacterWorlds(_autoRetainerService);
-        
+
         try
         {
             // Get all characters from CharacterDataCache (no DB access)
@@ -264,13 +222,13 @@ public sealed class CharacterCombo : IDisposable
                 .Select(c => (c.characterId, c.name))
                 .DistinctBy(c => c.characterId)
                 .ToList();
-            
+
             foreach (var (charId, name) in dbCharacters)
             {
                 if (charId == 0) continue;
-                
+
                 var fullNameWithWorld = cacheService.GetFormattedCharacterName(charId) ?? name ?? $"Character {charId}";
-                
+
                 string? world = null;
                 string baseName = fullNameWithWorld;
                 var atIndex = fullNameWithWorld.IndexOf('@');
@@ -279,14 +237,14 @@ public sealed class CharacterCombo : IDisposable
                     world = fullNameWithWorld[(atIndex + 1)..].Trim();
                     baseName = fullNameWithWorld[..atIndex].Trim();
                 }
-                
+
                 if (string.IsNullOrEmpty(world) && characterWorlds.TryGetValue(charId, out var arWorld))
                 {
                     world = arWorld;
                 }
-                
+
                 var displayName = Kaleidoscope.Libs.CharacterNameFormatter.FormatName(baseName, nameFormat) ?? baseName;
-                
+
                 string? dcName = null;
                 string? regionName = null;
                 if (!string.IsNullOrEmpty(world) && worldData != null)
@@ -294,7 +252,7 @@ public sealed class CharacterCombo : IDisposable
                     dcName = worldData.GetDataCenterForWorld(world)?.Name;
                     regionName = worldData.GetRegionForWorld(world);
                 }
-                
+
                 items.Add(new CharacterItem
                 {
                     Id = charId,
@@ -309,28 +267,19 @@ public sealed class CharacterCombo : IDisposable
         {
             LogService.Debug(LogCategory.UI, $"[CharacterCombo] Error building character list: {ex.Message}");
         }
-        
+
         return items;
     }
-    
-    /// <summary>
-    /// Draws the combo at the specified width.
-    /// </summary>
-    public bool Draw(float width)
-    {
-        EnsureCharactersLoaded();
-        return _widget.Draw(width);
-    }
-    
+
     /// <summary>
     /// Draws an inline multi-select widget.
     /// </summary>
     public bool DrawInline(float width, float height)
     {
-        EnsureCharactersLoaded();
-        return _widget.DrawInline(width, height);
+        EnsureItemsLoaded();
+        return Widget.DrawInline(width, height);
     }
-    
+
     /// <summary>
     /// Sets the selection to a single character ID.
     /// </summary>
@@ -338,16 +287,16 @@ public sealed class CharacterCombo : IDisposable
     {
         if (characterId == AllCharactersId)
         {
-            _state.AllSelected = true;
-            _state.SelectedIds.Clear();
-            _state.SelectedId = default;
+            State.AllSelected = true;
+            State.SelectedIds.Clear();
+            State.SelectedId = default;
         }
         else
         {
-            _widget.SetSelection(characterId);
+            Widget.SetSelection(characterId);
         }
     }
-    
+
     /// <summary>
     /// Sets the selection to multiple character IDs.
     /// </summary>
@@ -356,55 +305,38 @@ public sealed class CharacterCombo : IDisposable
         var ids = characterIds.ToList();
         if (ids.Contains(AllCharactersId) || ids.Count == 0)
         {
-            _state.AllSelected = true;
-            _state.SelectedIds.Clear();
+            State.AllSelected = true;
+            State.SelectedIds.Clear();
         }
         else
         {
-            _widget.SetMultiSelection(ids);
+            Widget.SetMultiSelection(ids);
         }
     }
-    
+
     /// <summary>
     /// Selects "All Characters".
     /// </summary>
     public void SelectAll()
     {
-        _state.AllSelected = true;
-        _state.SelectedIds.Clear();
-        _state.SelectedId = default;
+        State.AllSelected = true;
+        State.SelectedIds.Clear();
+        State.SelectedId = default;
     }
-    
+
     /// <summary>
     /// Clears the current selection.
     /// </summary>
     public void ClearSelection()
     {
-        _widget.ClearSelection();
+        Widget.ClearSelection();
     }
-    
+
     /// <summary>
     /// Refreshes the character list from the database.
     /// </summary>
     public void RefreshCharacters()
     {
-        _needsRebuild = true;
-    }
-    
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        
-        _widget.SelectionChanged -= OnWidgetSelectionChanged;
-        _widget.MultiSelectionChanged -= OnWidgetMultiSelectionChanged;
-        _widget.FavoriteToggled -= OnWidgetFavoriteToggled;
-        
-        _favoritesService.OnFavoritesChanged -= OnFavoritesChanged;
-        
-        if (_priceTrackingService != null)
-        {
-            _priceTrackingService.OnWorldDataLoaded -= OnWorldDataLoaded;
-        }
+        NeedsRebuild = true;
     }
 }

@@ -25,6 +25,12 @@ public class ComboWidget<TItem, TId>
     private IReadOnlyList<TItem>? _items;
     private List<TItem>? _sortedItems;
     private bool _needsSort = true;
+    private int _sortVersion;
+
+    // Cached filtered view (keyed on filter text + sort version)
+    private List<TItem>? _filteredItems;
+    private string? _filteredFilterText;
+    private int _filteredSortVersion = -1;
     
     // Renderers and providers (set by consumer)
     private MTIconRenderer<TItem>? _iconRenderer;
@@ -319,189 +325,191 @@ public class ComboWidget<TItem, TId>
     private bool DrawContent()
     {
         var changed = false;
-        var filterText = _state.FilterText;
-        
-        // Search bar and controls
+
         if (_config.ShowSearch || _config.ShowSortToggle || _config.ShowGroupingToggle)
-        {
-            var controlsWidth = 0f;
-            if (_config.ShowSortToggle) controlsWidth += 35f;
-            if (_config.ShowGroupingToggle) controlsWidth += 25f;
-            if (_config.MultiSelect && _config.ShowBulkActions) controlsWidth += 80f;
-            
-            if (_config.ShowSearch)
-            {
-                ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - controlsWidth - ImGui.GetStyle().ItemSpacing.X);
-                if (ImGui.InputTextWithHint("##filter", _config.SearchPlaceholder, ref filterText, 100))
-                {
-                    _state.FilterText = filterText;
-                }
-            }
-            
-            // Sort toggle
-            if (_config.ShowSortToggle)
-            {
-                ImGui.SameLine();
-                var sortLabel = _state.SortOrder == ComboSortOrder.Alphabetical ? "A-Z" : "ID";
-                if (ImGui.SmallButton(sortLabel))
-                {
-                    _state.SortOrder = _state.SortOrder == ComboSortOrder.Alphabetical 
-                        ? ComboSortOrder.ById 
-                        : ComboSortOrder.Alphabetical;
-                    _needsSort = true;
-                    StateChanged?.Invoke();
-                }
-                if (ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip(_state.SortOrder == ComboSortOrder.Alphabetical 
-                        ? "Sort alphabetically. Click to sort by ID." 
-                        : "Sort by ID. Click to sort alphabetically.");
-                }
-            }
-            
-            // Grouping toggle
-            if (_config.ShowGroupingToggle && _groupKeyProvider != null)
-            {
-                ImGui.SameLine();
-                var groupColor = _state.GroupMode == MTComboGroupDisplayMode.Grouped ? 0xFF00FF00u : 0xFF888888u;
-                ImGui.PushStyleColor(ImGuiCol.Text, groupColor);
-                if (ImGui.SmallButton("G"))
-                {
-                    _state.GroupMode = _state.GroupMode == MTComboGroupDisplayMode.Flat 
-                        ? MTComboGroupDisplayMode.Grouped 
-                        : MTComboGroupDisplayMode.Flat;
-                    StateChanged?.Invoke();
-                }
-                ImGui.PopStyleColor();
-                if (ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip(_state.GroupMode == MTComboGroupDisplayMode.Grouped 
-                        ? "Grouped view. Click for flat list." 
-                        : "Flat list. Click to group.");
-                }
-            }
-            
-            // Bulk actions for multi-select
-            if (_config.MultiSelect && _config.ShowBulkActions)
-            {
-                // All button
-                if (_config.ShowAllBulkAction)
-                {
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton("All"))
-                    {
-                        _state.AllSelected = true;
-                        _state.SelectedIds.Clear();
-                        changed = true;
-                        MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                    }
-                }
-                
-                // None button
-                if (_config.ShowNoneBulkAction)
-                {
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton("None"))
-                    {
-                        _state.AllSelected = false;
-                        _state.SelectedIds.Clear();
-                        changed = true;
-                        MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                    }
-                }
-                
-                // Favorites bulk action
-                if (_config.ShowFavoritesBulkAction && _state.Favorites.Count > 0)
-                {
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton("\u2605")) // Star character
-                    {
-                        _state.AllSelected = false;
-                        _state.SelectedIds.Clear();
-                        foreach (var favId in _state.Favorites)
-                        {
-                            _state.SelectedIds.Add(favId);
-                        }
-                        changed = true;
-                        MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                    }
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.SetTooltip("Select favorites only");
-                    }
-                }
-                
-                // Invert bulk action
-                if (_config.ShowInvertBulkAction && _items != null)
-                {
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton("\u21C4")) // Swap arrows character
-                    {
-                        if (_state.AllSelected)
-                        {
-                            // Invert from "all" means none
-                            _state.AllSelected = false;
-                            _state.SelectedIds.Clear();
-                        }
-                        else
-                        {
-                            var allIds = _items.Select(i => i.Id).ToHashSet();
-                            var inverted = allIds.Except(_state.SelectedIds).ToHashSet();
-                            _state.SelectedIds.Clear();
-                            foreach (var id in inverted)
-                                _state.SelectedIds.Add(id);
-                            
-                            // If all are now selected, switch to "All" mode
-                            if (_state.SelectedIds.Count == allIds.Count && _config.ShowAllOption)
-                            {
-                                _state.AllSelected = true;
-                                _state.SelectedIds.Clear();
-                            }
-                        }
-                        changed = true;
-                        MultiSelectionChanged?.Invoke(_state.SelectedIds);
-                    }
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.SetTooltip("Invert selection");
-                    }
-                }
-            }
-        }
-        
+            changed |= DrawControlsRow();
+
         ImGui.Separator();
-        
-        // "All" option for multi-select
+
         if (_config.MultiSelect && _config.ShowAllOption)
         {
-            var allChecked = _state.AllSelected;
-            if (ImGui.Checkbox(_config.AllOptionLabel, ref allChecked))
+            changed |= DrawAllOption();
+            ImGui.Separator();
+        }
+
+        var itemList = GetFilteredItemsCached();
+
+        if (_state.GroupMode == MTComboGroupDisplayMode.Grouped && _groupKeyProvider != null)
+            changed |= DrawGroupedItems(itemList);
+        else
+            changed |= DrawFlatItems(itemList);
+
+        return changed;
+    }
+
+    private bool DrawControlsRow()
+    {
+        var controlsWidth = 0f;
+        if (_config.ShowSortToggle) controlsWidth += 35f;
+        if (_config.ShowGroupingToggle) controlsWidth += 25f;
+        if (_config.MultiSelect && _config.ShowBulkActions) controlsWidth += 80f;
+
+        if (_config.ShowSearch)
+            DrawSearchInput(controlsWidth);
+
+        if (_config.ShowSortToggle)
+            DrawSortToggle();
+
+        if (_config.ShowGroupingToggle && _groupKeyProvider != null)
+            DrawGroupingToggle();
+
+        if (_config.MultiSelect && _config.ShowBulkActions)
+            return DrawBulkActions();
+
+        return false;
+    }
+
+    private void DrawSearchInput(float controlsWidth)
+    {
+        var filterText = _state.FilterText;
+        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - controlsWidth - ImGui.GetStyle().ItemSpacing.X);
+        if (ImGui.InputTextWithHint("##filter", _config.SearchPlaceholder, ref filterText, 100))
+            _state.FilterText = filterText;
+    }
+
+    private void DrawSortToggle()
+    {
+        ImGui.SameLine();
+        var sortLabel = _state.SortOrder == ComboSortOrder.Alphabetical ? "A-Z" : "ID";
+        if (ImGui.SmallButton(sortLabel))
+        {
+            _state.SortOrder = _state.SortOrder == ComboSortOrder.Alphabetical
+                ? ComboSortOrder.ById
+                : ComboSortOrder.Alphabetical;
+            _needsSort = true;
+            StateChanged?.Invoke();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(_state.SortOrder == ComboSortOrder.Alphabetical
+                ? "Sort alphabetically. Click to sort by ID."
+                : "Sort by ID. Click to sort alphabetically.");
+        }
+    }
+
+    private void DrawGroupingToggle()
+    {
+        ImGui.SameLine();
+        var groupColor = _state.GroupMode == MTComboGroupDisplayMode.Grouped ? 0xFF00FF00u : 0xFF888888u;
+        ImGui.PushStyleColor(ImGuiCol.Text, groupColor);
+        if (ImGui.SmallButton("G"))
+        {
+            _state.GroupMode = _state.GroupMode == MTComboGroupDisplayMode.Flat
+                ? MTComboGroupDisplayMode.Grouped
+                : MTComboGroupDisplayMode.Flat;
+            StateChanged?.Invoke();
+        }
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(_state.GroupMode == MTComboGroupDisplayMode.Grouped
+                ? "Grouped view. Click for flat list."
+                : "Flat list. Click to group.");
+        }
+    }
+
+    /// <summary>
+    /// Draws the multi-select bulk-action buttons from a data-driven descriptor list.
+    /// Each descriptor supplies a visibility flag, button label, optional tooltip, and the
+    /// mutation to apply; a triggered action marks the selection changed and fires the event.
+    /// </summary>
+    private bool DrawBulkActions()
+    {
+        var changed = false;
+
+        var actions = new (bool Show, string Label, string? Tooltip, Action Apply)[]
+        {
+            (_config.ShowAllBulkAction, "All", null, ApplySelectAll),
+            (_config.ShowNoneBulkAction, "None", null, ApplySelectNone),
+            (_config.ShowFavoritesBulkAction && _state.Favorites.Count > 0, "\u2605", "Select favorites only", ApplySelectFavorites),
+            (_config.ShowInvertBulkAction && _items != null, "\u21C4", "Invert selection", ApplyInvertSelection),
+        };
+
+        foreach (var action in actions)
+        {
+            if (!action.Show)
+                continue;
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton(action.Label))
             {
-                _state.AllSelected = allChecked;
-                if (allChecked)
-                    _state.SelectedIds.Clear();
+                action.Apply();
                 changed = true;
                 MultiSelectionChanged?.Invoke(_state.SelectedIds);
             }
-            ImGui.Separator();
+            if (action.Tooltip != null && ImGui.IsItemHovered())
+                ImGui.SetTooltip(action.Tooltip);
         }
-        
-        // Filter items
-        var filterLower = _state.FilterText;
-        var filteredItems = GetFilteredItems(filterLower);
-        
-        // Draw items (no limit - use virtual scrolling)
-        var itemList = filteredItems.ToList();
-        
-        if (_state.GroupMode == MTComboGroupDisplayMode.Grouped && _groupKeyProvider != null)
+
+        return changed;
+    }
+
+    private void ApplySelectAll()
+    {
+        _state.AllSelected = true;
+        _state.SelectedIds.Clear();
+    }
+
+    private void ApplySelectNone()
+    {
+        _state.AllSelected = false;
+        _state.SelectedIds.Clear();
+    }
+
+    private void ApplySelectFavorites()
+    {
+        _state.AllSelected = false;
+        _state.SelectedIds.Clear();
+        foreach (var favId in _state.Favorites)
+            _state.SelectedIds.Add(favId);
+    }
+
+    private void ApplyInvertSelection()
+    {
+        if (_state.AllSelected)
         {
-            changed |= DrawGroupedItems(itemList);
+            // Invert from "all" means none
+            _state.AllSelected = false;
+            _state.SelectedIds.Clear();
+            return;
         }
-        else
+
+        var allIds = _items!.Select(i => i.Id).ToHashSet();
+        var inverted = allIds.Except(_state.SelectedIds).ToHashSet();
+        _state.SelectedIds.Clear();
+        foreach (var id in inverted)
+            _state.SelectedIds.Add(id);
+
+        // If all are now selected, switch to "All" mode
+        if (_state.SelectedIds.Count == allIds.Count && _config.ShowAllOption)
         {
-            changed |= DrawFlatItems(itemList);
+            _state.AllSelected = true;
+            _state.SelectedIds.Clear();
         }
-        
+    }
+
+    private bool DrawAllOption()
+    {
+        var changed = false;
+        var allChecked = _state.AllSelected;
+        if (ImGui.Checkbox(_config.AllOptionLabel, ref allChecked))
+        {
+            _state.AllSelected = allChecked;
+            if (allChecked)
+                _state.SelectedIds.Clear();
+            changed = true;
+            MultiSelectionChanged?.Invoke(_state.SelectedIds);
+        }
         return changed;
     }
     
@@ -789,6 +797,27 @@ public class ComboWidget<TItem, TId>
     
     #region Filtering and Sorting
     
+    /// <summary>
+    /// Returns the filtered item list, reusing the cached result while the filter text and
+    /// sorted-item version are unchanged. Avoids re-running the filter LINQ and allocating a
+    /// new list every frame.
+    /// </summary>
+    private List<TItem> GetFilteredItemsCached()
+    {
+        var filterText = _state.FilterText;
+        if (_filteredItems != null
+            && _filteredSortVersion == _sortVersion
+            && string.Equals(_filteredFilterText, filterText, StringComparison.Ordinal))
+        {
+            return _filteredItems;
+        }
+
+        _filteredItems = GetFilteredItems(filterText).ToList();
+        _filteredFilterText = filterText;
+        _filteredSortVersion = _sortVersion;
+        return _filteredItems;
+    }
+
     private IEnumerable<TItem> GetFilteredItems(string filterText)
     {
         if (_sortedItems == null) return Enumerable.Empty<TItem>();
@@ -839,8 +868,9 @@ public class ComboWidget<TItem, TId>
         }
         
         _sortedItems = sorted;
+        _sortVersion++;
         _needsSort = false;
     }
-    
+
     #endregion
 }
