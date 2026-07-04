@@ -15,8 +15,14 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Provides interactive testing of services, integrations, and database sanity checks.
 /// Only visible in the Developer menu (CTRL+ALT or developer mode enabled).
 /// </summary>
-public sealed class TestsCategory
+public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategory
 {
+    /// <inheritdoc/>
+    public string Label => "Tests";
+
+    /// <inheritdoc/>
+    public bool IsDeveloper => true;
+
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly AutoRetainerService _arIpcService;
     private readonly UniversalisService _universalisService;

@@ -14,8 +14,14 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Provides options to set custom colors for tracked data types used across all tools,
 /// and displays which currencies are being tracked (always enabled).
 /// </summary>
-public sealed class CurrenciesCategory
+public sealed class CurrenciesCategory : IConfigCategory
 {
+    /// <inheritdoc/>
+    public string Label => "Currencies";
+
+    /// <inheritdoc/>
+    public bool IsDeveloper => false;
+
     private readonly ConfigurationService _configService;
     private readonly TrackedDataRegistry _registry;
     private readonly ITextureProvider? _textureProvider;
@@ -65,15 +71,8 @@ public sealed class CurrenciesCategory
         ImGui.TextWrapped("All currencies are automatically tracked. Historical data is recorded for all currency types below.");
         ImGui.Spacing();
 
-        // Show tracking status (always enabled)
-        var trackingEnabled = true;
-        ImGui.BeginDisabled();
-        ImGui.Checkbox("Currency tracking enabled", ref trackingEnabled);
-        ImGui.EndDisabled();
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Currency tracking is always enabled and cannot be turned off.");
-        }
+        // Tracking is always enabled and cannot be turned off.
+        ImGui.TextDisabled("Currency tracking is always enabled and cannot be turned off.");
 
         ImGui.Spacing();
         ImGui.Spacing();
@@ -123,28 +122,20 @@ public sealed class CurrenciesCategory
             return;
         }
 
-        // Draw table
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        
-        // Calculate available height for table
-        var availableHeight = ImGui.GetContentRegionAvail().Y - 30;
-        if (availableHeight < 100) availableHeight = 100;
-
         // Account for scrollbar width in fixed columns
         var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
-        
-        if (ImGui.BeginTable("ItemColorsTable", 6, tableFlags, new Vector2(0, availableHeight)))
-        {
-            // Setup columns
-            ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 100);
-            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, ImGuiHelpers.IconSize + 4);
-            ImGui.TableSetupColumn("Currency", ImGuiTableColumnFlags.WidthStretch, 1f);
-            ImGui.TableSetupColumn("Tracked", ImGuiTableColumnFlags.WidthFixed, 60);
-            ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 55 + scrollbarWidth);
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableHeadersRow();
 
+        ConfigUiHelpers.DrawColorTable("ItemColorsTable", 5,
+            () =>
+            {
+                ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthFixed, 100);
+                ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize, ImGuiHelpers.IconSize + 4);
+                ImGui.TableSetupColumn("Currency", ImGuiTableColumnFlags.WidthStretch, 1f);
+                ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 55 + scrollbarWidth);
+            },
+            () =>
+            {
             foreach (var categoryGroup in categories)
             {
                 // Custom sort order for Gil category: Gil > Retainer Gil > FC Gil
@@ -157,7 +148,7 @@ public sealed class CurrenciesCategory
                         _ => 99
                     })
                     : categoryGroup.OrderBy(d => d.DisplayName);
-                
+
                 foreach (var definition in orderedItems)
                 {
                     ImGui.TableNextRow();
@@ -168,7 +159,7 @@ public sealed class CurrenciesCategory
 
                     // Icon column
                     ImGui.TableNextColumn();
-                    DrawCurrencyIcon(definition);
+                    ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, definition.ItemId ?? definition.IconId);
 
                     // Item name column
                     ImGui.TableNextColumn();
@@ -180,19 +171,6 @@ public sealed class CurrenciesCategory
                         ImGui.EndTooltip();
                     }
 
-                    // Tracked column (always enabled, read-only)
-                    ImGui.TableNextColumn();
-                    ImGui.PushID($"tracked_{(int)definition.Type}");
-                    var isTracked = true;
-                    ImGui.BeginDisabled();
-                    ImGui.Checkbox("##tracked", ref isTracked);
-                    ImGui.EndDisabled();
-                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                    {
-                        ImGui.SetTooltip("Currency tracking is always enabled and cannot be turned off.");
-                    }
-                    ImGui.PopID();
-
                     // Color column
                     ImGui.TableNextColumn();
                     DrawColorCell(definition.Type, config);
@@ -202,9 +180,7 @@ public sealed class CurrenciesCategory
                     DrawActionsCell(definition.Type, config);
                 }
             }
-
-            ImGui.EndTable();
-        }
+            });
 
         // Summary
         ImGui.Spacing();
@@ -272,36 +248,4 @@ public sealed class CurrenciesCategory
         }
     }
 
-    private void DrawCurrencyIcon(TrackedDataDefinition definition)
-    {
-        // Resolve the icon source: prefer ItemId, fall back to IconId
-        var iconSource = definition.ItemId ?? definition.IconId;
-        
-        if (_textureProvider == null || _itemDataService == null || !iconSource.HasValue)
-        {
-            ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
-            return;
-        }
-
-        try
-        {
-            var iconId = _itemDataService.GetItemIconId(iconSource.Value);
-            if (iconId > 0)
-            {
-                var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-                if (icon.TryGetWrap(out var wrap, out _))
-                {
-                    ImGui.Image(wrap.Handle, new Vector2(ImGuiHelpers.IconSize));
-                    return;
-                }
-            }
-        }
-        catch
-        {
-            // Ignore errors - use placeholder
-        }
-
-        // Placeholder if icon not loaded
-        ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
-    }
 }

@@ -12,11 +12,14 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// <summary>
 /// Universalis Integration settings category in the config window.
 /// </summary>
-public sealed class UniversalisCategory
+public sealed class UniversalisCategory : IConfigCategory
 {
     private readonly ConfigurationService _configService;
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly UniversalisWebSocketService? _webSocketService;
+
+    public string Label => "Universalis";
+    public bool IsDeveloper => false;
 
     private Configuration Config => _configService.Config;
 
@@ -128,7 +131,7 @@ public sealed class UniversalisCategory
             _configService.Save();
         }
         ImGui.SameLine();
-        HelpMarker("World: Only your current world\nData Center: All worlds in your DC\nRegion: All worlds in your region");
+        ImGuiHelpers.HelpMarker("World: Only your current world\nData Center: All worlds in your DC\nRegion: All worlds in your region");
 
         ImGui.Spacing();
 
@@ -170,7 +173,7 @@ public sealed class UniversalisCategory
             }
         }
         ImGui.SameLine();
-        HelpMarker("e.g., Gilgamesh, Cactuar, Tonberry");
+        ImGuiHelpers.HelpMarker("e.g., Gilgamesh, Cactuar, Tonberry");
 
         // Data Center override - use dropdown if world data available
         if (worldData != null && worldData.DataCenters.Count > 0)
@@ -194,7 +197,7 @@ public sealed class UniversalisCategory
             }
         }
         ImGui.SameLine();
-        HelpMarker("e.g., Aether, Crystal, Primal, Chaos, Light, Elemental, Gaia, Mana, Meteor, Dynamis, Materia");
+        ImGuiHelpers.HelpMarker("e.g., Aether, Crystal, Primal, Chaos, Light, Elemental, Gaia, Mana, Meteor, Dynamis, Materia");
 
         // Region override (combo for convenience)
         ImGui.SetNextItemWidth(200);
@@ -207,7 +210,7 @@ public sealed class UniversalisCategory
             _configService.Save();
         }
         ImGui.SameLine();
-        HelpMarker("Select a region or leave empty to use your character's region");
+        ImGuiHelpers.HelpMarker("Select a region or leave empty to use your character's region");
     }
 
     private void DrawPriceTrackingSection()
@@ -219,20 +222,19 @@ public sealed class UniversalisCategory
         ImGui.Spacing();
 
         // Enable toggle
-        var enabled = settings.Enabled;
-        if (ImGui.Checkbox("Enable Price Tracking##PriceTrackingEnabled", ref enabled))
+        ConfigUiHelpers.ConfigCheckbox("Enable Price Tracking##PriceTrackingEnabled", () => settings.Enabled, v =>
         {
-            settings.Enabled = enabled;
+            settings.Enabled = v;
             _configService.Save();
-            
+
             // Start/stop the service if available
             if (_priceTrackingService != null)
             {
-                _ = _priceTrackingService.SetEnabledAsync(enabled);
+                _ = _priceTrackingService.SetEnabledAsync(v);
             }
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("When enabled, connects to Universalis WebSocket for real-time price updates.");
+        ImGuiHelpers.HelpMarker("When enabled, connects to Universalis WebSocket for real-time price updates.");
 
         if (!settings.Enabled)
         {
@@ -261,44 +263,41 @@ public sealed class UniversalisCategory
         ImGui.TextWrapped("Select which WebSocket events to subscribe to. Disabling channels reduces network traffic but limits available data.");
         ImGui.Spacing();
 
-        var subscribeListingsAdd = settings.SubscribeListingsAdd;
-        if (ImGui.Checkbox("Listings Added##SubscribeListingsAdd", ref subscribeListingsAdd))
+        ConfigUiHelpers.ConfigCheckbox("Listings Added##SubscribeListingsAdd", () => settings.SubscribeListingsAdd, v =>
         {
-            settings.SubscribeListingsAdd = subscribeListingsAdd;
+            settings.SubscribeListingsAdd = v;
             _configService.Save();
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
             }
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Receive notifications when new listings are added to the market board.");
+        ImGuiHelpers.HelpMarker("Receive notifications when new listings are added to the market board.");
 
-        var subscribeListingsRemove = settings.SubscribeListingsRemove;
-        if (ImGui.Checkbox("Listings Removed##SubscribeListingsRemove", ref subscribeListingsRemove))
+        ConfigUiHelpers.ConfigCheckbox("Listings Removed##SubscribeListingsRemove", () => settings.SubscribeListingsRemove, v =>
         {
-            settings.SubscribeListingsRemove = subscribeListingsRemove;
+            settings.SubscribeListingsRemove = v;
             _configService.Save();
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
             }
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Receive notifications when listings are removed from the market board.");
+        ImGuiHelpers.HelpMarker("Receive notifications when listings are removed from the market board.");
 
-        var subscribeSalesAdd = settings.SubscribeSalesAdd;
-        if (ImGui.Checkbox("Sales##SubscribeSalesAdd", ref subscribeSalesAdd))
+        ConfigUiHelpers.ConfigCheckbox("Sales##SubscribeSalesAdd", () => settings.SubscribeSalesAdd, v =>
         {
-            settings.SubscribeSalesAdd = subscribeSalesAdd;
+            settings.SubscribeSalesAdd = v;
             _configService.Save();
             if (_priceTrackingService != null && settings.Enabled)
             {
                 _ = _priceTrackingService.ReconnectWebSocketAsync();
             }
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Receive notifications when items are sold on the market board.");
+        ImGuiHelpers.HelpMarker("Receive notifications when items are sold on the market board.");
 
         if (!settings.SubscribeListingsAdd && !settings.SubscribeListingsRemove && !settings.SubscribeSalesAdd)
         {
@@ -320,14 +319,13 @@ public sealed class UniversalisCategory
         ImGui.TextWrapped("Filter out outlier sales to prevent price manipulation from affecting inventory value calculations.");
         ImGui.Spacing();
 
-        var filterByListing = settings.FilterSalesByListingPrice;
-        if (ImGui.Checkbox("Filter outlier sales##FilterSalesByListing", ref filterByListing))
+        ConfigUiHelpers.ConfigCheckbox("Filter outlier sales##FilterSalesByListing", () => settings.FilterSalesByListingPrice, v =>
         {
-            settings.FilterSalesByListingPrice = filterByListing;
+            settings.FilterSalesByListingPrice = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Ignore sales that deviate significantly from the reference price.\n" +
+        ImGuiHelpers.HelpMarker("Ignore sales that deviate significantly from the reference price.\n" +
             "Reference = avg(average of lowest 5 listings, average of last 5 sales) for that world.\n" +
             "This prevents price manipulation and outliers from affecting inventory value calculations.");
 
@@ -346,7 +344,7 @@ public sealed class UniversalisCategory
             _configService.Save();
         }
         ImGui.SameLine();
-        HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
+        ImGuiHelpers.HelpMarker($"Sales priced more than {threshold}% above or below the reference price will be ignored.\n" +
             $"Reference = avg(median of lowest 5 listings, median of last 5 sales) for that world.\n" +
             $"At {threshold}%: a sale must be between {100 - threshold}% and {100 + threshold}% of the reference price.");
 
@@ -359,7 +357,7 @@ public sealed class UniversalisCategory
             _configService.Save();
         }
         ImGui.SameLine();
-        HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
+        ImGuiHelpers.HelpMarker($"Sales with a unit price below {minPrice:N0} gil will skip the discrepancy filter.\n" +
             "Low-value items often have high price variance, so filtering them can cause missed data.");
 
         ImGui.Spacing();
@@ -370,25 +368,23 @@ public sealed class UniversalisCategory
         ImGui.TextUnformatted("Advanced Outlier Detection");
         ImGui.Spacing();
 
-        var useMedian = settings.UseMedianForReference;
-        if (ImGui.Checkbox("Use median for reference##UseMedian", ref useMedian))
+        ConfigUiHelpers.ConfigCheckbox("Use median for reference##UseMedian", () => settings.UseMedianForReference, v =>
         {
-            settings.UseMedianForReference = useMedian;
+            settings.UseMedianForReference = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Use median instead of average for reference price calculation.\n" +
+        ImGuiHelpers.HelpMarker("Use median instead of average for reference price calculation.\n" +
             "Median is more robust against outliers within the reference data itself.\n" +
             "Recommended: ON");
 
-        var adjustBulk = settings.AdjustForBulkSales;
-        if (ImGui.Checkbox("Adjust threshold for bulk sales##AdjustBulk", ref adjustBulk))
+        ConfigUiHelpers.ConfigCheckbox("Adjust threshold for bulk sales##AdjustBulk", () => settings.AdjustForBulkSales, v =>
         {
-            settings.AdjustForBulkSales = adjustBulk;
+            settings.AdjustForBulkSales = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Allow more price variance for large stack sales.\n" +
+        ImGuiHelpers.HelpMarker("Allow more price variance for large stack sales.\n" +
             "Bulk purchases often have lower per-unit prices (bulk discounts).\n" +
             "Recommended: ON");
 
@@ -399,21 +395,21 @@ public sealed class UniversalisCategory
             if (ImGui.SliderFloat("Max bulk leniency##BulkLeniency", ref bulkLeniency, 1.0f, 2.0f, "%.1fx"))
             {
                 settings.BulkSaleMaxLeniency = bulkLeniency;
-                _configService.Save();
             }
+            if (ImGui.IsItemDeactivatedAfterEdit())
+                _configService.Save();
             ImGui.SameLine();
-            HelpMarker($"Maximum leniency multiplier for bulk sales.\n" +
+            ImGuiHelpers.HelpMarker($"Maximum leniency multiplier for bulk sales.\n" +
                 $"At {bulkLeniency:F1}x: a 100-stack sale can deviate {(int)(threshold * bulkLeniency)}% instead of {threshold}%.");
         }
 
-        var useStdDev = settings.UseStdDevFilter;
-        if (ImGui.Checkbox("Use standard deviation filter##UseStdDev", ref useStdDev))
+        ConfigUiHelpers.ConfigCheckbox("Use standard deviation filter##UseStdDev", () => settings.UseStdDevFilter, v =>
         {
-            settings.UseStdDevFilter = useStdDev;
+            settings.UseStdDevFilter = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Use statistical standard deviation instead of fixed percentage.\n" +
+        ImGuiHelpers.HelpMarker("Use statistical standard deviation instead of fixed percentage.\n" +
             "More accurate but requires at least 2 recent sales for reference.\n" +
             "Falls back to percentage threshold if insufficient data.");
 
@@ -424,10 +420,11 @@ public sealed class UniversalisCategory
             if (ImGui.SliderFloat("Std dev threshold##StdDevThreshold", ref stdDevThreshold, 1.0f, 4.0f, "%.1f σ"))
             {
                 settings.StdDevThreshold = stdDevThreshold;
-                _configService.Save();
             }
+            if (ImGui.IsItemDeactivatedAfterEdit())
+                _configService.Save();
             ImGui.SameLine();
-            HelpMarker($"Number of standard deviations from mean to consider a price an outlier.\n" +
+            ImGuiHelpers.HelpMarker($"Number of standard deviations from mean to consider a price an outlier.\n" +
                 "2.0σ = ~95% of normal prices accepted\n" +
                 "3.0σ = ~99.7% of normal prices accepted");
         }
@@ -436,14 +433,13 @@ public sealed class UniversalisCategory
     private void DrawInventoryValue(PriceTrackingSettings settings)
     {
         // Auto-fetch
-        var autoFetch = settings.AutoFetchInventoryPrices;
-        if (ImGui.Checkbox("Auto-fetch inventory prices on startup##AutoFetch", ref autoFetch))
+        ConfigUiHelpers.ConfigCheckbox("Auto-fetch inventory prices on startup##AutoFetch", () => settings.AutoFetchInventoryPrices, v =>
         {
-            settings.AutoFetchInventoryPrices = autoFetch;
+            settings.AutoFetchInventoryPrices = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Automatically fetch prices from API for items in your inventory when the plugin starts.");
+        ImGuiHelpers.HelpMarker("Automatically fetch prices from API for items in your inventory when the plugin starts.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -456,14 +452,13 @@ public sealed class UniversalisCategory
             "Lower intervals provide more responsive updates but increase CPU and database load.");
         ImGui.Spacing();
 
-        var recalcEveryUpdate = settings.ValueRecalcOnEveryUpdate;
-        if (ImGui.Checkbox("Recalculate on every price update##RecalcEveryUpdate", ref recalcEveryUpdate))
+        ConfigUiHelpers.ConfigCheckbox("Recalculate on every price update##RecalcEveryUpdate", () => settings.ValueRecalcOnEveryUpdate, v =>
         {
-            settings.ValueRecalcOnEveryUpdate = recalcEveryUpdate;
+            settings.ValueRecalcOnEveryUpdate = v;
             _configService.Save();
-        }
+        });
         ImGui.SameLine();
-        HelpMarker("Recalculate inventory values immediately on every price update without any throttling.\n" +
+        ImGuiHelpers.HelpMarker("Recalculate inventory values immediately on every price update without any throttling.\n" +
             "Most responsive but may impact performance on busy servers with frequent price updates.");
 
         if (!recalcEveryUpdate)
@@ -473,10 +468,11 @@ public sealed class UniversalisCategory
             if (ImGui.SliderInt("Recalc interval (ms)##RecalcInterval", ref intervalMs, 50, 60000, "%d ms"))
             {
                 settings.ValueRecalcIntervalMs = Math.Max(50, intervalMs);
-                _configService.Save();
             }
+            if (ImGui.IsItemDeactivatedAfterEdit())
+                _configService.Save();
             ImGui.SameLine();
-            HelpMarker("Minimum time between event-driven inventory value recalculations.\n" +
+            ImGuiHelpers.HelpMarker("Minimum time between event-driven inventory value recalculations.\n" +
                 "Default: 30000ms (30 seconds). Minimum: 50ms.\n" +
                 "Lower values = more responsive, higher CPU/DB usage.");
         }
@@ -571,7 +567,7 @@ public sealed class UniversalisCategory
         }
 
         ImGui.SameLine();
-        HelpMarker("Select which worlds, data centers, or regions to track prices for.\n" +
+        ImGuiHelpers.HelpMarker("Select which worlds, data centers, or regions to track prices for.\n" +
             "Use the mode selector inside the dropdown to switch between selection types.");
     }
 
@@ -613,7 +609,7 @@ public sealed class UniversalisCategory
                 _resetConfirmPending = true;
             }
             ImGui.SameLine();
-            HelpMarker("Clears all cached price data, price history, and inventory value history. This cannot be undone.");
+            ImGuiHelpers.HelpMarker("Clears all cached price data, price history, and inventory value history. This cannot be undone.");
         }
         else
         {
@@ -657,7 +653,4 @@ public sealed class UniversalisCategory
             _ => "(Unknown)"
         };
     }
-
-    private static void HelpMarker(string desc)
-        => ImGuiHelpers.HelpMarker(desc);
 }

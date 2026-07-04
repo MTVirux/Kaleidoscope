@@ -15,8 +15,14 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Item management category in the config window.
 /// Allows users to manage tracked items and set custom colors for game items.
 /// </summary>
-public sealed class ItemsCategory
+public sealed class ItemsCategory : IConfigCategory
 {
+    /// <inheritdoc/>
+    public string Label => "Items";
+
+    /// <inheritdoc/>
+    public bool IsDeveloper => false;
+
     private readonly ConfigurationService _configService;
     private readonly ItemDataService? _itemDataService;
     private readonly IDataManager? _dataManager;
@@ -219,7 +225,7 @@ public sealed class ItemsCategory
                 ImGui.PushID((int)info.ItemId);
 
                 ImGui.TableNextColumn();
-                DrawItemIcon(info.ItemId);
+                ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, info.ItemId);
 
                 ImGui.TableNextColumn();
                 var itemName = GetItemName(info.ItemId);
@@ -537,27 +543,20 @@ public sealed class ItemsCategory
             return;
         }
 
-        // Draw table
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Sortable;
-        
-        // Calculate available height for table
-        var availableHeight = ImGui.GetContentRegionAvail().Y - 30;
-        if (availableHeight < 100) availableHeight = 100;
-
         // Account for scrollbar width in fixed columns
         var scrollbarWidth = ImGui.GetStyle().ScrollbarSize;
-        
-        if (ImGui.BeginTable("GameItemColorsTable", 5, tableFlags, new Vector2(0, availableHeight)))
-        {
-            // Setup columns
-            ImGui.TableSetupColumn("ID", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.DefaultSort, 60);
-            ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize | ImGuiTableColumnFlags.NoSort, ImGuiHelpers.IconSize + 4);
-            ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
-            ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 55 + scrollbarWidth);
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableHeadersRow();
 
+        ConfigUiHelpers.DrawColorTable("GameItemColorsTable", 5,
+            () =>
+            {
+                ImGui.TableSetupColumn("ID", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.DefaultSort, 60);
+                ImGui.TableSetupColumn("##Icon", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoResize | ImGuiTableColumnFlags.NoSort, ImGuiHelpers.IconSize + 4);
+                ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1f);
+                ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 80);
+                ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort, 55 + scrollbarWidth);
+            },
+            () =>
+            {
             // Get sort specs and apply sorting
             var sortSpecs = ImGui.TableGetSortSpecs();
             IEnumerable<uint> sortedItems = filteredItems;
@@ -594,7 +593,7 @@ public sealed class ItemsCategory
 
                 // Icon column
                 ImGui.TableNextColumn();
-                DrawItemIcon(itemId);
+                ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, itemId);
 
                 // Item name column
                 ImGui.TableNextColumn();
@@ -609,9 +608,8 @@ public sealed class ItemsCategory
                 ImGui.TableNextColumn();
                 DrawActionsCell(itemId, config);
             }
-
-            ImGui.EndTable();
-        }
+            },
+            extraFlags: ImGuiTableFlags.Sortable);
 
         // Summary
         ImGui.Spacing();
@@ -714,33 +712,4 @@ public sealed class ItemsCategory
         }
     }
 
-    private void DrawItemIcon(uint itemId)
-    {
-        if (_textureProvider == null || _itemDataService == null)
-        {
-            ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
-            return;
-        }
-
-        try
-        {
-            var iconId = _itemDataService.GetItemIconId(itemId);
-            if (iconId > 0)
-            {
-                var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-                if (icon.TryGetWrap(out var wrap, out _))
-                {
-                    ImGui.Image(wrap.Handle, new Vector2(ImGuiHelpers.IconSize));
-                    return;
-                }
-            }
-        }
-        catch
-        {
-            // Ignore errors - use placeholder
-        }
-
-        // Placeholder if icon not loaded
-        ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
-    }
 }

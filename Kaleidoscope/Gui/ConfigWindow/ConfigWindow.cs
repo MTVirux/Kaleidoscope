@@ -42,21 +42,11 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private int _selectedTab;
 
     private TitleBarButton? _lockButton;
-    private GeneralCategory? _generalCategory;
-    private DataCategory? _dataCategory;
-    private LayoutsCategory? _layoutsCategory;
-    private CustomizationCategory? _customizationCategory;
-    private UniversalisCategory? _universalisCategory;
-    private ProfilerCategory? _profilerCategory;
-    private CharactersCategory? _charactersCategory;
-    private CurrenciesCategory? _currenciesCategory;
-    private ItemsCategory? _itemsCategory;
-    private StorageCategory? _storageCategory;
-    private TestsCategory? _testsCategory;
-    private CachesCategory? _cachesCategory;
-    private LoggingCategory? _loggingCategory;
-    private SqlQueryCategory? _sqlQueryCategory;
-    private IntegrationsCategory? _integrationsCategory;
+
+    // Ordered category registry in sidebar display order. Each entry pairs a stable TabIndex
+    // (used by OpenToTab / external navigation) with the category renderer; IConfigCategory.IsDeveloper
+    // gates whether the entry is shown behind CTRL+ALT / developer mode.
+    private readonly List<(int Index, IConfigCategory Category)> _categories = new();
 
     /// <summary>
     /// Tab indices for programmatic navigation.
@@ -179,30 +169,30 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _lockButton = lockTb;
         TitleBarButtons.Add(_lockButton);
 
-        // Create category renderers
-        _generalCategory = new GeneralCategory(_configService, frameLimiterService, uiBuilder);
-        _dataCategory = new DataCategory(_currencyTrackerService, _configService, resourceStore);
-        _layoutsCategory = new LayoutsCategory(_configService);
-        _customizationCategory = new CustomizationCategory(Config, _configService.Save, _layoutEditingService);
-        _universalisCategory = new UniversalisCategory(_configService, _priceTrackingService, _webSocketService);
-        _profilerCategory = new ProfilerCategory(_profilerService, _configService, _currencyTrackerService);
-        _charactersCategory = new CharactersCategory(_currencyTrackerService, _currencyTrackerService.CacheService, _configService, _arIpc);
-        _currenciesCategory = new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService);
-        _itemsCategory = new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService);
-        _storageCategory = new StorageCategory(
-            _configService, 
-            _currencyTrackerService, 
-            _textureProvider, 
+        // Register category renderers in sidebar display order (non-developer first, then developer).
+        _categories.Add((TabIndex.General, new GeneralCategory(_configService, frameLimiterService, uiBuilder)));
+        _categories.Add((TabIndex.Characters, new CharactersCategory(_currencyTrackerService, _currencyTrackerService.CacheService, _configService, _arIpc)));
+        _categories.Add((TabIndex.GameItems, new ItemsCategory(_configService, itemDataService, dataManager, textureProvider, favoritesService, _currencyTrackerService)));
+        _categories.Add((TabIndex.Currencies, new CurrenciesCategory(_configService, _registry, textureProvider, itemDataService)));
+        _categories.Add((TabIndex.Layouts, new LayoutsCategory(_configService)));
+        _categories.Add((TabIndex.Customization, new CustomizationCategory(Config, _configService.Save, _layoutEditingService)));
+        _categories.Add((TabIndex.Universalis, new UniversalisCategory(_configService, _priceTrackingService, _webSocketService)));
+        _categories.Add((TabIndex.Storage, new StorageCategory(
+            _configService,
+            _currencyTrackerService,
+            _textureProvider,
             dataManager,
-            _favoritesService, 
+            _favoritesService,
             _messageService,
             _arIpc,
-            _priceTrackingService);
-        _testsCategory = new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService, resourcesService, resourceStore, resourceWriter);
-        _cachesCategory = new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService);
-        _loggingCategory = new LoggingCategory(_configService, filenameService, fileDialogService);
-        _sqlQueryCategory = new SqlQueryCategory(_currencyTrackerService);
-        _integrationsCategory = new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService, fcPointsSync);
+            _priceTrackingService)));
+        _categories.Add((TabIndex.Integrations, new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService, fcPointsSync)));
+        _categories.Add((TabIndex.Data, new DataCategory(_currencyTrackerService, _configService, resourceStore)));
+        _categories.Add((TabIndex.Profiler, new ProfilerCategory(_profilerService, _configService, _currencyTrackerService)));
+        _categories.Add((TabIndex.Caches, new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService)));
+        _categories.Add((TabIndex.Logging, new LoggingCategory(_configService, filenameService, fileDialogService)));
+        _categories.Add((TabIndex.SqlQuery, new SqlQueryCategory(_currencyTrackerService)));
+        _categories.Add((TabIndex.Tests, new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService, resourcesService, resourceStore, resourceWriter)));
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -272,27 +262,23 @@ public sealed class ConfigWindow : Window, IService, IDisposable
 
         // Sidebar
         ImGui.BeginChild("##config_sidebar", new System.Numerics.Vector2(sidebarWidth, 0), true);
-        if (ImGui.Selectable("General", _selectedTab == TabIndex.General)) _selectedTab = TabIndex.General;
-        if (ImGui.Selectable("Characters", _selectedTab == TabIndex.Characters)) _selectedTab = TabIndex.Characters;
-        if (ImGui.Selectable("Items", _selectedTab == TabIndex.GameItems)) _selectedTab = TabIndex.GameItems;
-        if (ImGui.Selectable("Currencies", _selectedTab == TabIndex.Currencies)) _selectedTab = TabIndex.Currencies;
-        if (ImGui.Selectable("Layouts", _selectedTab == TabIndex.Layouts)) _selectedTab = TabIndex.Layouts;
-        if (ImGui.Selectable("Customization", _selectedTab == TabIndex.Customization)) _selectedTab = TabIndex.Customization;
-        if (ImGui.Selectable("Universalis", _selectedTab == TabIndex.Universalis)) _selectedTab = TabIndex.Universalis;
-        if (ImGui.Selectable("Storage", _selectedTab == TabIndex.Storage)) _selectedTab = TabIndex.Storage;
-        if (ImGui.Selectable("Integrations", _selectedTab == TabIndex.Integrations)) _selectedTab = TabIndex.Integrations;
-
-        // Only show Developer section when CTRL+ALT are held or developer mode is enabled
-        if (showProfiler)
+        var developerHeaderDrawn = false;
+        foreach (var (index, category) in _categories)
         {
-            ImGui.Separator();
-            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
-            if (ImGui.Selectable("Data", _selectedTab == TabIndex.Data)) _selectedTab = TabIndex.Data;
-            if (ImGui.Selectable("Profiler", _selectedTab == TabIndex.Profiler)) _selectedTab = TabIndex.Profiler;
-            if (ImGui.Selectable("Caches", _selectedTab == TabIndex.Caches)) _selectedTab = TabIndex.Caches;
-            if (ImGui.Selectable("Logging", _selectedTab == TabIndex.Logging)) _selectedTab = TabIndex.Logging;
-            if (ImGui.Selectable("SQL Query", _selectedTab == TabIndex.SqlQuery)) _selectedTab = TabIndex.SqlQuery;
-            if (ImGui.Selectable("Tests", _selectedTab == TabIndex.Tests)) _selectedTab = TabIndex.Tests;
+            if (category.IsDeveloper)
+            {
+                // Only show developer categories when CTRL+ALT are held or developer mode is enabled.
+                if (!showProfiler)
+                    continue;
+                if (!developerHeaderDrawn)
+                {
+                    ImGui.Separator();
+                    ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
+                    developerHeaderDrawn = true;
+                }
+            }
+            if (ImGui.Selectable(category.Label, _selectedTab == index))
+                _selectedTab = index;
         }
         ImGui.EndChild();
 
@@ -300,73 +286,16 @@ public sealed class ConfigWindow : Window, IService, IDisposable
 
         // Content area
         ImGui.BeginChild("##config_content", new System.Numerics.Vector2(fullSize.X - sidebarWidth, 0), false);
-        switch (_selectedTab)
+        foreach (var (index, category) in _categories)
         {
-            case TabIndex.General:
-                _generalCategory?.Draw();
-                break;
-            case TabIndex.Data:
-                _dataCategory?.Draw();
-                break;
-            case TabIndex.Characters:
-                _charactersCategory?.Draw();
-                break;
-            case TabIndex.Currencies:
-                _currenciesCategory?.Draw();
-                break;
-            case TabIndex.GameItems:
-                _itemsCategory?.Draw();
-                break;
-            case TabIndex.Layouts:
-                _layoutsCategory?.Draw();
-                break;
-            case TabIndex.Customization:
-                _customizationCategory?.Draw();
-                break;
-            case TabIndex.Universalis:
-                _universalisCategory?.Draw();
-                break;
-            case TabIndex.Storage:
-                _storageCategory?.Draw();
-                break;
-            case TabIndex.Integrations:
-                _integrationsCategory?.Draw();
-                break;
-            case TabIndex.Profiler:
-                // Only draw profiler if CTRL+ALT are still held, otherwise reset to General
-                if (showProfiler)
-                    _profilerCategory?.Draw();
-                else
-                    _selectedTab = TabIndex.General;
-                break;
-            case TabIndex.Tests:
-                // Only draw tests if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
-                if (showProfiler)
-                    _testsCategory?.Draw();
-                else
-                    _selectedTab = TabIndex.General;
-                break;
-            case TabIndex.Caches:
-                // Only draw caches if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
-                if (showProfiler)
-                    _cachesCategory?.Draw();
-                else
-                    _selectedTab = TabIndex.General;
-                break;
-            case TabIndex.Logging:
-                // Only draw logging if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
-                if (showProfiler)
-                    _loggingCategory?.Draw();
-                else
-                    _selectedTab = TabIndex.General;
-                break;
-            case TabIndex.SqlQuery:
-                // Only draw SQL query if CTRL+ALT are still held or dev mode enabled, otherwise reset to General
-                if (showProfiler)
-                    _sqlQueryCategory?.Draw();
-                else
-                    _selectedTab = TabIndex.General;
-                break;
+            if (_selectedTab != index)
+                continue;
+            // Developer categories require CTRL+ALT / dev mode still active; otherwise fall back to General.
+            if (category.IsDeveloper && !showProfiler)
+                _selectedTab = TabIndex.General;
+            else
+                category.Draw();
+            break;
         }
         ImGui.EndChild();
     }
@@ -376,6 +305,7 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     /// </summary>
     public void Dispose()
     {
-        _storageCategory?.Dispose();
+        foreach (var (_, category) in _categories)
+            (category as IDisposable)?.Dispose();
     }
 }

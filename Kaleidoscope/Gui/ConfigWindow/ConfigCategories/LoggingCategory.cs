@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Developer category for configuring log output filtering.
 /// Allows enabling/disabling logging for specific code sections/categories.
 /// </summary>
-public sealed class LoggingCategory
+public sealed class LoggingCategory : IConfigCategory
 {
     private readonly ConfigurationService _configService;
     private readonly FilenameService _filenameService;
@@ -48,6 +48,10 @@ public sealed class LoggingCategory
         _fileDialogService = fileDialogService;
     }
 
+    public string Label => "Logging";
+
+    public bool IsDeveloper => true;
+
     public void Draw()
     {
         ImGui.TextColored(HeaderColor, "Developer Tool - Logging Configuration");
@@ -83,20 +87,18 @@ public sealed class LoggingCategory
         ImGui.Spacing();
 
         var config = _configService.Config;
-        var fileLoggingEnabled = config.FileLoggingEnabled;
-        
-        if (ImGui.Checkbox("Enable File Logging", ref fileLoggingEnabled))
-        {
-            config.FileLoggingEnabled = fileLoggingEnabled;
-            _configService.Save();
-            LogService.UpdateFileLogging();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Write all logs to an external file in the plugin directory.");
-        }
 
-        if (fileLoggingEnabled)
+        ConfigUiHelpers.ConfigCheckbox("Enable File Logging",
+            () => config.FileLoggingEnabled,
+            v =>
+            {
+                config.FileLoggingEnabled = v;
+                _configService.Save();
+                LogService.UpdateFileLogging();
+            },
+            "Write all logs to an external file in the plugin directory.");
+
+        if (config.FileLoggingEnabled)
         {
             ImGui.Indent();
             
@@ -106,45 +108,40 @@ public sealed class LoggingCategory
             
             ImGui.Spacing();
             
-            var splitByCategory = config.FileLoggingSplitByCategory;
-            if (ImGui.Checkbox("Split Logs by Category", ref splitByCategory))
-            {
-                config.FileLoggingSplitByCategory = splitByCategory;
-                _configService.Save();
-                LogService.UpdateFileLogging();
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(
-                    "When enabled, logs are written to separate files based on category.\n" +
-                    "Example: kaleidoscope_database.log, kaleidoscope_ui.log, etc.");
-            }
+            ConfigUiHelpers.ConfigCheckbox("Split Logs by Category",
+                () => config.FileLoggingSplitByCategory,
+                v =>
+                {
+                    config.FileLoggingSplitByCategory = v;
+                    _configService.Save();
+                    LogService.UpdateFileLogging();
+                },
+                "When enabled, logs are written to separate files based on category.\n" +
+                "Example: kaleidoscope_database.log, kaleidoscope_ui.log, etc.");
 
             // Split by character toggle
-            var splitByCharacter = config.FileLoggingSplitByCharacter;
-            if (ImGui.Checkbox("Split Logs by Character", ref splitByCharacter))
-            {
-                config.FileLoggingSplitByCharacter = splitByCharacter;
-                _configService.Save();
-                LogService.UpdateFileLogging();
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(
-                    "When enabled, logs are organized into character-specific subdirectories.\n" +
-                    "Example: logs/Firstname_Lastname/kaleidoscope.log\n" +
-                    "Note: Only applies to log messages that have character context.");
-            }
+            ConfigUiHelpers.ConfigCheckbox("Split Logs by Character",
+                () => config.FileLoggingSplitByCharacter,
+                v =>
+                {
+                    config.FileLoggingSplitByCharacter = v;
+                    _configService.Save();
+                    LogService.UpdateFileLogging();
+                },
+                "When enabled, logs are organized into character-specific subdirectories.\n" +
+                "Example: logs/Firstname_Lastname/kaleidoscope.log\n" +
+                "Note: Only applies to log messages that have character context.");
 
             ImGui.Spacing();
-            
+
             // Include timestamps toggle
-            var includeTimestamps = config.FileLoggingIncludeTimestamps;
-            if (ImGui.Checkbox("Include Timestamps", ref includeTimestamps))
-            {
-                config.FileLoggingIncludeTimestamps = includeTimestamps;
-                _configService.Save();
-            }
+            ConfigUiHelpers.ConfigCheckbox("Include Timestamps",
+                () => config.FileLoggingIncludeTimestamps,
+                v =>
+                {
+                    config.FileLoggingIncludeTimestamps = v;
+                    _configService.Save();
+                });
             
             // Max file size
             ImGui.SetNextItemWidth(100f);
@@ -366,20 +363,17 @@ public sealed class LoggingCategory
 
     private void DrawMasterSwitch()
     {
-        var enabled = _configService.Config.LogCategoryFilteringEnabled;
-        if (ImGui.Checkbox("Enable Category Filtering", ref enabled))
-        {
-            _configService.Config.LogCategoryFilteringEnabled = enabled;
-            _configService.Save();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip(
-                "When enabled, only logs from selected categories will be output.\n" +
-                "When disabled, all logs pass through (default Dalamud behavior).");
-        }
+        ConfigUiHelpers.ConfigCheckbox("Enable Category Filtering",
+            () => _configService.Config.LogCategoryFilteringEnabled,
+            v =>
+            {
+                _configService.Config.LogCategoryFilteringEnabled = v;
+                _configService.Save();
+            },
+            "When enabled, only logs from selected categories will be output.\n" +
+            "When disabled, all logs pass through (default Dalamud behavior).");
 
-        if (!enabled)
+        if (!_configService.Config.LogCategoryFilteringEnabled)
         {
             ImGui.TextColored(DisabledColor, "Category filtering is disabled. All logs will be output.");
         }

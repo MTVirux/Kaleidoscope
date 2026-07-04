@@ -10,11 +10,18 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Character management category in the config window.
 /// Provides options to view and edit character display names and time series colors.
 /// </summary>
-public sealed class CharactersCategory
+public sealed class CharactersCategory : IConfigCategory
 {
+    /// <inheritdoc/>
+    public string Label => "Characters";
+
+    /// <inheritdoc/>
+    public bool IsDeveloper => false;
+
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly TimeSeriesCacheService _cacheService;
     private readonly AutoRetainerService _autoRetainerService;
+    private readonly ConfigurationService _configService;
 
     private ulong _editingCharacterId = 0;
     private string _editBuffer = "";
@@ -31,8 +38,6 @@ public sealed class CharactersCategory
         _configService = configService;
         _autoRetainerService = autoRetainerService;
     }
-
-    private readonly ConfigurationService _configService;
 
     public void Draw()
     {
@@ -67,20 +72,17 @@ public sealed class CharactersCategory
             return;
         }
 
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        var availableHeight = ImGui.GetContentRegionAvail().Y - 50;
-        if (availableHeight < 100) availableHeight = 100;
-
-        if (ImGui.BeginTable("CharacterNamesTable", 5, tableFlags, new Vector2(0, availableHeight)))
-        {
-            ImGui.TableSetupColumn("CID", ImGuiTableColumnFlags.WidthFixed, 160);
-            ImGui.TableSetupColumn("Game Name", ImGuiTableColumnFlags.WidthStretch, 1f);
-            ImGui.TableSetupColumn("Display Name", ImGuiTableColumnFlags.WidthStretch, 1f);
-            ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 120);
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableHeadersRow();
-
+        ConfigUiHelpers.DrawColorTable("CharacterNamesTable", 5,
+            () =>
+            {
+                ImGui.TableSetupColumn("CID", ImGuiTableColumnFlags.WidthFixed, 160);
+                ImGui.TableSetupColumn("Game Name", ImGuiTableColumnFlags.WidthStretch, 1f);
+                ImGui.TableSetupColumn("Display Name", ImGuiTableColumnFlags.WidthStretch, 1f);
+                ImGui.TableSetupColumn("Color", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 120);
+            },
+            () =>
+            {
             foreach (var (cid, gameName, displayName, timeSeriesColor) in _characters)
             {
                 ImGui.TableNextRow();
@@ -177,9 +179,8 @@ public sealed class CharactersCategory
                     }
                 }
             }
-
-            ImGui.EndTable();
-        }
+            },
+            bottomMargin: 50f);
 
         ImGui.Spacing();
         var customCount = _characters.Count(c => !string.IsNullOrEmpty(c.displayName));

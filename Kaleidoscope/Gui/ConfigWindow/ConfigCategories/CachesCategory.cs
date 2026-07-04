@@ -14,7 +14,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Developer category for displaying cache statistics.
 /// Shows details about all in-memory caches used by the plugin.
 /// </summary>
-public sealed class CachesCategory
+public sealed class CachesCategory : IConfigCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly InventoryCacheService _inventoryCacheService;
@@ -34,6 +34,10 @@ public sealed class CachesCategory
         _listingsService = listingsService;
         _characterDataService = characterDataService;
     }
+
+    public string Label => "Caches";
+
+    public bool IsDeveloper => true;
 
     public void Draw()
     {

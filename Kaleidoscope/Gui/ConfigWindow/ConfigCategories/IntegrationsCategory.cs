@@ -12,8 +12,11 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Data tab stays focused on data-management actions and integrations are a separate
 /// concern with their own UI affordances.
 /// </summary>
-public sealed class IntegrationsCategory
+public sealed class IntegrationsCategory : IConfigCategory
 {
+    public string Label => "Integrations";
+    public bool IsDeveloper => false;
+
     private readonly AutoRetainerService _autoRetainerIpc;
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly KaleidoscopeDbService _dbService;
@@ -26,7 +29,6 @@ public sealed class IntegrationsCategory
     private bool _importGil = false;
     private bool _importFcPoints = false;
 
-    private bool _importPopupOpen = false;
     private string _importStatus = "";
 
     public IntegrationsCategory(
@@ -74,7 +76,6 @@ public sealed class IntegrationsCategory
         if (ImGui.Button("Import Selected"))
         {
             ImGui.OpenPopup("config_import_autoretainer_confirm");
-            _importPopupOpen = true;
             _importStatus = "";
         }
         if (!anySelected) ImGui.EndDisabled();
@@ -85,17 +86,10 @@ public sealed class IntegrationsCategory
             ImGui.TextUnformatted(_importStatus);
         }
 
-        if (ImGui.BeginPopupModal("config_import_autoretainer_confirm", ref _importPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.TextUnformatted("Import from AutoRetainer using these options:");
-            if (_importCharacterNames) ImGui.BulletText("Character names + worlds");
-            if (_importRetainerNames)  ImGui.BulletText("Retainer names");
-            if (_importGil)            ImGui.BulletText("Gil values");
-            if (_importFcPoints)       ImGui.BulletText("FC points");
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Proceed?");
-
-            if (ImGui.Button("Yes"))
+        ConfigUiHelpers.ConfirmPopup(
+            "config_import_autoretainer_confirm",
+            "Import from AutoRetainer using these options:",
+            onConfirm: () =>
             {
                 try
                 {
@@ -108,15 +102,16 @@ public sealed class IntegrationsCategory
                     _importStatus = $"Import failed: {ex.Message}";
                     LogService.Error(LogCategory.UI, "AR import failed", ex);
                 }
-                ImGui.CloseCurrentPopup();
-            }
-            ImGui.SameLine();
-            if (ImGui.Button("No"))
+            },
+            extraBody: () =>
             {
-                ImGui.CloseCurrentPopup();
-            }
-            ImGui.EndPopup();
-        }
+                if (_importCharacterNames) ImGui.BulletText("Character names + worlds");
+                if (_importRetainerNames)  ImGui.BulletText("Retainer names");
+                if (_importGil)            ImGui.BulletText("Gil values");
+                if (_importFcPoints)       ImGui.BulletText("FC points");
+                ImGui.Spacing();
+                ImGui.TextUnformatted("Proceed?");
+            });
     }
 
     private (int chars, int retainers, int gilUpdates, int fcPointUpdates) RunSelectiveImport()

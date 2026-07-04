@@ -24,8 +24,11 @@ public enum FrameLimiterPreset
 /// <summary>
 /// General settings category in the config window.
 /// </summary>
-public sealed class GeneralCategory
+public sealed class GeneralCategory : IConfigCategory
 {
+    public string Label => "General";
+    public bool IsDeveloper => false;
+
     private readonly ConfigurationService _configService;
     private readonly FrameLimiterService _frameLimiterService;
     private readonly IUiBuilder _uiBuilder;
@@ -73,34 +76,12 @@ public sealed class GeneralCategory
     {
         ImGui.TextUnformatted("General");
         ImGui.Separator();
-        var showOnStart = Config.ShowOnStart;
-        if (ImGui.Checkbox("Show on start", ref showOnStart))
-        {
-            Config.ShowOnStart = showOnStart;
-            _configService.MarkDirty();
-        }
+        ConfigUiHelpers.ConfigCheckbox("Show on start", () => Config.ShowOnStart, v => { Config.ShowOnStart = v; _configService.MarkDirty(); });
 
-        var exclusiveFs = Config.ExclusiveFullscreen;
-        if (ImGui.Checkbox("Exclusive fullscreen", ref exclusiveFs))
-        {
-            Config.ExclusiveFullscreen = exclusiveFs;
-            _configService.MarkDirty();
-        }
+        ConfigUiHelpers.ConfigCheckbox("Exclusive fullscreen", () => Config.ExclusiveFullscreen, v => { Config.ExclusiveFullscreen = v; _configService.MarkDirty(); });
 
-        var showDuringCutscenes = Config.ShowDuringCutscenes;
-        if (ImGui.Checkbox("Show during cutscenes", ref showDuringCutscenes))
-        {
-            Config.ShowDuringCutscenes = showDuringCutscenes;
-            _configService.MarkDirty();
-            // Apply immediately - set Dalamud's UI hide settings
-            _uiBuilder.DisableCutsceneUiHide = showDuringCutscenes;
-            _uiBuilder.DisableGposeUiHide = showDuringCutscenes;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Keep the Kaleidoscope window visible during cutscenes and GPose.\nOverrides Dalamud's \"Hide plugin UI during cutscenes\" setting for this plugin.");
-        }
-        
+        ConfigUiHelpers.ConfigCheckbox("Show during cutscenes", () => Config.ShowDuringCutscenes, v => { Config.ShowDuringCutscenes = v; _configService.MarkDirty(); _uiBuilder.DisableCutsceneUiHide = v; _uiBuilder.DisableGposeUiHide = v; }, tooltip: "Keep the Kaleidoscope window visible during cutscenes and GPose.\nOverrides Dalamud's \"Hide plugin UI during cutscenes\" setting for this plugin.");
+
         ImGui.Spacing();
         ImGui.Spacing();
         
@@ -117,7 +98,7 @@ public sealed class GeneralCategory
             ApplyPreset(PresetValues[currentIndex]);
         }
         ImGui.SameLine();
-        HelpMarker("Limits the game's framerate to reduce GPU usage and heat.\nDisables ChillFrames automatically when enabled.");
+        ImGuiHelpers.HelpMarker("Limits the game's framerate to reduce GPU usage and heat.\nDisables ChillFrames automatically when enabled.");
         
         // Show custom FPS input when Custom is selected
         if (currentIndex == 0) // Custom
@@ -231,7 +212,4 @@ public sealed class GeneralCategory
             _configService.MarkDirty();
         }
     }
-
-    private static void HelpMarker(string desc)
-        => ImGuiHelpers.HelpMarker(desc);
 }

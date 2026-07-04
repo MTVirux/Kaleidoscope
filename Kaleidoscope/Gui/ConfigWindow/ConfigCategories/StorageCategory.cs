@@ -29,7 +29,7 @@ public enum CleanupDataMode
 /// Storage &amp; Cache configuration category in the config window.
 /// Centralizes all database and memory cache size settings with detailed tooltips.
 /// </summary>
-public sealed class StorageCategory : IDisposable
+public sealed class StorageCategory : IConfigCategory, IDisposable
 {
     private readonly ConfigurationService _configService;
     private readonly CurrencyTrackerService _currencyTrackerService;
@@ -101,6 +101,9 @@ public sealed class StorageCategory : IDisposable
         
         InitializeCleanupWidgets();
     }
+
+    public string Label => "Storage";
+    public bool IsDeveloper => false;
 
     public void Draw()
     {
@@ -251,9 +254,10 @@ public sealed class StorageCategory : IDisposable
         if (ImGui.SliderInt("Page Cache Size (MB)##DbCache", ref cacheSizeMb, 1, 64))
         {
             _configService.Config.DatabaseCacheSizeMb = cacheSizeMb;
-            _configService.Save();
         }
-        DrawHelpMarker(
+        if (ImGui.IsItemDeactivatedAfterEdit())
+            _configService.Save();
+        ImGuiHelpers.HelpMarker(
             "SQLite page cache stored in RAM per database connection.\n\n" +
             "• Higher values: Faster database reads, more RAM usage\n" +
             "• Lower values: Slower reads, less RAM usage\n\n" +
@@ -261,7 +265,7 @@ public sealed class StorageCategory : IDisposable
             "is approximately this value × 2.\n\n" +
             "Recommended: 4-16 MB for most users.\n" +
             "High-end: 32-64 MB for large datasets.\n\n" +
-            "⚠ Requires plugin reload to take effect.");
+            "⚠ Requires plugin reload to take effect.", sameLine: true, wrapMultiplier: 25f);
 
         var totalCacheMb = cacheSizeMb * 2;
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f),
@@ -381,10 +385,9 @@ public sealed class StorageCategory : IDisposable
 
     private void RefreshTableSizes(KaleidoscopeDbService dbService)
     {
-        _tableSizeLoading = true;
-        Task.Run(() =>
-        {
-            try
+        ConfigUiHelpers.RunBackground(
+            value => _tableSizeLoading = value,
+            () =>
             {
                 var sizes = dbService.GetTableSizes();
                 var totalBytes = 0L;
@@ -398,19 +401,15 @@ public sealed class StorageCategory : IDisposable
                         totalBytes += new FileInfo(walPath).Length;
                 }
 
-                _tableSizes = sizes;
-                _tableSizeTotalBytes = totalBytes;
+                return (sizes, totalBytes);
+            },
+            result =>
+            {
+                _tableSizes = result.sizes;
+                _tableSizeTotalBytes = result.totalBytes;
                 _tableSizeLastRefresh = DateTime.UtcNow;
-            }
-            catch (Exception ex)
-            {
-                LogService.Debug(LogCategory.Database, $"[StorageCategory] Table size refresh failed: {ex.Message}");
-            }
-            finally
-            {
-                _tableSizeLoading = false;
-            }
-        });
+            },
+            ex => LogService.Debug(LogCategory.Database, $"[StorageCategory] Table size refresh failed: {ex.Message}"));
     }
 
     private void DrawDatabaseHealthSection()
@@ -445,30 +444,26 @@ public sealed class StorageCategory : IDisposable
 
         if (ImGui.Button(_integrityCheckRunning ? "Checking...##IntegrityCheck" : "Quick Check##IntegrityQuick"))
         {
-            _integrityCheckRunning = true;
             _integrityResult = null;
-            Task.Run(() =>
-            {
-                try { _integrityResult = dbService.QuickCheck(); }
-                catch (Exception ex) { _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } }; }
-                finally { _integrityCheckRunning = false; }
-            });
+            ConfigUiHelpers.RunBackground(
+                value => _integrityCheckRunning = value,
+                () => dbService.QuickCheck(),
+                result => _integrityResult = result,
+                ex => _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } });
         }
-        DrawHelpMarker("Runs PRAGMA quick_check to detect database corruption.\nFast — skips index verification.");
+        ImGuiHelpers.HelpMarker("Runs PRAGMA quick_check to detect database corruption.\nFast — skips index verification.", sameLine: true, wrapMultiplier: 25f);
 
         ImGui.SameLine();
         if (ImGui.Button(_integrityCheckRunning ? "Checking...##IntegrityFull" : "Full Check##IntegrityFull"))
         {
-            _integrityCheckRunning = true;
             _integrityResult = null;
-            Task.Run(() =>
-            {
-                try { _integrityResult = dbService.FullIntegrityCheck(); }
-                catch (Exception ex) { _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } }; }
-                finally { _integrityCheckRunning = false; }
-            });
+            ConfigUiHelpers.RunBackground(
+                value => _integrityCheckRunning = value,
+                () => dbService.FullIntegrityCheck(),
+                result => _integrityResult = result,
+                ex => _integrityResult = new KaleidoscopeDbService.IntegrityCheckResult { IsHealthy = false, Errors = { $"Exception: {ex.Message}" } });
         }
-        DrawHelpMarker("Runs PRAGMA integrity_check — thorough but can be slow on large databases.\nVerifies every page, B-tree, index, and constraint.");
+        ImGuiHelpers.HelpMarker("Runs PRAGMA integrity_check — thorough but can be slow on large databases.\nVerifies every page, B-tree, index, and constraint.", sameLine: true, wrapMultiplier: 25f);
 
         if (checkDisabled) ImGui.EndDisabled();
 
@@ -503,16 +498,14 @@ public sealed class StorageCategory : IDisposable
 
         if (ImGui.Button(_backupRunning ? "Backing up...##Backup" : "Backup Database##Backup"))
         {
-            _backupRunning = true;
             _lastBackupResult = null;
-            Task.Run(() =>
-            {
-                try { _lastBackupResult = dbService.BackupDatabase(); }
-                catch (Exception ex) { _lastBackupResult = (false, null, 0); LogService.Error(LogCategory.Database, $"Backup exception: {ex.Message}", ex); }
-                finally { _backupRunning = false; }
-            });
+            ConfigUiHelpers.RunBackground(
+                value => _backupRunning = value,
+                () => dbService.BackupDatabase(),
+                result => _lastBackupResult = result,
+                ex => { _lastBackupResult = (false, null, 0); LogService.Error(LogCategory.Database, $"Backup exception: {ex.Message}", ex); });
         }
-        DrawHelpMarker("Creates a timestamped copy of the database file.\nPerforms a WAL checkpoint first to ensure data consistency.");
+        ImGuiHelpers.HelpMarker("Creates a timestamped copy of the database file.\nPerforms a WAL checkpoint first to ensure data consistency.", sameLine: true, wrapMultiplier: 25f);
 
         if (backupDisabled) ImGui.EndDisabled();
 
@@ -554,23 +547,21 @@ public sealed class StorageCategory : IDisposable
 
             if (ImGui.Button(_repairRunning ? "Repairing...##Repair" : "Repair Database##Repair"))
             {
-                _repairRunning = true;
                 _lastRepairResult = null;
-                Task.Run(() =>
-                {
-                    try { _lastRepairResult = dbService.RepairDatabase(); }
-                    catch (Exception ex) { _lastRepairResult = (false, $"Exception: {ex.Message}"); }
-                    finally { _repairRunning = false; }
-                });
+                ConfigUiHelpers.RunBackground(
+                    value => _repairRunning = value,
+                    () => dbService.RepairDatabase(),
+                    result => _lastRepairResult = result,
+                    ex => _lastRepairResult = (false, $"Exception: {ex.Message}"));
             }
-            DrawHelpMarker(
+            ImGuiHelpers.HelpMarker(
                 "This will:\n" +
                 "1. Close all database connections\n" +
                 "2. Create a new empty database\n" +
                 "3. Copy all readable rows from the corrupt database\n" +
                 "4. Rename the corrupt file to .corrupt.bak\n" +
                 "5. Use the recovered database going forward\n\n" +
-                "Some data may be lost if it was stored in corrupt pages.");
+                "Some data may be lost if it was stored in corrupt pages.", sameLine: true, wrapMultiplier: 25f);
 
             if (repairDisabled) ImGui.EndDisabled();
 
@@ -609,7 +600,7 @@ public sealed class StorageCategory : IDisposable
             cacheConfig.MaxPointsPerSeries = Math.Max(100, Math.Min(100000, maxPoints));
             _configService.Save();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "Maximum data points cached in memory for each time series.\n\n" +
             "Each point uses ~16 bytes (timestamp + value).\n" +
             "Memory per series ≈ MaxPoints × 16 bytes.\n\n" +
@@ -618,7 +609,7 @@ public sealed class StorageCategory : IDisposable
             "• 100,000 points ≈ 1.6 MB per series\n\n" +
             "Higher values: More historical data in graphs without DB queries.\n" +
             "Lower values: Reduced RAM usage, more frequent DB reads.\n\n" +
-            "Recommended: 5,000-20,000 for most users.");
+            "Recommended: 5,000-20,000 for most users.", sameLine: true, wrapMultiplier: 25f);
 
         // Max cache hours
         var maxHours = cacheConfig.MaxCacheHours;
@@ -628,7 +619,7 @@ public sealed class StorageCategory : IDisposable
             cacheConfig.MaxCacheHours = Math.Max(1, Math.Min(720, maxHours));
             _configService.Save();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "Maximum age of data kept in memory cache.\n\n" +
             "Data older than this is trimmed during maintenance\n" +
             "but remains available in the database.\n\n" +
@@ -636,24 +627,21 @@ public sealed class StorageCategory : IDisposable
             "• 168 hours (7 days): Good balance (default)\n" +
             "• 720 hours (30 days): Maximum history in cache\n\n" +
             "Higher values improve responsiveness for historical graphs\n" +
-            "but increase RAM usage.");
+            "but increase RAM usage.", sameLine: true, wrapMultiplier: 25f);
 
         ImGui.Spacing();
 
         // Pre-populate on startup
-        var prePopulate = cacheConfig.PrePopulateOnStartup;
-        if (ImGui.Checkbox("Pre-populate Cache on Startup##PrePopulate", ref prePopulate))
-        {
-            cacheConfig.PrePopulateOnStartup = prePopulate;
-            _configService.Save();
-        }
-        DrawHelpMarker(
+        ConfigUiHelpers.ConfigCheckbox("Pre-populate Cache on Startup##PrePopulate",
+            () => cacheConfig.PrePopulateOnStartup,
+            value => { cacheConfig.PrePopulateOnStartup = value; _configService.Save(); });
+        ImGuiHelpers.HelpMarker(
             "When enabled, loads recent data from database into cache at startup.\n\n" +
             "Enabled: Graphs display immediately, slightly longer startup.\n" +
             "Disabled: Faster startup, data loads on-demand (slower first graph).\n\n" +
-            "Recommended: Enabled for best user experience.");
+            "Recommended: Enabled for best user experience.", sameLine: true, wrapMultiplier: 25f);
 
-        if (prePopulate)
+        if (cacheConfig.PrePopulateOnStartup)
         {
             ImGui.Indent();
             var startupHours = cacheConfig.StartupLoadHours;
@@ -663,12 +651,12 @@ public sealed class StorageCategory : IDisposable
                 cacheConfig.StartupLoadHours = Math.Max(1, Math.Min(168, startupHours));
                 _configService.Save();
             }
-            DrawHelpMarker(
+            ImGuiHelpers.HelpMarker(
                 "Hours of historical data to load from database at startup.\n\n" +
                 "• 6 hours: Fast startup, limited initial history\n" +
                 "• 24 hours: Good balance (default)\n" +
                 "• 168 hours: Full week of history, slower startup\n\n" +
-                "Additional history loads on-demand when scrolling graphs.");
+                "Additional history loads on-demand when scrolling graphs.", sameLine: true, wrapMultiplier: 25f);
             ImGui.Unindent();
         }
 
@@ -711,10 +699,10 @@ public sealed class StorageCategory : IDisposable
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.8f, 0.4f, 1.0f), "Theoretical Maximum Memory");
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "Estimates if ALL marketable items were tracked across multiple characters.\n\n" +
             "In practice, only items you own and track will use memory.\n" +
-            "Most users track <100 items, using minimal RAM.");
+            "Most users track <100 items, using minimal RAM.", sameLine: true, wrapMultiplier: 25f);
 
         // FFXIV has ~15,000-20,000 marketable items
         // Assume worst case: all items tracked per character
@@ -763,7 +751,7 @@ public sealed class StorageCategory : IDisposable
             settings.RetentionType = (PriceRetentionType)retentionType;
             _configService.Save();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "How to limit stored price history data.\n\n" +
             "By Time: Deletes records older than N days.\n" +
             "  • Predictable retention period\n" +
@@ -771,7 +759,7 @@ public sealed class StorageCategory : IDisposable
             "By Size: Deletes oldest records when database exceeds N MB.\n" +
             "  • Predictable storage usage\n" +
             "  • Retention period varies with data volume\n\n" +
-            "Recommended: 'By Time' for most users.");
+            "Recommended: 'By Time' for most users.", sameLine: true, wrapMultiplier: 25f);
 
         if (settings.RetentionType == PriceRetentionType.ByTime)
         {
@@ -782,12 +770,12 @@ public sealed class StorageCategory : IDisposable
                 settings.RetentionDays = Math.Max(1, Math.Min(365, retentionDays));
                 _configService.Save();
             }
-            DrawHelpMarker(
+            ImGuiHelpers.HelpMarker(
                 "Number of days to keep price history in database.\n\n" +
                 "• 1-3 days: Minimal storage, limited trend analysis\n" +
                 "• 7 days: Good balance (default)\n" +
                 "• 30+ days: Extended history, larger database\n\n" +
-                "Older data is automatically deleted during cleanup.");
+                "Older data is automatically deleted during cleanup.", sameLine: true, wrapMultiplier: 25f);
         }
         else
         {
@@ -798,12 +786,12 @@ public sealed class StorageCategory : IDisposable
                 settings.RetentionSizeMb = Math.Max(10, Math.Min(1000, retentionMb));
                 _configService.Save();
             }
-            DrawHelpMarker(
+            ImGuiHelpers.HelpMarker(
                 "Maximum database size for price history data.\n\n" +
                 "• 50 MB: Conservative, suitable for limited tracking\n" +
                 "• 100 MB: Good balance (default)\n" +
                 "• 500+ MB: Extended history, more storage\n\n" +
-                "Oldest records are deleted when limit is exceeded.");
+                "Oldest records are deleted when limit is exceeded.", sameLine: true, wrapMultiplier: 25f);
         }
 
         // Cleanup interval
@@ -814,13 +802,13 @@ public sealed class StorageCategory : IDisposable
             settings.CleanupIntervalMinutes = Math.Max(5, Math.Min(1440, cleanupInterval));
             _configService.Save();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "How often to run automatic database cleanup.\n\n" +
             "• 15 minutes: Aggressive, keeps size consistent\n" +
             "• 60 minutes: Good balance (default)\n" +
             "• 240+ minutes: Less overhead, temporary size growth\n\n" +
             "Lower values may impact performance during cleanup.\n" +
-            "Higher values allow database to grow between cleanups.");
+            "Higher values allow database to grow between cleanups.", sameLine: true, wrapMultiplier: 25f);
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -855,9 +843,9 @@ public sealed class StorageCategory : IDisposable
         }
         if (!canRun) ImGui.EndDisabled();
         ImGui.SameLine();
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "Immediately runs the retention cleanup using the current policy.\n\n" +
-            "This is the same operation that runs automatically on the configured interval.");
+            "This is the same operation that runs automatically on the configured interval.", sameLine: true, wrapMultiplier: 25f);
 
         // Show result/error for a few seconds
         if (_retentionCleanupResult.HasValue && (DateTime.Now - _retentionCleanupResultTime).TotalSeconds < 8)
@@ -893,14 +881,14 @@ public sealed class StorageCategory : IDisposable
             settings.MaxEntries = Math.Max(10, Math.Min(1000, maxEntries));
             _configService.Save();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "Maximum entries shown in the Websocket Feed tool.\n\n" +
             "This is an in-memory UI buffer, not database storage.\n" +
             "Older entries are discarded as new ones arrive.\n\n" +
             "• 50 entries: Minimal RAM, recent events only\n" +
             "• 100 entries: Good balance (default)\n" +
             "• 500+ entries: Extended history, more RAM\n\n" +
-            "Each entry uses approximately 100-200 bytes.");
+            "Each entry uses approximately 100-200 bytes.", sameLine: true, wrapMultiplier: 25f);
 
         // Memory estimate for live feed buffer
         // Each entry contains: item name (~50 bytes), world name (~20 bytes), prices, quantities, timestamps, etc.
@@ -912,9 +900,6 @@ public sealed class StorageCategory : IDisposable
 
         ImGui.Unindent();
     }
-
-    private static void DrawHelpMarker(string description)
-        => ImGuiHelpers.HelpMarker(description, sameLine: true, wrapMultiplier: 25f);
 
     private void DrawDataCleanupSection()
     {
@@ -948,7 +933,7 @@ public sealed class StorageCategory : IDisposable
             _cleanupDataMode = CleanupDataMode.Items;
             RefreshPreview();
         }
-        DrawHelpMarker("Choose between currencies (Gil, Tomestones, etc.) or tracked game items.");
+        ImGuiHelpers.HelpMarker("Choose between currencies (Gil, Tomestones, etc.) or tracked game items.", sameLine: true, wrapMultiplier: 25f);
 
         // Data Type/Item Selection based on mode
         if (_cleanupDataMode == CleanupDataMode.Currencies)
@@ -959,7 +944,7 @@ public sealed class StorageCategory : IDisposable
             {
                 _cleanupCurrencyCombo.Draw(200);
             }
-            DrawHelpMarker("Select the currency to delete data for (Gil, Tomestones, etc.)");
+            ImGuiHelpers.HelpMarker("Select the currency to delete data for (Gil, Tomestones, etc.)", sameLine: true, wrapMultiplier: 25f);
         }
         else
         {
@@ -969,7 +954,7 @@ public sealed class StorageCategory : IDisposable
             {
                 _cleanupItemCombo.Draw(250);
             }
-            DrawHelpMarker("Select the game item to delete tracking data for. Only items with historical tracking enabled will have data.");
+            ImGuiHelpers.HelpMarker("Select the game item to delete tracking data for. Only items with historical tracking enabled will have data.", sameLine: true, wrapMultiplier: 25f);
         }
 
         // Character Selection
@@ -979,7 +964,7 @@ public sealed class StorageCategory : IDisposable
         {
             _cleanupCharacterCombo.Draw(200);
         }
-        DrawHelpMarker("Select a specific character or 'All Characters' to delete data across all tracked characters.");
+        ImGuiHelpers.HelpMarker("Select a specific character or 'All Characters' to delete data across all tracked characters.", sameLine: true, wrapMultiplier: 25f);
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -1027,7 +1012,7 @@ public sealed class StorageCategory : IDisposable
     private void DrawDateRangeSection()
     {
         ImGui.TextUnformatted("Date Range");
-        DrawHelpMarker("Select the start and end date/time for the data to delete. Only points within this range will be affected.");
+        ImGuiHelpers.HelpMarker("Select the start and end date/time for the data to delete. Only points within this range will be affected.", sameLine: true, wrapMultiplier: 25f);
 
         // Show cached data range (refreshed via RefreshPreview, not every frame)
         if (_cachedDataRange.earliest.HasValue && _cachedDataRange.latest.HasValue)
@@ -1194,7 +1179,7 @@ public sealed class StorageCategory : IDisposable
                 $"⚠ Backup will create a ~{FormatUtils.FormatByteSize(estimatedCsvBytes)} CSV file");
             ImGui.Unindent();
         }
-        DrawHelpMarker("Export the data to a CSV file before deleting. The backup will be saved in the plugin's data folder.");
+        ImGuiHelpers.HelpMarker("Export the data to a CSV file before deleting. The backup will be saved in the plugin's data folder.", sameLine: true, wrapMultiplier: 25f);
 
         // Vacuum option
         if (ImGui.Checkbox("Reclaim disk space after deletion (VACUUM)##VacuumAfterDelete", ref _vacuumAfterDelete))
@@ -1208,12 +1193,12 @@ public sealed class StorageCategory : IDisposable
                 "⚠ VACUUM can take several seconds on large databases and may cause brief UI freezes.");
             ImGui.Unindent();
         }
-        DrawHelpMarker(
+        ImGuiHelpers.HelpMarker(
             "SQLite does not automatically shrink the database file after deletions.\n" +
             "VACUUM rewrites the database to reclaim unused space.\n\n" +
             "• Recommended after large deletions\n" +
             "• Can be slow on large databases (100MB+)\n" +
-            "• May cause brief UI freezes during execution");
+            "• May cause brief UI freezes during execution", sameLine: true, wrapMultiplier: 25f);
 
         ImGui.Spacing();
 

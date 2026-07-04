@@ -11,7 +11,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Layouts management category in the config window.
 /// Allows viewing, editing, and importing layouts.
 /// </summary>
-public sealed class LayoutsCategory
+public sealed class LayoutsCategory : IConfigCategory
 {
     private readonly ConfigurationService _configService;
 
@@ -42,22 +42,24 @@ public sealed class LayoutsCategory
         _configService = configService;
     }
 
+    public string Label => "Layouts";
+
+    public bool IsDeveloper => false;
+
     public void Draw()
     {
         ImGui.TextUnformatted("Layouts");
         ImGui.Separator();
 
         // Auto-save setting
-        var autoSave = Config.AutoSaveLayoutChanges;
-        if (ImGui.Checkbox("Auto-save layout changes", ref autoSave))
-        {
-            Config.AutoSaveLayoutChanges = autoSave;
-            _configService.MarkDirty();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Automatically save layout changes without requiring manual save.\nDisable for explicit save/discard workflow.");
-        }
+        ConfigUiHelpers.ConfigCheckbox("Auto-save layout changes",
+            () => Config.AutoSaveLayoutChanges,
+            v =>
+            {
+                Config.AutoSaveLayoutChanges = v;
+                _configService.MarkDirty();
+            },
+            "Automatically save layout changes without requiring manual save.\nDisable for explicit save/discard workflow.");
         ImGui.Spacing();
 
         var layouts = Config.Layouts ?? new List<ContentLayoutState>();

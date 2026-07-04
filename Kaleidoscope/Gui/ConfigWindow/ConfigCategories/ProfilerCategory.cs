@@ -9,13 +9,18 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Shows draw time statistics for debugging and performance analysis.
 /// Only visible when CTRL+ALT are held while the config window is focused.
 /// </summary>
-public sealed class ProfilerCategory
+public sealed class ProfilerCategory : IConfigCategory
 {
     private readonly ProfilerService _profilerService;
     private readonly ConfigurationService _configService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
-    
+
     private static readonly string[] StatsViewOptions = { "Basic", "Percentiles", "Rolling", "All" };
+
+    /// <summary>
+    /// Named view for the persisted <c>Config.ProfilerStatsView</c> int (stored as an int for compatibility).
+    /// </summary>
+    private enum StatsView { Basic = 0, Percentiles = 1, Rolling = 2, All = 3 }
     
     /// <summary>
     /// Selected tool for histogram display (session-only, not persisted).
@@ -29,6 +34,10 @@ public sealed class ProfilerCategory
         _currencyTrackerService = currencyTrackerService;
     }
 
+    public string Label => "Profiler";
+
+    public bool IsDeveloper => true;
+
     public void Draw()
     {
         ImGui.TextUnformatted("Profiler");
@@ -38,27 +47,21 @@ public sealed class ProfilerCategory
         ImGui.Spacing();
 
         // Keep developer mode enabled checkbox
-        var devModeEnabled = _configService.Config.DeveloperModeEnabled;
-        if (ImGui.Checkbox("Keep Developer Mode Enabled", ref devModeEnabled))
-        {
-            _configService.Config.DeveloperModeEnabled = devModeEnabled;
-            _configService.Save();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("When enabled, the Developer section stays visible without holding CTRL+ALT");
-        }
+        ConfigUiHelpers.ConfigCheckbox("Keep Developer Mode Enabled",
+            () => _configService.Config.DeveloperModeEnabled,
+            v =>
+            {
+                _configService.Config.DeveloperModeEnabled = v;
+                _configService.Save();
+            },
+            "When enabled, the Developer section stays visible without holding CTRL+ALT");
 
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
         // Enable/disable checkbox
-        var enabled = _profilerService.IsEnabled;
-        if (ImGui.Checkbox("Enable Profiling", ref enabled))
-        {
-            _profilerService.IsEnabled = enabled;
-        }
+        ConfigUiHelpers.ConfigCheckbox("Enable Profiling", () => _profilerService.IsEnabled, v => _profilerService.IsEnabled = v);
 
         ImGui.SameLine();
         if (ImGui.Button("Reset All Stats"))
@@ -66,7 +69,7 @@ public sealed class ProfilerCategory
             _profilerService.ResetAll();
         }
 
-        if (!enabled)
+        if (!_profilerService.IsEnabled)
         {
             ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), "Profiling is disabled. Enable to collect draw time statistics.");
             return;
@@ -75,16 +78,11 @@ public sealed class ProfilerCategory
         ImGui.Spacing();
         
         // Slow operation logging settings
-        var logSlow = _profilerService.LogSlowOperations;
-        if (ImGui.Checkbox("Log Slow Operations", ref logSlow))
-        {
-            _profilerService.LogSlowOperations = logSlow;
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("When enabled, operations that exceed the threshold are logged to the destination selected below.");
-        }
-        
+        ConfigUiHelpers.ConfigCheckbox("Log Slow Operations",
+            () => _profilerService.LogSlowOperations,
+            v => _profilerService.LogSlowOperations = v,
+            "When enabled, operations that exceed the threshold are logged to the destination selected below.");
+
         ImGui.SameLine();
         ImGui.SetNextItemWidth(80);
         var threshold = (float)_profilerService.SlowOperationThresholdMs;
@@ -113,16 +111,14 @@ public sealed class ProfilerCategory
 
         ImGui.Spacing();
 
-        var writeSnapshots = _configService.Config.ProfilerWriteSnapshots;
-        if (ImGui.Checkbox("Write Profiler Snapshots", ref writeSnapshots))
-        {
-            _configService.Config.ProfilerWriteSnapshots = writeSnapshots;
-            _configService.Save();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Periodically append aggregate profiler stats to a rotating CSV file. Independent of dalamud.log.");
-        }
+        ConfigUiHelpers.ConfigCheckbox("Write Profiler Snapshots",
+            () => _configService.Config.ProfilerWriteSnapshots,
+            v =>
+            {
+                _configService.Config.ProfilerWriteSnapshots = v;
+                _configService.Save();
+            },
+            "Periodically append aggregate profiler stats to a rotating CSV file. Independent of dalamud.log.");
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(80);
@@ -153,20 +149,22 @@ public sealed class ProfilerCategory
         }
         
         ImGui.SameLine();
-        var showHistogram = _configService.Config.ProfilerShowHistogram;
-        if (ImGui.Checkbox("Show Histogram", ref showHistogram))
-        {
-            _configService.Config.ProfilerShowHistogram = showHistogram;
-            _configService.Save();
-        }
-        
+        ConfigUiHelpers.ConfigCheckbox("Show Histogram",
+            () => _configService.Config.ProfilerShowHistogram,
+            v =>
+            {
+                _configService.Config.ProfilerShowHistogram = v;
+                _configService.Save();
+            });
+
         ImGui.SameLine();
-        var showChildScopes = _configService.Config.ProfilerShowChildScopes;
-        if (ImGui.Checkbox("Show Child Scopes", ref showChildScopes))
-        {
-            _configService.Config.ProfilerShowChildScopes = showChildScopes;
-            _configService.Save();
-        }
+        ConfigUiHelpers.ConfigCheckbox("Show Child Scopes",
+            () => _configService.Config.ProfilerShowChildScopes,
+            v =>
+            {
+                _configService.Config.ProfilerShowChildScopes = v;
+                _configService.Save();
+            });
 
         ImGui.Spacing();
 
@@ -256,13 +254,13 @@ public sealed class ProfilerCategory
     {
         if (stats.Length == 0) return;
 
-        var statsView = _configService.Config.ProfilerStatsView;
-        var columnCount = statsView switch
+        var view = (StatsView)_configService.Config.ProfilerStatsView;
+        var columnCount = view switch
         {
-            0 => 7,  // Basic: Name, Last, Min, Max, Avg, StdDev, Samples
-            1 => 6,  // Percentiles: Name, P50, P90, P95, P99, Samples
-            2 => 6,  // Rolling: Name, 1s, 5s, FPS, Jitter, Samples
-            _ => 12  // All: Everything
+            StatsView.Basic => 7,        // Basic: Name, Last, Min, Max, Avg, StdDev, Samples
+            StatsView.Percentiles => 6,  // Percentiles: Name, P50, P90, P95, P99, Samples
+            StatsView.Rolling => 6,      // Rolling: Name, 1s, 5s, FPS, Jitter, Samples
+            _ => 12                      // All: Everything
         };
 
         var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable 
@@ -296,9 +294,9 @@ public sealed class ProfilerCategory
 
     private void SetupTableColumns()
     {
-        switch (_configService.Config.ProfilerStatsView)
+        switch ((StatsView)_configService.Config.ProfilerStatsView)
         {
-            case 0: // Basic
+            case StatsView.Basic:
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.None, 2f);
                 ImGui.TableSetupColumn("Last (ms)", ImGuiTableColumnFlags.None, 1f);
                 ImGui.TableSetupColumn("Min (ms)", ImGuiTableColumnFlags.None, 1f);
@@ -308,7 +306,7 @@ public sealed class ProfilerCategory
                 ImGui.TableSetupColumn("Samples", ImGuiTableColumnFlags.None, 1f);
                 break;
 
-            case 1: // Percentiles
+            case StatsView.Percentiles:
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.None, 2f);
                 ImGui.TableSetupColumn("P50 (ms)", ImGuiTableColumnFlags.None, 1f);
                 ImGui.TableSetupColumn("P90 (ms)", ImGuiTableColumnFlags.None, 1f);
@@ -317,7 +315,7 @@ public sealed class ProfilerCategory
                 ImGui.TableSetupColumn("Samples", ImGuiTableColumnFlags.None, 1f);
                 break;
 
-            case 2: // Rolling
+            case StatsView.Rolling:
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.None, 2f);
                 ImGui.TableSetupColumn("1s Avg (ms)", ImGuiTableColumnFlags.None, 1f);
                 ImGui.TableSetupColumn("5s Avg (ms)", ImGuiTableColumnFlags.None, 1f);
@@ -358,9 +356,9 @@ public sealed class ProfilerCategory
             ImGui.TextUnformatted(stat.Name);
         }
 
-        switch (_configService.Config.ProfilerStatsView)
+        switch ((StatsView)_configService.Config.ProfilerStatsView)
         {
-            case 0: // Basic
+            case StatsView.Basic:
                 ImGui.TableNextColumn();
                 DrawTimeValue(stat.LastDrawTimeMs);
                 ImGui.TableNextColumn();
@@ -375,7 +373,7 @@ public sealed class ProfilerCategory
                 ImGui.TextUnformatted(stat.SampleCount.ToString("N0"));
                 break;
 
-            case 1: // Percentiles
+            case StatsView.Percentiles:
                 ImGui.TableNextColumn();
                 DrawTimeValue(stat.P50Ms);
                 ImGui.TableNextColumn();
@@ -388,7 +386,7 @@ public sealed class ProfilerCategory
                 ImGui.TextUnformatted(stat.SampleCount.ToString("N0"));
                 break;
 
-            case 2: // Rolling
+            case StatsView.Rolling:
                 ImGui.TableNextColumn();
                 DrawTimeValue(stat.Rolling1SecMs);
                 ImGui.TableNextColumn();

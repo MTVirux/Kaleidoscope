@@ -12,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow.ConfigCategories;
 /// Developer category for executing raw SQL queries against the plugin database.
 /// Provides a SQL editor, table browser, and query results display.
 /// </summary>
-public sealed class SqlQueryCategory
+public sealed class SqlQueryCategory : IConfigCategory
 {
     private readonly CurrencyTrackerService _currencyTrackerService;
 
@@ -70,6 +70,10 @@ public sealed class SqlQueryCategory
     {
         _currencyTrackerService = currencyTrackerService;
     }
+
+    public string Label => "SQL Query";
+
+    public bool IsDeveloper => true;
 
     public void Draw()
     {
