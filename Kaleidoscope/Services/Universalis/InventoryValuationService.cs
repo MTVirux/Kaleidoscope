@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
 using Kaleidoscope.Services.Characters;
@@ -15,7 +14,6 @@ namespace Kaleidoscope.Services.Universalis;
 /// </summary>
 public sealed class InventoryValuationService : IService, IDisposable
 {
-    private readonly IPluginLog _log;
     private readonly ConfigurationService _configService;
     private readonly InventoryCacheService _inventoryCacheService;
     private readonly SalePriceCacheService _salePriceCacheService;
@@ -30,7 +28,6 @@ public sealed class InventoryValuationService : IService, IDisposable
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
 
     public InventoryValuationService(
-        IPluginLog log,
         ConfigurationService configService,
         InventoryCacheService inventoryCacheService,
         SalePriceCacheService salePriceCacheService,
@@ -40,7 +37,6 @@ public sealed class InventoryValuationService : IService, IDisposable
         CurrencyTrackerService currencyTrackerService,
         WorldDataProvider worldDataProvider)
     {
-        _log = log;
         _configService = configService;
         _inventoryCacheService = inventoryCacheService;
         _salePriceCacheService = salePriceCacheService;

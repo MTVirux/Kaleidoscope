@@ -29,7 +29,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
     private readonly UniversalisService _universalisService;
     private readonly UniversalisWebSocketService _webSocketService;
     private readonly ConfigurationService _configService;
-    private readonly MarketDataCacheService _marketDataCacheService;
     private readonly LayoutEditingService _layoutEditingService;
     private readonly ResourceObservationService _resourcesService;
     private readonly ResourceStore _resourceStore;
@@ -60,7 +59,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         UniversalisService universalisService,
         UniversalisWebSocketService webSocketService,
         ConfigurationService configService,
-        MarketDataCacheService marketDataCacheService,
         LayoutEditingService layoutEditingService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
@@ -71,7 +69,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         _universalisService = universalisService;
         _webSocketService = webSocketService;
         _configService = configService;
-        _marketDataCacheService = marketDataCacheService;
         _layoutEditingService = layoutEditingService;
         _resourcesService = resourcesService;
         _resourceStore = resourceStore;
@@ -111,10 +108,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         new("Config Dirty Tracking", "Cache Architecture", TestConfigDirtyTracking),
         new("Config Debounce", "Cache Architecture", TestConfigDebounce),
         new("Config Statistics", "Cache Architecture", TestConfigStatistics),
-        // Phase 5: Market Data Cache Tests
-        new("Market Cache Price Ops", "Cache Architecture", TestMarketCachePriceOps),
-        new("Market Cache TTL", "Cache Architecture", TestMarketCacheTtl),
-        new("Market Cache Stats", "Cache Architecture", TestMarketCacheStats),
         // Phase 6: Layout Editing Cache Tests
         new("Layout Tool Cache", "Cache Architecture", TestLayoutToolCache),
         new("Layout Snapshot Debounce", "Cache Architecture", TestLayoutSnapshotDebounce),
@@ -271,11 +264,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
             DrawTest("Config Debounce");
             DrawTest("Config Statistics");
 
-            DrawPhaseHeader("Phase 5: Market Data Cache");
-            DrawTest("Market Cache Price Ops");
-            DrawTest("Market Cache TTL");
-            DrawTest("Market Cache Stats");
-
             DrawPhaseHeader("Phase 6: Layout Editing Cache");
             DrawTest("Layout Tool Cache");
             DrawTest("Layout Snapshot Debounce");
@@ -326,18 +314,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
             ImGui.TextUnformatted($"  Cache Hits: {tsStats.CacheHits}");
             ImGui.TextUnformatted($"  Cache Misses: {tsStats.CacheMisses}");
             ImGui.TextUnformatted($"  Hit Rate: {tsStats.HitRate:P1}");
-            ImGui.Unindent();
-
-            ImGui.Spacing();
-            ImGui.TextUnformatted("Market Data Cache:");
-            ImGui.Indent();
-            var marketStats = _marketDataCacheService.GetStatistics();
-            ImGui.TextUnformatted($"  Price Entries: {marketStats.TotalPriceEntries} (Fresh: {marketStats.FreshEntries}, Stale: {marketStats.StaleEntries})");
-            ImGui.TextUnformatted($"  Recent Sales: {marketStats.RecentSalesEntries}");
-            ImGui.TextUnformatted($"  Cache Hits: {marketStats.CacheHits} (Stale Hits: {marketStats.StaleHits})");
-            ImGui.TextUnformatted($"  Cache Misses: {marketStats.CacheMisses}");
-            ImGui.TextUnformatted($"  Hit Rate: {marketStats.HitRate:F1}%");
-            ImGui.TextUnformatted($"  Evictions: {marketStats.Evictions}");
             ImGui.Unindent();
 
             ImGui.Spacing();
@@ -1149,136 +1125,6 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         sw.Stop();
         return new TestResult("Config Statistics", true, $"Statistics verified in {sw.ElapsedMilliseconds}ms",
             $"Before reset: Saves={saveCount}, Skipped={skipCount}, Accesses={accessCount}, LastSave={lastSave?.ToString("HH:mm:ss") ?? "never"}");
-    }
-
-    #endregion
-
-    #region Phase 5: Market Data Cache Tests
-
-    private TestResult TestMarketCachePriceOps()
-    {
-        var sw = Stopwatch.StartNew();
-        // Test SetPrice and GetPrice
-        const int testItemId = 999999;
-        const int testWorldId = 99;
-
-        _marketDataCacheService.SetPrice(testItemId, testWorldId, 1000, 1500,
-            lastSaleNq: 950, lastSaleHq: 1400, source: PriceSource.ApiCall);
-
-        var price = _marketDataCacheService.GetPrice(testItemId, testWorldId);
-        if (!price.HasValue)
-            return new TestResult("Market Cache Price Ops", false, "GetPrice returned null after SetPrice");
-
-        if (price.Value.MinNq != 1000 || price.Value.MinHq != 1500)
-            return new TestResult("Market Cache Price Ops", false,
-                $"Price mismatch: expected (1000, 1500), got ({price.Value.MinNq}, {price.Value.MinHq})");
-
-        // Test UpdateMinPrices (should keep lower price)
-        _marketDataCacheService.UpdateMinPrices(testItemId, testWorldId, 800, 1600);
-
-        price = _marketDataCacheService.GetPrice(testItemId, testWorldId);
-        if (price?.MinNq != 800) // Should be updated to lower price
-            return new TestResult("Market Cache Price Ops", false, "UpdateMinPrices did not update NQ to lower price");
-        if (price?.MinHq != 1500) // Should keep original (lower)
-            return new TestResult("Market Cache Price Ops", false, "UpdateMinPrices incorrectly updated HQ price");
-
-        // Test batch retrieval
-        var batch = _marketDataCacheService.GetPricesBatch(new[] { testItemId, testItemId + 1 }, testWorldId);
-        if (batch.Count != 2)
-            return new TestResult("Market Cache Price Ops", false, "Batch retrieval returned wrong count");
-        if (batch[testItemId] == null)
-            return new TestResult("Market Cache Price Ops", false, "Batch retrieval missing existing item");
-
-        // Cleanup
-        _marketDataCacheService.RemovePrice(testItemId, testWorldId);
-
-        sw.Stop();
-        return new TestResult("Market Cache Price Ops", true, $"Price operations verified in {sw.ElapsedMilliseconds}ms",
-            $"SetPrice, GetPrice, UpdateMinPrices, GetPricesBatch all passed");
-    }
-
-    private TestResult TestMarketCacheTtl()
-    {
-        var sw = Stopwatch.StartNew();
-        const int testItemId = 999998;
-        const int testWorldId = 99;
-
-        // Set a price
-        _marketDataCacheService.SetPrice(testItemId, testWorldId, 500, 750, source: PriceSource.WebSocket);
-
-        // Get with metadata
-        var entry = _marketDataCacheService.GetPriceWithMetadata(testItemId, testWorldId);
-        if (entry == null)
-            return new TestResult("Market Cache TTL", false, "GetPriceWithMetadata returned null");
-
-        // Check freshness properties
-        if (!entry.IsFresh)
-            return new TestResult("Market Cache TTL", false, "Newly created entry is not fresh");
-
-        if (entry.IsStale)
-            return new TestResult("Market Cache TTL", false, "Newly created entry is marked as stale");
-
-        if (entry.IsExpired)
-            return new TestResult("Market Cache TTL", false, "Newly created entry is marked as expired");
-
-        if (entry.Freshness < 0.99)
-            return new TestResult("Market Cache TTL", false, $"Freshness should be ~1.0, got {entry.Freshness:F2}");
-
-        if (entry.Age.TotalSeconds > 5)
-            return new TestResult("Market Cache TTL", false, $"Age should be <5s, got {entry.Age.TotalSeconds:F1}s");
-
-        // Verify source tracking
-        if (entry.Source != PriceSource.WebSocket)
-            return new TestResult("Market Cache TTL", false, $"Source mismatch: expected WebSocket, got {entry.Source}");
-
-        // Cleanup
-        _marketDataCacheService.RemovePrice(testItemId, testWorldId);
-
-        sw.Stop();
-        return new TestResult("Market Cache TTL", true, $"TTL properties verified in {sw.ElapsedMilliseconds}ms",
-            $"IsFresh: {entry.IsFresh}, Age: {entry.Age.TotalMilliseconds:F0}ms, Freshness: {entry.Freshness:F2}");
-    }
-
-    private TestResult TestMarketCacheStats()
-    {
-        var sw = Stopwatch.StartNew();
-        // Reset statistics first
-        _marketDataCacheService.ResetStatistics();
-
-        const int testItemId = 999997;
-        const int testWorldId = 99;
-
-        // Cause a cache miss
-        var _ = _marketDataCacheService.GetPrice(testItemId, testWorldId);
-
-        var missesAfter = _marketDataCacheService.CacheMisses;
-        if (missesAfter != 1)
-            return new TestResult("Market Cache Stats", false, $"Expected 1 cache miss, got {missesAfter}");
-
-        // Set price and cause a cache hit
-        _marketDataCacheService.SetPrice(testItemId, testWorldId, 100, 200);
-        _ = _marketDataCacheService.GetPrice(testItemId, testWorldId);
-
-        var hitsAfter = _marketDataCacheService.CacheHits;
-        if (hitsAfter != 1)
-            return new TestResult("Market Cache Stats", false, $"Expected 1 cache hit, got {hitsAfter}");
-
-        // Get full statistics
-        var stats = _marketDataCacheService.GetStatistics();
-        if (stats.TotalPriceEntries < 1)
-            return new TestResult("Market Cache Stats", false, "Statistics TotalPriceEntries is 0");
-
-        // Test hit rate calculation
-        if (stats.HitRate < 40 || stats.HitRate > 60) // Should be ~50% (1 hit, 1 miss)
-            return new TestResult("Market Cache Stats", false, $"Hit rate unexpected: {stats.HitRate:F1}%");
-
-        // Cleanup
-        _marketDataCacheService.RemovePrice(testItemId, testWorldId);
-        _marketDataCacheService.ResetStatistics();
-
-        sw.Stop();
-        return new TestResult("Market Cache Stats", true, $"Statistics verified in {sw.ElapsedMilliseconds}ms",
-            $"Hits: {hitsAfter}, Misses: {missesAfter}, HitRate: {stats.HitRate:F1}%");
     }
 
     #endregion

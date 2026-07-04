@@ -1,4 +1,3 @@
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Universalis;
 using OtterGui.Services;
 
@@ -11,7 +10,6 @@ namespace Kaleidoscope.Services.Universalis;
 /// </summary>
 public sealed class WorldDataProvider : IService, IDisposable
 {
-    private readonly IPluginLog _log;
     private readonly UniversalisService _universalisService;
 
     private UniversalisWorldData? _worldData;
@@ -39,9 +37,8 @@ public sealed class WorldDataProvider : IService, IDisposable
     /// <summary>Raised whenever world data is (re)loaded, including via fallback.</summary>
     public event Action? OnWorldDataLoaded;
 
-    public WorldDataProvider(IPluginLog log, UniversalisService universalisService)
+    public WorldDataProvider(UniversalisService universalisService)
     {
-        _log = log;
         _universalisService = universalisService;
     }
 
