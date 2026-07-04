@@ -128,7 +128,9 @@ public class SaleOutlierFilterTests
 
         Assert.True(result);
         Assert.Equal(125.0, referencePrice);
-        Assert.Equal("z-score 3.50 > 2.0", reason);
+        // Expected string is built with the same interpolation formats the implementation uses,
+        // so the assertion is stable regardless of the current culture's decimal separator.
+        Assert.Equal($"z-score {3.5:F2} > {2.0:F1}", reason);
     }
 
     [Fact]

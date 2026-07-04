@@ -40,5 +40,9 @@
     <Compile Include="..\Kaleidoscope\Services\Common\RotatingFileWriter.cs" />
     <Compile Include="..\Kaleidoscope\Services\Profiler\ProfilerSnapshot.cs" />
     <Compile Include="..\Kaleidoscope\Services\Profiler\ProfilerCsvFormatter.cs" />
+    <Compile Include="..\Kaleidoscope\Services\Universalis\SaleOutlierFilter.cs" />
+    <Compile Include="..\Kaleidoscope\Models\Universalis\ListingsCacheEntry.cs" />
+    <Compile Include="..\Kaleidoscope\Models\Universalis\RecentSalesCache.cs" />
+    <Compile Include="..\Kaleidoscope\Models\Universalis\PriceTrackingSettings.cs" />
   </ItemGroup>
 </Project>
