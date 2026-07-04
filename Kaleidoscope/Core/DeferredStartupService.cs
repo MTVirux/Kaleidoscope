@@ -4,6 +4,7 @@ using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Kaleidoscope.Gui.Widgets.Common;
+using Kaleidoscope.Services;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Core;
@@ -88,7 +89,7 @@ internal sealed class DeferredStartupService : IDisposable
             {
                 _errorMessage = ex.InnerException?.Message ?? ex.Message;
                 _failed = true;
-                KaleidoscopePlugin.Log.Error($"Failed during deferred startup: {ex}");
+                LogService.Error($"Failed during deferred startup: {ex}");
             }
         }, token);
 
@@ -137,7 +138,7 @@ internal sealed class DeferredStartupService : IDisposable
                 InitialDuration = TimeSpan.FromSeconds(5),
                 Progress        = 1f,
             });
-            KaleidoscopePlugin.Log.Information($"Kaleidoscope loaded successfully in {_elapsed.Elapsed.TotalSeconds:F1}s.");
+            LogService.Info($"Kaleidoscope loaded successfully in {_elapsed.Elapsed.TotalSeconds:F1}s.");
             Dispose();
             return;
         }

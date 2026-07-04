@@ -196,8 +196,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _framework.Update -= OnFrameworkUpdate;
         _observations.ObservationCommitted -= OnObservationCommitted;
 
-        // Best-effort final flush so changes committed since the last tick aren't lost. The old
-        // poll offered no such guarantee (anything inside its last 1 s window was dropped).
+        // Drain changes committed since the last tick. This only persists anything while a
+        // downstream OnValuesChanged subscriber is still attached: under the container's
+        // reverse-creation-order disposal, CurrencyTrackerService (created after this service) is
+        // disposed first and has already unsubscribed, so at shutdown this flush is typically a no-op.
         FlushProjection();
 
         LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Disposed");

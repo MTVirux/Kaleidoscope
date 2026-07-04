@@ -12,6 +12,9 @@ namespace Kaleidoscope;
 /// </summary>
 public sealed class KaleidoscopePlugin : IDalamudPlugin
 {
+    // OtterGui logger required to wire the ServiceManager. Also the only safe log sink before
+    // LogService.Initialize runs (ctor failure path) and after LogService.Shutdown (Dispose);
+    // everything in between routes through LogService.
     public static readonly Logger Log = new();
 
     private readonly ServiceManager? _services;
