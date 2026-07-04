@@ -9,19 +9,6 @@ namespace Kaleidoscope.Gui.Widgets.Graph;
 /// </summary>
 public static class GraphControls
 {
-    #region Helper Methods
-    
-    /// <summary>
-    /// Checks if mouse interactions should be processed.
-    /// Returns false if another window is on top blocking interactions.
-    /// </summary>
-    private static bool CanProcessInteraction()
-    {
-        return ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-    }
-    
-    #endregion
-    
     #region Time Unit Names
     
     /// <summary>
@@ -38,33 +25,27 @@ public static class GraphControls
     /// </summary>
     public readonly struct ControlsDrawerResult
     {
-        /// <summary>Minimum corner of the drawer bounds (including toggle button).</summary>
-        public readonly Vector2 BoundsMin;
-        
-        /// <summary>Maximum corner of the drawer bounds (including toggle button).</summary>
-        public readonly Vector2 BoundsMax;
-        
-        /// <summary>Whether the bounds are valid.</summary>
-        public readonly bool IsValid;
-        
+        /// <summary>Overlay region covering the drawer bounds (including toggle button), used for input blocking.</summary>
+        public readonly OverlayRegion Region;
+
         /// <summary>Updated open/closed state.</summary>
         public readonly bool IsOpen;
-        
+
         /// <summary>Updated auto-scroll enabled state.</summary>
         public readonly bool AutoScrollEnabled;
-        
+
         /// <summary>Updated auto-scroll time value.</summary>
         public readonly int AutoScrollTimeValue;
-        
+
         /// <summary>Updated auto-scroll time unit.</summary>
         public readonly TimeUnit AutoScrollTimeUnit;
-        
+
         /// <summary>Updated auto-scroll now position (0-100%).</summary>
         public readonly float AutoScrollNowPosition;
-        
+
         /// <summary>Whether any settings changed this frame.</summary>
         public readonly bool SettingsChanged;
-        
+
         public ControlsDrawerResult(
             Vector2 boundsMin,
             Vector2 boundsMax,
@@ -75,9 +56,7 @@ public static class GraphControls
             float autoScrollNowPosition,
             bool settingsChanged)
         {
-            BoundsMin = boundsMin;
-            BoundsMax = boundsMax;
-            IsValid = true;
+            Region = new OverlayRegion(boundsMin, boundsMax);
             IsOpen = isOpen;
             AutoScrollEnabled = autoScrollEnabled;
             AutoScrollTimeValue = autoScrollTimeValue;
@@ -85,8 +64,8 @@ public static class GraphControls
             AutoScrollNowPosition = autoScrollNowPosition;
             SettingsChanged = settingsChanged;
         }
-        
-        public static readonly ControlsDrawerResult Invalid = new(Vector2.Zero, Vector2.Zero, false, false, 1, TimeUnit.Hours, 75f, false);
+
+        public static readonly ControlsDrawerResult Invalid = default;
     }
     
     #endregion
@@ -263,8 +242,8 @@ public static class GraphControls
         var colors = style.Colors;
         var buttonBgColor = ImGui.GetColorU32(new Vector4(colors.FrameBackground.X, colors.FrameBackground.Y, colors.FrameBackground.Z, 0.9f));
         var buttonBorderColor = ImGui.GetColorU32(colors.AxisLine);
-        var buttonHovered = mousePos.X >= toggleButtonPos.X && mousePos.X <= toggleButtonPos.X + toggleButtonWidth &&
-                           mousePos.Y >= toggleButtonPos.Y && mousePos.Y <= toggleButtonPos.Y + toggleButtonHeight;
+        var buttonHovered = GraphOverlay.RectContains(toggleButtonPos,
+            new Vector2(toggleButtonPos.X + toggleButtonWidth, toggleButtonPos.Y + toggleButtonHeight), mousePos);
         
         if (buttonHovered)
         {
@@ -287,13 +266,13 @@ public static class GraphControls
         drawList.AddCircleFilled(iconCenter, 2f, iconColor);
         
         // Handle toggle button click (only if no other window is blocking)
-        if (buttonHovered && CanProcessInteraction() && ImGui.IsMouseClicked(0))
+        if (buttonHovered && GraphOverlay.CanProcessInteraction() && ImGui.IsMouseClicked(0))
         {
             newIsOpen = !isOpen;
         }
-        
+
         // Show tooltip (only if window is not blocked)
-        if (buttonHovered && CanProcessInteraction())
+        if (buttonHovered && GraphOverlay.CanProcessInteraction())
         {
             ImGui.SetTooltip(isOpen ? "Close controls" : "Open controls");
         }
@@ -317,8 +296,7 @@ public static class GraphControls
         var colors = style.Colors;
         var checkboxPos = new Vector2(contentX, contentY + (rowHeight - checkboxSize) / 2);
         var checkboxRowEnd = new Vector2(contentX + drawerWidth - drawerPadding * 2, contentY + rowHeight);
-        var checkboxRowHovered = mousePos.X >= contentX && mousePos.X <= checkboxRowEnd.X &&
-                                mousePos.Y >= contentY && mousePos.Y <= checkboxRowEnd.Y;
+        var checkboxRowHovered = GraphOverlay.RectContains(new Vector2(contentX, contentY), checkboxRowEnd, mousePos);
         
         var checkboxBorderColor = checkboxRowHovered 
             ? ImGui.GetColorU32(colors.TextPrimary) 
@@ -345,7 +323,7 @@ public static class GraphControls
         var labelColor = ImGui.GetColorU32(autoScrollEnabled ? colors.TextPrimary : colors.TextSecondary);
         drawList.AddText(labelPos, labelColor, "Auto-scroll");
         
-        return checkboxRowHovered && CanProcessInteraction() && ImGui.IsMouseClicked(0);
+        return checkboxRowHovered && GraphOverlay.CanProcessInteraction() && ImGui.IsMouseClicked(0);
     }
     
     /// <summary>
@@ -373,41 +351,30 @@ public static class GraphControls
         var changed = false;
         
         // Draw "-" button
+        var stepButtonHeight = rowHeight - 4;
         var minusBtnPos = new Vector2(contentX, contentY + 2);
-        var minusBtnHovered = mousePos.X >= minusBtnPos.X && mousePos.X <= minusBtnPos.X + smallButtonWidth &&
-                             mousePos.Y >= minusBtnPos.Y && mousePos.Y <= minusBtnPos.Y + rowHeight - 4;
-        var minusBtnBg = minusBtnHovered 
-            ? ImGui.GetColorU32(new Vector4(0.35f, 0.35f, 0.35f, 0.8f))
-            : ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.7f));
-        drawList.AddRectFilled(minusBtnPos, new Vector2(minusBtnPos.X + smallButtonWidth, minusBtnPos.Y + rowHeight - 4), minusBtnBg, rounding);
-        drawList.AddRect(minusBtnPos, new Vector2(minusBtnPos.X + smallButtonWidth, minusBtnPos.Y + rowHeight - 4), ImGui.GetColorU32(colors.GridLine), rounding);
-        var minusText = "-";
-        var minusTextSize = ImGui.CalcTextSize(minusText);
-        drawList.AddText(new Vector2(minusBtnPos.X + (smallButtonWidth - minusTextSize.X) / 2, minusBtnPos.Y + (rowHeight - 4 - minusTextSize.Y) / 2), 
-            ImGui.GetColorU32(colors.TextPrimary), minusText);
-        
-        if (minusBtnHovered && CanProcessInteraction() && ImGui.IsMouseClicked(0) && currentValue > 1)
+        if (DrawStepButton(drawList, minusBtnPos, smallButtonWidth, stepButtonHeight, "-", currentValue > 1, mousePos, style))
         {
             newValue = currentValue - 1;
             changed = true;
         }
-        
+
         // Value input box - use ImGui InputInt for direct editing
         var valueBoxPos = new Vector2(minusBtnPos.X + smallButtonWidth + spacing, contentY + 2);
         var inputHeight = rowHeight - 4;
-        
+
         // Position the cursor for ImGui widget
         ImGui.SetCursorScreenPos(valueBoxPos);
-        
+
         // Style the input to match drawer theme
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, rounding);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(4, (inputHeight - ImGui.GetTextLineHeight()) / 2));
-        ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.1f, 0.1f, 0.1f, 0.8f));
-        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, new Vector4(0.15f, 0.15f, 0.15f, 0.9f));
-        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, new Vector4(0.2f, 0.2f, 0.2f, 1.0f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, colors.DrawerInputBackground);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, colors.DrawerInputBackgroundHovered);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, colors.DrawerInputBackgroundActive);
         ImGui.PushStyleColor(ImGuiCol.Border, colors.GridLine);
         ImGui.PushStyleColor(ImGuiCol.Text, colors.Neutral);
-        
+
         ImGui.SetNextItemWidth(valueBoxWidth);
         var inputValue = currentValue;
         if (ImGui.InputInt("##GraphValueInput", ref inputValue, 0, 0))
@@ -416,31 +383,47 @@ public static class GraphControls
             newValue = Math.Clamp(inputValue, 1, 999);
             changed = newValue != currentValue;
         }
-        
+
         ImGui.PopStyleColor(5);
         ImGui.PopStyleVar(2);
-        
+
         // "+" button
         var plusBtnPos = new Vector2(valueBoxPos.X + valueBoxWidth + spacing, contentY + 2);
-        var plusBtnHovered = mousePos.X >= plusBtnPos.X && mousePos.X <= plusBtnPos.X + smallButtonWidth &&
-                            mousePos.Y >= plusBtnPos.Y && mousePos.Y <= plusBtnPos.Y + rowHeight - 4;
-        var plusBtnBg = plusBtnHovered 
-            ? ImGui.GetColorU32(new Vector4(0.35f, 0.35f, 0.35f, 0.8f))
-            : ImGui.GetColorU32(new Vector4(0.2f, 0.2f, 0.2f, 0.7f));
-        drawList.AddRectFilled(plusBtnPos, new Vector2(plusBtnPos.X + smallButtonWidth, plusBtnPos.Y + rowHeight - 4), plusBtnBg, rounding);
-        drawList.AddRect(plusBtnPos, new Vector2(plusBtnPos.X + smallButtonWidth, plusBtnPos.Y + rowHeight - 4), ImGui.GetColorU32(colors.GridLine), rounding);
-        var plusText = "+";
-        var plusTextSize = ImGui.CalcTextSize(plusText);
-        drawList.AddText(new Vector2(plusBtnPos.X + (smallButtonWidth - plusTextSize.X) / 2, plusBtnPos.Y + (rowHeight - 4 - plusTextSize.Y) / 2), 
-            ImGui.GetColorU32(colors.TextPrimary), plusText);
-        
-        if (plusBtnHovered && CanProcessInteraction() && ImGui.IsMouseClicked(0) && currentValue < 999)
+        if (DrawStepButton(drawList, plusBtnPos, smallButtonWidth, stepButtonHeight, "+", currentValue < 999, mousePos, style))
         {
             newValue = currentValue + 1;
             changed = true;
         }
-        
+
         return changed;
+    }
+
+    /// <summary>
+    /// Draws a small +/- step button and returns true if it was clicked while enabled.
+    /// </summary>
+    private static bool DrawStepButton(
+        ImDrawListPtr drawList,
+        Vector2 pos,
+        float width,
+        float height,
+        string label,
+        bool enabled,
+        Vector2 mousePos,
+        GraphStyleConfig style)
+    {
+        var colors = style.Colors;
+        var max = new Vector2(pos.X + width, pos.Y + height);
+        var hovered = GraphOverlay.RectContains(pos, max, mousePos);
+        var bg = ImGui.GetColorU32(hovered ? colors.DrawerButtonHovered : colors.DrawerButton);
+
+        drawList.AddRectFilled(pos, max, bg, style.DrawerRounding);
+        drawList.AddRect(pos, max, ImGui.GetColorU32(colors.GridLine), style.DrawerRounding);
+
+        var textSize = ImGui.CalcTextSize(label);
+        drawList.AddText(new Vector2(pos.X + (width - textSize.X) / 2, pos.Y + (height - textSize.Y) / 2),
+            ImGui.GetColorU32(colors.TextPrimary), label);
+
+        return hovered && enabled && GraphOverlay.CanProcessInteraction() && ImGui.IsMouseClicked(0);
     }
     
     /// <summary>
@@ -472,14 +455,14 @@ public static class GraphControls
         {
             var unitBtnPos = new Vector2(contentX + i * (unitButtonWidth + spacing), contentY + 2);
             var isSelected = (int)currentUnit == i;
-            var unitBtnHovered = mousePos.X >= unitBtnPos.X && mousePos.X <= unitBtnPos.X + unitButtonWidth &&
-                                mousePos.Y >= unitBtnPos.Y && mousePos.Y <= unitBtnPos.Y + unitButtonHeight;
-            
-            var unitBtnBg = isSelected 
+            var unitBtnHovered = GraphOverlay.RectContains(unitBtnPos,
+                new Vector2(unitBtnPos.X + unitButtonWidth, unitBtnPos.Y + unitButtonHeight), mousePos);
+
+            var unitBtnBg = isSelected
                 ? ImGui.GetColorU32(new Vector4(colors.Neutral.X, colors.Neutral.Y, colors.Neutral.Z, 0.35f))
-                : unitBtnHovered 
-                    ? ImGui.GetColorU32(new Vector4(0.3f, 0.3f, 0.3f, 0.6f))
-                    : ImGui.GetColorU32(new Vector4(0.15f, 0.15f, 0.15f, 0.5f));
+                : unitBtnHovered
+                    ? ImGui.GetColorU32(colors.DrawerUnitButtonHovered)
+                    : ImGui.GetColorU32(colors.DrawerUnitButton);
             var unitBtnBorder = isSelected 
                 ? ImGui.GetColorU32(colors.Neutral) 
                 : ImGui.GetColorU32(colors.GridLine);
@@ -493,7 +476,7 @@ public static class GraphControls
             drawList.AddText(new Vector2(unitBtnPos.X + (unitButtonWidth - unitTextSize.X) / 2, unitBtnPos.Y + (unitButtonHeight - unitTextSize.Y) / 2), 
                 unitTextColor, unitText);
             
-            if (unitBtnHovered && CanProcessInteraction() && ImGui.IsMouseClicked(0))
+            if (unitBtnHovered && GraphOverlay.CanProcessInteraction() && ImGui.IsMouseClicked(0))
             {
                 newUnit = (TimeUnit)i;
                 changed = true;
@@ -538,9 +521,9 @@ public static class GraphControls
         var sliderTrackPos = new Vector2(contentX, contentY + (rowHeight - sliderHeight) / 2 - 4);
         var sliderTrackWidth = drawerWidth - drawerPadding * 2;
         
-        drawList.AddRectFilled(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight), 
-            ImGui.GetColorU32(new Vector4(0.15f, 0.15f, 0.15f, 0.8f)), sliderRounding);
-        drawList.AddRect(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight), 
+        drawList.AddRectFilled(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight),
+            ImGui.GetColorU32(colors.DrawerSliderTrack), sliderRounding);
+        drawList.AddRect(sliderTrackPos, new Vector2(sliderTrackPos.X + sliderTrackWidth, sliderTrackPos.Y + sliderHeight),
             ImGui.GetColorU32(colors.GridLine), sliderRounding);
         
         // Fill
@@ -556,12 +539,13 @@ public static class GraphControls
         handleX = Math.Clamp(handleX, sliderTrackPos.X, sliderTrackPos.X + sliderTrackWidth - handleWidth);
         var handleY = sliderTrackPos.Y + sliderHeight / 2 - handleHeight / 2;
         
-        var sliderHovered = mousePos.X >= sliderTrackPos.X - 5 && mousePos.X <= sliderTrackPos.X + sliderTrackWidth + 5 &&
-                           mousePos.Y >= handleY && mousePos.Y <= handleY + handleHeight;
-        
-        var handleColor = sliderHovered 
+        var sliderHovered = GraphOverlay.RectContains(
+            new Vector2(sliderTrackPos.X - 5, handleY),
+            new Vector2(sliderTrackPos.X + sliderTrackWidth + 5, handleY + handleHeight), mousePos);
+
+        var handleColor = sliderHovered
             ? ImGui.GetColorU32(colors.Neutral)
-            : ImGui.GetColorU32(new Vector4(0.6f, 0.6f, 0.6f, 1f));
+            : ImGui.GetColorU32(colors.DrawerSliderHandle);
         drawList.AddRectFilled(new Vector2(handleX, handleY), new Vector2(handleX + handleWidth, handleY + handleHeight), handleColor, rounding);
         drawList.AddRect(new Vector2(handleX, handleY), new Vector2(handleX + handleWidth, handleY + handleHeight), 
             ImGui.GetColorU32(colors.AxisLine), rounding);
@@ -586,29 +570,6 @@ public static class GraphControls
         
         return changed;
     }
-    
-    #endregion
-    
-    #region Helper Methods
-    
-    /// <summary>
-    /// Checks if the mouse is within the controls drawer bounds.
-    /// Also checks that no other window is on top blocking the interaction.
-    /// </summary>
-    /// <param name="result">The drawer result from the previous draw call.</param>
-    /// <returns>True if mouse is over the drawer and the window is hovered.</returns>
-    public static bool IsMouseOverDrawer(ControlsDrawerResult result)
-    {
-        if (!result.IsValid) return false;
-        
-        // Check if the current window is hovered (no other window on top blocking it)
-        if (!ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
-            return false;
-        
-        var mousePos = ImGui.GetMousePos();
-        return mousePos.X >= result.BoundsMin.X && mousePos.X <= result.BoundsMax.X &&
-               mousePos.Y >= result.BoundsMin.Y && mousePos.Y <= result.BoundsMax.Y;
-    }
-    
+
     #endregion
 }

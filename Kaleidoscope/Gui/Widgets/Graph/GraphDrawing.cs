@@ -98,26 +98,14 @@ public static class GraphDrawing
         // Draw dashed vertical line
         var dashLength = style.CrosshairDashLength;
         var gapLength = style.CrosshairGapLength;
-        var y = vTop.Y;
-        while (y < vBottom.Y)
-        {
-            var endY = Math.Min(y + dashLength, vBottom.Y);
-            drawList.AddLine(new Vector2(vTop.X, y), new Vector2(vTop.X, endY), colorU32, style.CrosshairThickness);
-            y += dashLength + gapLength;
-        }
-        
+        DrawDashedLine(drawList, vTop, new Vector2(vTop.X, vBottom.Y), colorU32, dashLength, gapLength, style.CrosshairThickness);
+
         // Horizontal line
         var hLeft = ImPlot.PlotToPixels(plotLimits.X.Min, mouseY);
         var hRight = ImPlot.PlotToPixels(plotLimits.X.Max, mouseY);
-        
+
         // Draw dashed horizontal line
-        var x = hLeft.X;
-        while (x < hRight.X)
-        {
-            var endX = Math.Min(x + dashLength, hRight.X);
-            drawList.AddLine(new Vector2(x, hLeft.Y), new Vector2(endX, hLeft.Y), colorU32, style.CrosshairThickness);
-            x += dashLength + gapLength;
-        }
+        DrawDashedLine(drawList, hLeft, new Vector2(hRight.X, hLeft.Y), colorU32, dashLength, gapLength, style.CrosshairThickness);
         
         // Draw value label on Y axis (clipped to plot area so it goes under the Y-axis)
         var valueLabel = NumberFormatter.Format(valueAtMouse, numberFormat);
@@ -168,16 +156,7 @@ public static class GraphDrawing
         
         if (dashed)
         {
-            // Draw dashed line
-            var dashLength = style.PriceLineDashLength;
-            var gapLength = style.PriceLineGapLength;
-            var x = p1.X;
-            while (x < p2.X)
-            {
-                var endX = Math.Min(x + dashLength, p2.X);
-                drawList.AddLine(new Vector2(x, p1.Y), new Vector2(endX, p1.Y), colorU32, thickness);
-                x += dashLength + gapLength;
-            }
+            DrawDashedLine(drawList, p1, new Vector2(p2.X, p1.Y), colorU32, style.PriceLineDashLength, style.PriceLineGapLength, thickness);
         }
         else
         {
@@ -217,6 +196,29 @@ public static class GraphDrawing
         var label = NumberFormatter.Format(yValue, numberFormat ?? NumberFormatConfig.Compact);
         DrawPriceLine(yValue, label, colors.CurrentPriceLine, style.PriceLineThickness, dashed: true, style);
     }
-    
+
+    #endregion
+
+    #region Dashed Line Helper
+
+    /// <summary>
+    /// Draws a straight dashed line between two points.
+    /// </summary>
+    private static void DrawDashedLine(ImDrawListPtr drawList, Vector2 start, Vector2 end, uint color, float dashLength, float gapLength, float thickness)
+    {
+        var delta = end - start;
+        var length = delta.Length();
+        if (length < float.Epsilon)
+            return;
+
+        var direction = delta / length;
+        var step = dashLength + gapLength;
+        for (var pos = 0f; pos < length; pos += step)
+        {
+            var segmentEnd = Math.Min(pos + dashLength, length);
+            drawList.AddLine(start + direction * pos, start + direction * segmentEnd, color, thickness);
+        }
+    }
+
     #endregion
 }

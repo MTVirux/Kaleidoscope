@@ -53,7 +53,11 @@ public enum TimeUnit
 /// </summary>
 public enum LegendPosition
 {
-    /// <summary>Legend is drawn outside the graph area (to the right).</summary>
+    /// <summary>
+    /// Deprecated. The outside (child-window) legend was removed; this value is retained only for
+    /// backward compatibility with persisted settings and is coerced to <see cref="InsideTopLeft"/> at use sites.
+    /// </summary>
+    [Obsolete("The outside legend was removed; this value is coerced to InsideTopLeft. Retained for persisted-settings compatibility.")]
     Outside = 0,
     
     /// <summary>Legend is drawn inside the graph area (top-left corner).</summary>

@@ -9,6 +9,15 @@ namespace Kaleidoscope.Gui.Widgets.Graph;
 /// </summary>
 public static class GraphValueLabels
 {
+    /// <summary>Extra vertical gap below the highest label, as a fraction of label height.</summary>
+    private const float StairVerticalMarginFactor = 0.3f;
+
+    /// <summary>Horizontal stagger applied on alternating rows, as a fraction of the max label width.</summary>
+    private const float AlternatingRowOffsetFactor = 0.08f;
+
+    /// <summary>Extra horizontal padding between label columns, in pixels.</summary>
+    private const float ColumnPadding = 5f;
+
     /// <summary>
     /// Contains information about a rendered value label for hover detection.
     /// </summary>
@@ -39,9 +48,7 @@ public static class GraphValueLabels
         }
         
         /// <summary>Checks if a point is within this label's bounds.</summary>
-        public bool Contains(Vector2 point) =>
-            point.X >= BoundsMin.X && point.X <= BoundsMax.X &&
-            point.Y >= BoundsMin.Y && point.Y <= BoundsMax.Y;
+        public bool Contains(Vector2 point) => GraphOverlay.RectContains(BoundsMin, BoundsMax, point);
     }
     
     /// <summary>
@@ -160,8 +167,7 @@ public static class GraphValueLabels
         // Sort by value descending (highest values first, will be placed at top)
         labels.Sort((a, b) => b.Value.CompareTo(a.Value));
         
-        // Calculate label dimensions
-        var labelHeight = labels[0].LabelSize.Y + padding * 2;
+        // Calculate max label width for column layout
         var maxLabelWidth = 0f;
         foreach (var l in labels)
         {
@@ -277,7 +283,7 @@ public static class GraphValueLabels
         
         // Calculate grid dimensions
         var labelHeight = highestLabelHeight;
-        var columnWidth = maxLabelWidth + 5f;
+        var columnWidth = maxLabelWidth + ColumnPadding;
         
         // Calculate available columns
         var numColumns = Math.Max(1, (int)((rightEdge - startX) / columnWidth));
@@ -299,7 +305,7 @@ public static class GraphValueLabels
         result.Add((highestLabel, startX, highestY));
         
         // Calculate starting Y for stair pattern (one label height below highest, plus a small margin)
-        var stairStartY = highestY + labelHeight + (labelHeight * 0.3f);
+        var stairStartY = highestY + labelHeight + (labelHeight * StairVerticalMarginFactor);
         
         // Track the last Y position for each column (to handle wrapping with proper spacing)
         var columnLastY = new float[numColumns];
@@ -322,9 +328,9 @@ public static class GraphValueLabels
             var thisLabelWidth = label.LabelSize.X + padding * 2;
             var centeringOffset = (maxLabelWidth - thisLabelWidth) / 2;
             
-            // Add horizontal offset on alternating rows (0.3f of label width)
+            // Add horizontal offset on alternating rows
             var rowInColumn = columnRowCount[currentCol];
-            var alternatingOffset = (rowInColumn % 2 == 1) ? (maxLabelWidth * 0.08f) : 0f;
+            var alternatingOffset = (rowInColumn % 2 == 1) ? (maxLabelWidth * AlternatingRowOffsetFactor) : 0f;
             var currentX = startX + currentCol * columnWidth + alternatingOffset + centeringOffset;
             
             // Check if this column already has a label - if so, ensure 1 label height spacing
@@ -367,50 +373,5 @@ public static class GraphValueLabels
         }
         
         return result;
-    }
-    
-    /// <summary>
-    /// Draws a value label at the end of a series line.
-    /// </summary>
-    /// <param name="plotX">X position in plot coordinates.</param>
-    /// <param name="plotY">Y position in plot coordinates.</param>
-    /// <param name="value">The value to display.</param>
-    /// <param name="color">The series color (RGB).</param>
-    /// <param name="offsetX">Horizontal offset from the point. Default: 0</param>
-    /// <param name="offsetY">Vertical offset from the point. Default: 0</param>
-    /// <param name="style">Optional style configuration.</param>
-    public static void DrawValueLabel(double plotX, double plotY, float value, Vector3 color, float offsetX = 0f, float offsetY = 0f, GraphStyleConfig? style = null)
-    {
-        style ??= GraphStyleConfig.Default;
-        
-        var drawList = ImPlot.GetPlotDrawList();
-        var pixelPos = ImPlot.PlotToPixels(plotX, plotY);
-        
-        // Apply offset
-        var labelPos = new Vector2(pixelPos.X + offsetX, pixelPos.Y + offsetY);
-        
-        var label = NumberFormatter.FormatCompact(value);
-        var labelSize = ImGui.CalcTextSize(label);
-        
-        var padding = style.ValueLabelPadding;
-        var bgMin = new Vector2(labelPos.X - padding, labelPos.Y - labelSize.Y / 2 - padding);
-        var bgMax = new Vector2(labelPos.X + labelSize.X + padding, labelPos.Y + labelSize.Y / 2 + padding);
-        
-        // Draw connecting line from point to label
-        var lineColor = ImGui.GetColorU32(new Vector4(color.X, color.Y, color.Z, 0.6f));
-        drawList.AddLine(pixelPos, new Vector2(labelPos.X, labelPos.Y), lineColor, style.ValueLabelLineThickness);
-        
-        // Background
-        var bgColor = new Vector4(color.X * 0.3f, color.Y * 0.3f, color.Z * 0.3f, 0.9f);
-        drawList.AddRectFilled(bgMin, bgMax, ImGui.GetColorU32(bgColor), style.ValueLabelRounding);
-        
-        // Border with series color
-        var borderColor = new Vector4(color.X, color.Y, color.Z, 0.8f);
-        drawList.AddRect(bgMin, bgMax, ImGui.GetColorU32(borderColor), style.ValueLabelRounding);
-        
-        // Text in series color
-        var textColor = new Vector4(color.X, color.Y, color.Z, 1f);
-        var textPos = new Vector2(labelPos.X, labelPos.Y - labelSize.Y / 2);
-        drawList.AddText(textPos, ImGui.GetColorU32(textColor), label);
     }
 }

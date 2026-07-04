@@ -27,10 +27,16 @@ public sealed class GraphWidget : ISettingsProvider
     private bool _hideCharacterColorMode;
     
     /// <summary>
-    /// Display names for legend positions.
+    /// Selectable legend positions (the deprecated <see cref="LegendPosition.Outside"/> is intentionally excluded).
     /// </summary>
-    private static readonly string[] LegendPositionNames = 
-        { "Outside (right)", "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
+    private static readonly LegendPosition[] SelectableLegendPositions =
+        { LegendPosition.InsideTopLeft, LegendPosition.InsideTopRight, LegendPosition.InsideBottomLeft, LegendPosition.InsideBottomRight };
+
+    /// <summary>
+    /// Display names for <see cref="SelectableLegendPositions"/> (parallel array).
+    /// </summary>
+    private static readonly string[] LegendPositionNames =
+        { "Inside Top-Left", "Inside Top-Right", "Inside Bottom-Left", "Inside Bottom-Right" };
     
     /// <summary>
     /// Display names for auto-scroll time units.
@@ -90,17 +96,7 @@ public sealed class GraphWidget : ISettingsProvider
     /// Gets whether the mouse is over an overlay element (legend, controls drawer).
     /// </summary>
     public bool IsMouseOverOverlay => _graph.IsMouseOverOverlay;
-    
-    /// <summary>
-    /// Gets whether the mouse is currently over the inside legend.
-    /// </summary>
-    public bool IsMouseOverInsideLegend => _graph.IsMouseOverOverlay;
-    
-    /// <summary>
-    /// Gets whether the mouse is currently over the controls drawer.
-    /// </summary>
-    public bool IsMouseOverControlsDrawer => _graph.IsMouseOverOverlay;
-    
+
     /// <summary>
     /// Gets or sets whether auto-scroll (follow mode) is enabled.
     /// </summary>
@@ -260,7 +256,12 @@ public sealed class GraphWidget : ISettingsProvider
         config.LegendHeightPercent = _boundSettings.LegendHeightPercent;
         config.ShowLegend = _boundSettings.ShowLegend;
         config.LegendCollapsed = _boundSettings.LegendCollapsed;
-        config.LegendPosition = _boundSettings.LegendPosition;
+        // Coerce the deprecated "Outside" position (from older persisted settings) to a sensible inside default.
+#pragma warning disable CS0618
+        config.LegendPosition = _boundSettings.LegendPosition == LegendPosition.Outside
+            ? LegendPosition.InsideTopLeft
+            : _boundSettings.LegendPosition;
+#pragma warning restore CS0618
         config.GraphType = _boundSettings.GraphType;
         config.ShowXAxisTimestamps = _boundSettings.ShowXAxisTimestamps;
         config.ShowCrosshair = _boundSettings.ShowCrosshair;
@@ -357,34 +358,23 @@ public sealed class GraphWidget : ISettingsProvider
             
             if (showLegend)
             {
-                var legendPosition = (int)settings.LegendPosition;
-                if (ImGui.Combo("Legend position", ref legendPosition, LegendPositionNames, LegendPositionNames.Length))
+                // Legacy "Outside" positions are coerced to the first inside option for display.
+                var positionIndex = Array.IndexOf(SelectableLegendPositions, settings.LegendPosition);
+                if (positionIndex < 0) positionIndex = 0;
+                if (ImGui.Combo("Legend position", ref positionIndex, LegendPositionNames, LegendPositionNames.Length))
                 {
-                    settings.LegendPosition = (LegendPosition)legendPosition;
+                    settings.LegendPosition = SelectableLegendPositions[positionIndex];
                     changed = true;
                 }
-                ShowSettingsTooltip("Where to display the legend: outside the graph or inside at a corner.");
-                
-                if (settings.LegendPosition == LegendPosition.Outside)
+                ShowSettingsTooltip("Where to display the legend inside the graph.");
+
+                var legendHeight = settings.LegendHeightPercent;
+                if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
                 {
-                    var legendWidth = settings.LegendWidth;
-                    if (ImGui.SliderFloat("Legend width", ref legendWidth, 60f, 250f, "%.0f px"))
-                    {
-                        settings.LegendWidth = legendWidth;
-                        changed = true;
-                    }
-                    ShowSettingsTooltip("Width of the scrollable legend panel.");
+                    settings.LegendHeightPercent = legendHeight;
+                    changed = true;
                 }
-                else
-                {
-                    var legendHeight = settings.LegendHeightPercent;
-                    if (ImGui.SliderFloat("Legend height", ref legendHeight, 10f, 80f, "%.0f %%"))
-                    {
-                        settings.LegendHeightPercent = legendHeight;
-                        changed = true;
-                    }
-                    ShowSettingsTooltip("Maximum height of the inside legend as a percentage of the graph height.");
-                }
+                ShowSettingsTooltip("Maximum height of the inside legend as a percentage of the graph height.");
             }
             
             ImGui.Spacing();

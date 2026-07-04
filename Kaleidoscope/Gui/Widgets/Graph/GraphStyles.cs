@@ -81,9 +81,40 @@ public class MTGraphColorConfig
     
     /// <summary>Secondary text color - dimmed gray by default.</summary>
     public Vector4 TextSecondary { get; set; } = new(0.55f, 0.58f, 0.62f, 1f);
-    
+
     #endregion
-    
+
+    #region Controls Drawer Colors
+
+    /// <summary>Controls drawer small button (+/-) background.</summary>
+    public Vector4 DrawerButton { get; set; } = new(0.2f, 0.2f, 0.2f, 0.7f);
+
+    /// <summary>Controls drawer small button (+/-) background when hovered.</summary>
+    public Vector4 DrawerButtonHovered { get; set; } = new(0.35f, 0.35f, 0.35f, 0.8f);
+
+    /// <summary>Controls drawer numeric input field background.</summary>
+    public Vector4 DrawerInputBackground { get; set; } = new(0.1f, 0.1f, 0.1f, 0.8f);
+
+    /// <summary>Controls drawer numeric input field background when hovered.</summary>
+    public Vector4 DrawerInputBackgroundHovered { get; set; } = new(0.15f, 0.15f, 0.15f, 0.9f);
+
+    /// <summary>Controls drawer numeric input field background when active.</summary>
+    public Vector4 DrawerInputBackgroundActive { get; set; } = new(0.2f, 0.2f, 0.2f, 1.0f);
+
+    /// <summary>Controls drawer unit selector button background (unselected).</summary>
+    public Vector4 DrawerUnitButton { get; set; } = new(0.15f, 0.15f, 0.15f, 0.5f);
+
+    /// <summary>Controls drawer unit selector button background when hovered.</summary>
+    public Vector4 DrawerUnitButtonHovered { get; set; } = new(0.3f, 0.3f, 0.3f, 0.6f);
+
+    /// <summary>Controls drawer slider track background.</summary>
+    public Vector4 DrawerSliderTrack { get; set; } = new(0.15f, 0.15f, 0.15f, 0.8f);
+
+    /// <summary>Controls drawer slider handle color when not hovered.</summary>
+    public Vector4 DrawerSliderHandle { get; set; } = new(0.6f, 0.6f, 0.6f, 1f);
+
+    #endregion
+
     #region Series Color Palette
     
     /// <summary>
@@ -137,76 +168,14 @@ public class MTGraphColorConfig
 /// </summary>
 /// <remarks>
 /// For color customization, use <see cref="GraphStyleConfig.Colors"/> property.
-/// The static <see cref="DefaultColors"/> property provides backward compatibility.
 /// </remarks>
 public static class ChartColors
 {
-    #region Backward Compatibility - Static Color Properties
-    
     /// <summary>
-    /// Default color configuration instance for backward compatibility.
-    /// Use <see cref="GraphStyleConfig.Colors"/> for customization.
+    /// Fallback color configuration used when no explicit configuration is supplied to <see cref="GetSeriesColors"/>.
     /// </summary>
-    public static MTGraphColorConfig DefaultColors { get; } = new();
-    
-    /// <summary>Plot background color - dark charcoal.</summary>
-    public static Vector4 PlotBackground => DefaultColors.PlotBackground;
-    
-    /// <summary>Frame background color - slightly darker than plot.</summary>
-    public static Vector4 FrameBackground => DefaultColors.FrameBackground;
-    
-    /// <summary>Grid line color with transparency.</summary>
-    public static Vector4 GridLine => DefaultColors.GridLine;
-    
-    /// <summary>Axis line color.</summary>
-    public static Vector4 AxisLine => DefaultColors.AxisLine;
-    
-    /// <summary>Bullish/positive trend color - bright green.</summary>
-    public static Vector4 Bullish => DefaultColors.Bullish;
-    
-    /// <summary>Bullish fill color - top of gradient.</summary>
-    public static Vector4 BullishFillTop => DefaultColors.BullishFillTop;
-    
-    /// <summary>Bullish fill color - bottom of gradient (very transparent).</summary>
-    public static Vector4 BullishFillBottom => DefaultColors.BullishFillBottom;
-    
-    /// <summary>Bearish/negative trend color - bright red.</summary>
-    public static Vector4 Bearish => DefaultColors.Bearish;
-    
-    /// <summary>Bearish fill color - top of gradient.</summary>
-    public static Vector4 BearishFillTop => DefaultColors.BearishFillTop;
-    
-    /// <summary>Bearish fill color - bottom of gradient (very transparent).</summary>
-    public static Vector4 BearishFillBottom => DefaultColors.BearishFillBottom;
-    
-    /// <summary>Neutral/no change color - bright yellow.</summary>
-    public static Vector4 Neutral => DefaultColors.Neutral;
-    
-    /// <summary>Crosshair color with transparency.</summary>
-    public static Vector4 Crosshair => DefaultColors.Crosshair;
-    
-    /// <summary>Tooltip background color.</summary>
-    public static Vector4 TooltipBackground => DefaultColors.TooltipBackground;
-    
-    /// <summary>Tooltip border color.</summary>
-    public static Vector4 TooltipBorder => DefaultColors.TooltipBorder;
-    
-    /// <summary>Current price horizontal line color - bright yellow.</summary>
-    public static Vector4 CurrentPriceLine => DefaultColors.CurrentPriceLine;
-    
-    /// <summary>Primary text color - bright white/gray.</summary>
-    public static Vector4 TextPrimary => DefaultColors.TextPrimary;
-    
-    /// <summary>Secondary text color - dimmed gray.</summary>
-    public static Vector4 TextSecondary => DefaultColors.TextSecondary;
-    
-    /// <summary>
-    /// Default series color palette for multi-series graphs.
-    /// </summary>
-    public static Vector3[] SeriesPalette => DefaultColors.SeriesPalette;
-    
-    #endregion
-    
+    private static readonly MTGraphColorConfig DefaultColors = new();
+
     #region Style Push/Pop Methods
     
     /// <summary>
@@ -413,14 +382,8 @@ public class GraphStyleConfig
     /// <summary>Alpha for label border. Default: 0.7</summary>
     public float ValueLabelBorderAlpha { get; set; } = 0.7f;
     
-    /// <summary>Right margin from plot edge for value labels. Default: 4</summary>
-    public float ValueLabelRightMargin { get; set; } = 4f;
-    
     /// <summary>Stair pattern steps per row for label positioning. Higher = finer steps. Default: 8</summary>
     public int ValueLabelStepsPerRow { get; set; } = 8;
-    
-    /// <summary>Maximum iterations for label collision resolution. Default: 20</summary>
-    public int ValueLabelMaxIterations { get; set; } = 20;
 
     #endregion
     

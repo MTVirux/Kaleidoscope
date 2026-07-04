@@ -353,8 +353,8 @@ public class GraphRenderer : IDisposable
                            ImPlotFlags.NoBoxSelect | ImPlotFlags.NoMouseText | ImPlotFlags.Crosshairs;
             
             // Check if mouse is over overlay from previous frame
-            IsMouseOverOverlay = GraphLegend.IsMouseOverLegend(_cachedLegendResult) || 
-                                GraphControls.IsMouseOverDrawer(_cachedControlsResult);
+            IsMouseOverOverlay = _cachedLegendResult.Region.IsMouseOver() ||
+                                _cachedControlsResult.Region.IsMouseOver();
             
             if (IsMouseOverOverlay)
             {
@@ -372,158 +372,13 @@ public class GraphRenderer : IDisposable
             
             if (ImPlot.BeginPlot(plotId, plotSize, plotFlags))
             {
-                // Configure axes
-                var xAxisFlags = data.IsTimeBased && _config.ShowXAxisTimestamps 
-                    ? ImPlotAxisFlags.None 
-                    : ImPlotAxisFlags.NoTickLabels;
-                var yAxisFlags = ImPlotAxisFlags.Opposite;
-                
-                if (!_config.ShowGridLines)
-                {
-                    xAxisFlags |= ImPlotAxisFlags.NoGridLines;
-                    yAxisFlags |= ImPlotAxisFlags.NoGridLines;
-                }
-                
-                ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
-                
-                // Format axes
-                if (data.IsTimeBased && _config.ShowXAxisTimestamps)
-                {
-                    ImPlot.SetupAxisFormat(ImAxis.X1, GraphDrawing.XAxisTimeFormatter, (void*)data.StartTime.Ticks);
-                }
-                ImPlot.SetupAxisFormat(ImAxis.Y1, GraphDrawing.YAxisFormatter);
-                
-                // Constrain axes
-                ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
-                ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
-                
-                // Plot dummy points for auto-fit padding
-                var dummyX = stackalloc double[2] { 0, data.XMax };
-                var dummyY = stackalloc double[2] { data.YMin > 0 ? data.YMin : 0, data.YMax };
-                ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
-                ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0);
-                ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
-                
-                // Draw each series (check both direct visibility and group visibility)
-                foreach (var series in data.Series)
-                {
-                    if (!series.Visible || IsSeriesEffectivelyHidden(series)) continue;
-                    DrawSeries(series, data);
-                }
-                
-                // Draw current price line for single series
-                if (_config.ShowCurrentPriceLine && !data.HasMultipleSeries)
-                {
-                    var lastVisibleSeries = data.Series.LastOrDefault(s => s.Visible && !IsSeriesEffectivelyHidden(s));
-                    if (lastVisibleSeries != null && lastVisibleSeries.PointCount > 0)
-                    {
-                        var currentValue = lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1];
-                        GraphDrawing.DrawCurrentPriceLine(currentValue, _config.Style);
-                    }
-                }
-                
-                // Draw value labels first to get their bounds for hover detection
-                List<GraphValueLabels.ValueLabelBounds>? valueLabelBounds = null;
-                var isHoveringValueLabel = false;
-                if (_config.ShowValueLabel)
-                {
-                    valueLabelBounds = DrawValueLabels(data);
-                    
-                    // Check if hovering a value label
-                    if (valueLabelBounds is { Count: > 0 })
-                    {
-                        var mousePos = ImGui.GetMousePos();
-                        foreach (var labelBounds in valueLabelBounds)
-                        {
-                            if (labelBounds.Contains(mousePos))
-                            {
-                                isHoveringValueLabel = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // Draw hover effects (only if not hovering a value label)
-                if (_config.ShowCrosshair && ImPlot.IsPlotHovered() && !isHoveringValueLabel)
-                {
-                    DrawHoverEffects(data);
-                }
-                
-                // Show value label tooltip if hovering one
-                if (isHoveringValueLabel && valueLabelBounds != null)
-                {
-                    var mousePos = ImGui.GetMousePos();
-                    foreach (var labelBounds in valueLabelBounds)
-                    {
-                        if (labelBounds.Contains(mousePos))
-                        {
-                            var lines = new List<string> { $"{labelBounds.SeriesName}: {NumberFormatter.Format(labelBounds.Value, _config.NumberFormat)}" };
-                            var color = new Vector4(labelBounds.Color.X, labelBounds.Color.Y, labelBounds.Color.Z, 1f);
-                            GraphTooltips.DrawTooltipBox(mousePos, lines.ToArray(), color, _config.Style);
-                            break;
-                        }
-                    }
-                }
-                
-                // Draw inside legend if applicable
-                if (_config.ShowLegend && _config.LegendPosition != LegendPosition.Outside && data.HasMultipleSeriesTotal)
-                {
-                    _cachedLegendResult = GraphLegend.DrawInsideLegend(
-                        data,
-                        _hiddenSeries,
-                        _hiddenGroups,
-                        _config.LegendPosition,
-                        _config.LegendHeightPercent,
-                        _insideLegendScrollOffset,
-                        _config.LegendCollapsed,
-                        ToggleSeriesVisibility,
-                        ToggleGroupVisibility,
-                        ToggleLegendCollapse,
-                        _config.Style);
-                    _insideLegendScrollOffset = _cachedLegendResult.ScrollOffset;
-                    // Note: CollapseToggled is handled via the ToggleLegendCollapse callback
-                }
-                else
-                {
-                    _cachedLegendResult = GraphLegend.InsideLegendResult.Invalid;
-                }
-                
-                // Draw controls drawer
-                if (_config.ShowControlsDrawer)
-                {
-                    _cachedControlsResult = GraphControls.DrawControlsDrawer(
-                        _controlsDrawerOpen,
-                        _config.AutoScrollEnabled,
-                        _config.AutoScrollTimeValue,
-                        _config.AutoScrollTimeUnit,
-                        _config.AutoScrollNowPosition,
-                        _config.Style);
-                    
-                    // Update state from result
-                    _controlsDrawerOpen = _cachedControlsResult.IsOpen;
-                    if (_cachedControlsResult.SettingsChanged)
-                    {
-                        _config.AutoScrollEnabled = _cachedControlsResult.AutoScrollEnabled;
-                        _config.AutoScrollTimeValue = _cachedControlsResult.AutoScrollTimeValue;
-                        _config.AutoScrollTimeUnit = _cachedControlsResult.AutoScrollTimeUnit;
-                        _config.AutoScrollNowPosition = _cachedControlsResult.AutoScrollNowPosition;
-                        
-                        OnAutoScrollSettingsChanged?.Invoke(
-                            _config.AutoScrollEnabled,
-                            _config.AutoScrollTimeValue,
-                            _config.AutoScrollTimeUnit,
-                            _config.AutoScrollNowPosition);
-                    }
-                }
-                else
-                {
-                    _cachedControlsResult = GraphControls.ControlsDrawerResult.Invalid;
-                }
-                
+                SetupPlotAxes(data);
+                DrawSeriesLayer(data);
+                DrawOverlays(data);
+
                 ImPlot.EndPlot();
             }
-            
+
             ChartColors.PopChartStyle();
         }
         catch (Exception ex)
@@ -531,7 +386,178 @@ public class GraphRenderer : IDisposable
             ImGui.TextUnformatted($"Error rendering graph: {ex.Message}");
         }
     }
-    
+
+    /// <summary>
+    /// Configures axes, formatters, constraints, and the auto-fit padding line.
+    /// Must be called inside a BeginPlot/EndPlot pair.
+    /// </summary>
+    private unsafe void SetupPlotAxes(PreparedGraphData data)
+    {
+        // Configure axes
+        var xAxisFlags = data.IsTimeBased && _config.ShowXAxisTimestamps
+            ? ImPlotAxisFlags.None
+            : ImPlotAxisFlags.NoTickLabels;
+        var yAxisFlags = ImPlotAxisFlags.Opposite;
+
+        if (!_config.ShowGridLines)
+        {
+            xAxisFlags |= ImPlotAxisFlags.NoGridLines;
+            yAxisFlags |= ImPlotAxisFlags.NoGridLines;
+        }
+
+        ImPlot.SetupAxes("", "", xAxisFlags, yAxisFlags);
+
+        // Format axes
+        if (data.IsTimeBased && _config.ShowXAxisTimestamps)
+        {
+            ImPlot.SetupAxisFormat(ImAxis.X1, GraphDrawing.XAxisTimeFormatter, (void*)data.StartTime.Ticks);
+        }
+        ImPlot.SetupAxisFormat(ImAxis.Y1, GraphDrawing.YAxisFormatter);
+
+        // Constrain axes
+        ImPlot.SetupAxisLimitsConstraints(ImAxis.X1, 0, double.MaxValue);
+        ImPlot.SetupAxisLimitsConstraints(ImAxis.Y1, 0, double.MaxValue);
+
+        // Plot dummy points for auto-fit padding
+        var dummyX = stackalloc double[2] { 0, data.XMax };
+        var dummyY = stackalloc double[2] { data.YMin > 0 ? data.YMin : 0, data.YMax };
+        ImPlot.SetNextMarkerStyle(ImPlotMarker.None);
+        ImPlot.SetNextLineStyle(new Vector4(0, 0, 0, 0), 0);
+        ImPlot.PlotLine("##padding", dummyX, dummyY, 2);
+    }
+
+    /// <summary>
+    /// Draws every visible series and the current-price line for single-series graphs.
+    /// Must be called inside a BeginPlot/EndPlot pair.
+    /// </summary>
+    private void DrawSeriesLayer(PreparedGraphData data)
+    {
+        // Draw each series (check both direct visibility and group visibility)
+        foreach (var series in data.Series)
+        {
+            if (!series.Visible || IsSeriesEffectivelyHidden(series)) continue;
+            DrawSeries(series, data);
+        }
+
+        // Draw current price line for single series
+        if (_config.ShowCurrentPriceLine && !data.HasMultipleSeries)
+        {
+            var lastVisibleSeries = data.Series.LastOrDefault(s => s.Visible && !IsSeriesEffectivelyHidden(s));
+            if (lastVisibleSeries != null && lastVisibleSeries.PointCount > 0)
+            {
+                var currentValue = lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1];
+                GraphDrawing.DrawCurrentPriceLine(currentValue, _config.Style);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draws the interactive overlays: value labels, hover effects/tooltips, the inside legend,
+    /// and the controls drawer. Must be called inside a BeginPlot/EndPlot pair.
+    /// </summary>
+    private void DrawOverlays(PreparedGraphData data)
+    {
+        // Draw value labels first to get their bounds for hover detection
+        List<GraphValueLabels.ValueLabelBounds>? valueLabelBounds = null;
+        var isHoveringValueLabel = false;
+        if (_config.ShowValueLabel)
+        {
+            valueLabelBounds = DrawValueLabels(data);
+
+            // Check if hovering a value label
+            if (valueLabelBounds is { Count: > 0 })
+            {
+                var mousePos = ImGui.GetMousePos();
+                foreach (var labelBounds in valueLabelBounds)
+                {
+                    if (labelBounds.Contains(mousePos))
+                    {
+                        isHoveringValueLabel = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Draw hover effects (only if not hovering a value label)
+        if (_config.ShowCrosshair && ImPlot.IsPlotHovered() && !isHoveringValueLabel)
+        {
+            DrawHoverEffects(data);
+        }
+
+        // Show value label tooltip if hovering one
+        if (isHoveringValueLabel && valueLabelBounds != null)
+        {
+            var mousePos = ImGui.GetMousePos();
+            foreach (var labelBounds in valueLabelBounds)
+            {
+                if (labelBounds.Contains(mousePos))
+                {
+                    var lines = new List<string> { $"{labelBounds.SeriesName}: {NumberFormatter.Format(labelBounds.Value, _config.NumberFormat)}" };
+                    var color = new Vector4(labelBounds.Color.X, labelBounds.Color.Y, labelBounds.Color.Z, 1f);
+                    GraphTooltips.DrawTooltipBox(mousePos, lines.ToArray(), color, _config.Style);
+                    break;
+                }
+            }
+        }
+
+        // Draw inside legend if applicable.
+        // A persisted LegendPosition.Outside (legacy) falls through to a top-left inside legend.
+        if (_config.ShowLegend && data.HasMultipleSeriesTotal)
+        {
+            _cachedLegendResult = GraphLegend.DrawInsideLegend(
+                data,
+                _hiddenSeries,
+                _hiddenGroups,
+                _config.LegendPosition,
+                _config.LegendHeightPercent,
+                _insideLegendScrollOffset,
+                _config.LegendCollapsed,
+                ToggleSeriesVisibility,
+                ToggleGroupVisibility,
+                ToggleLegendCollapse,
+                _config.Style);
+            _insideLegendScrollOffset = _cachedLegendResult.ScrollOffset;
+            // Note: CollapseToggled is handled via the ToggleLegendCollapse callback
+        }
+        else
+        {
+            _cachedLegendResult = GraphLegend.InsideLegendResult.Invalid;
+        }
+
+        // Draw controls drawer
+        if (_config.ShowControlsDrawer)
+        {
+            _cachedControlsResult = GraphControls.DrawControlsDrawer(
+                _controlsDrawerOpen,
+                _config.AutoScrollEnabled,
+                _config.AutoScrollTimeValue,
+                _config.AutoScrollTimeUnit,
+                _config.AutoScrollNowPosition,
+                _config.Style);
+
+            // Update state from result
+            _controlsDrawerOpen = _cachedControlsResult.IsOpen;
+            if (_cachedControlsResult.SettingsChanged)
+            {
+                _config.AutoScrollEnabled = _cachedControlsResult.AutoScrollEnabled;
+                _config.AutoScrollTimeValue = _cachedControlsResult.AutoScrollTimeValue;
+                _config.AutoScrollTimeUnit = _cachedControlsResult.AutoScrollTimeUnit;
+                _config.AutoScrollNowPosition = _cachedControlsResult.AutoScrollNowPosition;
+
+                OnAutoScrollSettingsChanged?.Invoke(
+                    _config.AutoScrollEnabled,
+                    _config.AutoScrollTimeValue,
+                    _config.AutoScrollTimeUnit,
+                    _config.AutoScrollNowPosition);
+            }
+        }
+        else
+        {
+            _cachedControlsResult = GraphControls.ControlsDrawerResult.Invalid;
+        }
+    }
+
     /// <summary>
     /// Draws a single series on the plot.
     /// </summary>
