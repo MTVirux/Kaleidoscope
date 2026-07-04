@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models.Inventory;
 using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
@@ -353,6 +354,43 @@ public sealed class ItemDetailsPopup
         return option;
     }
 
+    /// <summary>
+    /// Draws the shared price-table scaffold (borders, striping, scroll, frozen header row).
+    /// </summary>
+    private static void DrawScrollTable(string id, int columns, Action setupColumns, Action drawRows)
+    {
+        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
+        var availHeight = ImGui.GetContentRegionAvail().Y;
+
+        if (ImGui.BeginTable(id, columns, tableFlags, new Vector2(0, availHeight)))
+        {
+            ImGui.TableSetupScrollFreeze(0, 1);
+            setupColumns();
+            ImGui.TableHeadersRow();
+            drawRows();
+            ImGui.EndTable();
+        }
+    }
+
+    /// <summary>
+    /// Draws a price value, highlighting high-quality prices in blue with a tooltip.
+    /// </summary>
+    private static void DrawPriceCell(string priceText, bool isHq)
+    {
+        if (isHq)
+        {
+            ImGui.TextColored(UiColors.HqPrice, priceText);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("High Quality");
+            }
+        }
+        else
+        {
+            ImGui.TextUnformatted(priceText);
+        }
+    }
+
     private void DrawListingsTab()
     {
         if (_isLoading)
@@ -378,59 +416,43 @@ public sealed class ItemDetailsPopup
         ImGui.Spacing();
 
         // Table
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        var availHeight = ImGui.GetContentRegionAvail().Y;
-
-        if (ImGui.BeginTable("ListingsTable", 5, tableFlags, new Vector2(0, availHeight)))
-        {
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
-            ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthFixed, 90);
-            ImGui.TableSetupColumn("Retainer", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
-
-            var listings = _marketData.Listings.Take(_maxListings);
-            foreach (var listing in listings)
+        var listings = _marketData.Listings;
+        DrawScrollTable("ListingsTable", 5,
+            () =>
             {
-                ImGui.TableNextRow();
-
-                // Price (with HQ indicator)
-                ImGui.TableNextColumn();
-                var priceText = FormatUtils.FormatGil(listing.PricePerUnit);
-                if (listing.IsHq)
+                ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
+                ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthFixed, 90);
+                ImGui.TableSetupColumn("Retainer", ImGuiTableColumnFlags.WidthStretch);
+            },
+            () =>
+            {
+                foreach (var listing in listings.Take(_maxListings))
                 {
-                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), priceText);
-                    if (ImGui.IsItemHovered())
-                    {
-                        ImGui.SetTooltip("High Quality");
-                    }
+                    ImGui.TableNextRow();
+
+                    // Price (with HQ indicator)
+                    ImGui.TableNextColumn();
+                    DrawPriceCell(FormatUtils.FormatGil(listing.PricePerUnit), listing.IsHq);
+
+                    // Quantity
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(listing.Quantity.ToString());
+
+                    // Total
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(FormatUtils.FormatGil(listing.Total));
+
+                    // World
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(listing.WorldName ?? "Unknown");
+
+                    // Retainer
+                    ImGui.TableNextColumn();
+                    ImGui.TextDisabled(listing.RetainerName ?? "-");
                 }
-                else
-                {
-                    ImGui.TextUnformatted(priceText);
-                }
-
-                // Quantity
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(listing.Quantity.ToString());
-
-                // Total
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(FormatUtils.FormatGil(listing.Total));
-
-                // World
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(listing.WorldName ?? "Unknown");
-
-                // Retainer
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled(listing.RetainerName ?? "-");
-            }
-
-            ImGui.EndTable();
-        }
+            });
     }
 
     private void DrawSalesTab()
@@ -460,64 +482,47 @@ public sealed class ItemDetailsPopup
         ImGui.Spacing();
 
         // Table
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        var availHeight = ImGui.GetContentRegionAvail().Y;
-
-        if (ImGui.BeginTable("SalesTable", 5, tableFlags, new Vector2(0, availHeight)))
-        {
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 90);
-            ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
-            ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
-
-            var salesList = sales.Take(_maxSales);
-            foreach (var sale in salesList)
+        DrawScrollTable("SalesTable", 5,
+            () =>
             {
-                ImGui.TableNextRow();
-
-                // Time
-                ImGui.TableNextColumn();
-                var timeAgo = FormatUtils.FormatTimeAgo(sale.SaleDateTime);
-                ImGui.TextUnformatted(timeAgo);
-                if (ImGui.IsItemHovered())
+                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 90);
+                ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
+                ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch);
+            },
+            () =>
+            {
+                foreach (var sale in sales.Take(_maxSales))
                 {
-                    ImGui.SetTooltip(sale.SaleDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
-                }
+                    ImGui.TableNextRow();
 
-                // Price (with HQ indicator)
-                ImGui.TableNextColumn();
-                var priceText = FormatUtils.FormatGil(sale.PricePerUnit);
-                if (sale.IsHq)
-                {
-                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), priceText);
+                    // Time
+                    ImGui.TableNextColumn();
+                    var timeAgo = FormatUtils.FormatTimeAgo(sale.SaleDateTime);
+                    ImGui.TextUnformatted(timeAgo);
                     if (ImGui.IsItemHovered())
                     {
-                        ImGui.SetTooltip("High Quality");
+                        ImGui.SetTooltip(sale.SaleDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
                     }
+
+                    // Price (with HQ indicator)
+                    ImGui.TableNextColumn();
+                    DrawPriceCell(FormatUtils.FormatGil(sale.PricePerUnit), sale.IsHq);
+
+                    // Quantity
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(sale.Quantity.ToString());
+
+                    // Total
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(FormatUtils.FormatGil(sale.Total));
+
+                    // World
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(sale.WorldName ?? "Unknown");
                 }
-                else
-                {
-                    ImGui.TextUnformatted(priceText);
-                }
-
-                // Quantity
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(sale.Quantity.ToString());
-
-                // Total
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(FormatUtils.FormatGil(sale.Total));
-
-                // World
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(sale.WorldName ?? "Unknown");
-            }
-
-            ImGui.EndTable();
-        }
+            });
     }
 
     private void DrawLocalSalesTab()
@@ -554,89 +559,73 @@ public sealed class ItemDetailsPopup
         ImGui.Spacing();
 
         // Table
-        var tableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
-        var availHeight = ImGui.GetContentRegionAvail().Y;
-
         (long Id, DateTime Timestamp)? saleToDelete = null;
 
-        if (ImGui.BeginTable("LocalSalesTable", 5, tableFlags, new Vector2(0, availHeight)))
-        {
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 90);
-            ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
-            ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
-
-            foreach (var sale in _localSales)
+        DrawScrollTable("LocalSalesTable", 5,
+            () =>
             {
-                ImGui.TableNextRow();
+                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 90);
+                ImGui.TableSetupColumn("Price", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("Qty", ImGuiTableColumnFlags.WidthFixed, 45);
+                ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 80);
+                ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch);
+            },
+            () =>
+            {
+                foreach (var sale in _localSales)
+                {
+                    ImGui.TableNextRow();
 
-                // Make the row selectable for right-click context menu
-                ImGui.TableNextColumn();
-                var timeAgo = FormatUtils.FormatTimeAgo(sale.Timestamp.ToLocalTime());
-                
-                // Use Selectable spanning all columns for right-click detection
-                ImGui.PushID(sale.Id.GetHashCode());
-                if (ImGui.Selectable($"{timeAgo}##row", false, ImGuiSelectableFlags.SpanAllColumns))
-                {
-                    // Left click does nothing for now
-                }
-                
-                // Right-click context menu
-                if (ImGui.BeginPopupContextItem($"sale_context_{sale.Id}"))
-                {
-                    var worldName = _priceTrackingService.WorldData?.GetWorldName(sale.WorldId) ?? $"World {sale.WorldId}";
-                    ImGui.TextDisabled($"{FormatUtils.FormatGil(sale.PricePerUnit)} x{sale.Quantity} on {worldName}");
-                    ImGui.Separator();
-                    
-                    if (ImGui.MenuItem("Delete Sale Record"))
+                    // Make the row selectable for right-click context menu
+                    ImGui.TableNextColumn();
+                    var timeAgo = FormatUtils.FormatTimeAgo(sale.Timestamp.ToLocalTime());
+
+                    // Use Selectable spanning all columns for right-click detection
+                    ImGui.PushID(sale.Id.GetHashCode());
+                    if (ImGui.Selectable($"{timeAgo}##row", false, ImGuiSelectableFlags.SpanAllColumns))
                     {
-                        saleToDelete = (sale.Id, sale.Timestamp);
+                        // Left click does nothing for now
                     }
-                    
-                    ImGui.EndPopup();
-                }
-                ImGui.PopID();
-                
-                if (ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip($"{sale.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss}\nRight-click to delete");
-                }
 
-                // Price (with HQ indicator)
-                ImGui.TableNextColumn();
-                var priceText = FormatUtils.FormatGil(sale.PricePerUnit);
-                if (sale.IsHq)
-                {
-                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), priceText);
+                    // Right-click context menu
+                    if (ImGui.BeginPopupContextItem($"sale_context_{sale.Id}"))
+                    {
+                        var worldName = _priceTrackingService.WorldData?.GetWorldName(sale.WorldId) ?? $"World {sale.WorldId}";
+                        ImGui.TextDisabled($"{FormatUtils.FormatGil(sale.PricePerUnit)} x{sale.Quantity} on {worldName}");
+                        ImGui.Separator();
+
+                        if (ImGui.MenuItem("Delete Sale Record"))
+                        {
+                            saleToDelete = (sale.Id, sale.Timestamp);
+                        }
+
+                        ImGui.EndPopup();
+                    }
+                    ImGui.PopID();
+
                     if (ImGui.IsItemHovered())
                     {
-                        ImGui.SetTooltip("High Quality");
+                        ImGui.SetTooltip($"{sale.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss}\nRight-click to delete");
                     }
+
+                    // Price (with HQ indicator)
+                    ImGui.TableNextColumn();
+                    DrawPriceCell(FormatUtils.FormatGil(sale.PricePerUnit), sale.IsHq);
+
+                    // Quantity
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(sale.Quantity.ToString());
+
+                    // Total
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(FormatUtils.FormatGil(sale.Total));
+
+                    // World
+                    ImGui.TableNextColumn();
+                    var worldNameCol = _priceTrackingService.WorldData?.GetWorldName(sale.WorldId) ?? $"World {sale.WorldId}";
+                    ImGui.TextUnformatted(worldNameCol);
                 }
-                else
-                {
-                    ImGui.TextUnformatted(priceText);
-                }
-
-                // Quantity
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(sale.Quantity.ToString());
-
-                // Total
-                ImGui.TableNextColumn();
-                ImGui.TextUnformatted(FormatUtils.FormatGil(sale.Total));
-
-                // World
-                ImGui.TableNextColumn();
-                var worldNameCol = _priceTrackingService.WorldData?.GetWorldName(sale.WorldId) ?? $"World {sale.WorldId}";
-                ImGui.TextUnformatted(worldNameCol);
-            }
-
-            ImGui.EndTable();
-        }
+            });
 
         // Handle deletion outside the loop to avoid modifying collection while iterating
         if (saleToDelete.HasValue)
@@ -835,130 +824,13 @@ public sealed class ItemDetailsPopup
 
         try
         {
-            // Get all inventories across all characters
-            var allInventories = _inventoryCacheService.GetAllInventories();
-            
-            // Get the current price for this item using cache
-            long unitPrice = 0;
-            if (_salePriceCacheService != null)
-            {
-                var prices = _salePriceCacheService.GetLatestSalePrices(
-                    new[] { (int)_currentItemId }, 
-                    includedWorldIds: null);
-                if (prices.TryGetValue((int)_currentItemId, out var price))
-                {
-                    unitPrice = price.LastSaleNq > 0 ? price.LastSaleNq : price.LastSaleHq;
-                }
-            }
-            _inventoryUnitPrice = unitPrice;
+            var aggregation = ItemInventoryAggregator.Aggregate(
+                _currentItemId, _inventoryCacheService, _salePriceCacheService, _characterDataService);
 
-            // Group by character, then by player/retainer
-            var characterGroups = allInventories
-                .GroupBy(i => i.CharacterId)
-                .OrderBy(g => g.First().Name ?? string.Empty);
-
-            foreach (var charGroup in characterGroups)
-            {
-                var characterId = charGroup.Key;
-                var characterName = string.Empty;
-                var worldName = string.Empty;
-
-                // Get character display name
-                if (_characterDataService != null)
-                {
-                    var charInfo = _characterDataService.GetCharacter(characterId);
-                    if (charInfo != null)
-                    {
-                        characterName = charInfo.Name;
-                        worldName = charInfo.WorldName ?? string.Empty;
-                    }
-                }
-
-                // Fallback to inventory cache name
-                if (string.IsNullOrEmpty(characterName))
-                {
-                    var playerCache = charGroup.FirstOrDefault(c => c.SourceType == InventorySourceType.Player);
-                    characterName = playerCache?.Name ?? $"Character {characterId}";
-                    worldName = playerCache?.World ?? string.Empty;
-                }
-
-                // Calculate player inventory quantity
-                var playerInventories = charGroup.Where(c => c.SourceType == InventorySourceType.Player);
-                var playerQuantity = playerInventories
-                    .SelectMany(c => c.Items)
-                    .Where(i => i.ItemId == _currentItemId)
-                    .Sum(i => i.Quantity);
-
-                // Calculate retainer quantities
-                var retainerData = charGroup
-                    .Where(c => c.SourceType == InventorySourceType.Retainer)
-                    .Select(r => new
-                    {
-                        RetainerId = r.RetainerId,
-                        RetainerName = r.Name,
-                        Quantity = r.Items.Where(i => i.ItemId == _currentItemId).Sum(i => i.Quantity)
-                    })
-                    .Where(r => r.Quantity > 0)
-                    .OrderBy(r => r.RetainerName)
-                    .ToList();
-
-                // Skip this character if they have no items
-                var totalCharQuantity = playerQuantity + retainerData.Sum(r => r.Quantity);
-                if (totalCharQuantity == 0)
-                    continue;
-
-                // Add character row (showing player inventory only)
-                if (playerQuantity > 0)
-                {
-                    var playerValue = unitPrice * playerQuantity;
-                    _inventoryRows.Add(new ItemInventoryRow
-                    {
-                        CharacterId = characterId,
-                        CharacterName = characterName,
-                        WorldName = worldName,
-                        IsRetainer = false,
-                        Quantity = playerQuantity,
-                        UnitPrice = unitPrice,
-                        TotalValue = playerValue
-                    });
-                    _inventoryTotalQuantity += playerQuantity;
-                    _inventoryTotalValue += playerValue;
-                }
-                else
-                {
-                    // Add a character header row with 0 quantity if they only have retainer items
-                    _inventoryRows.Add(new ItemInventoryRow
-                    {
-                        CharacterId = characterId,
-                        CharacterName = characterName,
-                        WorldName = worldName,
-                        IsRetainer = false,
-                        Quantity = 0,
-                        UnitPrice = 0,
-                        TotalValue = 0
-                    });
-                }
-
-                // Add retainer rows
-                foreach (var retainer in retainerData)
-                {
-                    var retainerValue = unitPrice * retainer.Quantity;
-                    _inventoryRows.Add(new ItemInventoryRow
-                    {
-                        CharacterId = characterId,
-                        CharacterName = characterName,
-                        WorldName = worldName,
-                        IsRetainer = true,
-                        RetainerId = retainer.RetainerId,
-                        RetainerName = retainer.RetainerName,
-                        Quantity = retainer.Quantity,
-                        UnitPrice = unitPrice,
-                        TotalValue = retainerValue
-                    });
-                    _inventoryTotalQuantity += retainer.Quantity;
-                    _inventoryTotalValue += retainerValue;
-                }
-            }
+            _inventoryRows = aggregation.Rows;
+            _inventoryUnitPrice = aggregation.UnitPrice;
+            _inventoryTotalQuantity = aggregation.TotalQuantity;
+            _inventoryTotalValue = aggregation.TotalValue;
         }
         catch (Exception ex)
         {

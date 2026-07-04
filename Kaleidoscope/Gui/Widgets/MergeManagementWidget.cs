@@ -1,4 +1,3 @@
-using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Models;
@@ -241,13 +240,9 @@ public static class MergeManagementWidget
         var items = getGroupItems(group);
         
         ImGui.PushID($"mergedrow_{groupIndex}");
-        
+
         // Merge indicator
-        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.8f, 1.0f, 1.0f));
-        ImGui.TextUnformatted("⊕");
-        ImGui.PopStyleColor();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Merged group");
+        MergedGroupChrome.DrawMergeIndicator();
         ImGui.SameLine();
         
         // Color picker
@@ -271,20 +266,16 @@ public static class MergeManagementWidget
         }
         
         ImGui.SameLine();
-        
+
         // Show merged sources count
-        ImGui.TextDisabled($"[{items.Count} merged]");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(string.Join("\n", items.Select(getDisplayName)));
-        
+        MergedGroupChrome.DrawMergedCountLabel(items.Count, items.Select(getDisplayName));
+
         ImGui.SameLine(0, 16);
-        
+
         // Unmerge button
-        if (ImGuiHelpers.PrimaryButton("Unmerge##unmerge"))
+        if (MergedGroupChrome.DrawUnmergeButton("Unmerge back to individual sources"))
             groupToUnmerge = groupIndex;
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Unmerge back to individual sources");
-        
+
         ImGui.PopID();
         
         return changed;

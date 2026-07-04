@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Helpers;
 using Kaleidoscope.Models;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
@@ -432,47 +433,26 @@ public static class ColumnManagementWidget
         
         // Column 0: Merge indicator
         ImGui.TableNextColumn();
-        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.8f, 1.0f, 1.0f));
-        ImGui.TextUnformatted("⊕");
-        ImGui.PopStyleColor();
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Merged group");
-        }
-        
+        MergedGroupChrome.DrawMergeIndicator();
+
         // Column 1: Color picker
-        ImGui.TableNextColumn();
-        var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
-            "##color", group.Color, ImGuiHelpers.DefaultColor, "Merged group color");
-        if (colorChanged)
-        {
-            group.Color = newColor;
+        if (DrawColorCell(group.Color, "Merged group color", c => { group.Color = c; onRefreshNeeded?.Invoke(); }))
             changed = true;
-            onRefreshNeeded?.Invoke();
-        }
-        
+
         // Column 2: Editable name
-        ImGui.TableNextColumn();
-        ImGui.SetNextItemWidth(-1);
-        var name = group.Name;
-        if (ImGui.InputTextWithHint("##name", "Merged", ref name, 64))
+        if (DrawNameCell("Merged", group.Name, out var name))
         {
             group.Name = name;
             changed = true;
         }
-        
+
         // Column 3: Show merged items count
         ImGui.TableNextColumn();
-        ImGui.TextDisabled($"[{group.ColumnIndices.Count} merged]");
-        if (ImGui.IsItemHovered())
-        {
-            // Build tooltip with item names
-            var itemNames = group.ColumnIndices
+        MergedGroupChrome.DrawMergedCountLabel(
+            group.ColumnIndices.Count,
+            group.ColumnIndices
                 .Where(idx => idx >= 0 && idx < columns.Count)
-                .Select(idx => getDefaultName(columns[idx]))
-                .ToList();
-            ImGui.SetTooltip(string.Join("\n", itemNames));
-        }
+                .Select(idx => getDefaultName(columns[idx])));
         
         // Column 4: Historical tracking indicator
         ImGui.TableNextColumn();
@@ -530,20 +510,9 @@ public static class ColumnManagementWidget
         }
         
         // Column 5: Show in Table checkbox
-        ImGui.TableNextColumn();
-        {
-            var showInTable = group.ShowInTable;
-            if (ImGui.Checkbox("##showInTable", ref showInTable))
-            {
-                group.ShowInTable = showInTable;
-                changed = true;
-                onRefreshNeeded?.Invoke();
-            }
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Show this merged group in table view");
-            }
-        }
+        if (DrawToggleCell("##showInTable", group.ShowInTable, "Show this merged group in table view",
+                v => { group.ShowInTable = v; onRefreshNeeded?.Invoke(); }))
+            changed = true;
         
         // Column 6: Show in Graph
         ImGui.TableNextColumn();
@@ -585,43 +554,16 @@ public static class ColumnManagementWidget
             }
         }
         
-        // Column 7: Move up button
-        ImGui.TableNextColumn();
-        ImGui.BeginDisabled(isFirst);
-        if (ImGui.Button("▲##up"))
-        {
-            moveUp = true;
-        }
-        ImGui.EndDisabled();
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Move up");
-        }
-        
-        // Column 8: Move down button
-        ImGui.TableNextColumn();
-        ImGui.BeginDisabled(isLast);
-        if (ImGui.Button("▼##down"))
-        {
-            moveDown = true;
-        }
-        ImGui.EndDisabled();
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Move down");
-        }
+        // Columns 7-8: Move up / down buttons
+        DrawMoveCells(isFirst, isLast, out moveUp, out moveDown);
         
         // Column 9: Unmerge button
         ImGui.TableNextColumn();
-        if (ImGuiHelpers.PrimaryButton("Unmerge##unmerge"))
+        if (MergedGroupChrome.DrawUnmergeButton("Unmerge back to individual items"))
         {
             unmerge = true;
         }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Unmerge back to individual items");
-        }
-        
+
         return (changed, unmerge);
     }
     
@@ -662,21 +604,11 @@ public static class ColumnManagementWidget
         }
         
         // Column 1: Color picker
-        ImGui.TableNextColumn();
-        var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
-            "##color", column.Color, ImGuiHelpers.DefaultColor, "Color");
-        if (colorChanged)
-        {
-            column.Color = newColor;
+        if (DrawColorCell(column.Color, "Color", c => { column.Color = c; onRefreshNeeded?.Invoke(); }))
             changed = true;
-            onRefreshNeeded?.Invoke();
-        }
-        
+
         // Column 2: Custom name input
-        ImGui.TableNextColumn();
-        var customName = column.CustomName ?? string.Empty;
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##name", defaultName, ref customName, 64))
+        if (DrawNameCell(defaultName, column.CustomName ?? string.Empty, out var customName))
         {
             column.CustomName = string.IsNullOrWhiteSpace(customName) ? null : customName;
             changed = true;
@@ -747,58 +679,17 @@ public static class ColumnManagementWidget
         }
         
         // Column 5: Show in Table checkbox
-        ImGui.TableNextColumn();
-        var showInTable = column.ShowInTable;
-        if (ImGui.Checkbox("##showInTable", ref showInTable))
-        {
-            column.ShowInTable = showInTable;
+        if (DrawToggleCell("##showInTable", column.ShowInTable, "Show this item/currency in table view",
+                v => { column.ShowInTable = v; onRefreshNeeded?.Invoke(); }))
             changed = true;
-            onRefreshNeeded?.Invoke();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Show this item/currency in table view");
-        }
-        
+
         // Column 6: Show in Graph checkbox
-        ImGui.TableNextColumn();
-        var showInGraph = column.ShowInGraph;
-        if (ImGui.Checkbox("##showInGraph", ref showInGraph))
-        {
-            column.ShowInGraph = showInGraph;
+        if (DrawToggleCell("##showInGraph", column.ShowInGraph, "Show this item/currency in graph view",
+                v => { column.ShowInGraph = v; onRefreshNeeded?.Invoke(); }))
             changed = true;
-            onRefreshNeeded?.Invoke();
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Show this item/currency in graph view");
-        }
         
-        // Column 7: Move up button
-        ImGui.TableNextColumn();
-        ImGui.BeginDisabled(isFirst);
-        if (ImGui.Button("▲##up"))
-        {
-            moveUp = true;
-        }
-        ImGui.EndDisabled();
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Move up");
-        }
-        
-        // Column 8: Move down button
-        ImGui.TableNextColumn();
-        ImGui.BeginDisabled(isLast);
-        if (ImGui.Button("▼##down"))
-        {
-            moveDown = true;
-        }
-        ImGui.EndDisabled();
-        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-        {
-            ImGui.SetTooltip("Move down");
-        }
+        // Columns 7-8: Move up / down buttons
+        DrawMoveCells(isFirst, isLast, out moveUp, out moveDown);
         
         // Column 9: Delete button
         ImGui.TableNextColumn();
@@ -813,7 +704,70 @@ public static class ColumnManagementWidget
         
         return (changed, deleted, newSelected);
     }
-    
+
+    // === Shared per-cell renderers (used by both DrawMergedGroupRow and DrawColumnRow) ===
+
+    /// <summary>Draws the color-picker table cell. Invokes <paramref name="apply"/> with the new color when changed.</summary>
+    private static bool DrawColorCell(Vector4? current, string tooltip, Action<Vector4?> apply)
+    {
+        ImGui.TableNextColumn();
+        var (colorChanged, newColor) = ImGuiHelpers.ColorPickerWithClear(
+            "##color", current, ImGuiHelpers.DefaultColor, tooltip);
+        if (colorChanged)
+            apply(newColor);
+        return colorChanged;
+    }
+
+    /// <summary>Draws the stretched name-input table cell. Outputs the edited text; returns true when edited.</summary>
+    private static bool DrawNameCell(string hint, string current, out string edited)
+    {
+        ImGui.TableNextColumn();
+        ImGui.SetNextItemWidth(-1);
+        edited = current;
+        return ImGui.InputTextWithHint("##name", hint, ref edited, 64);
+    }
+
+    /// <summary>Draws a checkbox table cell with a hover tooltip. Invokes <paramref name="apply"/> with the new value when toggled.</summary>
+    private static bool DrawToggleCell(string id, bool current, string tooltip, Action<bool> apply)
+    {
+        ImGui.TableNextColumn();
+        var value = current;
+        var changed = false;
+        if (ImGui.Checkbox(id, ref value))
+        {
+            apply(value);
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+        return changed;
+    }
+
+    /// <summary>Draws the move-up and move-down button cells (two columns), setting the out flags when clicked.</summary>
+    private static void DrawMoveCells(bool isFirst, bool isLast, out bool moveUp, out bool moveDown)
+    {
+        moveUp = false;
+        moveDown = false;
+
+        // Move up button
+        ImGui.TableNextColumn();
+        ImGui.BeginDisabled(isFirst);
+        if (ImGui.Button("▲##up"))
+            moveUp = true;
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Move up");
+
+        // Move down button
+        ImGui.TableNextColumn();
+        ImGui.BeginDisabled(isLast);
+        if (ImGui.Button("▼##down"))
+            moveDown = true;
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Move down");
+    }
+
     private static void UpdateMergedIndicesAfterSwap(List<MergedColumnGroup> groups, int idx1, int idx2)
     {
         foreach (var group in groups)
@@ -905,8 +859,8 @@ public static class ColumnManagementWidget
             {
                 foreach (var token in jArray)
                 {
-                    if (token is not Newtonsoft.Json.Linq.JObject jObj) continue;
-                    result.Add(ImportColumnFromJObject(jObj));
+                    var column = ImportColumnConfig(token);
+                    if (column != null) result.Add(column);
                 }
                 return result;
             }
@@ -917,20 +871,19 @@ public static class ColumnManagementWidget
             {
                 foreach (var element in jsonElement.EnumerateArray())
                 {
-                    result.Add(ImportColumnFromJsonElement(element));
+                    var column = ImportColumnConfig(element);
+                    if (column != null) result.Add(column);
                 }
                 return result;
             }
             
-            // Handle in-memory List<Dictionary<string, object?>>
+            // Handle in-memory List<Dictionary<string, object?>> (or any enumerable of records)
             if (columnsObj is System.Collections.IEnumerable enumerable)
             {
                 foreach (var obj in enumerable)
                 {
-                    if (obj is IDictionary<string, object?> dict)
-                    {
-                        result.Add(ImportColumnFromDictionary(dict));
-                    }
+                    var column = ImportColumnConfig(obj);
+                    if (column != null) result.Add(column);
                 }
             }
         }
@@ -942,76 +895,31 @@ public static class ColumnManagementWidget
         return result;
     }
     
-    private static ItemColumnConfig ImportColumnFromJObject(Newtonsoft.Json.Linq.JObject jObj)
+    /// <summary>
+    /// Builds an <see cref="ItemColumnConfig"/> from a single serialized element by first normalizing it
+    /// to a dictionary via <see cref="SettingsImportHelper"/>. Returns null for elements that are not objects.
+    /// </summary>
+    private static ItemColumnConfig? ImportColumnConfig(object? element)
     {
+        var dict = SettingsImportHelper.ConvertToDictionary(element);
+        if (dict == null)
+            return null;
+
         var item = new ItemColumnConfig
         {
-            Id = jObj["Id"]?.ToObject<uint>() ?? 0,
-            CustomName = jObj["CustomName"]?.ToObject<string>(),
-            IsCurrency = jObj["IsCurrency"]?.ToObject<bool>() ?? false,
-            Width = jObj["Width"]?.ToObject<float>() ?? 80f,
-            StoreHistory = jObj["StoreHistory"]?.ToObject<bool>() ?? false,
-            ShowInTable = jObj["ShowInTable"]?.ToObject<bool>() ?? true,
-            ShowInGraph = jObj["ShowInGraph"]?.ToObject<bool>() ?? true
+            Id = SettingsImportHelper.GetSetting<uint>(dict, "Id", 0),
+            CustomName = SettingsImportHelper.GetSetting<string?>(dict, "CustomName", null),
+            IsCurrency = SettingsImportHelper.GetSetting(dict, "IsCurrency", false),
+            Width = SettingsImportHelper.GetSetting(dict, "Width", 80f),
+            StoreHistory = SettingsImportHelper.GetSetting(dict, "StoreHistory", false),
+            ShowInTable = SettingsImportHelper.GetSetting(dict, "ShowInTable", true),
+            ShowInGraph = SettingsImportHelper.GetSetting(dict, "ShowInGraph", true)
         };
-        
-        var colorToken = jObj["Color"];
-        if (colorToken is Newtonsoft.Json.Linq.JArray colorArr && colorArr.Count >= 4)
-        {
-            item.Color = new Vector4(
-                colorArr[0].ToObject<float>(),
-                colorArr[1].ToObject<float>(),
-                colorArr[2].ToObject<float>(),
-                colorArr[3].ToObject<float>());
-        }
-        
-        return item;
-    }
-    
-    private static ItemColumnConfig ImportColumnFromJsonElement(System.Text.Json.JsonElement element)
-    {
-        var item = new ItemColumnConfig
-        {
-            Id = element.TryGetProperty("Id", out var idProp) ? idProp.GetUInt32() : 0,
-            CustomName = element.TryGetProperty("CustomName", out var nameProp) && 
-                         nameProp.ValueKind != System.Text.Json.JsonValueKind.Null 
-                         ? nameProp.GetString() : null,
-            IsCurrency = element.TryGetProperty("IsCurrency", out var currProp) && currProp.GetBoolean(),
-            Width = element.TryGetProperty("Width", out var widthProp) ? widthProp.GetSingle() : 80f,
-            StoreHistory = element.TryGetProperty("StoreHistory", out var histProp) && histProp.GetBoolean(),
-            ShowInTable = !element.TryGetProperty("ShowInTable", out var tableProp) || tableProp.GetBoolean(),
-            ShowInGraph = !element.TryGetProperty("ShowInGraph", out var graphProp) || graphProp.GetBoolean()
-        };
-        
-        if (element.TryGetProperty("Color", out var colorProp) && 
-            colorProp.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            var colorArr = colorProp.EnumerateArray().Select(v => v.GetSingle()).ToArray();
-            if (colorArr.Length >= 4)
-                item.Color = new Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
-        }
-        
-        return item;
-    }
-    
-    private static ItemColumnConfig ImportColumnFromDictionary(IDictionary<string, object?> dict)
-    {
-        var item = new ItemColumnConfig
-        {
-            Id = dict.TryGetValue("Id", out var idVal) && idVal != null ? Convert.ToUInt32(idVal) : 0,
-            CustomName = dict.TryGetValue("CustomName", out var nameVal) ? nameVal?.ToString() : null,
-            IsCurrency = dict.TryGetValue("IsCurrency", out var currVal) && currVal is bool b && b,
-            Width = dict.TryGetValue("Width", out var widthVal) && widthVal != null ? Convert.ToSingle(widthVal) : 80f,
-            StoreHistory = dict.TryGetValue("StoreHistory", out var histVal) && histVal is bool h && h,
-            ShowInTable = !dict.TryGetValue("ShowInTable", out var tableVal) || (tableVal is bool t && t),
-            ShowInGraph = !dict.TryGetValue("ShowInGraph", out var graphVal) || (graphVal is bool g && g)
-        };
-        
-        if (dict.TryGetValue("Color", out var colorVal) && colorVal is float[] colorArr && colorArr.Length >= 4)
-        {
-            item.Color = new Vector4(colorArr[0], colorArr[1], colorArr[2], colorArr[3]);
-        }
-        
+
+        var color = SettingsImportHelper.ImportColor(dict, "Color");
+        if (color.HasValue)
+            item.Color = color.Value;
+
         return item;
     }
 }

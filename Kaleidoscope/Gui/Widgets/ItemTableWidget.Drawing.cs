@@ -359,7 +359,7 @@ public sealed partial class ItemTableWidget
                     if (isRowSelected)
                     {
                         var baseColor = nameColor ?? _config.DefaultTextColor;
-                        nameColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
+                        nameColor = ColorUtils.Invert(baseColor);
                     }
                     
                     // Check if this row has retainer breakdown data and if we should show it
@@ -459,7 +459,7 @@ public sealed partial class ItemTableWidget
                     {
                         // Invert the color for selected columns
                         var baseColor = textColor ?? _config.DefaultTextColor;
-                        textColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
+                        textColor = ColorUtils.Invert(baseColor);
                     }
                     
                     DrawAlignedCellText(
@@ -853,7 +853,7 @@ public sealed partial class ItemTableWidget
             if (isColumnSelected)
             {
                 var baseColor = textColor ?? _config.DefaultTextColor;
-                textColor = new Vector4(1f - baseColor.X, 1f - baseColor.Y, 1f - baseColor.Z, baseColor.W);
+                textColor = ColorUtils.Invert(baseColor);
             }
             
             DrawAlignedCellText(

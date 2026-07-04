@@ -28,6 +28,14 @@ public sealed class WorldSelectionWidget
     private readonly UniversalisWorldData? _worldData;
     private readonly string _id;
 
+    // Cache for DrawSingleWorldSelector's per-frame world list rebuild.
+    // Invalidated when the world data instance, its world count, or the include-all flag changes.
+    private static UniversalisWorldData? _cachedSelectorWorldData;
+    private static int _cachedSelectorWorldCount = -1;
+    private static bool _cachedSelectorIncludeAll;
+    private static string[]? _cachedSelectorNames;
+    private static List<int>? _cachedSelectorIds;
+
     /// <summary>The selection mode (Worlds, DataCenters, or Regions).</summary>
     public WorldSelectionMode Mode { get; set; } = WorldSelectionMode.Worlds;
 
@@ -519,40 +527,57 @@ public sealed class WorldSelectionWidget
 
         bool changed = false;
 
-        // Build world list
-        var worldNames = new List<string>();
-        var worldIds = new List<int>();
-
-        if (includeAllOption)
+        // Build (or reuse a cached) world list. The list content depends only on the world
+        // data and the include-all flag, so it is rebuilt only when those change.
+        if (!ReferenceEquals(_cachedSelectorWorldData, worldData)
+            || _cachedSelectorWorldCount != worldData.Worlds.Count
+            || _cachedSelectorIncludeAll != includeAllOption
+            || _cachedSelectorNames == null
+            || _cachedSelectorIds == null)
         {
-            worldNames.Add("All Worlds");
-            worldIds.Add(0);
-        }
+            var names = new List<string>();
+            var ids = new List<int>();
 
-        // Group by region and DC
-        foreach (var region in worldData.Regions)
-        {
-            foreach (var dc in worldData.GetDataCentersForRegion(region))
+            if (includeAllOption)
             {
-                if (dc.Worlds == null) continue;
-                foreach (var wid in dc.Worlds)
+                names.Add("All Worlds");
+                ids.Add(0);
+            }
+
+            // Group by region and DC
+            foreach (var region in worldData.Regions)
+            {
+                foreach (var dc in worldData.GetDataCentersForRegion(region))
                 {
-                    var name = worldData.GetWorldName(wid);
-                    if (!string.IsNullOrEmpty(name))
+                    if (dc.Worlds == null) continue;
+                    foreach (var wid in dc.Worlds)
                     {
-                        worldNames.Add($"{name} ({dc.Name})");
-                        worldIds.Add(wid);
+                        var name = worldData.GetWorldName(wid);
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            names.Add($"{name} ({dc.Name})");
+                            ids.Add(wid);
+                        }
                     }
                 }
             }
+
+            _cachedSelectorWorldData = worldData;
+            _cachedSelectorWorldCount = worldData.Worlds.Count;
+            _cachedSelectorIncludeAll = includeAllOption;
+            _cachedSelectorNames = names.ToArray();
+            _cachedSelectorIds = ids;
         }
+
+        var worldNames = _cachedSelectorNames!;
+        var worldIds = _cachedSelectorIds!;
 
         // Find current selection index
         var currentIndex = worldIds.IndexOf(selectedWorldId);
         if (currentIndex < 0) currentIndex = 0;
 
         ImGui.SetNextItemWidth(width);
-        if (ImGui.Combo(label, ref currentIndex, worldNames.ToArray(), worldNames.Count))
+        if (ImGui.Combo(label, ref currentIndex, worldNames, worldNames.Length))
         {
             selectedWorldId = worldIds[currentIndex];
             changed = true;

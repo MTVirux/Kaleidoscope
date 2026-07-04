@@ -35,4 +35,42 @@ public static class ColorUtils
         var a = (uint)(Math.Clamp(color.W, 0f, 1f) * 255f);
         return r | (g << 8) | (b << 16) | (a << 24);
     }
+
+    /// <summary>
+    /// Inverts the RGB channels of a color while preserving its alpha.
+    /// </summary>
+    /// <param name="color">The color to invert (RGBA, 0-1).</param>
+    /// <returns>A color with each RGB channel replaced by (1 - channel), alpha unchanged.</returns>
+    public static Vector4 Invert(Vector4 color)
+        => new(1f - color.X, 1f - color.Y, 1f - color.Z, color.W);
+
+    /// <summary>
+    /// Converts HSV color values to an RGB Vector4.
+    /// </summary>
+    /// <param name="h">Hue (0-1).</param>
+    /// <param name="s">Saturation (0-1).</param>
+    /// <param name="v">Value/Brightness (0-1).</param>
+    /// <returns>RGB color as Vector4 with alpha = 1.</returns>
+    public static Vector4 HsvToRgb(float h, float s, float v)
+    {
+        float r, g, b;
+
+        int i = (int)(h * 6);
+        float f = h * 6 - i;
+        float p = v * (1 - s);
+        float q = v * (1 - f * s);
+        float t = v * (1 - (1 - f) * s);
+
+        switch (i % 6)
+        {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            default: r = v; g = p; b = q; break;
+        }
+
+        return new Vector4(r, g, b, 1f);
+    }
 }

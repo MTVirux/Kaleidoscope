@@ -48,6 +48,9 @@ public static class UiColors
     
     /// <summary>Highlighted text - blue.</summary>
     public static readonly Vector4 Highlight = new(0.4f, 0.6f, 1.0f, 1f);
+
+    /// <summary>High-quality / merge-indicator accent - bright cyan-blue.</summary>
+    public static readonly Vector4 HqPrice = new(0.4f, 0.8f, 1f, 1f);
     
     /// <summary>Selection highlight background - semi-transparent yellow.</summary>
     public static readonly Vector4 SelectionHighlight = new(0.8f, 0.8f, 0.2f, 0.5f);
@@ -67,6 +70,25 @@ public static class UiColors
     
     /// <summary>Very large size - orange (concern).</summary>
     public static readonly Vector4 SizeVeryLarge = new(0.8f, 0.4f, 0.2f, 1f);
+
+    // Packed ABGR (0xAABBGGRR) colors for direct ImGui draw-list use (icon toolbars, overlays).
+    /// <summary>Fully transparent - used to skip a fill.</summary>
+    public const uint TransparentU32 = 0x00000000u;
+
+    /// <summary>Hovered chrome button background - subtle gray.</summary>
+    public const uint ButtonHoverU32 = 0xFF3A3A3Au;
+
+    /// <summary>Active/pressed chrome button background - lighter gray.</summary>
+    public const uint ButtonActiveU32 = 0xFF505050u;
+
+    /// <summary>Default icon glyph - white.</summary>
+    public const uint IconDefaultU32 = 0xFFFFFFFFu;
+
+    /// <summary>Active icon glyph - green.</summary>
+    public const uint IconActiveU32 = 0xFF00FF00u;
+
+    /// <summary>Subtle outline stroke - mid gray.</summary>
+    public const uint OutlineSubtleU32 = 0xFF606060u;
 
     /// <summary>
     /// Gets an appropriate color for a byte size value.

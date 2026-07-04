@@ -35,6 +35,10 @@ public sealed class PriceMatchTreeWidget
 
     private const string CustomFilteringLabel = "Custom";
 
+    // Layout: each node's mode dropdown is right-aligned and fixed width.
+    private const float DropdownWidth = 155f;
+    private const float DropdownRightOffset = 160f;
+
     public PriceMatchTreeWidget(UniversalisWorldData worldData, string id = "PriceMatchTree")
     {
         _worldData = worldData;
@@ -102,7 +106,7 @@ public sealed class PriceMatchTreeWidget
         var nodeOpen = ImGui.TreeNodeEx($"{region}##{_id}", nodeFlags);
 
         // Draw dropdown on same line
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 160);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - DropdownRightOffset);
         changed |= DrawPriceMatchDropdown($"Region_{region}", region, null, null, effectiveMode, isCustom, 
             mode => {
                 if (mode.HasValue)
@@ -142,7 +146,7 @@ public sealed class PriceMatchTreeWidget
         var nodeOpen = ImGui.TreeNodeEx($"{dcName}##{_id}", nodeFlags);
 
         // Draw dropdown on same line
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 160);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - DropdownRightOffset);
         changed |= DrawPriceMatchDropdown($"DC_{dcName}", dcName, region, null, effectiveMode, isCustom,
             mode => {
                 if (mode.HasValue)
@@ -181,7 +185,7 @@ public sealed class PriceMatchTreeWidget
         ImGui.TreeNodeEx($"{worldName}##{_id}", ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanAvailWidth);
 
         // Draw dropdown on same line
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 160);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - DropdownRightOffset);
         changed |= DrawPriceMatchDropdown($"World_{worldId}", worldName, region, dcName, effectiveMode, false,
             mode => {
                 if (mode.HasValue)
@@ -237,7 +241,7 @@ public sealed class PriceMatchTreeWidget
             previewColor = UiColors.Info; // Gray for inherited
         }
 
-        ImGui.SetNextItemWidth(155);
+        ImGui.SetNextItemWidth(DropdownWidth);
         ImGui.PushStyleColor(ImGuiCol.Text, previewColor);
         
         if (ImGui.BeginCombo($"##{id}{_id}", previewText))
@@ -312,13 +316,10 @@ public sealed class PriceMatchTreeWidget
             }
         }
 
+        // Only genuinely mixed children (more than one distinct override mode) are "Custom".
+        // A single shared override mode across children is consistent, not custom.
         if (childModes.Count > 1)
         {
-            isCustom = true;
-        }
-        else if (childModes.Count == 1)
-        {
-            // One child mode but not all children have it - could be custom
             isCustom = true;
         }
 

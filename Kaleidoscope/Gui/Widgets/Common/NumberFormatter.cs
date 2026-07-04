@@ -67,6 +67,25 @@ public static class NumberFormatter
     }
     
     /// <summary>
+    /// Formats an amount using gil-display conventions: rounded K/M/B suffixes with two
+    /// decimals for billions and one decimal for millions/thousands, and grouped integer
+    /// formatting (N0) below 1,000. Rounds (not truncates) and uses the current culture,
+    /// preserving the exact legacy gil display formatting.
+    /// </summary>
+    /// <param name="amount">The amount to format.</param>
+    /// <returns>Formatted string like "1.5M" or "500K".</returns>
+    public static string FormatGil(double amount)
+    {
+        return amount switch
+        {
+            >= 1_000_000_000 => $"{amount / 1_000_000_000.0:F2}B",
+            >= 1_000_000 => $"{amount / 1_000_000.0:F1}M",
+            >= 1_000 => $"{amount / 1_000.0:F1}K",
+            _ => $"{amount:N0}"
+        };
+    }
+
+    /// <summary>
     /// Formats a number with standard thousands separators.
     /// </summary>
     /// <param name="value">The value to format.</param>

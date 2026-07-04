@@ -3,6 +3,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Kaleidoscope;
 using Kaleidoscope.Gui.Animation;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 using Kaleidoscope.Services.Universalis;
@@ -40,10 +41,9 @@ public sealed class QuickAccessBarWidget
     private const float SeparatorWidth = 1f;
     private const float SeparatorMargin = 8f;
     private const uint DefaultBarBackgroundColor = 0xDD1A1A1A; // Dark semi-transparent fallback
-    private const uint ButtonHoverColor = 0xFF3A3A3A;
-    private const uint ButtonActiveColor = 0xFF505050;
     private const uint SaveButtonColor = 0xFF2A5A2A; // Green tint for save when dirty
     private const uint SaveButtonHoverColor = 0xFF3A7A3A;
+    private const uint SaveIconColor = 0xFF80FF80; // Light green glyph for the save icon
     private const uint StatusConnectedColor = 0xFF00CC00; // Green
     private const uint StatusDisconnectedColor = 0xFF0000CC; // Red
     private const uint StatusWarningColor = 0xFF00AAFF; // Orange/Yellow
@@ -208,8 +208,8 @@ public sealed class QuickAccessBarWidget
         DrawPinButton(dl, ref currentX, buttonY);
         currentX += ButtonSpacing;
 
-        DrawIconButton(dl, ref currentX, buttonY, 
-            _stateService.IsEditMode ? FontAwesomeIcon.Edit : FontAwesomeIcon.Edit,
+        DrawIconButton(dl, ref currentX, buttonY,
+            _stateService.IsEditMode ? FontAwesomeIcon.Check : FontAwesomeIcon.Edit,
             _stateService.IsEditMode ? "Exit Edit Mode" : "Enter Edit Mode",
             _stateService.IsEditMode,
             false,
@@ -394,98 +394,74 @@ public sealed class QuickAccessBarWidget
         return true;
     }
     
+    /// <summary>Inclusive rectangle hit-test against the current mouse position.</summary>
+    private static bool IsMouseOverRect(Vector2 min, Vector2 max)
+    {
+        var mousePos = ImGui.GetMousePos();
+        return mousePos.X >= min.X && mousePos.X <= max.X &&
+               mousePos.Y >= min.Y && mousePos.Y <= max.Y;
+    }
+
     private void DrawStatusIndicator(ImDrawListPtr dl, ref float x, float y, uint color, string tooltip)
     {
         var center = new Vector2(x + StatusIndicatorSize / 2f, y + StatusIndicatorSize / 2f);
         var radius = StatusIndicatorSize / 2f;
-        
+
         dl.AddCircleFilled(center, radius, color, 12);
-        dl.AddCircle(center, radius, 0xFF606060, 12, 1f);
-        
-        var mousePos = ImGui.GetMousePos();
+        dl.AddCircle(center, radius, UiColors.OutlineSubtleU32, 12, 1f);
+
         var minPos = new Vector2(x, y);
         var maxPos = new Vector2(x + StatusIndicatorSize, y + StatusIndicatorSize);
-        var isHovered = mousePos.X >= minPos.X && mousePos.X <= maxPos.X &&
-                        mousePos.Y >= minPos.Y && mousePos.Y <= maxPos.Y;
-        
-        if (isHovered)
+        if (IsMouseOverRect(minPos, maxPos))
         {
             ImGui.BeginTooltip();
             ImGui.TextUnformatted(tooltip);
             ImGui.EndTooltip();
         }
-        
+
         x += StatusIndicatorSize;
     }
 
     private void DrawPinButton(ImDrawListPtr dl, ref float x, float y)
     {
-        var buttonMin = new Vector2(x, y);
-        var buttonMax = buttonMin + new Vector2(ButtonWidth, ButtonWidth);
-        var mousePos = ImGui.GetMousePos();
-        var isHovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
-                        mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
-
-        uint bgColor;
-        if (_isPinned)
-            bgColor = ButtonActiveColor;
-        else if (isHovered)
-            bgColor = ButtonHoverColor;
-        else
-            bgColor = 0x00000000; // Transparent when not hovered
-
-        if (bgColor != 0)
-            dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
-
-        var icon = FontAwesomeIcon.Thumbtack;
-        var iconText = icon.ToIconString();
-        ImGui.PushFont(UiBuilder.IconFont);
-        try
-        {
-            var textSize = ImGui.CalcTextSize(iconText);
-            var textPos = buttonMin + (new Vector2(ButtonWidth, ButtonWidth) - textSize) / 2f;
-            var textColor = _isPinned ? PinActiveColor : PinInactiveColor;
-            dl.AddText(textPos, textColor, iconText);
-        }
-        finally
-        {
-            ImGui.PopFont();
-        }
-
-        if (isHovered)
-        {
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-            {
-                _isPinned = !_isPinned;
-            }
-
-            ImGui.BeginTooltip();
-            ImGui.TextUnformatted(_isPinned ? "Unpin (hide when CTRL+ALT released)" : "Pin (keep visible)");
-            ImGui.EndTooltip();
-        }
-
-        x += ButtonWidth;
+        var iconColor = _isPinned ? PinActiveColor : PinInactiveColor;
+        DrawIconButtonCore(dl, ref x, y, FontAwesomeIcon.Thumbtack,
+            _isPinned ? "Unpin (hide when CTRL+ALT released)" : "Pin (keep visible)",
+            _isPinned, false, iconColor, positionTooltipAtButton: false,
+            () => _isPinned = !_isPinned);
     }
 
     private void DrawIconButton(ImDrawListPtr dl, ref float x, float y, FontAwesomeIcon icon, string tooltip, bool isActive, bool isSaveButton, Action onClick)
     {
+        var iconColor = isSaveButton
+            ? SaveIconColor
+            : (isActive ? UiColors.IconActiveU32 : UiColors.IconDefaultU32);
+        DrawIconButtonCore(dl, ref x, y, icon, tooltip, isActive, isSaveButton, iconColor,
+            positionTooltipAtButton: true, onClick);
+    }
+
+    /// <summary>
+    /// Shared primitive for a fixed-size icon button: draws the hover/active/save background,
+    /// centers the icon glyph, and handles hit-testing, click, and tooltip.
+    /// </summary>
+    private void DrawIconButtonCore(ImDrawListPtr dl, ref float x, float y, FontAwesomeIcon icon,
+        string tooltip, bool isActive, bool isSaveButton, uint iconColor, bool positionTooltipAtButton, Action onClick)
+    {
         var buttonMin = new Vector2(x, y);
         var buttonMax = buttonMin + new Vector2(ButtonWidth, ButtonWidth);
-        var mousePos = ImGui.GetMousePos();
-        var isHovered = mousePos.X >= buttonMin.X && mousePos.X <= buttonMax.X &&
-                        mousePos.Y >= buttonMin.Y && mousePos.Y <= buttonMax.Y;
+        var isHovered = IsMouseOverRect(buttonMin, buttonMax);
 
         uint bgColor;
         if (isSaveButton)
             bgColor = isHovered ? SaveButtonHoverColor : SaveButtonColor;
         else if (isActive)
-            bgColor = ButtonActiveColor;
+            bgColor = UiColors.ButtonActiveU32;
         else if (isHovered)
-            bgColor = ButtonHoverColor;
+            bgColor = UiColors.ButtonHoverU32;
         else
-            bgColor = 0x00000000; // Transparent when not hovered
+            bgColor = UiColors.TransparentU32;
 
-        if (bgColor != 0)
+        if (bgColor != UiColors.TransparentU32)
             dl.AddRectFilled(buttonMin, buttonMax, bgColor, 4f);
 
         var iconText = icon.ToIconString();
@@ -494,10 +470,7 @@ public sealed class QuickAccessBarWidget
         {
             var textSize = ImGui.CalcTextSize(iconText);
             var textPos = buttonMin + (new Vector2(ButtonWidth, ButtonWidth) - textSize) / 2f;
-            var textColor = isActive ? 0xFF00FF00u : 0xFFFFFFFFu; // Green if active, white otherwise
-            if (isSaveButton)
-                textColor = 0xFF80FF80u; // Light green for save icon
-            dl.AddText(textPos, textColor, iconText);
+            dl.AddText(textPos, iconColor, iconText);
         }
         finally
         {
@@ -509,7 +482,8 @@ public sealed class QuickAccessBarWidget
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 onClick();
 
-            ImGui.SetNextWindowPos(buttonMin);
+            if (positionTooltipAtButton)
+                ImGui.SetNextWindowPos(buttonMin);
             ImGui.BeginTooltip();
             ImGui.TextUnformatted(tooltip);
             ImGui.EndTooltip();

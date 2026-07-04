@@ -1,3 +1,6 @@
+using Kaleidoscope.Gui.Common;
+using Kaleidoscope.Gui.Widgets.Common;
+
 namespace Kaleidoscope.Gui.Widgets;
 
 /// <summary>
@@ -18,16 +21,7 @@ public static class FormatUtils
     /// </summary>
     /// <param name="amount">The amount to format.</param>
     /// <returns>Formatted string like "1.5M" or "500K".</returns>
-    public static string FormatGil(double amount)
-    {
-        return amount switch
-        {
-            >= 1_000_000_000 => $"{amount / 1_000_000_000.0:F2}B",
-            >= 1_000_000 => $"{amount / 1_000_000.0:F1}M",
-            >= 1_000 => $"{amount / 1_000.0:F1}K",
-            _ => $"{amount:N0}"
-        };
-    }
+    public static string FormatGil(double amount) => NumberFormatter.FormatGil(amount);
 
     /// <summary>
     /// Formats a time span as a relative time string (e.g., "5m ago", "2h ago").
@@ -156,25 +150,5 @@ public static class FormatUtils
     /// <param name="v">Value/Brightness (0-1).</param>
     /// <returns>RGB color as Vector4 with alpha = 1.</returns>
     public static System.Numerics.Vector4 HsvToRgb(float h, float s, float v)
-    {
-        float r, g, b;
-
-        int i = (int)(h * 6);
-        float f = h * 6 - i;
-        float p = v * (1 - s);
-        float q = v * (1 - f * s);
-        float t = v * (1 - (1 - f) * s);
-
-        switch (i % 6)
-        {
-            case 0: r = v; g = t; b = p; break;
-            case 1: r = q; g = v; b = p; break;
-            case 2: r = p; g = v; b = t; break;
-            case 3: r = p; g = q; b = v; break;
-            case 4: r = t; g = p; b = v; break;
-            default: r = v; g = p; b = q; break;
-        }
-
-        return new System.Numerics.Vector4(r, g, b, 1f);
-    }
+        => ColorUtils.HsvToRgb(h, s, v);
 }
