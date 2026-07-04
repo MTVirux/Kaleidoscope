@@ -22,10 +22,12 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// </summary>
 /// <remarks>
 /// This is a partial class split across multiple files:
-/// - DataTool.Main.cs: Core setup, fields, constructor, entry points
-/// - DataTool.TableView.cs: Table view rendering and data population
-/// - DataTool.GraphView.cs: Graph view rendering and series data loading
+/// - DataTool.Main.cs: Core setup, fields, constructor, shared plumbing, view-mode switch
 /// - DataTool.Settings.cs: Tool settings, context menus, import/export
+///
+/// The two views are separate component classes constructed and delegated to from here:
+/// - DataToolTableView.cs: Table view cache and rendering
+/// - DataToolGraphView.cs: Graph view cache, series loading, and rendering
 /// </remarks>
 [ToolType("DataGraph", "Data Graph", "Items/Currency", "Track items and currencies over time with graphing visualization", Variant = "Graph")]
 [ToolType("DataTable", "Data Table", "Items/Currency", "Track items and currencies in a table view with characters as rows", Variant = "Table")]
@@ -54,31 +56,20 @@ public sealed partial class DataTool : ToolComponent
     
     // Instance-specific settings
     private readonly DataToolSettings _instanceSettings;
-    
-    // Table view cached data
-    private PreparedItemTableData? _cachedTableData;
-    private volatile bool _pendingTableRefresh = true;
-    
-    // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries)
-    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
-    private List<GraphSeriesGroup>? _cachedSeriesGroups;
-    private volatile bool _graphCacheIsDirty = true;
-    private int _cachedSeriesCount;
-    private int _cachedTimeRangeValue;
-    private TimeUnit _cachedTimeRangeUnit;
-    private bool _cachedIncludeRetainers;
-    private TableGroupingMode _cachedGroupingMode;
-    
+
+    // View components (each owns its view-specific cache and draw logic)
+    private readonly DataToolTableView _tableView;
+    private readonly DataToolGraphView _graphView;
+
+    // Selection/merge UI state owned by this tool instance
+    private readonly ColumnManagementState _columnState = new();
+    private readonly MergeManagementState _mergeRowState = new();
+
     // Version counters for cache change detection (replaces blind timer polling)
     private long _lastTimeSeriesVersion;
     private long _lastCharacterVersion;
     private long _lastResourcesVersion;
-    
-    // Retainer names cache (refreshed periodically)
-    private Dictionary<ulong, string>? _cachedRetainerNames;
-    private DateTime _lastRetainerNamesCacheRefresh = DateTime.MinValue;
-    private static readonly TimeSpan RetainerNamesCacheExpiry = TimeSpan.FromMinutes(5);
-    
+
     // Shared cached state
     private CharacterNameFormat _cachedNameFormat;
     private CharacterSortOrder _cachedSortOrder;
@@ -168,7 +159,7 @@ public sealed partial class DataTool : ToolComponent
         // Bind graph widget to settings
         _graphWidget.BindSettings(
             _instanceSettings,
-            () => { _graphCacheIsDirty = true; NotifyToolSettingsChanged(); },
+            () => { _graphView.MarkDirty(); NotifyToolSettingsChanged(); },
             "Graph Settings");
         
         // Subscribe to auto-scroll settings changes from controls drawer
@@ -224,6 +215,32 @@ public sealed partial class DataTool : ToolComponent
         
         RegisterSettingsProvider(_tableWidget);
         RegisterSettingsProvider(_graphWidget);
+
+        // Construct the view components with the shared plumbing they read. Cache-version
+        // detection, character-name formatting, and logging stay owned here and are supplied
+        // as delegates so both views share a single source of truth.
+        _tableView = new DataToolTableView(
+            currencyTrackerService,
+            configService,
+            inventoryCacheService,
+            autoRetainerService,
+            priceTrackingService,
+            _tableWidget,
+            HasCacheVersionChanged,
+            LogDebug);
+
+        _graphView = new DataToolGraphView(
+            currencyTrackerService,
+            configService,
+            inventoryCacheService,
+            autoRetainerService,
+            priceTrackingService,
+            itemDataService,
+            trackedDataRegistry,
+            _graphWidget,
+            HasCacheVersionChanged,
+            GetCharacterDisplayName,
+            LogDebug);
     }
     
     /// <summary>
@@ -233,8 +250,8 @@ public sealed partial class DataTool : ToolComponent
     {
         _instanceSettings.Columns.Clear();
         _instanceSettings.Columns.AddRange(columns);
-        _pendingTableRefresh = true;
-        _graphCacheIsDirty = true;
+        _tableView.RequestRefresh();
+        _graphView.MarkDirty();
     }
     
     /// <summary>
@@ -248,8 +265,8 @@ public sealed partial class DataTool : ToolComponent
     public void ConfigureSettings(Action<DataToolSettings> configure)
     {
         configure(_instanceSettings);
-        _pendingTableRefresh = true;
-        _graphCacheIsDirty = true;
+        _tableView.RequestRefresh();
+        _graphView.MarkDirty();
     }
     
     private void UpdateTitle()
@@ -265,8 +282,8 @@ public sealed partial class DataTool : ToolComponent
         Settings.SelectedCharacterIds.Clear();
         Settings.SelectedCharacterIds.AddRange(selectedIds);
         Settings.UseCharacterFilter = selectedIds.Count > 0;
-        _pendingTableRefresh = true;
-        _graphCacheIsDirty = true;
+        _tableView.RequestRefresh();
+        _graphView.MarkDirty();
         NotifyToolSettingsChanged();
     }
     
@@ -279,33 +296,33 @@ public sealed partial class DataTool : ToolComponent
             if (_cachedNameFormat != currentFormat)
             {
                 _cachedNameFormat = currentFormat;
-                _pendingTableRefresh = true;
-                _graphCacheIsDirty = true;
+                _tableView.RequestRefresh();
+                _graphView.MarkDirty();
             }
-            
+
             // Check if sort order changed
             var currentSortOrder = _configService.Config.CharacterSortOrder;
             if (_cachedSortOrder != currentSortOrder)
             {
                 _cachedSortOrder = currentSortOrder;
-                _pendingTableRefresh = true;
+                _tableView.RequestRefresh();
             }
-            
+
             // Draw action buttons
             if (Settings.ShowActionButtons)
             {
                 DrawActionButtons();
                 ImGui.Separator();
             }
-            
+
             // Draw based on view mode
             if (Settings.ViewMode == DataToolViewMode.Table)
             {
-                DrawTableView();
+                _tableView.Draw(Settings);
             }
             else
             {
-                DrawGraphView();
+                _graphView.Draw(Settings);
             }
         }
         catch (Exception ex)
@@ -339,8 +356,8 @@ public sealed partial class DataTool : ToolComponent
         {
             Settings.ViewMode = isGraphView ? DataToolViewMode.Table : DataToolViewMode.Graph;
             UpdateTitle();
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
         if (ImGui.IsItemHovered())
@@ -455,8 +472,8 @@ public sealed partial class DataTool : ToolComponent
         
         if (changed)
         {
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
     }
@@ -487,8 +504,8 @@ public sealed partial class DataTool : ToolComponent
         
         if (changed)
         {
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
     }
@@ -497,8 +514,8 @@ public sealed partial class DataTool : ToolComponent
     {
         if (ColumnManagementWidget.AddColumn(Settings.Columns, id, isCurrency))
         {
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
     }
@@ -510,7 +527,7 @@ public sealed partial class DataTool : ToolComponent
         _instanceSettings.AutoScrollTimeUnit = timeUnit;
         _instanceSettings.AutoScrollNowPosition = nowPosition;
         NotifyToolSettingsChanged();
-        _graphCacheIsDirty = true;
+        _graphView.MarkDirty();
     }
     
     /// <summary>
@@ -534,7 +551,28 @@ public sealed partial class DataTool : ToolComponent
         }
         return false;
     }
-    
+
+    /// <summary>
+    /// Gets a display name for the provided character ID.
+    /// Uses formatted name from cache service, respecting the name format setting.
+    /// Shared plumbing read by both the graph view and the source-merge settings UI.
+    /// </summary>
+    private string GetCharacterDisplayName(ulong characterId)
+    {
+        // Use cache service which handles display name, game name formatting, and fallbacks
+        var formattedName = CacheService.GetFormattedCharacterName(characterId);
+        if (!string.IsNullOrEmpty(formattedName))
+            return formattedName;
+
+        // Try runtime lookup for currently-loaded characters (formats it)
+        var runtimeName = GameStateService.GetCharacterName(characterId);
+        if (!string.IsNullOrEmpty(runtimeName))
+            return Kaleidoscope.Libs.CharacterNameFormatter.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
+
+        // Fallback to ID
+        return $"Character {characterId}";
+    }
+
     public override void Dispose()
     {
         _graphWidget.OnAutoScrollSettingsChanged -= OnAutoScrollSettingsChanged;

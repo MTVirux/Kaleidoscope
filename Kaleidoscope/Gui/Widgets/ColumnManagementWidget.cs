@@ -14,9 +14,6 @@ namespace Kaleidoscope.Gui.Widgets;
 /// </summary>
 public static class ColumnManagementWidget
 {
-    // Selection state for merge operations (keyed by widget instance ID)
-    private static readonly Dictionary<string, HashSet<int>> _selectedIndices = new();
-    
     /// <summary>
     /// Represents a display item that can be either an individual column or a merged group.
     /// Used for unified display ordering.
@@ -41,7 +38,7 @@ public static class ColumnManagementWidget
     /// <param name="emptyMessage">Message to show when no columns/series are configured.</param>
     /// <param name="itemLabel">Label for items, e.g., "Item" or "Item (historical data)".</param>
     /// <param name="currencyLabel">Label for currencies, e.g., "Currency" or "Currency (historical data)".</param>
-    /// <param name="widgetId">Unique identifier for this widget instance (for selection state).</param>
+    /// <param name="state">Caller-owned selection state for merge operations (one instance per owning tool).</param>
     /// <param name="isItemHistoricalTrackingEnabled">Function to check if a specific item has historical tracking enabled.</param>
     /// <param name="onItemHistoricalTrackingToggled">Callback when historical tracking is toggled for a specific item (itemId, enabled).</param>
     /// <param name="isCurrencyHistoricalTrackingEnabled">Function to check if a specific currency (TrackedDataType as uint) has historical tracking enabled.</param>
@@ -51,27 +48,23 @@ public static class ColumnManagementWidget
         List<ItemColumnConfig> columns,
         List<MergedColumnGroup> mergedColumnGroups,
         Func<ItemColumnConfig, string> getDefaultName,
+        ColumnManagementState state,
         Action? onSettingsChanged = null,
         Action? onRefreshNeeded = null,
         string sectionTitle = "Column Management",
         string emptyMessage = "No columns configured.",
         string itemLabel = "Item",
         string currencyLabel = "Currency",
-        string widgetId = "default",
         Func<uint, bool>? isItemHistoricalTrackingEnabled = null,
         Action<uint, bool>? onItemHistoricalTrackingToggled = null,
         Func<uint, bool>? isCurrencyHistoricalTrackingEnabled = null,
         Action<uint, bool>? onCurrencyHistoricalTrackingToggled = null)
     {
         var changed = false;
-        
-        // Ensure selection state exists for this widget
-        if (!_selectedIndices.TryGetValue(widgetId, out var selectedIndices))
-        {
-            selectedIndices = new HashSet<int>();
-            _selectedIndices[widgetId] = selectedIndices;
-        }
-        
+
+        // Selection state is owned by the caller (one instance per owning tool).
+        var selectedIndices = state.SelectedIndices;
+
         // Build set of merged column indices
         var mergedIndices = new HashSet<int>();
         foreach (var group in mergedColumnGroups)
@@ -592,17 +585,9 @@ public static class ColumnManagementWidget
         moveUp = false;
         moveDown = false;
         
-        // Column 0: Selection checkbox
-        ImGui.TableNextColumn();
-        if (ImGui.Checkbox("##select", ref newSelected))
-        {
-            // Selection change is handled by caller
-        }
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Select for merging");
-        }
-        
+        // Column 0: Selection checkbox (selection change is applied to the out param, handled by caller)
+        DrawToggleCell("##select", isSelected, "Select for merging", v => newSelected = v);
+
         // Column 1: Color picker
         if (DrawColorCell(column.Color, "Color", c => { column.Color = c; onRefreshNeeded?.Invoke(); }))
             changed = true;
@@ -922,4 +907,15 @@ public static class ColumnManagementWidget
 
         return item;
     }
+}
+
+/// <summary>
+/// Per-instance selection state for <see cref="ColumnManagementWidget"/>'s merge UI.
+/// Owned by the tool that draws the widget so selection is scoped to that tool instead of
+/// being shared process-wide (the previous static, widget-id-keyed dictionary was never cleaned up).
+/// </summary>
+public sealed class ColumnManagementState
+{
+    /// <summary>Column indices currently selected for merging.</summary>
+    public HashSet<int> SelectedIndices { get; } = new();
 }

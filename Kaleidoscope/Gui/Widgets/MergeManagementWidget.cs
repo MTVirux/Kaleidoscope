@@ -13,25 +13,20 @@ namespace Kaleidoscope.Gui.Widgets;
 /// </summary>
 public static class MergeManagementWidget
 {
-    // Selection state for character merge operations (keyed by widget instance ID)
-    private static readonly Dictionary<string, HashSet<ulong>> _selectedCharacterIds = new();
-    
-    // Selection state for group key merge operations (keyed by widget instance ID)
-    private static readonly Dictionary<string, HashSet<string>> _selectedGroupKeys = new();
-    
     /// <summary>
     /// Draws the merged sources management section.
     /// Now supports both Character-mode (character IDs) and grouped-mode (group keys).
     /// </summary>
+    /// <param name="state">Caller-owned selection state (one instance per owning tool).</param>
     public static bool DrawMergedRows(
         List<MergedRowGroup> mergedRowGroups,
         TableGroupingMode groupingMode,
         Func<ulong, string> getCharacterName,
+        MergeManagementState state,
         IEnumerable<ulong>? availableCharacterIds = null,
         IEnumerable<string>? availableGroupKeys = null,
         Action? onSettingsChanged = null,
-        Action? onRefreshNeeded = null,
-        string widgetId = "default")
+        Action? onRefreshNeeded = null)
     {
         ImGui.Spacing();
         ImGui.Spacing();
@@ -44,26 +39,20 @@ public static class MergeManagementWidget
         bool changed;
         if (isCharacterMode)
         {
-            if (!_selectedCharacterIds.TryGetValue(widgetId, out var selectedIds))
-            {
-                selectedIds = new HashSet<ulong>();
-                _selectedCharacterIds[widgetId] = selectedIds;
-            }
-            
             changed = DrawMergeMode(
                 mergedRowGroups, TableGroupingMode.Character, availableCharacterIds,
                 g => g.CharacterIds, (g, items) => g.CharacterIds = items,
-                getCharacterName, id => (int)id, selectedIds, null, onRefreshNeeded);
+                getCharacterName, id => (int)id, state.SelectedCharacterIds, null, onRefreshNeeded);
         }
         else
         {
-            var keyId = $"{widgetId}_{groupingMode}";
-            if (!_selectedGroupKeys.TryGetValue(keyId, out var selectedKeys))
+            // Group-key selection is tracked per grouping mode within this tool instance.
+            if (!state.SelectedGroupKeysByMode.TryGetValue(groupingMode, out var selectedKeys))
             {
                 selectedKeys = new HashSet<string>();
-                _selectedGroupKeys[keyId] = selectedKeys;
+                state.SelectedGroupKeysByMode[groupingMode] = selectedKeys;
             }
-            
+
             // Build mode-specific preamble and early exit
             var modeName = groupingMode switch
             {
@@ -277,7 +266,21 @@ public static class MergeManagementWidget
             groupToUnmerge = groupIndex;
 
         ImGui.PopID();
-        
+
         return changed;
     }
+}
+
+/// <summary>
+/// Per-instance selection state for <see cref="MergeManagementWidget"/>'s source-merge UI.
+/// Owned by the tool that draws the widget so selection is scoped to that tool instead of
+/// being shared process-wide (the previous static, widget-id-keyed dictionaries were never cleaned up).
+/// </summary>
+public sealed class MergeManagementState
+{
+    /// <summary>Character IDs currently selected for merging (Character grouping mode).</summary>
+    public HashSet<ulong> SelectedCharacterIds { get; } = new();
+
+    /// <summary>Group keys currently selected for merging, tracked separately per grouping mode.</summary>
+    public Dictionary<TableGroupingMode, HashSet<string>> SelectedGroupKeysByMode { get; } = new();
 }

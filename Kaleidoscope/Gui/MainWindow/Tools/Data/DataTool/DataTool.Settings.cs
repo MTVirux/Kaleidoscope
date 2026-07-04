@@ -40,8 +40,8 @@ public sealed partial class DataTool
                     {
                         Settings.ViewMode = DataToolViewMode.Table;
                         UpdateTitle();
-                        _pendingTableRefresh = true;
-                        _graphCacheIsDirty = true;
+                        _tableView.RequestRefresh();
+                        _graphView.MarkDirty();
                         NotifyToolSettingsChanged();
                     }
                 }
@@ -58,8 +58,8 @@ public sealed partial class DataTool
                     {
                         Settings.ViewMode = DataToolViewMode.Graph;
                         UpdateTitle();
-                        _pendingTableRefresh = true;
-                        _graphCacheIsDirty = true;
+                        _tableView.RequestRefresh();
+                        _graphView.MarkDirty();
                         NotifyToolSettingsChanged();
                     }
                 }
@@ -80,8 +80,8 @@ public sealed partial class DataTool
         {
             settings.ViewMode = (DataToolViewMode)viewMode;
             UpdateTitle();
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
         
@@ -98,8 +98,8 @@ public sealed partial class DataTool
         if (ImGui.Combo("Group By", ref groupingMode, "Character\0World\0Data Center\0Region\0All\0"))
         {
             settings.GroupingMode = (TableGroupingMode)groupingMode;
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
         
@@ -108,8 +108,8 @@ public sealed partial class DataTool
         if (ImGui.Checkbox("Include Retainers", ref includeRetainers))
         {
             settings.IncludeRetainers = includeRetainers;
-            _pendingTableRefresh = true;
-            _graphCacheIsDirty = true;
+            _tableView.RequestRefresh();
+            _graphView.MarkDirty();
             NotifyToolSettingsChanged();
         }
         
@@ -123,7 +123,7 @@ public sealed partial class DataTool
             if (ImGui.Checkbox("Retainer Breakdown (Table)", ref showRetainerBreakdownTable))
             {
                 settings.ShowRetainerBreakdown = showRetainerBreakdownTable;
-                _pendingTableRefresh = true;
+                _tableView.RequestRefresh();
                 NotifyToolSettingsChanged();
             }
             if (ImGui.IsItemHovered())
@@ -136,7 +136,7 @@ public sealed partial class DataTool
             if (ImGui.Checkbox("Retainer Breakdown (Graph)", ref showRetainerBreakdownGraph))
             {
                 settings.ShowRetainerBreakdownInGraph = showRetainerBreakdownGraph;
-                _graphCacheIsDirty = true;
+                _graphView.MarkDirty();
                 NotifyToolSettingsChanged();
             }
             if (ImGui.IsItemHovered())
@@ -172,7 +172,7 @@ public sealed partial class DataTool
         if (ImGui.Checkbox("Hide Zero Rows", ref hideZeroRows))
         {
             settings.HideZeroRows = hideZeroRows;
-            _pendingTableRefresh = true;
+            _tableView.RequestRefresh();
             NotifyToolSettingsChanged();
         }
         if (ImGui.IsItemHovered())
@@ -189,12 +189,12 @@ public sealed partial class DataTool
             settings.MergedColumnGroups,
             column => _tableWidget.GetColumnHeader(column),
             onSettingsChanged: () => NotifyToolSettingsChanged(),
-            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
+            onRefreshNeeded: () => { _tableView.RequestRefresh(); _graphView.MarkDirty(); },
             sectionTitle: "Item / Currency Management",
             emptyMessage: "No items or currencies configured.",
             itemLabel: "Item",
             currencyLabel: "Currency",
-            widgetId: $"datatool_{GetHashCode()}",
+            state: _columnState,
             isItemHistoricalTrackingEnabled: (itemId) => _configService.Config.ItemsWithHistoricalTracking.Contains(itemId),
             onItemHistoricalTrackingToggled: (itemId, enabled) =>
             {
@@ -207,8 +207,8 @@ public sealed partial class DataTool
                     _configService.Config.ItemsWithHistoricalTracking.Remove(itemId);
                 }
                 _configService.MarkDirty();
-                _pendingTableRefresh = true;
-                _graphCacheIsDirty = true;
+                _tableView.RequestRefresh();
+                _graphView.MarkDirty();
             },
             isCurrencyHistoricalTrackingEnabled: (currencyId) => _configService.Config.EnabledTrackedDataTypes.Contains((TrackedDataType)currencyId),
             onCurrencyHistoricalTrackingToggled: (currencyId, enabled) =>
@@ -223,33 +223,33 @@ public sealed partial class DataTool
                     _configService.Config.EnabledTrackedDataTypes.Remove(dataType);
                 }
                 _configService.MarkDirty();
-                _pendingTableRefresh = true;
-                _graphCacheIsDirty = true;
+                _tableView.RequestRefresh();
+                _graphView.MarkDirty();
             });
         
         // Source Merging
         // Compute available row identifiers based on grouping mode
         var currentGroupingMode = settings.GroupingMode;
-        var availableCharIds = _cachedTableData?.Rows?.Select(r => r.CharacterId).Distinct().ToList() 
+        var availableCharIds = _tableView.CachedTableData?.Rows?.Select(r => r.CharacterId).Distinct().ToList() 
                                ?? new List<ulong>();
         
         // For non-Character modes, compute available group keys
         List<string>? availableGroupKeys = null;
-        if (currentGroupingMode != TableGroupingMode.Character && _cachedTableData?.Rows != null)
+        if (currentGroupingMode != TableGroupingMode.Character && _tableView.CachedTableData?.Rows != null)
         {
             availableGroupKeys = currentGroupingMode switch
             {
-                TableGroupingMode.World => _cachedTableData.Rows
+                TableGroupingMode.World => _tableView.CachedTableData.Rows
                     .Select(r => string.IsNullOrEmpty(r.WorldName) ? "Unknown World" : r.WorldName)
                     .Distinct()
                     .OrderBy(x => x)
                     .ToList(),
-                TableGroupingMode.DataCenter => _cachedTableData.Rows
+                TableGroupingMode.DataCenter => _tableView.CachedTableData.Rows
                     .Select(r => string.IsNullOrEmpty(r.DataCenterName) ? "Unknown DC" : r.DataCenterName)
                     .Distinct()
                     .OrderBy(x => x)
                     .ToList(),
-                TableGroupingMode.Region => _cachedTableData.Rows
+                TableGroupingMode.Region => _tableView.CachedTableData.Rows
                     .Select(r => string.IsNullOrEmpty(r.RegionName) ? "Unknown Region" : r.RegionName)
                     .Distinct()
                     .OrderBy(x => x)
@@ -266,15 +266,15 @@ public sealed partial class DataTool
             availableCharacterIds: availableCharIds,
             availableGroupKeys: availableGroupKeys,
             onSettingsChanged: () => NotifyToolSettingsChanged(),
-            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
-            widgetId: $"datatool_rows_{GetHashCode()}");
+            onRefreshNeeded: () => { _tableView.RequestRefresh(); _graphView.MarkDirty(); },
+            state: _mergeRowState);
         
         // Special Grouping
         SpecialGroupingWidget.Draw(
             settings.SpecialGrouping,
             settings.Columns,
             onSettingsChanged: () => NotifyToolSettingsChanged(),
-            onRefreshNeeded: () => { _pendingTableRefresh = true; _graphCacheIsDirty = true; },
+            onRefreshNeeded: () => { _tableView.RequestRefresh(); _graphView.MarkDirty(); },
             onAddColumn: (id, isCurrency) => AddColumn(id, isCurrency));
     }
     
@@ -503,8 +503,8 @@ public sealed partial class DataTool
         }
         
         UpdateTitle();
-        _pendingTableRefresh = true;
-        _graphCacheIsDirty = true;
+        _tableView.RequestRefresh();
+        _graphView.MarkDirty();
         
         // Tell the table widget to discard its cached column widths so it picks up
         // the freshly imported values on the next frame instead of overwriting them.
