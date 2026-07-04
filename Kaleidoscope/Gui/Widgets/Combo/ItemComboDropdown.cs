@@ -138,17 +138,7 @@ public sealed class ItemComboDropdown : ComboDropdownBase<GameItem, uint>
     }
 
     private void DrawItemIcon(GameItem item, Vector2 size)
-    {
-        var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(item.IconId));
-        if (icon.TryGetWrap(out var wrap, out _))
-        {
-            ImGui.Image(wrap.Handle, size);
-        }
-        else
-        {
-            ImGui.Dummy(size);
-        }
-    }
+        => ImGuiHelpers.DrawGameIcon(_textureProvider, null, item.IconId, size);
 
     private List<GameItem> BuildItemList()
     {

@@ -225,7 +225,7 @@ public sealed class ItemsCategory : IConfigCategory
                 ImGui.PushID((int)info.ItemId);
 
                 ImGui.TableNextColumn();
-                ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, info.ItemId);
+                ImGuiHelpers.DrawGameIcon(_textureProvider, _itemDataService, info.ItemId, new Vector2(ImGuiHelpers.IconSize), allowRawIconFallback: false);
 
                 ImGui.TableNextColumn();
                 var itemName = GetItemName(info.ItemId);
@@ -593,7 +593,7 @@ public sealed class ItemsCategory : IConfigCategory
 
                 // Icon column
                 ImGui.TableNextColumn();
-                ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, itemId);
+                ImGuiHelpers.DrawGameIcon(_textureProvider, _itemDataService, itemId, new Vector2(ImGuiHelpers.IconSize), allowRawIconFallback: false);
 
                 // Item name column
                 ImGui.TableNextColumn();

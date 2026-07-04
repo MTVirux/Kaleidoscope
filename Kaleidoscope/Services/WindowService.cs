@@ -3,6 +3,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Gui.ConfigWindow;
+using Kaleidoscope.Gui.DeveloperWindow;
 using Kaleidoscope.Gui.MainWindow;
 using OtterGui.Services;
 
@@ -18,6 +19,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     private readonly WindowSystem _windowSystem;
     private readonly MainWindow _mainWindow;
     private readonly ConfigWindow _configWindow;
+    private readonly DeveloperWindow _developerWindow;
     private readonly IUiBuilder _uiBuilder;
 
     public WindowService(
@@ -28,7 +30,8 @@ public sealed class WindowService : IDisposable, IRequiredService
         StateService stateService,
         FileDialogService fileDialogService,
         MainWindow mainWindow,
-        ConfigWindow configWindow)
+        ConfigWindow configWindow,
+        DeveloperWindow developerWindow)
     {
         _log = log;
         _pluginInterface = pluginInterface;
@@ -37,6 +40,7 @@ public sealed class WindowService : IDisposable, IRequiredService
         _fileDialogService = fileDialogService;
         _mainWindow = mainWindow;
         _configWindow = configWindow;
+        _developerWindow = developerWindow;
         _uiBuilder = uiBuilder;
 
         _mainWindow.SetWindowService(this);
@@ -56,6 +60,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     {
         _windowSystem.AddWindow(_mainWindow);
         _windowSystem.AddWindow(_configWindow);
+        _windowSystem.AddWindow(_developerWindow);
     }
 
     private void AttachEvents(IUiBuilder uiBuilder)

@@ -29,14 +29,12 @@ public sealed class ConfigWindow : Window, IService, IDisposable
     private readonly TrackedDataRegistry _registry;
     private readonly PriceTrackingService _priceTrackingService;
     private readonly UniversalisWebSocketService _webSocketService;
-    private readonly UniversalisService _universalisService;
-    private readonly ProfilerService _profilerService;
     private readonly LayoutEditingService _layoutEditingService;
-    private readonly MarketDataCacheService _marketDataCacheService;
     private readonly ITextureProvider _textureProvider;
     private readonly FavoritesService _favoritesService;
     private readonly MessageService _messageService;
     private readonly StateService _stateService;
+    private readonly DeveloperWindow.DeveloperWindow _developerWindow;
 
     private Configuration Config => _configService.Config;
     private int _selectedTab;
@@ -98,27 +96,19 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         TrackedDataRegistry registry,
         PriceTrackingService priceTrackingService,
         UniversalisWebSocketService webSocketService,
-        UniversalisService universalisService,
-        ProfilerService profilerService,
         LayoutEditingService layoutEditingService,
         ItemDataService itemDataService,
         IDataManager dataManager,
         ITextureProvider textureProvider,
         FavoritesService favoritesService,
-        InventoryCacheService inventoryCacheService,
-        ListingsService listingsService,
-        CharacterDataService characterDataService,
-        MarketDataCacheService marketDataCacheService,
         FrameLimiterService frameLimiterService,
         IUiBuilder uiBuilder,
         MessageService messageService,
         StateService stateService,
-        FilenameService filenameService,
-        FileDialogService fileDialogService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
-        ResourceDbWriter resourceWriter,
-        AutoRetainerFcPointsSyncService fcPointsSync)
+        AutoRetainerFcPointsSyncService fcPointsSync,
+        DeveloperWindow.DeveloperWindow developerWindow)
         : base("Kaleidoscope Configuration")
     {
         _log = log;
@@ -128,14 +118,12 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         _registry = registry;
         _priceTrackingService = priceTrackingService;
         _webSocketService = webSocketService;
-        _universalisService = universalisService;
-        _profilerService = profilerService;
         _layoutEditingService = layoutEditingService;
-        _marketDataCacheService = marketDataCacheService;
         _textureProvider = textureProvider;
         _favoritesService = favoritesService;
         _messageService = messageService;
         _stateService = stateService;
+        _developerWindow = developerWindow;
 
         var lockTb = new TitleBarButton
         {
@@ -188,11 +176,8 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             _priceTrackingService)));
         _categories.Add((TabIndex.Integrations, new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService, fcPointsSync)));
         _categories.Add((TabIndex.Data, new DataCategory(_currencyTrackerService, _configService, resourceStore)));
-        _categories.Add((TabIndex.Profiler, new ProfilerCategory(_profilerService, _configService, _currencyTrackerService)));
-        _categories.Add((TabIndex.Caches, new CachesCategory(_currencyTrackerService, inventoryCacheService, listingsService, characterDataService)));
-        _categories.Add((TabIndex.Logging, new LoggingCategory(_configService, filenameService, fileDialogService)));
-        _categories.Add((TabIndex.SqlQuery, new SqlQueryCategory(_currencyTrackerService)));
-        _categories.Add((TabIndex.Tests, new TestsCategory(_currencyTrackerService, _arIpc, _universalisService, _webSocketService, _configService, _marketDataCacheService, _layoutEditingService, resourcesService, resourceStore, resourceWriter)));
+        // The remaining developer categories (Tests, SQL Query, Profiler, Caches, Logging) now live
+        // in the standalone DeveloperWindow, opened from the developer section of this sidebar.
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new System.Numerics.Vector2(300, 200) };
     }
@@ -279,6 +264,20 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             }
             if (ImGui.Selectable(category.Label, _selectedTab == index))
                 _selectedTab = index;
+        }
+
+        // Under the same CTRL+ALT / developer-mode gating, expose the standalone developer window
+        // that hosts the Tests / SQL Query / Profiler / Caches / Logging categories.
+        if (showProfiler)
+        {
+            if (!developerHeaderDrawn)
+            {
+                ImGui.Separator();
+                ImGui.TextColored(new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f), "Developer");
+                developerHeaderDrawn = true;
+            }
+            if (ImGui.Selectable("Open Developer Window"))
+                _developerWindow.Open();
         }
         ImGui.EndChild();
 

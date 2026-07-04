@@ -159,44 +159,8 @@ public sealed class CurrencyComboDropdown : ComboDropdownBase<CurrencyItem, Trac
     }
 
     private void DrawCurrencyIcon(CurrencyItem item, Vector2 size)
-    {
-        // Resolve the icon source: prefer ItemId, fall back to IconId
-        var iconSource = item.ItemId ?? item.IconId;
-
-        if (!iconSource.HasValue)
-        {
-            ImGui.Dummy(size);
-            return;
-        }
-
-        try
-        {
-            ushort iconId = 0;
-
-            if (_itemDataService != null)
-            {
-                iconId = _itemDataService.GetItemIconId(iconSource.Value);
-            }
-
-            if (iconId == 0)
-            {
-                iconId = (ushort)iconSource.Value;
-            }
-
-            var icon = _textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-            if (icon.TryGetWrap(out var wrap, out _))
-            {
-                ImGui.Image(wrap.Handle, size);
-                return;
-            }
-        }
-        catch
-        {
-            // Ignore errors - use placeholder
-        }
-
-        ImGui.Dummy(size);
-    }
+        // Resolve the icon source: prefer ItemId, fall back to IconId, then the raw value.
+        => ImGuiHelpers.DrawGameIcon(_textureProvider, _itemDataService, item.ItemId ?? item.IconId, size);
 
     private List<CurrencyItem> BuildCurrencyList()
     {

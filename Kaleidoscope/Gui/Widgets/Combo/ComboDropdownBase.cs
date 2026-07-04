@@ -20,6 +20,7 @@ public abstract class ComboDropdownBase<TItem, TId> : IDisposable
     protected ComboState<TId> State = null!;
 
     private bool _disposed;
+    private bool _initialized;
     protected bool NeedsRebuild = true;
 
     /// <summary>
@@ -44,12 +45,18 @@ public abstract class ComboDropdownBase<TItem, TId> : IDisposable
     /// </summary>
     protected void Initialize()
     {
+        if (Widget is null || State is null)
+            throw new InvalidOperationException(
+                $"{GetType().Name} must assign Widget and State before calling Initialize().");
+
         Widget.SelectionChanged += OnWidgetSelectionChanged;
         Widget.MultiSelectionChanged += OnWidgetMultiSelectionChanged;
         Widget.FavoriteToggled += OnWidgetFavoriteToggled;
 
         SyncFavoritesFromService();
         FavoritesService.OnFavoritesChanged += OnFavoritesChanged;
+
+        _initialized = true;
     }
 
     /// <summary>Returns the current favorite IDs from the favorites service.</summary>
@@ -93,6 +100,10 @@ public abstract class ComboDropdownBase<TItem, TId> : IDisposable
     /// </summary>
     public bool Draw(float width)
     {
+        if (!_initialized)
+            throw new InvalidOperationException(
+                $"{GetType().Name}.Draw called before Initialize(); the subclass constructor must call Initialize() after assigning Widget and State.");
+
         EnsureItemsLoaded();
         return Widget.Draw(width);
     }

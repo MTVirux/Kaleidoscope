@@ -159,7 +159,7 @@ public sealed class CurrenciesCategory : IConfigCategory
 
                     // Icon column
                     ImGui.TableNextColumn();
-                    ConfigUiHelpers.DrawGameIcon(_textureProvider, _itemDataService, definition.ItemId ?? definition.IconId);
+                    ImGuiHelpers.DrawGameIcon(_textureProvider, _itemDataService, definition.ItemId ?? definition.IconId, new Vector2(ImGuiHelpers.IconSize), allowRawIconFallback: false);
 
                     // Item name column
                     ImGui.TableNextColumn();

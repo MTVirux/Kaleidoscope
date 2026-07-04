@@ -1,9 +1,5 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Textures;
-using Dalamud.Plugin.Services;
-using Kaleidoscope.Gui.Common;
-using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.ConfigWindow;
@@ -16,7 +12,7 @@ namespace Kaleidoscope.Gui.ConfigWindow;
 public static class ConfigUiHelpers
 {
     /// <summary>Base table flags shared by the color/scroll tables in the config categories.</summary>
-    public const ImGuiTableFlags ScrollTableFlags =
+    private const ImGuiTableFlags ScrollTableFlags =
         ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollY;
 
     /// <summary>
@@ -180,40 +176,6 @@ public static class ConfigUiHelpers
             catch (Exception ex) { onError(ex); }
             finally { setRunning(false); }
         });
-    }
-
-    /// <summary>
-    /// Draws a text-line-sized game item icon, or a same-sized empty placeholder when the icon
-    /// cannot be resolved. Shared by the currency and item color tables.
-    /// </summary>
-    /// <param name="iconSourceItemId">Item id whose icon to draw; null draws the placeholder.</param>
-    public static void DrawGameIcon(ITextureProvider? textureProvider, ItemDataService? itemDataService, uint? iconSourceItemId)
-    {
-        if (textureProvider == null || itemDataService == null || !iconSourceItemId.HasValue)
-        {
-            ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
-            return;
-        }
-
-        try
-        {
-            var iconId = itemDataService.GetItemIconId(iconSourceItemId.Value);
-            if (iconId > 0)
-            {
-                var icon = textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
-                if (icon.TryGetWrap(out var wrap, out _))
-                {
-                    ImGui.Image(wrap.Handle, new Vector2(ImGuiHelpers.IconSize));
-                    return;
-                }
-            }
-        }
-        catch
-        {
-            // Ignore errors - use placeholder
-        }
-
-        ImGui.Dummy(new Vector2(ImGuiHelpers.IconSize));
     }
 
     /// <summary>

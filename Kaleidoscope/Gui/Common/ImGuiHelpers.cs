@@ -1,5 +1,8 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
+using Dalamud.Plugin.Services;
+using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
 namespace Kaleidoscope.Gui.Common;
@@ -15,7 +18,53 @@ public static class ImGuiHelpers
     /// small inline icons that should match text size.
     /// </summary>
     public static float IconSize => ImGui.GetTextLineHeight();
-    
+
+    /// <summary>
+    /// Draws a game item/currency icon at <paramref name="size"/>, or a same-sized empty
+    /// placeholder when it cannot be resolved. When <paramref name="itemDataService"/> is
+    /// supplied the icon id is resolved from <paramref name="sourceId"/> (treated as an item id)
+    /// via <see cref="ItemDataService.GetItemIconId"/>; when that lookup yields nothing and
+    /// <paramref name="allowRawIconFallback"/> is set, the raw source value is used directly as
+    /// the icon id. Consolidates the previously duplicated resolve-icon / TryGetWrap / Image-or-Dummy
+    /// idiom shared by the config color tables and the item/currency combo dropdowns.
+    /// </summary>
+    public static void DrawGameIcon(
+        ITextureProvider? textureProvider,
+        ItemDataService? itemDataService,
+        uint? sourceId,
+        Vector2 size,
+        bool allowRawIconFallback = true)
+    {
+        if (textureProvider == null || !sourceId.HasValue)
+        {
+            ImGui.Dummy(size);
+            return;
+        }
+
+        try
+        {
+            ushort iconId = itemDataService?.GetItemIconId(sourceId.Value) ?? 0;
+            if (iconId == 0 && allowRawIconFallback)
+                iconId = (ushort)sourceId.Value;
+
+            if (iconId > 0)
+            {
+                var icon = textureProvider.GetFromGameIcon(new GameIconLookup(iconId));
+                if (icon.TryGetWrap(out var wrap, out _))
+                {
+                    ImGui.Image(wrap.Handle, size);
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors - use placeholder
+        }
+
+        ImGui.Dummy(size);
+    }
+
     /// <summary>
     /// Default horizontal padding added to each side of button text.
     /// </summary>
