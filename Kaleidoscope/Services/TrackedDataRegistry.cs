@@ -487,14 +487,8 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// </summary>
     private long SumCrystalsForElement(ulong pid, int element)
     {
-        var ids = new uint[]
-        {
-            (uint)(2 + element),   // Shard
-            (uint)(8 + element),   // Crystal
-            (uint)(14 + element),  // Cluster
-        };
         long total = 0;
-        foreach (var id in ids)
+        foreach (var id in SpecialGroupingHelper.GetCrystalItemIdsForElement((CrystalElement)element))
         {
             total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
             total += SumRetainersForActiveChar(pid, id);
@@ -509,7 +503,7 @@ public sealed class TrackedDataRegistry : IRequiredService
     private long SumAllCrystals(ulong pid)
     {
         long total = 0;
-        for (uint id = 2; id <= 19; id++)
+        foreach (var id in SpecialGroupingHelper.GetAllCrystalItemIds())
         {
             total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
             total += SumRetainersForActiveChar(pid, id);

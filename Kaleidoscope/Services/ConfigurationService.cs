@@ -227,6 +227,11 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     {
         Config.GameItemColors ??= new Dictionary<uint, uint>();
         
+        // Persisted default per-item colors (seed for the user-editable Config.GameItemColors).
+        // Deliberately separate from SpecialGroupingHelper.GetElementColor, which supplies fixed
+        // non-persisted UI accent colors for the grouping widget; the two differ in purpose and
+        // value by design and must NOT be unified.
+        //
         // Element colors in ABGR uint format
         // ABGR format: A << 24 | B << 16 | G << 8 | R
         // Fire: (1.0f, 0.3f, 0.2f, 1.0f) - red/orange → R=255, G=77, B=51, A=255
@@ -245,28 +250,16 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
             0xFFFF804D  // Water
         };
         
-        // Crystal item IDs: 
-        // Shards: 2-7 (Fire=2, Ice=3, Wind=4, Earth=5, Lightning=6, Water=7)
-        // Crystals: 8-13 (Fire=8, Ice=9, Wind=10, Earth=11, Lightning=12, Water=13)
-        // Clusters: 14-19 (Fire=14, Ice=15, Wind=16, Earth=17, Lightning=18, Water=19)
-        const int baseId = ConfigStatic.CrystalBaseItemId; // 2
-        const int tierOffset = ConfigStatic.CrystalTierOffset; // 6
-        
+        // Crystal item IDs come from SpecialGroupingHelper (shard=2+element, crystal=8+element,
+        // cluster=14+element); the arithmetic lives there as the single source of truth.
         for (int element = 0; element < 6; element++)
         {
             var color = elementColorsAbgr[element];
-            
-            var shardId = (uint)(baseId + element);
-            if (!Config.GameItemColors.ContainsKey(shardId))
-                Config.GameItemColors[shardId] = color;
-            
-            var crystalId = (uint)(baseId + tierOffset + element);
-            if (!Config.GameItemColors.ContainsKey(crystalId))
-                Config.GameItemColors[crystalId] = color;
-            
-            var clusterId = (uint)(baseId + 2 * tierOffset + element);
-            if (!Config.GameItemColors.ContainsKey(clusterId))
-                Config.GameItemColors[clusterId] = color;
+            foreach (var itemId in Kaleidoscope.Models.SpecialGroupingHelper.GetCrystalItemIdsForElement((CrystalElement)element))
+            {
+                if (!Config.GameItemColors.ContainsKey(itemId))
+                    Config.GameItemColors[itemId] = color;
+            }
         }
     }
 
@@ -403,7 +396,9 @@ public sealed class ConfigurationService : IConfigurationService, IRequiredServi
     public long SaveSkippedCount => Interlocked.Read(ref _saveSkippedCount);
     
     /// <summary>
-    /// Number of times MarkDirty was called.
+    /// Number of times <see cref="MarkDirty"/> has been called since the last reset — i.e. the
+    /// count of dirty-mark (change) events. Despite the "AccessCount" name, this is NOT a config
+    /// read/access count.
     /// </summary>
     public long ConfigAccessCount => Interlocked.Read(ref _configAccessCount);
     

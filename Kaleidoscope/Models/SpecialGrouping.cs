@@ -109,6 +109,20 @@ public static class SpecialGroupingHelper
         }
         return ids;
     }
+
+    /// <summary>
+    /// Returns the three tier item IDs (shard, crystal, cluster) for a single element.
+    /// Single source for the per-element crystal id triples used across services.
+    /// </summary>
+    public static uint[] GetCrystalItemIdsForElement(CrystalElement element)
+    {
+        return new[]
+        {
+            GetCrystalItemId(element, CrystalTier.Shard),
+            GetCrystalItemId(element, CrystalTier.Crystal),
+            GetCrystalItemId(element, CrystalTier.Cluster),
+        };
+    }
     
     public static readonly TrackedDataType[] GilCurrencyTypes = new[]
     {
@@ -218,6 +232,10 @@ public static class SpecialGroupingHelper
         _ => tier.ToString()
     };
     
+    // Fixed, non-persisted UI accent colors for the grouping widget's element checkboxes/labels.
+    // Deliberately separate from ConfigurationService.EnsureDefaultCrystalColors, which seeds the
+    // user-editable per-item defaults in Config.GameItemColors. The two sets differ in both purpose
+    // (live display accent vs. persisted item-color seed) and value, and must NOT be unified.
     public static Vector4 GetElementColor(CrystalElement element) => element switch
     {
         CrystalElement.Fire => new Vector4(1.0f, 0.4f, 0.2f, 1.0f),      // Orange-red

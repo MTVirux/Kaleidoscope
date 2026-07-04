@@ -278,69 +278,80 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         // Special cases: these variables cannot be resolved through the single-(item,container,owner)
         // translator path because they either span multiple owners (retainer gil → parent_owner_id)
         // or multiple item IDs (crystals). Query the resources table directly.
+        // Player-scoped single-item currencies (Gil, MGP, Wolf Marks, Allied Seals) share one read
+        // path: the in-memory store when available, else the resources-table fallback.
+        if (PlayerScopedVariableItemIds.TryGetValue(variable, out var playerScopedItemId))
+            return PlayerScopedSum(playerScopedItemId);
+
         switch (variable)
         {
-            case "Gil":
-                // In-memory store — sub-frame latency vs. ~1s DB batching.
-                if (_resourceStore != null)
-                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
-                return _dbService.GetItemSumPerCharacterPlayerOnly(
-                    Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId,
-                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
             case "RetainerGil":
                 return _dbService.GetRetainerGilPerCharacter();
             case "FreeCompanyGil":
                 // FC gil is per-FC, not per-character; the active-character live path handles it.
                 return new Dictionary<ulong, long>();
-            case "MGP":
-                if (_resourceStore != null)
-                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
-                return _dbService.GetItemSumPerCharacterPlayerOnly(
-                    Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId,
-                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
-            case "WolfMarks":
-                if (_resourceStore != null)
-                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
-                return _dbService.GetItemSumPerCharacterPlayerOnly(
-                    Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId,
-                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
-            case "AlliedSeals":
-                if (_resourceStore != null)
-                    return _resourceStore.GetPerOwnerSum(Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
-                return _dbService.GetItemSumPerCharacterPlayerOnly(
-                    Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId,
-                    (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
             case "FreeCompanyCredits":
                 // Current-state read (last-write-wins), NOT timestamp-ordered history: a stale live
                 // history point (stamped UtcNow) would otherwise shadow an imported value stamped with
                 // AutoRetainer's older FCPointsLastUpdate. FC credits are keyed by the holding
-                // character's content id under OwnerKind.FreeCompany.
+                // character's content id under OwnerKind.FreeCompany — a distinct owner scope from the
+                // Player-scoped currencies above, so this case stays explicit.
                 if (_resourceStore != null)
                     return _resourceStore.GetPerOwnerSum(
                         Kaleidoscope.Services.Resources.ResourceCatalog.FCCreditsItemId,
                         Kaleidoscope.Models.Resources.OwnerKind.FreeCompany);
                 return _dbService.GetFreeCompanyCreditsPerCharacter();
             case "FireCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 2, 8, 14 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Fire));
             case "IceCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 3, 9, 15 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Ice));
             case "WindCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 4, 10, 16 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Wind));
             case "EarthCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 5, 11, 17 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Earth));
             case "LightningCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 6, 12, 18 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Lightning));
             case "WaterCrystals":
-                return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 7, 13, 19 });
+                return _dbService.GetItemSumPerCharacterIncludingRetainers(
+                    SpecialGroupingHelper.GetCrystalItemIdsForElement(CrystalElement.Water));
             case "CrystalsTotal":
                 return _dbService.GetItemSumPerCharacterIncludingRetainers(
-                    Enumerable.Range(2, 18).Select(i => (uint)i));
+                    SpecialGroupingHelper.GetAllCrystalItemIds());
             case "Ventures":
                 return _dbService.GetItemSumPerCharacterIncludingRetainers(new uint[] { 21072 });
         }
 
         // Existing translator-based path for everything else (tomestones, scrips, GC seals, etc.)
         return GetLatestValuesForVariableViaResources(variable);
+    }
+
+    /// <summary>
+    /// Player-scoped single-item currencies (Gil, MGP, Wolf Marks, Allied Seals) that resolve to a
+    /// per-owner sum over OwnerKind.Player. Drives the shared <see cref="PlayerScopedSum"/> path.
+    /// </summary>
+    private static readonly Dictionary<string, uint> PlayerScopedVariableItemIds = new(StringComparer.Ordinal)
+    {
+        ["Gil"]         = Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId,
+        ["MGP"]         = Kaleidoscope.Services.Resources.ResourceCatalog.MGPItemId,
+        ["WolfMarks"]   = Kaleidoscope.Services.Resources.ResourceCatalog.WolfMarksItemId,
+        ["AlliedSeals"] = Kaleidoscope.Services.Resources.ResourceCatalog.AlliedSealsItemId,
+    };
+
+    /// <summary>
+    /// Latest value per character for a Player-scoped item: the in-memory ResourceStore when
+    /// available (sub-frame latency vs. ~1s DB batching), otherwise the resources-table fallback.
+    /// </summary>
+    private Dictionary<ulong, long> PlayerScopedSum(uint itemId)
+    {
+        if (_resourceStore != null)
+            return _resourceStore.GetPerOwnerSum(itemId, Kaleidoscope.Models.Resources.OwnerKind.Player);
+        return _dbService.GetItemSumPerCharacterPlayerOnly(
+            itemId, (int)Kaleidoscope.Models.Resources.Container.SpecialPlayer);
     }
 
     private Dictionary<ulong, long> GetLatestValuesForVariableViaResources(string variable)
