@@ -507,19 +507,18 @@ internal sealed class ContextMenuManager
                         tool.Id = reg.Id;
                         try
                         {
-                            var subdivisions = Math.Max(1, gridSettings.Subdivisions);
-                            var subW = ctx.CellW / subdivisions;
-                            var subH = ctx.CellH / subdivisions;
+                            var subW = GridMath.SubdivisionSize(ctx.CellW, gridSettings.Subdivisions);
+                            var subH = GridMath.SubdivisionSize(ctx.CellH, gridSettings.Subdivisions);
                             tool.Position = new Vector2(
-                                MathF.Round(tool.Position.X / subW) * subW,
-                                MathF.Round(tool.Position.Y / subH) * subH);
+                                GridMath.Snap(tool.Position.X, subW),
+                                GridMath.Snap(tool.Position.Y, subH));
 
                             if (ctx.CellW > 0 && ctx.CellH > 0)
                             {
-                                tool.GridCol = tool.Position.X / ctx.CellW;
-                                tool.GridRow = tool.Position.Y / ctx.CellH;
-                                tool.GridColSpan = tool.Size.X / ctx.CellW;
-                                tool.GridRowSpan = tool.Size.Y / ctx.CellH;
+                                tool.GridCol = GridMath.PixelToGrid(tool.Position.X, ctx.CellW);
+                                tool.GridRow = GridMath.PixelToGrid(tool.Position.Y, ctx.CellH);
+                                tool.GridColSpan = GridMath.PixelToGrid(tool.Size.X, ctx.CellW);
+                                tool.GridRowSpan = GridMath.PixelToGrid(tool.Size.Y, ctx.CellH);
                                 tool.HasGridCoords = true;
                             }
                         }

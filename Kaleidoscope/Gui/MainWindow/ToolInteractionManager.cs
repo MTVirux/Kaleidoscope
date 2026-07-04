@@ -211,12 +211,11 @@ internal sealed class ToolInteractionManager
     {
         try
         {
-            var subdivisions = Math.Max(1, gridSettings.Subdivisions);
-            var subW = ctx.CellW / subdivisions;
-            var subH = ctx.CellH / subdivisions;
+            var subW = GridMath.SubdivisionSize(ctx.CellW, gridSettings.Subdivisions);
+            var subH = GridMath.SubdivisionSize(ctx.CellH, gridSettings.Subdivisions);
             var snapped = t.Position;
-            snapped.X = MathF.Round(snapped.X / subW) * subW;
-            snapped.Y = MathF.Round(snapped.Y / subH) * subH;
+            snapped.X = GridMath.Snap(snapped.X, subW);
+            snapped.Y = GridMath.Snap(snapped.Y, subH);
             // Clamp after snapping
             var minX = ctx.ContentMin.X - ctx.ContentOrigin.X;
             var minY = ctx.ContentMin.Y - ctx.ContentOrigin.Y;
@@ -229,8 +228,8 @@ internal sealed class ToolInteractionManager
             // Update grid coordinates
             if (ctx.CellW > 0 && ctx.CellH > 0)
             {
-                t.GridCol = t.Position.X / ctx.CellW;
-                t.GridRow = t.Position.Y / ctx.CellH;
+                t.GridCol = GridMath.PixelToGrid(t.Position.X, ctx.CellW);
+                t.GridRow = GridMath.PixelToGrid(t.Position.Y, ctx.CellH);
                 t.HasGridCoords = true;
             }
         }
@@ -244,12 +243,11 @@ internal sealed class ToolInteractionManager
     {
         try
         {
-            var subdivisions = Math.Max(1, gridSettings.Subdivisions);
-            var subW = ctx.CellW / subdivisions;
-            var subH = ctx.CellH / subdivisions;
+            var subW = GridMath.SubdivisionSize(ctx.CellW, gridSettings.Subdivisions);
+            var subH = GridMath.SubdivisionSize(ctx.CellH, gridSettings.Subdivisions);
             var snappedSize = t.Size;
-            snappedSize.X = MathF.Max(MinToolWidth, MathF.Round(snappedSize.X / subW) * subW);
-            snappedSize.Y = MathF.Max(MinToolHeight, MathF.Round(snappedSize.Y / subH) * subH);
+            snappedSize.X = MathF.Max(MinToolWidth, GridMath.Snap(snappedSize.X, subW));
+            snappedSize.Y = MathF.Max(MinToolHeight, GridMath.Snap(snappedSize.Y, subH));
             // Clamp so size doesn't exceed content
             var maxW = (ctx.ContentMax.X - ctx.ContentOrigin.X) - t.Position.X;
             var maxH = (ctx.ContentMax.Y - ctx.ContentOrigin.Y) - t.Position.Y;
@@ -260,8 +258,8 @@ internal sealed class ToolInteractionManager
             // Update grid coordinates
             if (ctx.CellW > 0 && ctx.CellH > 0)
             {
-                t.GridColSpan = t.Size.X / ctx.CellW;
-                t.GridRowSpan = t.Size.Y / ctx.CellH;
+                t.GridColSpan = GridMath.PixelToGrid(t.Size.X, ctx.CellW);
+                t.GridRowSpan = GridMath.PixelToGrid(t.Size.Y, ctx.CellH);
                 t.HasGridCoords = true;
             }
         }

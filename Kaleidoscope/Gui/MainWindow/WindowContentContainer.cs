@@ -173,15 +173,13 @@ public sealed partial class WindowContentContainer
                 t.GridColSpan *= colScale;
                 t.GridRowSpan *= rowScale;
 
-                var newPos = new Vector2(t.GridCol * newCellW, t.GridRow * newCellH);
-                var newSize = new Vector2(
-                    MathF.Max(MinToolWidth, t.GridColSpan * newCellW),
-                    MathF.Max(MinToolHeight, t.GridRowSpan * newCellH));
+                var newPos = GridMath.GridToPixelPos(t.GridCol, t.GridRow, newCellW, newCellH);
+                var newSize = GridMath.GridToPixelSize(t.GridColSpan, t.GridRowSpan, newCellW, newCellH, MinToolWidth, MinToolHeight);
 
                 t.Position = newPos;
                 t.Size = newSize;
-                if (newCellW > 0) t.GridColSpan = t.Size.X / newCellW;
-                if (newCellH > 0) t.GridRowSpan = t.Size.Y / newCellH;
+                if (newCellW > 0) t.GridColSpan = GridMath.PixelToGrid(t.Size.X, newCellW);
+                if (newCellH > 0) t.GridRowSpan = GridMath.PixelToGrid(t.Size.Y, newCellH);
 
                 // Animate from old to new position/size
                 Animator.StartVec2($"{te.AnimKey}_pos", oldPos, newPos, 0.2f, Easing.QuadInOut);
@@ -233,10 +231,8 @@ public sealed partial class WindowContentContainer
         {
             var te = Tools[i];
             var t = te.Tool;
-            var newPos = new System.Numerics.Vector2(t.GridCol * cellW, t.GridRow * cellH);
-            var newSize = new System.Numerics.Vector2(
-                MathF.Max(MinToolWidth, t.GridColSpan * cellW),
-                MathF.Max(MinToolHeight, t.GridRowSpan * cellH));
+            var newPos = GridMath.GridToPixelPos(t.GridCol, t.GridRow, cellW, cellH);
+            var newSize = GridMath.GridToPixelSize(t.GridColSpan, t.GridRowSpan, cellW, cellH, MinToolWidth, MinToolHeight);
 
             t.Position = newPos;
             t.Size = newSize;

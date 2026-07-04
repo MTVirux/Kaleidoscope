@@ -45,6 +45,31 @@ public sealed partial class WindowContentContainer
             tool.GridRowSpan = MathF.Max(minSpan, tool.GridRowSpan);
         }
 
+        /// <summary>
+        /// Finds an existing, not-yet-matched tool for a layout entry, preferring Id, then Title,
+        /// then .NET type name. Returns null (with <paramref name="matchIdx"/> = -1) when nothing matches.
+        /// </summary>
+        private ToolComponent? FindMatchingTool(ToolLayoutState entry, HashSet<int> matchedIndices, out int matchIdx)
+        {
+            for (var i = 0; i < Tools.Count; i++)
+            {
+                if (matchedIndices.Contains(i)) continue;
+                if (Tools[i].Tool.Id == entry.Id) { matchIdx = i; return Tools[i].Tool; }
+            }
+            for (var i = 0; i < Tools.Count; i++)
+            {
+                if (matchedIndices.Contains(i)) continue;
+                if (Tools[i].Tool.Title == entry.Title) { matchIdx = i; return Tools[i].Tool; }
+            }
+            for (var i = 0; i < Tools.Count; i++)
+            {
+                if (matchedIndices.Contains(i)) continue;
+                if (Tools[i].Tool.GetType().FullName == entry.Type) { matchIdx = i; return Tools[i].Tool; }
+            }
+            matchIdx = -1;
+            return null;
+        }
+
         public List<ToolLayoutState> ExportLayout()
         {
             var ret = new List<ToolLayoutState>();
@@ -118,31 +143,8 @@ public sealed partial class WindowContentContainer
                 var entry = layout[li];
                 try
                 {
-                    // Try to match by Id first, then by Title, then by Type.
-                    // Only consider existing tools that have not already been matched to another layout entry.
-                    ToolComponent? match = null;
-                    var matchIdx = -1;
-                    for (var i = 0; i < Tools.Count; i++)
-                    {
-                        if (matchedIndices.Contains(i)) continue;
-                        if (Tools[i].Tool.Id == entry.Id) { match = Tools[i].Tool; matchIdx = i; break; }
-                    }
-                    if (match == null)
-                    {
-                        for (var i = 0; i < Tools.Count; i++)
-                        {
-                            if (matchedIndices.Contains(i)) continue;
-                            if (Tools[i].Tool.Title == entry.Title) { match = Tools[i].Tool; matchIdx = i; break; }
-                        }
-                    }
-                    if (match == null)
-                    {
-                        for (var i = 0; i < Tools.Count; i++)
-                        {
-                            if (matchedIndices.Contains(i)) continue;
-                            if (Tools[i].Tool.GetType().FullName == entry.Type) { match = Tools[i].Tool; matchIdx = i; break; }
-                        }
-                    }
+                    // Match an existing, not-yet-matched tool by Id, then Title, then .NET type name.
+                    var match = FindMatchingTool(entry, matchedIndices, out var matchIdx);
 
                     if (match != null)
                     {
@@ -187,7 +189,10 @@ public sealed partial class WindowContentContainer
                     if (!createdAny)
                     {
                         // If not found by id, use ToolFactory to look up the definition by .NET type name.
-                        // This avoids the old brute-force probe that created and disposed tool instances.
+                        // Every registered factory instance's type is known to ToolFactory (ToolRegistry is
+                        // populated from ToolFactory's available definitions), so this type-name lookup covers
+                        // everything the old brute-force "create-every-factory-and-match-by-type" probe did,
+                        // without instantiating and disposing throwaway tools.
                         if (Factory != null && !string.IsNullOrWhiteSpace(entry.Type))
                         {
                             var def = Factory.FindDefinitionByTypeName(entry.Type);
@@ -210,38 +215,6 @@ public sealed partial class WindowContentContainer
                                 catch (Exception ex)
                                 {
                                     LogService.Debug(LogCategory.UI, $"ApplyLayout: ToolFactory.Create failed for '{def.Id}': {ex.Message}");
-                                }
-                            }
-                        }
-
-                        // Legacy fallback: try each registered factory and match by resulting type FullName.
-                        // This handles cases where ToolFactory doesn't know about the type (e.g. plugins).
-                        if (!createdAny)
-                        {
-                            foreach (var candReg in ToolRegistry)
-                            {
-                                try
-                                {
-                                    var cand = candReg.Factory(entry.Position);
-                                    if (cand == null) continue;
-                                    if (cand.GetType().FullName == entry.Type)
-                                    {
-                                        cand.Id = candReg.Id;
-                                        ApplyLayoutState(cand, entry, setTitle: true);
-                                        AddToolInstance(cand);
-                                        matchedIndices.Add(Tools.Count - 1);
-                                        LogService.Debug(LogCategory.UI, $"ApplyLayout: created tool via factory '{candReg.Id}' matched by type for entry '{entry.Id}'");
-                                        createdAny = true;
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        cand.Dispose();
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogService.Debug(LogCategory.UI, $"Factory invocation failed for registry entry '{candReg.Id}': {ex.Message}");
                                 }
                             }
                         }
