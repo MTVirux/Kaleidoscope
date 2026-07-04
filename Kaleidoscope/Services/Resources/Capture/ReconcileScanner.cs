@@ -22,6 +22,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
     private readonly LoadedContainerSet _loaded;
     private readonly ResourceObservationService _service;
     private readonly KaleidoscopeDbService _db;
+    private readonly GameStateService _gameState;
 
     private static readonly InventoryType[] RetainerContainers =
     {
@@ -31,25 +32,26 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         InventoryType.RetainerEquippedItems, InventoryType.RetainerCrystals, InventoryType.RetainerMarket,
     };
 
-    public ReconcileScanner(InventoryChangeService changes, LoadedContainerSet loaded, ResourceObservationService service, KaleidoscopeDbService db)
+    public ReconcileScanner(InventoryChangeService changes, LoadedContainerSet loaded, ResourceObservationService service, KaleidoscopeDbService db, GameStateService gameState)
     {
         _changes = changes;
         _loaded = loaded;
         _service = service;
         _db = db;
+        _gameState = gameState;
         _changes.OnRetainerInventoryReady += OnRetainerReady;
         _changes.OnRetainerClosed         += OnRetainerClosed;
     }
 
     private unsafe void OnRetainerReady()
     {
-        var im = GameStateService.InventoryManagerInstance();
+        var im = _gameState.InventoryManagerInstance();
         if (im == null) return;
-        var rid = GameStateService.GetActiveRetainerId();
+        var rid = _gameState.GetActiveRetainerId();
         if (rid == 0) return;
 
         // Persist the retainer's name so the data table can display it.
-        var retainerName = GameStateService.GetActiveRetainerName();
+        var retainerName = _gameState.GetActiveRetainerName();
         if (!string.IsNullOrEmpty(retainerName))
             _db.UpsertOwnerName(rid, OwnerKind.Retainer, retainerName);
 
@@ -63,7 +65,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
 
     private void OnRetainerClosed()
     {
-        var rid = GameStateService.GetActiveRetainerId();
+        var rid = _gameState.GetActiveRetainerId();
         foreach (var type in RetainerContainers)
         {
             if (ResourceCatalog.TryMapContainer((int)type, out var container))
@@ -76,7 +78,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         var c = im->GetInventoryContainer(type);
         if (c == null || !c->IsLoaded) return;
 
-        var parentOwnerId = kind == OwnerKind.Retainer ? GameStateService.PlayerContentId : 0UL;
+        var parentOwnerId = kind == OwnerKind.Retainer ? _gameState.PlayerContentId : 0UL;
 
         for (int i = 0; i < c->GetSize(); i++)
         {

@@ -16,18 +16,20 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
     private readonly IClientState _clientState;
     private readonly ResourceObservationService _service;
     private readonly KaleidoscopeDbService _db;
+    private readonly GameStateService _gameState;
     private readonly AutoRetainerService? _autoRetainerIpc;
     private DateTime _nextPoll;
     private const int PollIntervalMs = 500;
     private ulong _lastNameStampedPid;
     private bool _arWasBusy = false;
 
-    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service, KaleidoscopeDbService db, AutoRetainerService? autoRetainerIpc = null)
+    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service, KaleidoscopeDbService db, GameStateService gameState, AutoRetainerService? autoRetainerIpc = null)
     {
         _framework = framework;
         _clientState = clientState;
         _service = service;
         _db = db;
+        _gameState = gameState;
         _autoRetainerIpc = autoRetainerIpc;
         _framework.Update += OnFrameworkUpdate;
     }
@@ -56,15 +58,15 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         if (now < _nextPoll || !_clientState.IsLoggedIn) return;
         _nextPoll = now.AddMilliseconds(PollIntervalMs);
 
-        var im = GameStateService.InventoryManagerInstance();
+        var im = _gameState.InventoryManagerInstance();
         if (im == null) return;
-        var pid = GameStateService.PlayerContentId;
+        var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
 
         // Stamp the player's name once per character switch so the data table can display it.
         if (_lastNameStampedPid != pid)
         {
-            var playerName = GameStateService.LocalPlayerName;
+            var playerName = _gameState.LocalPlayerName;
             if (!string.IsNullOrEmpty(playerName))
             {
                 _db.UpsertOwnerName(pid, OwnerKind.Player, playerName);
@@ -86,12 +88,12 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         // FC Credits — null unless the FC Credit Shop is open (the only time the value is current
         // and in-context); skip silently then. Offline FCs are filled in from AutoRetainer's config
         // by AutoRetainerFcPointsSyncService instead.
-        var fcCredits = GameStateService.GetFreeCompanyCredits();
+        var fcCredits = _gameState.GetFreeCompanyCredits();
         if (fcCredits.HasValue)
             Observe(pid, ResourceCatalog.FCCreditsItemId, fcCredits.Value, Container.SpecialFreeCompany);
 
         // Free Company gil — only meaningful when player is in an FC.
-        var fcId = GameStateService.GetFreeCompanyId();
+        var fcId = _gameState.GetFreeCompanyId();
         if (fcId != 0)
         {
             var fcGil = im->GetFreeCompanyGil();
@@ -112,7 +114,7 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         }
 
         // Per-retainer gil — available whenever RetainerManager cache is populated.
-        foreach (var (retainerId, gil) in GameStateService.GetPerRetainerGil())
+        foreach (var (retainerId, gil) in _gameState.GetPerRetainerGil())
         {
             _service.RecordObservation(new ResourceObservation
             {

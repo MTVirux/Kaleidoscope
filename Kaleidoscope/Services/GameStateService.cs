@@ -7,6 +7,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Kaleidoscope.Services.Inventory;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
 
@@ -15,21 +16,18 @@ namespace Kaleidoscope.Services;
 /// Consolidates FFXIVClientStructs access and Dalamud service wrappers for testability.
 /// </summary>
 /// <remarks>
-/// This static service provides centralized access to:
+/// This singleton provides centralized access to:
 /// - Player state (content ID, name)
 /// - Inventory and retainer managers
 /// - Character name lookups from loaded objects
 /// - Currency and special currency queries
 /// </remarks>
-public static unsafe class GameStateService
+public sealed unsafe class GameStateService : IService
 {
-    private static IPlayerState? _playerState;
-    private static IObjectTable? _objectTable;
+    private readonly IPlayerState _playerState;
+    private readonly IObjectTable _objectTable;
 
-    /// <summary>
-    /// Initializes the static service references. Called once during plugin startup.
-    /// </summary>
-    public static void Initialize(IPlayerState playerState, IObjectTable objectTable)
+    public GameStateService(IPlayerState playerState, IObjectTable objectTable)
     {
         _playerState = playerState;
         _objectTable = objectTable;
@@ -40,7 +38,7 @@ public static unsafe class GameStateService
     /// </summary>
     /// <param name="name">The name to validate.</param>
     /// <returns>True if the name is valid (exactly one space, no digits).</returns>
-    public static bool ValidateCharacterName(string name)
+    public bool ValidateCharacterName(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
         var trimmed = name.Trim();
@@ -58,34 +56,31 @@ public static unsafe class GameStateService
     /// </summary>
     /// <param name="contentId">The character's content ID.</param>
     /// <returns>The character name if found, null otherwise.</returns>
-    public static string? GetCharacterName(ulong contentId)
+    public string? GetCharacterName(ulong contentId)
     {
         try
         {
             if (contentId == 0) return null;
-            
+
             // Check if it's the local player first
-            var localCid = _playerState?.ContentId ?? 0;
+            var localCid = _playerState.ContentId;
             if (contentId == localCid)
             {
-                var name = _objectTable?.LocalPlayer?.Name.ToString();
+                var name = _objectTable.LocalPlayer?.Name.ToString();
                 if (!string.IsNullOrEmpty(name)) return name;
                 return null;
             }
 
             // Search loaded player characters
-            if (_objectTable != null)
+            var pc = _objectTable.OfType<IPlayerCharacter>().FirstOrDefault(p =>
             {
-                var pc = _objectTable.OfType<IPlayerCharacter>().FirstOrDefault(p =>
-                {
-                    var charStruct = (Character*)p.Address;
-                    return charStruct != null && charStruct->ContentId == contentId;
-                });
-                if (pc != null)
-                {
-                    var oname = pc.Name.ToString();
-                    if (!string.IsNullOrEmpty(oname)) return oname;
-                }
+                var charStruct = (Character*)p.Address;
+                return charStruct != null && charStruct->ContentId == contentId;
+            });
+            if (pc != null)
+            {
+                var oname = pc.Name.ToString();
+                if (!string.IsNullOrEmpty(oname)) return oname;
             }
 
             return null;
@@ -96,28 +91,28 @@ public static unsafe class GameStateService
         }
     }
 
-    public static InventoryManager* InventoryManagerInstance()
+    public InventoryManager* InventoryManagerInstance()
     {
         try { return InventoryManager.Instance(); }
         catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"InventoryManager.Instance() failed: {ex.Message}"); return null; }
     }
 
-    public static RetainerManager* RetainerManagerInstance()
+    public RetainerManager* RetainerManagerInstance()
     {
         try { return RetainerManager.Instance(); }
         catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"RetainerManager.Instance() failed: {ex.Message}"); return null; }
     }
 
-    public static ulong PlayerContentId => _playerState?.ContentId ?? 0;
+    public ulong PlayerContentId => _playerState.ContentId;
 
     /// <summary>
     /// Gets the current player's name using IObjectTable.LocalPlayer (recommended Dalamud approach).
     /// </summary>
-    public static string? LocalPlayerName
+    public string? LocalPlayerName
     {
         get
         {
-            try { return _objectTable?.LocalPlayer?.Name.ToString(); }
+            try { return _objectTable.LocalPlayer?.Name.ToString(); }
             catch (Exception ex) { LogService.Debug(LogCategory.GameState, $"LocalPlayer name access failed: {ex.Message}"); return null; }
         }
     }
@@ -125,7 +120,7 @@ public static unsafe class GameStateService
     /// <summary>
     /// Gets the total gil held by all retainers (from RetainerManager cached data).
     /// </summary>
-    public static long GetAllRetainersGil()
+    public long GetAllRetainersGil()
     {
         try
         {
@@ -155,7 +150,7 @@ public static unsafe class GameStateService
     /// Gets per-retainer gil from RetainerManager cached data.
     /// Returns (RetainerId, Gil) for each available retainer with a non-zero id.
     /// </summary>
-    public static IReadOnlyList<(ulong RetainerId, long Gil)> GetPerRetainerGil()
+    public IReadOnlyList<(ulong RetainerId, long Gil)> GetPerRetainerGil()
     {
         try
         {
@@ -168,7 +163,7 @@ public static unsafe class GameStateService
         }
     }
 
-    private static List<(ulong RetainerId, long Gil)> GetPerRetainerGilUnsafe()
+    private List<(ulong RetainerId, long Gil)> GetPerRetainerGilUnsafe()
     {
         var result = new List<(ulong, long)>();
         var rm = RetainerManagerInstance();
@@ -188,7 +183,7 @@ public static unsafe class GameStateService
     /// Gets the item count from the currently active retainer's inventory.
     /// Only works when a retainer is selected/open.
     /// </summary>
-    public static int GetActiveRetainerItemCount(InventoryManager* im, uint itemId, bool isHq = false)
+    public int GetActiveRetainerItemCount(InventoryManager* im, uint itemId, bool isHq = false)
     {
         if (im == null) return 0;
 
@@ -214,7 +209,7 @@ public static unsafe class GameStateService
     /// <summary>
     /// Checks if a retainer is currently active (selected/open).
     /// </summary>
-    public static bool IsRetainerActive()
+    public bool IsRetainerActive()
     {
         try
         {
@@ -231,7 +226,7 @@ public static unsafe class GameStateService
     /// <summary>
     /// Gets the active retainer's ID, or 0 if no retainer is active.
     /// </summary>
-    public static ulong GetActiveRetainerId()
+    public ulong GetActiveRetainerId()
     {
         try
         {
@@ -248,7 +243,7 @@ public static unsafe class GameStateService
     /// <summary>
     /// Gets the active retainer's name, or null if no retainer is active.
     /// </summary>
-    public static string? GetActiveRetainerName()
+    public string? GetActiveRetainerName()
     {
         try
         {
@@ -271,7 +266,7 @@ public static unsafe class GameStateService
     ///                                  FireCrystal, IceCrystal, WindCrystal, EarthCrystal, LightningCrystal, WaterCrystal,
     ///                                  FireCluster, IceCluster, WindCluster, EarthCluster, LightningCluster, WaterCluster]
     /// </summary>
-    public static long[] GetAllRetainersCrystals()
+    public long[] GetAllRetainersCrystals()
     {
         // 18 entries: 6 elements × 3 tiers (Shard, Crystal, Cluster)
         var totals = new long[18];
@@ -320,7 +315,7 @@ public static unsafe class GameStateService
     /// Gets the current player's Free Company ID via InfoProxyFreeCompany.
     /// Returns 0 if the player is not in an FC or the proxy is unavailable.
     /// </summary>
-    public static ulong GetFreeCompanyId()
+    public ulong GetFreeCompanyId()
     {
         try
         {
@@ -342,7 +337,7 @@ public static unsafe class GameStateService
     /// Based on AutoRetainer implementation: offset 256 in the agent.
     /// </summary>
     /// <returns>The FC Credits value, or null if unavailable (e.g., not in FC, data not loaded).</returns>
-    public static long? GetFreeCompanyCredits()
+    public long? GetFreeCompanyCredits()
     {
         try
         {
@@ -371,14 +366,5 @@ public static unsafe class GameStateService
             LogService.Debug(LogCategory.GameState, $"GetFreeCompanyCredits failed: {ex.Message}");
             return null;
         }
-    }
-
-    /// <summary>
-    /// Clears static service references during plugin unload.
-    /// </summary>
-    public static void Cleanup()
-    {
-        _playerState = null;
-        _objectTable = null;
     }
 }

@@ -393,6 +393,7 @@ public sealed partial class ItemTableWidget : ISettingsProvider
     private readonly TimeSeriesCacheService? _cacheService;
     private readonly LifestreamService? _lifestreamService;
     private readonly INotificationManager? _notificationManager;
+    private readonly GameStateService? _gameState;
     
     /// <summary>
     /// Shared table infrastructure for resize, selection, header rendering, etc.
@@ -469,7 +470,8 @@ public sealed partial class ItemTableWidget : ISettingsProvider
         Configuration? configuration = null,
         TimeSeriesCacheService? cacheService = null,
         LifestreamService? lifestreamService = null,
-        INotificationManager? notificationManager = null)
+        INotificationManager? notificationManager = null,
+        GameStateService? gameState = null)
     {
         _config = config ?? new TableConfig();
         _core = new TableCore(_config.TableId);
@@ -479,6 +481,7 @@ public sealed partial class ItemTableWidget : ISettingsProvider
         _cacheService = cacheService;
         _lifestreamService = lifestreamService;
         _notificationManager = notificationManager;
+        _gameState = gameState;
     }
     
     /// <summary>

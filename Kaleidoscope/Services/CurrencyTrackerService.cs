@@ -28,6 +28,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     private readonly InventoryChangeService _inventoryChangeService;
     private readonly TimeSeriesCacheService _cacheService;
     private readonly CharacterDataCacheService _characterDataCache;
+    private readonly GameStateService _gameState;
 
     private readonly Channel<SampleWorkItem> _sampleQueue;
     private readonly Task _backgroundWorker;
@@ -89,7 +90,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         InventoryChangeService inventoryChangeService,
         TimeSeriesCacheService cacheService,
         CharacterDataCacheService characterDataCache,
-        KaleidoscopeDbService dbService)
+        KaleidoscopeDbService dbService,
+        GameStateService gameState)
     {
         _log = log;
         _filenames = filenames;
@@ -100,6 +102,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         _cacheService = cacheService;
         _characterDataCache = characterDataCache;
         _dbService = dbService;
+        _gameState = gameState;
 
         _characterDataCache.Initialize(_dbService);
 
@@ -198,19 +201,19 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
 
         try
         {
-            var cid = GameStateService.PlayerContentId;
+            var cid = _gameState.PlayerContentId;
             if (cid == 0) return;
 
             // Capture character name on main thread (game data access)
             string? characterName = null;
             try
             {
-                var rawName = GameStateService.GetCharacterName(cid);
-                characterName = NameSanitizer.SanitizeWithPlayerFallback(rawName);
+                var rawName = _gameState.GetCharacterName(cid);
+                characterName = NameSanitizer.SanitizeWithPlayerFallback(rawName, _gameState);
             }
             catch (Exception ex)
             {
-                characterName = GameStateService.LocalPlayerName;
+                characterName = _gameState.LocalPlayerName;
                 LogService.Debug(LogCategory.CurrencyTracker, characterName ?? "Unknown", $"[CurrencyTrackerService] Name capture failed for CID {cid}: {ex.Message}");
             }
             
@@ -237,7 +240,7 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
         }
         catch (Exception ex)
         {
-            var charName = GameStateService.LocalPlayerName;
+            var charName = _gameState.LocalPlayerName;
             LogService.Debug(LogCategory.CurrencyTracker, charName ?? "Unknown", $"[CurrencyTrackerService] OnValuesChanged error: {ex.Message}");
         }
     }
@@ -262,8 +265,8 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
                     {
                         var inserted = _dbService.SaveSampleIfChanged(workItem.Variable, workItem.CharacterId, workItem.Value);
 
-                        if (inserted && !string.IsNullOrEmpty(workItem.CharacterName) 
-                            && GameStateService.ValidateCharacterName(workItem.CharacterName))
+                        if (inserted && !string.IsNullOrEmpty(workItem.CharacterName)
+                            && _gameState.ValidateCharacterName(workItem.CharacterName))
                         {
                             _characterDataCache.SetCharacterName(workItem.CharacterId, workItem.CharacterName);
                         }

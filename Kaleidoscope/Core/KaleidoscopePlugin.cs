@@ -37,10 +37,6 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
             filenameService.SetConfiguration(configService.Config);
             LogService.SetConfiguration(configService.Config);
 
-            var playerState = _services.GetService<IPlayerState>();
-            var objectTable = _services.GetService<IObjectTable>();
-            GameStateService.Initialize(playerState, objectTable);
-
             // Kick off deferred startup — resolves services on a background thread
             // while a Framework.Update handler polls progress for the notification.
             _startup = new DeferredStartupService(_services, typeof(KaleidoscopePlugin).Assembly);
@@ -59,7 +55,6 @@ public sealed class KaleidoscopePlugin : IDalamudPlugin
         _startup = null;
 
         LogService.Shutdown();
-        GameStateService.Cleanup();
         _services?.Dispose();
         Log.Information("Kaleidoscope disposed.");
     }

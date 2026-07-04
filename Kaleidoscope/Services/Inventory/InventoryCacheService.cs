@@ -13,11 +13,13 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
 {
     private readonly KaleidoscopeDbService _dbService;
     private readonly ResourceStore _resourceStore;
+    private readonly GameStateService _gameState;
 
-    public InventoryCacheService(KaleidoscopeDbService dbService, ResourceStore resourceStore)
+    public InventoryCacheService(KaleidoscopeDbService dbService, ResourceStore resourceStore, GameStateService gameState)
     {
         _dbService = dbService;
         _resourceStore = resourceStore;
+        _gameState = gameState;
         LogService.Debug(LogCategory.Inventory, "[InventoryCacheService] Initialized");
     }
 
@@ -26,11 +28,11 @@ public sealed class InventoryCacheService : IDisposable, IRequiredService
     public List<InventoryCacheEntry> GetInventoriesForCharacter(ulong characterId)
         => characterId == 0 ? new List<InventoryCacheEntry>() : _dbService.GetAllInventoryCachesFromResources(characterId);
 
-    public List<InventoryCacheEntry> GetCurrentCharacterInventories() => GetInventoriesForCharacter(GameStateService.PlayerContentId);
+    public List<InventoryCacheEntry> GetCurrentCharacterInventories() => GetInventoriesForCharacter(_gameState.PlayerContentId);
 
     public long GetTotalItemCount(uint itemId)
     {
-        var characterId = GameStateService.PlayerContentId;
+        var characterId = _gameState.PlayerContentId;
         if (characterId == 0) return 0;
         var summary = _dbService.GetItemCountSummaryFromResources(characterId, itemId);
         return summary.TryGetValue(itemId, out var v) ? v : 0;

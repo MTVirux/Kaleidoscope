@@ -37,6 +37,7 @@ public sealed partial class DataTool : ToolComponent
     
     private readonly CurrencyTrackerService _currencyTrackerService;
     private readonly ConfigurationService _configService;
+    private readonly GameStateService _gameState;
     private readonly InventoryCacheService? _inventoryCacheService;
     private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly ItemDataService? _itemDataService;
@@ -86,6 +87,7 @@ public sealed partial class DataTool : ToolComponent
     public DataTool(
         CurrencyTrackerService currencyTrackerService,
         ConfigurationService configService,
+        GameStateService gameState,
         InventoryCacheService? inventoryCacheService = null,
         TrackedDataRegistry? trackedDataRegistry = null,
         ItemDataService? itemDataService = null,
@@ -100,6 +102,7 @@ public sealed partial class DataTool : ToolComponent
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
+        _gameState = gameState;
         _inventoryCacheService = inventoryCacheService;
         _trackedDataRegistry = trackedDataRegistry;
         _itemDataService = itemDataService;
@@ -138,7 +141,8 @@ public sealed partial class DataTool : ToolComponent
             configService.Config,
             currencyTrackerService.CacheService,
             lifestreamService,
-            notificationManager);
+            notificationManager,
+            gameState);
         
         // Bind table widget to settings
         _tableWidget.BindSettings(
@@ -565,7 +569,7 @@ public sealed partial class DataTool : ToolComponent
             return formattedName;
 
         // Try runtime lookup for currently-loaded characters (formats it)
-        var runtimeName = GameStateService.GetCharacterName(characterId);
+        var runtimeName = _gameState.GetCharacterName(characterId);
         if (!string.IsNullOrEmpty(runtimeName))
             return Kaleidoscope.Libs.CharacterNameFormatter.FormatName(runtimeName, _configService.Config.CharacterNameFormat) ?? runtimeName;
 

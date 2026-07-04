@@ -34,6 +34,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly TrackedDataRegistry _registry;
     private readonly ConfigurationService _configService;
     private readonly ResourceObservationService _observations;
+    private readonly GameStateService _gameState;
 
     private static readonly HashSet<TrackedDataType> DefaultEnabledTypes = new() { TrackedDataType.Gil };
 
@@ -63,7 +64,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
     public event Action? OnRetainerClosed;
 
-    public InventoryChangeService(IPluginLog log, IClientState clientState, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService, ResourceObservationService observations)
+    public InventoryChangeService(IPluginLog log, IClientState clientState, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService, ResourceObservationService observations, GameStateService gameState)
     {
         _log = log;
         _clientState = clientState;
@@ -71,6 +72,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         _registry = registry;
         _configService = configService;
         _observations = observations;
+        _gameState = gameState;
 
         _framework.Update += OnFrameworkUpdate;
         _observations.ObservationCommitted += OnObservationCommitted;
@@ -88,7 +90,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
         // Track retainer state changes for stabilization
         // Use IsRetainerActive() which properly checks if a retainer inventory is open
-        var isRetainerActive = GameStateService.IsRetainerActive();
+        var isRetainerActive = _gameState.IsRetainerActive();
 
         if (isRetainerActive != _wasRetainerActive)
         {
@@ -154,7 +156,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     private void FlushProjection()
     {
-        if (GameStateService.PlayerContentId == 0) return;
+        if (_gameState.PlayerContentId == 0) return;
 
         TrackedDataType[] pending;
         lock (_pendingLock)

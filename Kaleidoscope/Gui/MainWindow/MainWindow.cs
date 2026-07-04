@@ -24,6 +24,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
     private readonly LayoutEditingService _layoutEditingService;
     private readonly ProfilerService _profilerService;
     private readonly FrameLimiterService _frameLimiterService;
+    private readonly GameStateService _gameState;
     private readonly IKeyState _keyState;
     private readonly IFramework _framework;
     private readonly ToolFactory _toolFactory;
@@ -64,6 +65,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         LayoutEditingService layoutEditingService,
         ProfilerService profilerService,
         FrameLimiterService frameLimiterService,
+        GameStateService gameState,
         ToolFactory toolFactory,
         IKeyState keyState,
         IFramework framework,
@@ -78,6 +80,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         _layoutEditingService = layoutEditingService;
         _profilerService = profilerService;
         _frameLimiterService = frameLimiterService;
+        _gameState = gameState;
         _toolFactory = toolFactory;
         _webSocketService = webSocketService;
         _autoRetainerIpc = autoRetainerIpc;
@@ -548,6 +551,7 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
         _quickAccessBar = new QuickAccessBarWidget(
             _stateService,
             _layoutEditingService,
+            _gameState,
             _configService,
             _currencyTrackerService,
             _webSocketService,

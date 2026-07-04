@@ -14,6 +14,7 @@ public sealed class TrackedDataRegistry : IRequiredService
     private readonly Dictionary<TrackedDataType, TrackedDataDefinition> _definitions = new();
 
     private readonly ResourceStore _resourceStore;
+    private readonly GameStateService _gameState;
 
     private Dictionary<TrackedDataCategory, List<TrackedDataDefinition>>? _byCategory;
     private Dictionary<uint, TrackedDataDefinition>? _byItemId;
@@ -22,9 +23,10 @@ public sealed class TrackedDataRegistry : IRequiredService
 
     public IReadOnlyDictionary<TrackedDataType, TrackedDataDefinition> Definitions => _definitions;
 
-    public TrackedDataRegistry(ResourceStore resourceStore)
+    public TrackedDataRegistry(ResourceStore resourceStore, GameStateService gameState)
     {
         _resourceStore = resourceStore;
+        _gameState = gameState;
         RegisterAllTypes();
         BuildCaches();
     }
@@ -429,7 +431,7 @@ public sealed class TrackedDataRegistry : IRequiredService
     /// </summary>
     public long? GetCurrentValue(TrackedDataType type)
     {
-        var pid = GameStateService.PlayerContentId;
+        var pid = _gameState.PlayerContentId;
         if (pid == 0) return null;
 
         return type switch
@@ -441,7 +443,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             TrackedDataType.RetainerGil       => SumRetainersForActiveChar(Resources.ResourceCatalog.GilItemId),
 
             // FC gil — active character's free company (single owner; SumForOwner with FCID)
-            TrackedDataType.FreeCompanyGil    => _resourceStore.GetSumForOwner(GameStateService.GetFreeCompanyId(), Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.GilItemId),
+            TrackedDataType.FreeCompanyGil    => _resourceStore.GetSumForOwner(_gameState.GetFreeCompanyId(), Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.GilItemId),
 
             // FC credits — stored under the active character's content id but with OwnerKind.FreeCompany
             // (see MemoryPoller / AutoRetainerFcPointsSyncService), so the default Player-scoped read misses them.

@@ -17,14 +17,16 @@ public sealed class CosmopouchCapture : IDisposable, IRequiredService
     private readonly IFramework _framework;
     private readonly IClientState _clientState;
     private readonly ResourceObservationService _service;
+    private readonly GameStateService _gameState;
     private DateTime _nextPoll;
     private const int PollIntervalMs = 500;
 
-    public CosmopouchCapture(IFramework framework, IClientState clientState, ResourceObservationService service)
+    public CosmopouchCapture(IFramework framework, IClientState clientState, ResourceObservationService service, GameStateService gameState)
     {
         _framework = framework;
         _clientState = clientState;
         _service = service;
+        _gameState = gameState;
         _framework.Update += OnTick;
     }
 
@@ -34,9 +36,9 @@ public sealed class CosmopouchCapture : IDisposable, IRequiredService
         if (now < _nextPoll || !_clientState.IsLoggedIn) return;
         _nextPoll = now.AddMilliseconds(PollIntervalMs);
 
-        var im = GameStateService.InventoryManagerInstance();
+        var im = _gameState.InventoryManagerInstance();
         if (im == null) return;
-        var pid = GameStateService.PlayerContentId;
+        var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
 
         Scan(im, InventoryType.Cosmopouch1, Container.Cosmopouch1, pid);

@@ -18,6 +18,7 @@ public sealed class QuickAccessBarWidget
 {
     private readonly StateService _stateService;
     private readonly LayoutEditingService _layoutEditingService;
+    private readonly GameStateService _gameState;
     private readonly ConfigurationService? _configurationService;
     private readonly CurrencyTrackerService? _currencyTrackerService;
     private readonly UniversalisWebSocketService? _webSocketService;
@@ -72,6 +73,7 @@ public sealed class QuickAccessBarWidget
     /// </summary>
     /// <param name="stateService">State service for edit/lock/fullscreen state.</param>
     /// <param name="layoutEditingService">Layout editing service for dirty state.</param>
+    /// <param name="gameState">Game state service for player/login status.</param>
     /// <param name="configurationService">Configuration service for layout access (optional).</param>
     /// <param name="currencyTrackerService">Currency tracking service for database status (optional).</param>
     /// <param name="webSocketService">WebSocket service for Universalis connection status (optional).</param>
@@ -85,6 +87,7 @@ public sealed class QuickAccessBarWidget
     public QuickAccessBarWidget(
         StateService stateService,
         LayoutEditingService layoutEditingService,
+        GameStateService gameState,
         ConfigurationService? configurationService = null,
         CurrencyTrackerService? currencyTrackerService = null,
         UniversalisWebSocketService? webSocketService = null,
@@ -98,6 +101,7 @@ public sealed class QuickAccessBarWidget
     {
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _layoutEditingService = layoutEditingService ?? throw new ArgumentNullException(nameof(layoutEditingService));
+        _gameState = gameState ?? throw new ArgumentNullException(nameof(gameState));
         _configurationService = configurationService;
         _currencyTrackerService = currencyTrackerService;
         _webSocketService = webSocketService;
@@ -150,9 +154,9 @@ public sealed class QuickAccessBarWidget
         if (_webSocketService != null) statusCount++;
         if (_autoRetainerService != null) statusCount++;
         
-        var isLoggedIn = GameStateService.PlayerContentId != 0;
-        var characterText = isLoggedIn 
-            ? (GameStateService.LocalPlayerName ?? "Unknown") 
+        var isLoggedIn = _gameState.PlayerContentId != 0;
+        var characterText = isLoggedIn
+            ? (_gameState.LocalPlayerName ?? "Unknown")
             : "In Titlescreen";
         var characterTextSize = ImGui.CalcTextSize(characterText);
         

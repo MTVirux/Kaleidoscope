@@ -50,15 +50,16 @@ public static class NameSanitizer
     /// If the sanitized name is "You", attempts to resolve the actual player name.
     /// </summary>
     /// <param name="raw">The raw name to sanitize.</param>
+    /// <param name="gameState">Game state service used to resolve the local player name.</param>
     /// <returns>The sanitized name, or null if input is null/empty and no fallback available.</returns>
-    public static string? SanitizeWithPlayerFallback(string? raw)
+    public static string? SanitizeWithPlayerFallback(string? raw, GameStateService gameState)
     {
         var sanitized = Sanitize(raw);
-        
+
         // Try to get local player name if it's just "You"
         if (string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
         {
-            var localName = GameStateService.LocalPlayerName;
+            var localName = gameState.LocalPlayerName;
             if (!string.IsNullOrEmpty(localName))
                 return localName;
         }

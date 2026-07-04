@@ -48,7 +48,8 @@ public sealed class DeveloperWindow : Window, IService, IDisposable
         FileDialogService fileDialogService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
-        ResourceDbWriter resourceWriter)
+        ResourceDbWriter resourceWriter,
+        GameStateService gameState)
         : base("Kaleidoscope Developer")
     {
         _stateService = stateService;
@@ -62,7 +63,8 @@ public sealed class DeveloperWindow : Window, IService, IDisposable
             layoutEditingService,
             resourcesService,
             resourceStore,
-            resourceWriter));
+            resourceWriter,
+            gameState));
         _categories.Add(new SqlQueryCategory(currencyTrackerService));
         _categories.Add(new ProfilerCategory(profilerService, configService, currencyTrackerService));
         _categories.Add(new CachesCategory(currencyTrackerService, inventoryCacheService, listingsService, characterDataService));

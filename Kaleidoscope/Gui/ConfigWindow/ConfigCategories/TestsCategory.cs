@@ -33,6 +33,7 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
     private readonly ResourceObservationService _resourcesService;
     private readonly ResourceStore _resourceStore;
     private readonly ResourceDbWriter _resourceWriter;
+    private readonly GameStateService _gameState;
 
     // Test results storage
     private readonly object _testResultsLock = new();
@@ -62,7 +63,8 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         LayoutEditingService layoutEditingService,
         ResourceObservationService resourcesService,
         ResourceStore resourceStore,
-        ResourceDbWriter resourceWriter)
+        ResourceDbWriter resourceWriter,
+        GameStateService gameState)
     {
         _currencyTrackerService = currencyTrackerService;
         _arIpcService = arIpcService;
@@ -73,6 +75,7 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         _resourcesService = resourcesService;
         _resourceStore = resourceStore;
         _resourceWriter = resourceWriter;
+        _gameState = gameState;
 
         _tests = BuildTestRegistry();
         _testsByName = _tests.ToDictionary(t => t.Name);
@@ -367,7 +370,7 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
 
         ImGui.Spacing();
 
-        var pid = GameStateService.PlayerContentId;
+        var pid = _gameState.PlayerContentId;
         var gilKey = new ResourceKey
         {
             OwnerId   = pid,
@@ -378,7 +381,7 @@ public sealed class TestsCategory : Kaleidoscope.Gui.ConfigWindow.IConfigCategor
         };
         var stored = _resourceStore.Get(gilKey)?.Quantity ?? 0;
         long live;
-        unsafe { var im = GameStateService.InventoryManagerInstance(); live = im == null ? 0 : (long)im->GetGil(); }
+        unsafe { var im = _gameState.InventoryManagerInstance(); live = im == null ? 0 : (long)im->GetGil(); }
         var match = stored == live;
 
         ImGui.TextUnformatted($"Stored Gil: {stored:N0}  |  Live Gil: {live:N0}  |  ");

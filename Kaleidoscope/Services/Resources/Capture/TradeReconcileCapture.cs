@@ -19,6 +19,7 @@ public sealed class TradeReconcileCapture : IDisposable, IRequiredService
     private readonly IAddonLifecycle _lifecycle;
     private readonly IClientState _clientState;
     private readonly ResourceObservationService _service;
+    private readonly GameStateService _gameState;
 
     private static readonly TimeSpan TradeTagTtl = TimeSpan.FromSeconds(3);
 
@@ -30,11 +31,12 @@ public sealed class TradeReconcileCapture : IDisposable, IRequiredService
         (InventoryType.Inventory4, Container.Inventory4),
     };
 
-    public TradeReconcileCapture(IAddonLifecycle lifecycle, IClientState clientState, ResourceObservationService service)
+    public TradeReconcileCapture(IAddonLifecycle lifecycle, IClientState clientState, ResourceObservationService service, GameStateService gameState)
     {
         _lifecycle = lifecycle;
         _clientState = clientState;
         _service = service;
+        _gameState = gameState;
         _lifecycle.RegisterListener(AddonEvent.PreFinalize, "Trade", OnTradeFinalize);
     }
 
@@ -51,9 +53,9 @@ public sealed class TradeReconcileCapture : IDisposable, IRequiredService
             StampedAt = DateTime.UtcNow,
         }, TradeTagTtl);
 
-        var im = GameStateService.InventoryManagerInstance();
+        var im = _gameState.InventoryManagerInstance();
         if (im == null) return;
-        var pid = GameStateService.PlayerContentId;
+        var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
 
         foreach (var (gameType, container) in PlayerBags)

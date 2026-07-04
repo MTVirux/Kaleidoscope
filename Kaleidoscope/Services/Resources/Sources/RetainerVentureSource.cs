@@ -12,17 +12,19 @@ namespace Kaleidoscope.Services.Resources.Sources;
 public sealed class RetainerVentureSource : ObservationSourceBase, IRequiredService
 {
     private readonly InventoryChangeService _changes;
+    private readonly GameStateService _gameState;
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(3);
 
-    public RetainerVentureSource(InventoryChangeService changes, ResourceObservationService obsSvc) : base(obsSvc)
+    public RetainerVentureSource(InventoryChangeService changes, ResourceObservationService obsSvc, GameStateService gameState) : base(obsSvc)
     {
         _changes = changes;
+        _gameState = gameState;
         _changes.OnRetainerInventoryReady += OnReady;
     }
 
     private void OnReady()
     {
-        var rid = GameStateService.GetActiveRetainerId();
+        var rid = _gameState.GetActiveRetainerId();
         Stamp(SourceKind.RetainerVenture, rid == 0 ? null : rid.ToString("X16"), Ttl);
     }
 

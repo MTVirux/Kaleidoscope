@@ -703,7 +703,7 @@ public sealed partial class ItemTableWidget
         // Relog to character via Lifestream
         if (_lifestreamService != null && _lifestreamService.IsAvailable)
         {
-            var currentCid = GameStateService.PlayerContentId;
+            var currentCid = _gameState?.PlayerContentId ?? 0;
             if (primaryCid != 0 && primaryCid != currentCid)
             {
                 var worldName = _cachedRows?
