@@ -45,7 +45,7 @@ public sealed class WebsocketFeedTool : ToolComponent
     private readonly HashSet<string> _cachedFilterRegions = new();
     private readonly HashSet<string> _cachedFilterDataCenters = new();
     private readonly HashSet<int> _cachedFilterWorldIds = new();
-    private object? _cachedFilterWorldData;
+    private UniversalisWorldData? _cachedFilterWorldData;
 
     private readonly ItemDetailsPopup _itemDetailsPopup;
 

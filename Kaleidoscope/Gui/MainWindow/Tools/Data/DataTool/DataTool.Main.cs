@@ -66,11 +66,6 @@ public sealed partial class DataTool : ToolComponent
     private readonly ColumnManagementState _columnState = new();
     private readonly MergeManagementState _mergeRowState = new();
 
-    // Version counters for cache change detection (replaces blind timer polling)
-    private long _lastTimeSeriesVersion;
-    private long _lastCharacterVersion;
-    private long _lastResourcesVersion;
-
     // Shared cached state
     private CharacterNameFormat _cachedNameFormat;
     private CharacterSortOrder _cachedSortOrder;
@@ -220,9 +215,10 @@ public sealed partial class DataTool : ToolComponent
         RegisterSettingsProvider(_tableWidget);
         RegisterSettingsProvider(_graphWidget);
 
-        // Construct the view components with the shared plumbing they read. Cache-version
-        // detection, character-name formatting, and logging stay owned here and are supplied
-        // as delegates so both views share a single source of truth.
+        // Construct the view components with the shared plumbing they read. The version-counter
+        // source, character-name formatting, and logging stay owned here and are supplied as
+        // delegates. GetCacheVersions is a pure snapshot reader; each view keeps its own last-seen
+        // snapshot, so change detection no longer relies on the sibling view's draw cadence.
         _tableView = new DataToolTableView(
             currencyTrackerService,
             configService,
@@ -230,7 +226,7 @@ public sealed partial class DataTool : ToolComponent
             autoRetainerService,
             priceTrackingService,
             _tableWidget,
-            HasCacheVersionChanged,
+            GetCacheVersions,
             LogDebug);
 
         _graphView = new DataToolGraphView(
@@ -242,7 +238,7 @@ public sealed partial class DataTool : ToolComponent
             itemDataService,
             trackedDataRegistry,
             _graphWidget,
-            HasCacheVersionChanged,
+            GetCacheVersions,
             GetCharacterDisplayName,
             LogDebug);
     }
@@ -535,26 +531,15 @@ public sealed partial class DataTool : ToolComponent
     }
     
     /// <summary>
-    /// Checks if any upstream cache has changed since we last refreshed.
-    /// Uses version counters for O(1) change detection instead of blind timer polling.
+    /// Reads the current upstream cache version counters (time-series, character data, resources DB)
+    /// as an immutable O(1) snapshot. Pure — no side effects. Each view keeps its own last-seen
+    /// snapshot and compares against this, so change detection no longer depends on exactly one view
+    /// drawing per frame or on both views being marked dirty on every view-mode switch.
     /// </summary>
-    private bool HasCacheVersionChanged()
-    {
-        var tsVersion = CacheService.Version;
-        var charVersion = CharacterDataCache.Version;
-        var resourcesVersion = _resourceObservationService?.DbVersion ?? 0;
-
-        if (tsVersion != _lastTimeSeriesVersion ||
-            charVersion != _lastCharacterVersion ||
-            resourcesVersion != _lastResourcesVersion)
-        {
-            _lastTimeSeriesVersion = tsVersion;
-            _lastCharacterVersion = charVersion;
-            _lastResourcesVersion = resourcesVersion;
-            return true;
-        }
-        return false;
-    }
+    private (long timeSeries, long character, long resources) GetCacheVersions()
+        => (CacheService.Version,
+            CharacterDataCache.Version,
+            _resourceObservationService?.DbVersion ?? 0);
 
     /// <summary>
     /// Gets a display name for the provided character ID.

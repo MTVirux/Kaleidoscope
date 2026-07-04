@@ -549,16 +549,19 @@ public sealed class TrackedDataRegistry : IRequiredService
 
         // Crystals — game item ids 2..19 (shards 2-7, crystals 8-13, clusters 14-19). Each affects its
         // element series plus the grand total, whether owned by the player or one of their retainers.
-        if (itemId >= 2 && itemId <= 19)
+        // Route the id→element mapping through SpecialGroupingHelper so this projection and the
+        // SumCrystalsForElement recompute share one source of truth for the crystal id math.
+        if (SpecialGroupingHelper.IsCrystalItem(itemId))
         {
-            yield return (int)((itemId - 2) % 6) switch
+            var element = SpecialGroupingHelper.GetCrystalElement(itemId)!.Value;
+            yield return element switch
             {
-                0 => TrackedDataType.FireCrystals,
-                1 => TrackedDataType.IceCrystals,
-                2 => TrackedDataType.WindCrystals,
-                3 => TrackedDataType.EarthCrystals,
-                4 => TrackedDataType.LightningCrystals,
-                _ => TrackedDataType.WaterCrystals,
+                CrystalElement.Fire      => TrackedDataType.FireCrystals,
+                CrystalElement.Ice       => TrackedDataType.IceCrystals,
+                CrystalElement.Wind      => TrackedDataType.WindCrystals,
+                CrystalElement.Earth     => TrackedDataType.EarthCrystals,
+                CrystalElement.Lightning => TrackedDataType.LightningCrystals,
+                _                        => TrackedDataType.WaterCrystals,
             };
             yield return TrackedDataType.CrystalsTotal;
             yield break;

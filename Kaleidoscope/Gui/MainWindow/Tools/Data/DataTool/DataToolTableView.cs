@@ -19,10 +19,11 @@ internal sealed class DataToolTableView
     private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
     private readonly ItemTableWidget _tableWidget;
-    private readonly Func<bool> _hasCacheVersionChanged;
+    private readonly Func<(long timeSeries, long character, long resources)> _getCacheVersions;
     private readonly Action<string> _logDebug;
 
     private PreparedItemTableData? _cachedTableData;
+    private (long timeSeries, long character, long resources) _lastCacheVersions;
     private volatile bool _pendingRefresh = true;
 
     private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
@@ -35,7 +36,7 @@ internal sealed class DataToolTableView
         AutoRetainerService? autoRetainerService,
         PriceTrackingService? priceTrackingService,
         ItemTableWidget tableWidget,
-        Func<bool> hasCacheVersionChanged,
+        Func<(long timeSeries, long character, long resources)> getCacheVersions,
         Action<string> logDebug)
     {
         _currencyTrackerService = currencyTrackerService;
@@ -44,7 +45,7 @@ internal sealed class DataToolTableView
         _autoRetainerService = autoRetainerService;
         _priceTrackingService = priceTrackingService;
         _tableWidget = tableWidget;
-        _hasCacheVersionChanged = hasCacheVersionChanged;
+        _getCacheVersions = getCacheVersions;
         _logDebug = logDebug;
     }
 
@@ -54,12 +55,27 @@ internal sealed class DataToolTableView
     /// <summary>Marks the cached table data as stale so it is rebuilt on the next draw.</summary>
     public void RequestRefresh() => _pendingRefresh = true;
 
+    /// <summary>
+    /// Detects whether any upstream cache version advanced since this view last checked, comparing
+    /// against a per-view snapshot so detection does not depend on the sibling view's draw cadence.
+    /// </summary>
+    private bool HasCacheVersionChanged()
+    {
+        var current = _getCacheVersions();
+        if (current != _lastCacheVersions)
+        {
+            _lastCacheVersions = current;
+            return true;
+        }
+        return false;
+    }
+
     public void Draw(DataToolSettings settings)
     {
         using (ProfilerService.BeginStaticChildScope("TableView"))
         {
             // Check cache versions — only refresh when data actually changed or settings triggered it
-            var cacheChanged = _hasCacheVersionChanged();
+            var cacheChanged = HasCacheVersionChanged();
 
             if (_pendingRefresh || cacheChanged)
             {

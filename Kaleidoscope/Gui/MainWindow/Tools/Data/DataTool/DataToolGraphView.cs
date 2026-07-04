@@ -25,9 +25,11 @@ internal sealed class DataToolGraphView
     private readonly ItemDataService? _itemDataService;
     private readonly TrackedDataRegistry? _trackedDataRegistry;
     private readonly GraphWidget _graphWidget;
-    private readonly Func<bool> _hasCacheVersionChanged;
+    private readonly Func<(long timeSeries, long character, long resources)> _getCacheVersions;
     private readonly Func<ulong, string> _getCharacterDisplayName;
     private readonly Action<string> _logDebug;
+
+    private (long timeSeries, long character, long resources) _lastCacheVersions;
 
     // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries)
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
@@ -56,7 +58,7 @@ internal sealed class DataToolGraphView
         ItemDataService? itemDataService,
         TrackedDataRegistry? trackedDataRegistry,
         GraphWidget graphWidget,
-        Func<bool> hasCacheVersionChanged,
+        Func<(long timeSeries, long character, long resources)> getCacheVersions,
         Func<ulong, string> getCharacterDisplayName,
         Action<string> logDebug)
     {
@@ -68,7 +70,7 @@ internal sealed class DataToolGraphView
         _itemDataService = itemDataService;
         _trackedDataRegistry = trackedDataRegistry;
         _graphWidget = graphWidget;
-        _hasCacheVersionChanged = hasCacheVersionChanged;
+        _getCacheVersions = getCacheVersions;
         _getCharacterDisplayName = getCharacterDisplayName;
         _logDebug = logDebug;
     }
@@ -125,7 +127,22 @@ internal sealed class DataToolGraphView
         if (_cachedGroupingMode != settings.GroupingMode) return true;
 
         // Use version counters for data change detection instead of blind 5s polling
-        return _hasCacheVersionChanged();
+        return HasCacheVersionChanged();
+    }
+
+    /// <summary>
+    /// Detects whether any upstream cache version advanced since this view last checked, comparing
+    /// against a per-view snapshot so detection does not depend on the sibling view's draw cadence.
+    /// </summary>
+    private bool HasCacheVersionChanged()
+    {
+        var current = _getCacheVersions();
+        if (current != _lastCacheVersions)
+        {
+            _lastCacheVersions = current;
+            return true;
+        }
+        return false;
     }
 
     private void RefreshGraphData(DataToolSettings settings)
