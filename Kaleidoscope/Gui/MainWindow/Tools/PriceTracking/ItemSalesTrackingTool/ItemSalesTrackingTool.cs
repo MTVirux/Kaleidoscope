@@ -57,6 +57,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
 
     // For graph rendering
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
+    // Set when settings/data change so the cached graph series are rebuilt on the next draw.
     private bool _seriesDataDirty = true;
 
     private ItemSalesTrackingSettings Settings => _instanceSettings;
@@ -149,7 +150,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
         }
         catch (Exception ex)
         {
-            ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
+            ImGui.TextColored(UiColors.ErrorText, $"Error: {ex.Message}");
             LogDebug($"Draw error: {ex.Message}");
         }
     }
@@ -211,7 +212,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
 
         if (!string.IsNullOrEmpty(_errorMessage))
         {
-            ImGui.TextColored(new Vector4(1, 0.5f, 0.3f, 1), _errorMessage);
+            ImGui.TextColored(UiColors.ErrorMessage, _errorMessage);
         }
     }
 

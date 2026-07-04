@@ -28,7 +28,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.BeginChild("##GettingStartedScroll", avail, false, ImGuiWindowFlags.None);
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
-            ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.2f, 1f), "Welcome to Kaleidoscope!");
+            ImGui.TextColored(UiColors.Heading, "Welcome to Kaleidoscope!");
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
@@ -37,7 +37,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Quick Start ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Quick Start:");
+            ImGui.TextColored(UiColors.SectionHeading, "Quick Start:");
             ImGui.Spacing();
 
             ImGui.BulletText("Click the Edit button (pencil icon) in the title bar to enter edit mode");
@@ -49,7 +49,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Title Bar Buttons ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Title Bar Buttons:");
+            ImGui.TextColored(UiColors.SectionHeading, "Title Bar Buttons:");
             ImGui.Spacing();
 
             ImGui.BulletText("Save: Save layout changes (shown when layout is modified)");
@@ -60,7 +60,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Tool Context Menu ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Tool Options (right-click a tool header):");
+            ImGui.TextColored(UiColors.SectionHeading, "Tool Options (right-click a tool header):");
             ImGui.Spacing();
 
             ImGui.BulletText("Rename: Change the tool's display name");
@@ -71,7 +71,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Layout Management ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Layout Management:");
+            ImGui.TextColored(UiColors.SectionHeading, "Layout Management:");
             ImGui.Spacing();
 
             ImGui.BulletText("Create, save, and load multiple layouts");
@@ -81,7 +81,7 @@ public sealed class GettingStartedTool : ToolComponent
             ImGui.Spacing();
 
             // --- Tips ---
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Tips:");
+            ImGui.TextColored(UiColors.SectionHeading, "Tips:");
             ImGui.Spacing();
 
             ImGui.BulletText("Tools snap to the grid when you release them");

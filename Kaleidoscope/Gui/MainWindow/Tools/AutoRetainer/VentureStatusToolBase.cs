@@ -78,6 +78,9 @@ public abstract class VentureStatusToolBase : ToolComponent
     private readonly TimeSpan _refreshInterval = TimeSpan.FromMilliseconds(100);
     protected List<AutoRetainerCharacterData>? Characters;
 
+    // Fixed pixel width of the venture "Status" column shared by the grouped and flat tables.
+    private const float StatusColumnWidth = 120f;
+
     // Default colors
     private static readonly Vector4 DefaultReadyColor = new(0.4f, 1.0f, 0.4f, 1f);
     private static readonly Vector4 DefaultActiveColor = new(1.0f, 1.0f, 1.0f, 1f);
@@ -224,7 +227,7 @@ public abstract class VentureStatusToolBase : ToolComponent
                 if (ImGui.BeginTable($"EntityTable_{character.CID}", 2, tableFlags))
                 {
                     ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
-                    ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 120);
+                    ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, StatusColumnWidth);
 
                     ImGui.TableHeadersRow();
 
@@ -308,7 +311,7 @@ public abstract class VentureStatusToolBase : ToolComponent
             ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
             if (showCharacter)
                 ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 120);
+            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, StatusColumnWidth);
 
             ImGui.TableHeadersRow();
 

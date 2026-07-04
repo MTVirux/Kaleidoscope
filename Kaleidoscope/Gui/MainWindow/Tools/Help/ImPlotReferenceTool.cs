@@ -27,19 +27,19 @@ public sealed class ImPlotReferenceTool : ToolComponent
             ImGui.BeginChild("##GraphControlsScroll", avail, false, ImGuiWindowFlags.None);
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
 
-            ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.2f, 1f), "Graph Controls");
+            ImGui.TextColored(UiColors.Heading, "Graph Controls");
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
 
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Navigation:");
+            ImGui.TextColored(UiColors.SectionHeading, "Navigation:");
             ImGui.Spacing();
             ImGui.BulletText("Scroll wheel: Zoom in/out");
             ImGui.BulletText("Click + drag: Pan the view");
             ImGui.BulletText("Double-click: Reset zoom to fit all data");
             ImGui.Spacing();
 
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Axis Controls:");
+            ImGui.TextColored(UiColors.SectionHeading, "Axis Controls:");
             ImGui.Spacing();
             ImGui.BulletText("Scroll on X-axis: Zoom X only");
             ImGui.BulletText("Scroll on Y-axis: Zoom Y only");
@@ -47,13 +47,13 @@ public sealed class ImPlotReferenceTool : ToolComponent
             ImGui.BulletText("Drag Y-axis: Pan vertically");
             ImGui.Spacing();
 
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Selection:");
+            ImGui.TextColored(UiColors.SectionHeading, "Selection:");
             ImGui.Spacing();
             ImGui.BulletText("Hover: View values at cursor position");
             ImGui.BulletText("Right-click + drag: Box zoom selection");
             ImGui.Spacing();
 
-            ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Legend:");
+            ImGui.TextColored(UiColors.SectionHeading, "Legend:");
             ImGui.Spacing();
             ImGui.BulletText("Click legend item: Toggle series visibility");
             ImGui.Spacing();

@@ -49,6 +49,18 @@ public static class UiColors
     /// <summary>Highlighted text - blue.</summary>
     public static readonly Vector4 Highlight = new(0.4f, 0.6f, 1.0f, 1f);
 
+    /// <summary>Bright error caption text - used for "Error: ..." exception readouts.</summary>
+    public static readonly Vector4 ErrorText = new(1f, 0.3f, 0.3f, 1f);
+
+    /// <summary>Warm error-message text - used for user-facing fetch/validation messages.</summary>
+    public static readonly Vector4 ErrorMessage = new(1f, 0.5f, 0.3f, 1f);
+
+    /// <summary>Primary section title heading - amber (shares the Warning accent).</summary>
+    public static readonly Vector4 Heading = Warning;
+
+    /// <summary>Secondary/sub-section heading - light blue.</summary>
+    public static readonly Vector4 SectionHeading = new(0.6f, 0.8f, 1f, 1f);
+
     /// <summary>High-quality / merge-indicator accent - bright cyan-blue.</summary>
     public static readonly Vector4 HqPrice = new(0.4f, 0.8f, 1f, 1f);
     

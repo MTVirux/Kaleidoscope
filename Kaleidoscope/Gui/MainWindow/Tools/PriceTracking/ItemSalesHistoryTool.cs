@@ -2,6 +2,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
@@ -93,7 +94,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
         }
         catch (Exception ex)
         {
-            ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
+            ImGui.TextColored(UiColors.ErrorText, $"Error: {ex.Message}");
             LogDebug($"Draw error: {ex.Message}");
         }
     }
@@ -186,7 +187,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
 
         if (!string.IsNullOrEmpty(_errorMessage))
         {
-            ImGui.TextColored(new Vector4(1, 0.5f, 0.3f, 1), _errorMessage);
+            ImGui.TextColored(UiColors.ErrorMessage, _errorMessage);
             return;
         }
 
@@ -275,7 +276,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
                 var priceText = FormatUtils.FormatGil(sale.PricePerUnit);
                 if (sale.IsHq)
                 {
-                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), priceText);
+                    ImGui.TextColored(UiColors.HqPrice, priceText);
                     if (ImGui.IsItemHovered())
                     {
                         ImGui.SetTooltip("High Quality");

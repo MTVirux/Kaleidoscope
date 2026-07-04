@@ -273,7 +273,7 @@ internal sealed class DialogManager
             catch (Exception ex)
             {
                 LogService.Error(LogCategory.UI, "Error while drawing tool settings", ex);
-                ImGui.TextColored(new Vector4(1f, 0.3f, 0.3f, 1f), "Error rendering settings");
+                ImGui.TextColored(UiColors.ErrorText, "Error rendering settings");
             }
 
             ImGui.Separator();

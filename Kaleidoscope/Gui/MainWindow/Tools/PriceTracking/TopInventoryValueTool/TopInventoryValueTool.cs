@@ -3,6 +3,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models.Universalis;
@@ -308,7 +309,7 @@ public sealed partial class TopInventoryValueTool : ToolComponent
         }
         catch (Exception ex)
         {
-            ImGui.TextColored(new Vector4(1, 0.3f, 0.3f, 1), $"Error: {ex.Message}");
+            ImGui.TextColored(UiColors.ErrorText, $"Error: {ex.Message}");
             LogDebug($"Draw error: {ex.Message}");
         }
     }
