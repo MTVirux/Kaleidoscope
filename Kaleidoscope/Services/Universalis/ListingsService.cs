@@ -90,8 +90,10 @@ public sealed class ListingsService : IDisposable, IService
     {
         try
         {
-            // Only process listing events (not sales)
-            if (entry.EventType == "Sale") return;
+            // Only apply "Listing Added" events. Sales are handled elsewhere, and "Listing Removed"
+            // events cannot be applied to the lowest-price cache (the removed price is no longer
+            // available), so applying them would pollute the cache with stale prices.
+            if (entry.EventType != "Listing Added") return;
 
             UpdateListingFromWebSocket(entry.ItemId, entry.WorldId, entry.PricePerUnit, entry.IsHq);
         }
@@ -155,6 +157,33 @@ public sealed class ListingsService : IDisposable, IService
         entry.SetPrices(hqPrices, isHq: true);
 
         _listingsCache[key] = entry;
+    }
+
+    /// <summary>
+    /// Extracts the lowest NQ/HQ listing prices from API market data (falling back to the min
+    /// prices when individual listings are absent) and applies them to the cache for every world
+    /// in the given scope.
+    /// </summary>
+    private void ApplyMarketDataToListings(int itemId, MarketBoardData marketData, IEnumerable<int> worldIds)
+    {
+        var nqPrices = marketData.Listings?
+            .Where(l => !l.IsHq)
+            .OrderBy(l => l.PricePerUnit)
+            .Take(ListingsCacheEntry.MaxPricesPerType)
+            .Select(l => l.PricePerUnit)
+            .ToList() ?? (marketData.MinPriceNQ > 0 ? new List<int> { marketData.MinPriceNQ } : new List<int>());
+
+        var hqPrices = marketData.Listings?
+            .Where(l => l.IsHq)
+            .OrderBy(l => l.PricePerUnit)
+            .Take(ListingsCacheEntry.MaxPricesPerType)
+            .Select(l => l.PricePerUnit)
+            .ToList() ?? (marketData.MinPriceHQ > 0 ? new List<int> { marketData.MinPriceHQ } : new List<int>());
+
+        foreach (var worldId in worldIds)
+        {
+            UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
+        }
     }
 
     /// <summary>
@@ -353,27 +382,7 @@ public sealed class ListingsService : IDisposable, IService
                         {
                             if (int.TryParse(kvp.Key, out var itemId))
                             {
-                                var marketData = kvp.Value;
-                                // Extract prices from listings if available, otherwise use min prices
-                                var nqPrices = marketData.Listings?
-                                    .Where(l => !l.IsHq)
-                                    .OrderBy(l => l.PricePerUnit)
-                                    .Take(ListingsCacheEntry.MaxPricesPerType)
-                                    .Select(l => l.PricePerUnit)
-                                    .ToList() ?? (marketData.MinPriceNQ > 0 ? new List<int> { marketData.MinPriceNQ } : new List<int>());
-                                
-                                var hqPrices = marketData.Listings?
-                                    .Where(l => l.IsHq)
-                                    .OrderBy(l => l.PricePerUnit)
-                                    .Take(ListingsCacheEntry.MaxPricesPerType)
-                                    .Select(l => l.PricePerUnit)
-                                    .ToList() ?? (marketData.MinPriceHQ > 0 ? new List<int> { marketData.MinPriceHQ } : new List<int>());
-
-                                // Update listings for each world in the scope
-                                foreach (var worldId in worldIds)
-                                {
-                                    UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
-                                }
+                                ApplyMarketDataToListings(itemId, kvp.Value, worldIds);
                                 fetched++;
                             }
                         }
@@ -551,23 +560,7 @@ public sealed class ListingsService : IDisposable, IService
                     {
                         if (int.TryParse(kvp.Key, out var itemId))
                         {
-                            var marketData = kvp.Value;
-                            // Extract prices from listings if available
-                            var nqPrices = marketData.Listings?
-                                .Where(l => !l.IsHq)
-                                .OrderBy(l => l.PricePerUnit)
-                                .Take(ListingsCacheEntry.MaxPricesPerType)
-                                .Select(l => l.PricePerUnit)
-                                .ToList() ?? (marketData.MinPriceNQ > 0 ? new List<int> { marketData.MinPriceNQ } : new List<int>());
-                            
-                            var hqPrices = marketData.Listings?
-                                .Where(l => l.IsHq)
-                                .OrderBy(l => l.PricePerUnit)
-                                .Take(ListingsCacheEntry.MaxPricesPerType)
-                                .Select(l => l.PricePerUnit)
-                                .ToList() ?? (marketData.MinPriceHQ > 0 ? new List<int> { marketData.MinPriceHQ } : new List<int>());
-
-                            UpdateListingsFromApi(itemId, worldId, nqPrices, hqPrices);
+                            ApplyMarketDataToListings(itemId, kvp.Value, new[] { worldId });
                         }
                     }
                 }

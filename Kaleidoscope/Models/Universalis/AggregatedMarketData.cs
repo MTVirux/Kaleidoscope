@@ -41,6 +41,25 @@ public sealed class AggregatedResult
 }
 
 /// <summary>
+/// Convenience helpers for reading world-scoped prices out of an aggregated result.
+/// </summary>
+public static class AggregatedResultExtensions
+{
+    /// <summary>
+    /// Extracts the world-scoped minimum listing prices and most recent sale prices for both
+    /// NQ and HQ. Any missing data yields 0 for that field. Values are gil-per-unit.
+    /// </summary>
+    public static (int Nq, int Hq, int LastSaleNq, int LastSaleHq) ExtractPrices(this AggregatedResult result)
+    {
+        var nq = result.Nq?.MinListing?.World?.Price ?? 0;
+        var hq = result.Hq?.MinListing?.World?.Price ?? 0;
+        var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
+        var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
+        return (nq, hq, lastSaleNq, lastSaleHq);
+    }
+}
+
+/// <summary>
 /// Aggregated data for a specific quality level (NQ or HQ).
 /// </summary>
 public sealed class AggregatedQualityData

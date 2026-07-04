@@ -505,8 +505,7 @@ public sealed class UniversalisService : IDisposable, IService
             return null;
 
         var result = data.Results[0];
-        var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
-        var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
+        var (nqPrice, hqPrice, _, _) = result.ExtractPrices();
 
         return (nqPrice, hqPrice);
     }

@@ -59,6 +59,23 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     private const int MarketableItemsRefreshHours = 24;
     private const int ValueSnapshotIntervalMinutes = 15;
 
+    // Spike filtering: only items whose previous sale was at least this many gil are eligible,
+    // and a new sale is treated as a spike when it reaches this multiple of the previous sale.
+    private const int PriceSpikeMinPreviousGil = 10000;
+    private const int PriceSpikeMultiplier = 100;
+
+    // Bulk-sale leniency reaches its configured maximum once the stack size hits this quantity.
+    private const int BulkSaleMaxLeniencyQuantity = 100;
+
+    // Inventory price fetching: API allows up to 100 item IDs per request; the auto-fetch path
+    // caps its work at a single batch to avoid rate limiting; batches are spaced by a short delay.
+    private const int InventoryPriceFetchBatchSize = 100;
+    private const int InventoryPriceFetchDelayMs = 100;
+    private const int MaxAutoFetchInventoryItems = 100;
+
+    // Inventory sale data older than this is refetched from the API at startup.
+    private const int StaleInventoryPriceThresholdMinutes = 5;
+
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
     private InventoryValueSettings ValueSettings => _configService.Config.InventoryValue;
 
@@ -305,7 +322,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 // Check for price spikes (100x or higher than previous sale) only for items with previous sales >= 10k
                 // Uses in-memory cache to avoid blocking DB reads on the WebSocket thread
                 _lastSalePriceCache.TryGetValue((entry.ItemId, entry.IsHq), out var previousPrice);
-                if (previousPrice >= 10000 && entry.PricePerUnit >= (long)previousPrice * 100)
+                if (previousPrice >= PriceSpikeMinPreviousGil && entry.PricePerUnit >= (long)previousPrice * PriceSpikeMultiplier)
                 {
                     var itemName = _itemDataService.GetItemName(entry.ItemId);
                     LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Ignoring price spike for {itemName} ({entry.ItemId}): {entry.PricePerUnit:N0} is 100x+ higher than previous {previousPrice:N0}");
@@ -377,8 +394,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                             if (Settings.AdjustForBulkSales && entry.Quantity > 1)
                             {
                                 // Linear scaling: more quantity = more lenient, up to max
-                                // At 100 items, reach max leniency
-                                var quantityFactor = 1.0 + (Math.Min(entry.Quantity, 100) / 100.0) * (Settings.BulkSaleMaxLeniency - 1.0);
+                                // At BulkSaleMaxLeniencyQuantity items, reach max leniency
+                                var quantityFactor = 1.0 + (Math.Min(entry.Quantity, BulkSaleMaxLeniencyQuantity) / (double)BulkSaleMaxLeniencyQuantity) * (Settings.BulkSaleMaxLeniency - 1.0);
                                 threshold *= quantityFactor;
                             }
                             
@@ -874,10 +891,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             }
 
             var result = data.Results[0];
-            var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
-            var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
-            var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
-            var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
+            var (nqPrice, hqPrice, lastSaleNq, lastSaleHq) = result.ExtractPrices();
 
             if (worldId.HasValue)
             {
@@ -1222,7 +1236,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>
     /// Fetches prices for all items in the player's inventories.
-    /// Uses batch database writes for better performance.
+    /// Capped at a single batch (<see cref="MaxAutoFetchInventoryItems"/> items) to avoid rate limiting.
     /// </summary>
     public async Task FetchInventoryPricesAsync()
     {
@@ -1235,7 +1249,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 .SelectMany(c => c.Items.Select(i => (int)i.ItemId))
                 .Distinct()
                 .Where(id => _marketableItems?.Contains(id) ?? true)
-                .Take(100) // Limit to avoid rate limiting
+                .Take(MaxAutoFetchInventoryItems)
                 .ToList();
 
             if (itemIds.Count == 0) return;
@@ -1248,25 +1262,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching prices for {itemIds.Count} inventory items");
 
-            foreach (var batch in itemIds.Chunk(100))
-            {
-                var data = await _universalisService.GetAggregatedDataAsync(scope, batch.Select(i => (uint)i));
-                if (data?.Results == null) continue;
-
-                var pricesToSave = data.Results.Select(result =>
-                {
-                    var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
-                    var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
-                    var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
-                    var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
-                    return (result.ItemId, wid.Value, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
-                }).ToList();
-
-                // Batch save to reduce lock contention
-                _dbService.SaveItemPricesBatch(pricesToSave);
-
-                await Task.Delay(100);
-            }
+            await FetchAndSaveInventoryPricesAsync(itemIds, scope, wid.Value);
 
             LogService.Debug(LogCategory.PriceTracking, "[PriceTracking] Finished fetching inventory prices");
         }
@@ -1278,7 +1274,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
     /// <summary>
     /// Fetches prices for inventory items that have stale or missing sale data.
-    /// Only fetches items where the last update is more than 5 minutes old.
+    /// Only fetches items where the last update is older than the stale threshold.
     /// Uses batch database writes for better performance.
     /// </summary>
     private async Task FetchStaleInventoryPricesAsync()
@@ -1288,7 +1284,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             // Get inventory item IDs and scope on main thread via framework
             List<int>? allItemIds = null;
             string? scope = null;
-            
+
             await _framework.RunOnFrameworkThread(() =>
             {
                 var allCaches = _inventoryCacheService.GetAllInventories();
@@ -1297,7 +1293,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                     .Distinct()
                     .Where(id => _marketableItems?.Contains(id) ?? true)
                     .ToList();
-                
+
                 scope = _universalisService.GetConfiguredScope();
             });
 
@@ -1307,8 +1303,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 return;
             }
 
-            // Get items with stale or missing sale data (older than 5 minutes)
-            var staleThreshold = TimeSpan.FromMinutes(5);
+            // Get items with stale or missing sale data
+            var staleThreshold = TimeSpan.FromMinutes(StaleInventoryPriceThresholdMinutes);
             var staleItemIds = _dbService.GetStaleItemIds(allItemIds, staleThreshold);
 
             if (staleItemIds.Count == 0)
@@ -1332,34 +1328,40 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
             LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Fetching prices for {staleItemIds.Count} stale inventory items");
 
-            var staleItemsList = staleItemIds.ToList();
-            foreach (var batch in staleItemsList.Chunk(100))
-            {
-                if (_disposed) break;
-
-                var data = await _universalisService.GetAggregatedDataAsync(scope, batch.Select(i => (uint)i));
-                if (data?.Results == null) continue;
-
-                var pricesToSave = data.Results.Select(result =>
-                {
-                    var nqPrice = result.Nq?.MinListing?.World?.Price ?? 0;
-                    var hqPrice = result.Hq?.MinListing?.World?.Price ?? 0;
-                    var lastSaleNq = result.Nq?.RecentPurchase?.World?.Price ?? 0;
-                    var lastSaleHq = result.Hq?.RecentPurchase?.World?.Price ?? 0;
-                    return (result.ItemId, wid.Value, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
-                }).ToList();
-
-                // Batch save to reduce lock contention
-                _dbService.SaveItemPricesBatch(pricesToSave);
-
-                await Task.Delay(100);
-            }
+            await FetchAndSaveInventoryPricesAsync(staleItemIds.ToList(), scope, wid.Value);
 
             LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Finished fetching stale inventory prices ({staleItemIds.Count} items)");
         }
         catch (Exception ex)
         {
             LogService.Warning(LogCategory.PriceTracking, $"[PriceTracking] Error fetching stale inventory prices: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fetches aggregated prices for the given item IDs from the API and persists them in batches.
+    /// Item IDs are chunked to respect the API's per-request limit and spaced by a short delay to
+    /// avoid rate limiting. Shared by the auto-fetch and stale-refresh paths.
+    /// </summary>
+    private async Task FetchAndSaveInventoryPricesAsync(IReadOnlyList<int> itemIds, string scope, int worldId)
+    {
+        foreach (var batch in itemIds.Chunk(InventoryPriceFetchBatchSize))
+        {
+            if (_disposed) break;
+
+            var data = await _universalisService.GetAggregatedDataAsync(scope, batch.Select(i => (uint)i));
+            if (data?.Results == null) continue;
+
+            var pricesToSave = data.Results.Select(result =>
+            {
+                var (nqPrice, hqPrice, lastSaleNq, lastSaleHq) = result.ExtractPrices();
+                return (result.ItemId, worldId, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
+            }).ToList();
+
+            // Batch save to reduce lock contention
+            _dbService.SaveItemPricesBatch(pricesToSave);
+
+            await Task.Delay(InventoryPriceFetchDelayMs);
         }
     }
 

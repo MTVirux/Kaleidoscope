@@ -20,7 +20,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     private readonly ConcurrentDictionary<int, HashSet<int>> _worldToItems = new(); // worldId → set of itemIds
     private readonly object _indexLock = new(); // Protects compound index updates
     
-    private readonly ConcurrentDictionary<(int ItemId, int WorldId), RecentSalesCacheEntry> _recentSalesCache = new();
+    private readonly ConcurrentDictionary<(int ItemId, int WorldId), CachedRecentSales> _recentSalesCache = new();
     
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), int> _lastSalePriceCache = new();
     
@@ -403,13 +403,13 @@ public sealed class MarketDataCacheService : IService, IDisposable
         LogService.Debug(LogCategory.Cache, $"[MarketDataCache] Evicted {count} oldest entries");
     }
     
-    public RecentSalesCacheEntry? GetRecentSales(int itemId, int worldId)
+    public CachedRecentSales? GetRecentSales(int itemId, int worldId)
     {
         _recentSalesCache.TryGetValue((itemId, worldId), out var entry);
         return entry;
     }
     
-    public void SetRecentSales(int itemId, int worldId, RecentSalesCacheEntry entry)
+    public void SetRecentSales(int itemId, int worldId, CachedRecentSales entry)
     {
         _recentSalesCache[(itemId, worldId)] = entry;
         Interlocked.Increment(ref _version);
@@ -418,7 +418,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     public void AddRecentSale(int itemId, int worldId, int price, bool isHq)
     {
         var key = (itemId, worldId);
-        var entry = _recentSalesCache.GetOrAdd(key, _ => new RecentSalesCacheEntry 
+        var entry = _recentSalesCache.GetOrAdd(key, _ => new CachedRecentSales 
         { 
             ItemId = itemId, 
             WorldId = worldId 
@@ -443,7 +443,7 @@ public sealed class MarketDataCacheService : IService, IDisposable
     {
         foreach (var (key, prices) in data)
         {
-            var entry = new RecentSalesCacheEntry
+            var entry = new CachedRecentSales
             {
                 ItemId = key.ItemId,
                 WorldId = key.WorldId
@@ -585,7 +585,7 @@ public enum PriceSource
 /// <summary>
 /// Cache entry for recent sales used in outlier detection.
 /// </summary>
-public sealed class RecentSalesCacheEntry
+public sealed class CachedRecentSales
 {
     public const int MaxSalesPerType = 5;
     

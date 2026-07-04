@@ -202,8 +202,9 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
 
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
-                    // Universalis sends BSON, but we'll try to parse as JSON first
-                    // since ClientWebSocket doesn't have built-in BSON support
+                    // Universalis sends BSON. ClientWebSocket has no built-in BSON support, so the
+                    // payload is decoded with a hand-rolled BSON reader (see ProcessMessage /
+                    // ParseEventType / ParseBsonMessage).
                     ProcessMessage(ms.ToArray());
                 }
                 else if (result.MessageType == WebSocketMessageType.Text)
@@ -242,19 +243,27 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
                 
                 // Increase backoff for next failure (capped at max)
                 _currentReconnectDelayMs = Math.Min(_currentReconnectDelayMs * 2, MaxReconnectDelayMs);
-                
-                _ = Task.Delay(delayWithJitter, CancellationToken.None).ContinueWith(async _ =>
-                {
-                    try
-                    {
-                        await ConnectAsync();
-                    }
-                    catch (Exception ex2)
-                    {
-                        LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Reconnect failed: {ex2.Message}");
-                    }
-                });
+
+                _ = ReconnectAfterDelayAsync(delayWithJitter);
             }
+        }
+    }
+
+    /// <summary>
+    /// Waits for the backoff delay, then attempts to reconnect. Guards against reconnecting after
+    /// disposal and never throws, so a failed reconnect during shutdown is silently ignored.
+    /// </summary>
+    private async Task ReconnectAfterDelayAsync(int delayMs)
+    {
+        try
+        {
+            await Task.Delay(delayMs, CancellationToken.None);
+            if (_disposed) return;
+            await ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            LogService.Warning(LogCategory.Universalis, $"[UniversalisWebSocket] Reconnect failed: {ex.Message}");
         }
     }
 

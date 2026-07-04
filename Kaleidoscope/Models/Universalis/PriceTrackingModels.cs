@@ -88,9 +88,6 @@ public sealed class PriceTrackingSettings
     /// <summary>Interval in minutes for cleaning up old price data.</summary>
     public int CleanupIntervalMinutes { get; set; } = 60;
 
-    /// <summary>Interval in hours for refreshing price data from API.</summary>
-    public int ApiRefreshIntervalHours { get; set; } = 6;
-
     // WebSocket Channel Subscriptions
     /// <summary>Whether to subscribe to listings/add events (new listings).</summary>
     public bool SubscribeListingsAdd { get; set; } = true;
