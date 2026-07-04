@@ -461,7 +461,7 @@ public sealed class UniversalisCategory : IConfigCategory
         ImGuiHelpers.HelpMarker("Recalculate inventory values immediately on every price update without any throttling.\n" +
             "Most responsive but may impact performance on busy servers with frequent price updates.");
 
-        if (!recalcEveryUpdate)
+        if (!settings.ValueRecalcOnEveryUpdate)
         {
             var intervalMs = settings.ValueRecalcIntervalMs;
             ImGui.SetNextItemWidth(200);
