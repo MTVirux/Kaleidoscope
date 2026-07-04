@@ -214,7 +214,6 @@ public sealed class ItemSalesTrackingSettings : IGraphWidgetSettings
     
     // === IGraphWidgetSettings implementation ===
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
-    public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
