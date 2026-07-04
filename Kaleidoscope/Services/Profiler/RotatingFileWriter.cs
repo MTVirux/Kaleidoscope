@@ -7,12 +7,13 @@ namespace Kaleidoscope.Services.Profiler;
 /// is renamed (by default with a UTC timestamp) and a fresh file is opened; a configured header
 /// is re-emitted on every fresh file. The rotation naming scheme and an optional post-rotation
 /// callback are configurable so callers (e.g. LogService) can preserve their own conventions.
-/// Dalamud-free so it can be unit tested.
+/// The max size can optionally be supplied by a provider so callers can re-read a live config
+/// value each write instead of capturing it at construction. Dalamud-free so it can be unit tested.
 /// </summary>
 public sealed class RotatingFileWriter : IDisposable
 {
     private readonly string _filePath;
-    private readonly long _maxBytes;
+    private readonly Func<long> _maxBytesProvider;
     private readonly string? _headerLine;
     private readonly Func<string, string> _rotatedPathProvider;
     private readonly Action<string>? _onRotated;
@@ -25,10 +26,12 @@ public sealed class RotatingFileWriter : IDisposable
         int maxSizeMB,
         string? headerLine = null,
         Func<string, string>? rotatedPathProvider = null,
-        Action<string>? onRotated = null)
+        Action<string>? onRotated = null,
+        Func<long>? maxBytesProvider = null)
     {
         _filePath = filePath;
-        _maxBytes = (long)Math.Max(1, maxSizeMB) * 1024 * 1024;
+        var fixedMaxBytes = (long)Math.Max(1, maxSizeMB) * 1024 * 1024;
+        _maxBytesProvider = maxBytesProvider ?? (() => fixedMaxBytes);
         _headerLine = headerLine;
         _rotatedPathProvider = rotatedPathProvider ?? DefaultRotatedPath;
         _onRotated = onRotated;
@@ -65,7 +68,7 @@ public sealed class RotatingFileWriter : IDisposable
             if (_writer == null) return;
             try
             {
-                if (_currentSize > _maxBytes)
+                if (_currentSize > _maxBytesProvider())
                     Rotate();
 
                 _writer!.WriteLine(line);

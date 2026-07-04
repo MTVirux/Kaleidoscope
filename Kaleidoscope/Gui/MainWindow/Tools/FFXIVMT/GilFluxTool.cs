@@ -780,8 +780,6 @@ public sealed class GilFluxTool : ToolComponent
     }
 
     protected override bool HasToolSettings => true;
-    protected override object? GetToolSettingsSchema() => null;
-    protected override object? GetToolSettingsObject() => null;
 
     protected override void DrawToolSettings()
     {
@@ -927,14 +925,10 @@ public sealed class GilFluxTool : ToolComponent
         Schema.FromDictionary(_settings, settings);
         if (settings != null)
         {
-            if (settings.TryGetValue("SelectedWorldIds", out var worldIdsObj))
-                _settings.SelectedWorldIds = DeserializeWorldIds(worldIdsObj);
-            if (settings.TryGetValue("SelectedDataCenters", out var dcObj))
-                _settings.SelectedDataCenters = DeserializeStringSet(dcObj);
-            if (settings.TryGetValue("SelectedRegions", out var regionObj))
-                _settings.SelectedRegions = DeserializeStringSet(regionObj);
-            if (settings.TryGetValue("PinnedItemIds", out var pinnedObj))
-                _settings.PinnedItemIds = DeserializeUintSet(pinnedObj);
+            _settings.SelectedWorldIds = ImportHashSet(settings, "SelectedWorldIds", _settings.SelectedWorldIds);
+            _settings.SelectedDataCenters = ImportHashSet(settings, "SelectedDataCenters", _settings.SelectedDataCenters);
+            _settings.SelectedRegions = ImportHashSet(settings, "SelectedRegions", _settings.SelectedRegions);
+            _settings.PinnedItemIds = ImportHashSet(settings, "PinnedItemIds", _settings.PinnedItemIds);
             if (settings.TryGetValue("IgnoredItems", out var ignoredObj))
                 _settings.IgnoredItems = DeserializeIgnoredItems(ignoredObj);
 
@@ -954,69 +948,6 @@ public sealed class GilFluxTool : ToolComponent
             if (_itemPicker != null && _settings.PinnedItemIds.Count > 0)
                 _itemPicker.SetMultiSelection(_settings.PinnedItemIds);
         }
-    }
-
-    private static HashSet<int> DeserializeWorldIds(object? value)
-    {
-        var result = new HashSet<int>();
-        if (value is Newtonsoft.Json.Linq.JArray jArray)
-        {
-            foreach (var item in jArray)
-                result.Add(item.ToObject<int>());
-        }
-        else if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in jsonElement.EnumerateArray())
-                result.Add(item.GetInt32());
-        }
-        else if (value is IEnumerable<object> enumerable)
-        {
-            foreach (var item in enumerable)
-                result.Add(Convert.ToInt32(item));
-        }
-        return result;
-    }
-
-    private static HashSet<string> DeserializeStringSet(object? value)
-    {
-        var result = new HashSet<string>();
-        if (value is Newtonsoft.Json.Linq.JArray jArray)
-        {
-            foreach (var item in jArray)
-                result.Add(item.ToObject<string>()!);
-        }
-        else if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in jsonElement.EnumerateArray())
-                result.Add(item.GetString()!);
-        }
-        else if (value is IEnumerable<object> enumerable)
-        {
-            foreach (var item in enumerable)
-                result.Add(item.ToString()!);
-        }
-        return result;
-    }
-
-    private static HashSet<uint> DeserializeUintSet(object? value)
-    {
-        var result = new HashSet<uint>();
-        if (value is Newtonsoft.Json.Linq.JArray jArray)
-        {
-            foreach (var item in jArray)
-                result.Add(item.ToObject<uint>());
-        }
-        else if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in jsonElement.EnumerateArray())
-                result.Add(item.GetUInt32());
-        }
-        else if (value is IEnumerable<object> enumerable)
-        {
-            foreach (var item in enumerable)
-                result.Add(Convert.ToUInt32(item));
-        }
-        return result;
     }
 
     private static Dictionary<int, IgnoredItemEntry> DeserializeIgnoredItems(object? value)

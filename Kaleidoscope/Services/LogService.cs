@@ -143,7 +143,10 @@ public static class LogService
                 _config?.FileLoggingMaxSizeMB ?? 10,
                 headerLine: null,
                 rotatedPathProvider: LogRotatedPath,
-                onRotated: OnMainRotated);
+                onRotated: OnMainRotated,
+                // Re-read the configured max size each write so mid-session changes apply
+                // without re-enabling file logging. Split writers keep the fixed capture.
+                maxBytesProvider: () => (long)Math.Max(1, _config?.FileLoggingMaxSizeMB ?? 10) * 1024 * 1024);
             _logFilePath = filePath;
 
             WriteToMainFile("INF", $"=== File logging started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
