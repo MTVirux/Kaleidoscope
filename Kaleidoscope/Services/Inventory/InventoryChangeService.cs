@@ -17,6 +17,14 @@ namespace Kaleidoscope.Services.Inventory;
 /// contract the old poll used, so CurrencyTrackerService and TopInventoryValueTool are unchanged.
 /// Deduplication is handled downstream (TimeSeriesCache last-point + SaveSampleIfChanged), so no
 /// second change-detector is kept here.
+///
+/// The projection is coalesced per framework tick: committed keys only accumulate their affected
+/// types into a pending set, and aggregates are recomputed ONCE per framework update. Without
+/// this, a batch of observations feeding one aggregate in the same tick (MemoryPoller's
+/// per-retainer gil loop, a reconcile scan touching several crystal slots) would emit one
+/// transient partial sum per row. Batches run synchronously on the framework thread, so by the
+/// time the flush runs they are always fully applied and only settled totals are sampled —
+/// matching the old poll, which read settled aggregates.
 /// </remarks>
 public sealed class InventoryChangeService : IDisposable, IRequiredService
 {
@@ -28,6 +36,13 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly ResourceObservationService _observations;
 
     private static readonly HashSet<TrackedDataType> DefaultEnabledTypes = new() { TrackedDataType.Gil };
+
+    // Per-tick projection coalescing: ObservationCommitted handlers only add affected types here;
+    // FlushProjection drains it once per framework update. Locked because the FC-points import
+    // path reaches RecordObservation via RunOnFrameworkThread — framework-thread today, but the
+    // lock keeps the structure safe if any future caller commits off-thread.
+    private readonly object _pendingLock = new();
+    private readonly HashSet<TrackedDataType> _pendingTypes = new();
 
     // Retainer state tracking - waits for data to stabilize after opening a retainer
     private bool _wasRetainerActive = false;
@@ -102,17 +117,53 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             try { OnRetainerInventoryReady?.Invoke(); }
             catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
         }
+
+        // Flush last, after the retainer events above: the reconcile scans they trigger commit
+        // synchronously inside this handler, so their whole batch is projected this same tick.
+        FlushProjection();
     }
 
     /// <summary>
-    /// Projects a committed resource change onto the legacy per-variable series. Recomputes only the
-    /// active-character aggregate(s) the changed key can affect, then raises OnValuesChanged for the
-    /// enabled ones. Runs on the framework thread (all RecordObservation callers marshal there), so
-    /// the game-memory reads in GetCurrentValue stay on the main thread as before.
+    /// Accumulates the tracked-data types a committed resource change can affect. Recompute is
+    /// deferred to <see cref="FlushProjection"/> so multi-row batches coalesce to settled totals.
+    /// Cheap pure mapping — safe to run mid-batch under any commit cadence.
     /// </summary>
     private void OnObservationCommitted(ResourceKey key)
     {
-        if (!_clientState.IsLoggedIn) return;
+        try
+        {
+            lock (_pendingLock)
+            {
+                foreach (var type in _registry.GetAffectedTypes(key))
+                    _pendingTypes.Add(type);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Legacy projection error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Projects the accumulated changes onto the legacy per-variable series: recomputes each
+    /// affected enabled type's active-character aggregate once and raises OnValuesChanged with the
+    /// settled values. Runs on the framework thread (so GetCurrentValue's game-memory reads stay on
+    /// the main thread, as the old poll did). While no character is active (logged out or the brief
+    /// login window where PlayerContentId is still 0), pending types are retained — not dropped —
+    /// so changes from offline imports are sampled on the first update after the id is available.
+    /// </summary>
+    private void FlushProjection()
+    {
+        if (GameStateService.PlayerContentId == 0) return;
+
+        TrackedDataType[] pending;
+        lock (_pendingLock)
+        {
+            if (_pendingTypes.Count == 0) return;
+            pending = new TrackedDataType[_pendingTypes.Count];
+            _pendingTypes.CopyTo(pending);
+            _pendingTypes.Clear();
+        }
 
         try
         {
@@ -121,7 +172,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
                 enabledTypes = DefaultEnabledTypes;
 
             Dictionary<TrackedDataType, long>? changed = null;
-            foreach (var type in _registry.GetAffectedTypes(key))
+            foreach (var type in pending)
             {
                 if (!enabledTypes.Contains(type)) continue;
                 var value = _registry.GetCurrentValue(type);
@@ -142,6 +193,10 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     {
         _framework.Update -= OnFrameworkUpdate;
         _observations.ObservationCommitted -= OnObservationCommitted;
+
+        // Best-effort final flush so changes committed since the last tick aren't lost. The old
+        // poll offered no such guarantee (anything inside its last 1 s window was dropped).
+        FlushProjection();
 
         LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Disposed");
     }

@@ -538,6 +538,9 @@ public sealed class TrackedDataRegistry : IRequiredService
             yield break;
         }
 
+        // These must precede the generic _byItemId lookup: the store keys these counters by
+        // synthetic ids (1_000_00x), not the registry's item/icon ids (29/25/27), so the generic
+        // branch would never match them and their series would silently stop being sampled.
         if (itemId == Resources.ResourceCatalog.MGPItemId)         { yield return TrackedDataType.MGP; yield break; }
         if (itemId == Resources.ResourceCatalog.WolfMarksItemId)   { yield return TrackedDataType.WolfMarks; yield break; }
         if (itemId == Resources.ResourceCatalog.AlliedSealsItemId) { yield return TrackedDataType.AlliedSeals; yield break; }
