@@ -591,13 +591,6 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
     }
 
     /// <summary>
-    /// Restores window position/size after exiting fullscreen mode.
-    /// Validates the restored position is within the current viewport to handle
-    /// monitor changes that occurred while in fullscreen.
-    /// </summary>
-    public void ExitFullscreen() => _positionPersister.RestoreWindowedStateWithViewportClamp();
-
-    /// <summary>
     /// Enters fullscreen mode - window fills viewport with no decorations.
     /// Loads the active fullscreen layout.
     /// </summary>

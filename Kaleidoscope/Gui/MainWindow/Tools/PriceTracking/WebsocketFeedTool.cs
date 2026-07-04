@@ -37,6 +37,16 @@ public sealed class WebsocketFeedTool : ToolComponent
     private WorldSelectionWidget? _worldSelectionWidget;
     private bool _worldSelectionWidgetInitialized = false;
 
+    // Cached effective-world-id resolution for the live feed filter. DrawFeed resolves this
+    // every frame while a scope filter is active, so the result and the snapshot of the inputs
+    // that produced it are cached and only recomputed when those inputs change.
+    private HashSet<int>? _cachedEffectiveWorldIds;
+    private PriceTrackingScopeMode _cachedFilterScopeMode;
+    private readonly HashSet<string> _cachedFilterRegions = new();
+    private readonly HashSet<string> _cachedFilterDataCenters = new();
+    private readonly HashSet<int> _cachedFilterWorldIds = new();
+    private object? _cachedFilterWorldData;
+
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
@@ -431,6 +441,21 @@ public sealed class WebsocketFeedTool : ToolComponent
         if (settings.FilterScopeMode == PriceTrackingScopeMode.All)
             return new HashSet<int>();
 
+        var worldData = _priceTrackingService.WorldData;
+
+        // Reuse the previous resolution while every input that feeds the widget expansion is
+        // unchanged. DrawFeed calls this per-frame, so re-allocating a widget (plus its set
+        // copies) each frame would be pure waste.
+        if (_cachedEffectiveWorldIds != null
+            && _cachedFilterScopeMode == settings.FilterScopeMode
+            && ReferenceEquals(_cachedFilterWorldData, worldData)
+            && _cachedFilterRegions.SetEquals(settings.FilterRegions)
+            && _cachedFilterDataCenters.SetEquals(settings.FilterDataCenters)
+            && _cachedFilterWorldIds.SetEquals(settings.FilterWorldIds))
+        {
+            return _cachedEffectiveWorldIds;
+        }
+
         // Resolve the persisted feed filter through the shared widget expansion so the
         // DC/region -> world-ID logic lives in exactly one place.
         var mode = settings.FilterScopeMode switch
@@ -440,9 +465,25 @@ public sealed class WebsocketFeedTool : ToolComponent
             _ => WorldSelectionMode.Worlds
         };
 
-        var widget = new WorldSelectionWidget(_priceTrackingService.WorldData) { Mode = mode };
+        var widget = new WorldSelectionWidget(worldData) { Mode = mode };
         widget.InitializeFrom(settings.FilterRegions, settings.FilterDataCenters, settings.FilterWorldIds);
-        return widget.GetEffectiveWorldIds();
+        var resolved = widget.GetEffectiveWorldIds();
+
+        // Snapshot the inputs so the next frame can detect an unchanged filter and reuse the result.
+        _cachedFilterScopeMode = settings.FilterScopeMode;
+        _cachedFilterWorldData = worldData;
+        CopySet(_cachedFilterRegions, settings.FilterRegions);
+        CopySet(_cachedFilterDataCenters, settings.FilterDataCenters);
+        CopySet(_cachedFilterWorldIds, settings.FilterWorldIds);
+        _cachedEffectiveWorldIds = resolved;
+
+        return resolved;
+    }
+
+    private static void CopySet<T>(HashSet<T> target, HashSet<T> source)
+    {
+        target.Clear();
+        foreach (var item in source) target.Add(item);
     }
 
     public override Dictionary<string, object?>? ExportToolSettings()

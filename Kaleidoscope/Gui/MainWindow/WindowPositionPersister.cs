@@ -275,6 +275,12 @@ internal sealed class WindowPositionPersister
     /// </summary>
     public void PersistWindowPositionIfChanged()
     {
+        // A pending windowed restore means the live ImGui geometry does not yet reflect the
+        // intended windowed placement. On the frame a fullscreen exit is processed, the window
+        // was still drawn at viewport size, so persisting here would write fullscreen geometry
+        // into config and the active layout. Skip until ApplyPendingPositioning has restored it.
+        if (_pendingWindowRestore) return;
+
         try
         {
             var curPos = ImGui.GetWindowPos();

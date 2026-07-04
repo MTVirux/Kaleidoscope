@@ -33,7 +33,7 @@ public sealed partial class TopInventoryValueTool
         var maxItems = Math.Max(1, Settings.MaxItems);
         var gradientStep = 0.33f / maxItems;
         var hue = Math.Max(0, 0.33f - (rank * gradientStep));
-        var color = FormatUtils.HsvToRgb(hue, 0.8f, 0.9f);
+        var color = ColorUtils.HsvToRgb(hue, 0.8f, 0.9f);
 
         // Start invisible button for hover detection (covers the whole row)
         var cursorPos = ImGui.GetCursorPos();

@@ -276,7 +276,7 @@ public sealed partial class WindowContentContainer
 
     // ── Tool Registry ───────────────────────────────────────────────────
 
-    public void DefineToolType(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null, string? categoryPath = null)
+    internal void DefineToolType(string id, string label, Func<Vector2, ToolComponent?> factory, string? description = null, string? categoryPath = null)
     {
         if (string.IsNullOrEmpty(id)) throw new ArgumentException("id");
         if (factory == null) throw new ArgumentNullException(nameof(factory));

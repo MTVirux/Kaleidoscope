@@ -1,4 +1,3 @@
-using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets.Common;
 
 namespace Kaleidoscope.Gui.Widgets;
@@ -141,14 +140,4 @@ public static class FormatUtils
         
         return $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
     }
-
-    /// <summary>
-    /// Converts HSV color values to an RGB Vector4.
-    /// </summary>
-    /// <param name="h">Hue (0-1).</param>
-    /// <param name="s">Saturation (0-1).</param>
-    /// <param name="v">Value/Brightness (0-1).</param>
-    /// <returns>RGB color as Vector4 with alpha = 1.</returns>
-    public static System.Numerics.Vector4 HsvToRgb(float h, float s, float v)
-        => ColorUtils.HsvToRgb(h, s, v);
 }
