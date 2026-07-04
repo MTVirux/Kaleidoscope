@@ -314,6 +314,24 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     }
 
     /// <summary>
+    /// Runs a write operation with the same lock discipline as <see cref="ExecuteWrite{T}"/> but lets
+    /// exceptions propagate to the caller instead of swallowing them — the writer-side counterpart of
+    /// <see cref="ExecuteReadThrowing{T}"/>. Intended for diagnostic/dev writers that surface errors
+    /// through their own result objects.
+    /// </summary>
+    private T ExecuteWriteThrowing<T>(Func<SqliteConnection, T> body)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null)
+                throw new InvalidOperationException("Database connection is not available.");
+
+            return body(_connection);
+        }
+    }
+
+    /// <summary>
     /// Void overload of <see cref="ExecuteWrite{T}"/> for write operations that don't return a value.
     /// </summary>
     private void ExecuteWrite(string caller, Action<SqliteConnection> body, bool debugLog = false)

@@ -179,18 +179,18 @@ public sealed partial class KaleidoscopeDbService
 
     private RawQueryResult ExecuteModificationQuery(string sql, System.Diagnostics.Stopwatch stopwatch)
     {
-        lock (_writeLock)
+        if (_connection == null)
         {
-            if (_connection == null)
+            return new RawQueryResult
             {
-                return new RawQueryResult
-                {
-                    Success = false,
-                    ErrorMessage = "Database connection not available."
-                };
-            }
+                Success = false,
+                ErrorMessage = "Database connection not available."
+            };
+        }
 
-            using var cmd = _connection.CreateCommand();
+        return ExecuteWriteThrowing(conn =>
+        {
+            using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             var rowsAffected = cmd.ExecuteNonQuery();
 
@@ -203,7 +203,7 @@ public sealed partial class KaleidoscopeDbService
                 ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds,
                 IsSelectQuery = false
             };
-        }
+        });
     }
 
     public List<string> GetTableNames()
