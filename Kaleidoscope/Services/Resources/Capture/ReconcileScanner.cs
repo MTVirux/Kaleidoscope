@@ -76,29 +76,15 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         var c = im->GetInventoryContainer(type);
         if (c == null || !c->IsLoaded) return;
 
+        var parentOwnerId = kind == OwnerKind.Retainer ? GameStateService.PlayerContentId : 0UL;
+
         for (int i = 0; i < c->GetSize(); i++)
         {
             var slot = c->GetInventorySlot(i);
             if (slot == null || slot->ItemId == 0) continue;
 
-            var isHq = (slot->Flags & InventoryItem.ItemFlags.HighQuality) != 0;
-            var isCol = (slot->Flags & InventoryItem.ItemFlags.Collectable) != 0;
-            var resourceFlags = ResourceFlags.None;
-            if (isHq) resourceFlags |= ResourceFlags.HQ;
-            if (isCol) resourceFlags |= ResourceFlags.Collectable;
-
-            _service.RecordObservation(new ResourceObservation
-            {
-                Key = new ResourceKey { OwnerId = ownerId, OwnerKind = kind, Container = container, ItemId = slot->ItemId, Slot = slot->Slot },
-                Quantity       = slot->Quantity,
-                Flags          = resourceFlags,
-                Spiritbond     = (ushort)(isCol ? 0 : slot->SpiritbondOrCollectability),
-                Collectability = (ushort)(isCol ? slot->SpiritbondOrCollectability : 0),
-                Condition      = slot->Condition,
-                GlamourId      = slot->GlamourId,
-                UpdatedAt      = DateTime.UtcNow,
-                ParentOwnerId  = kind == OwnerKind.Retainer ? GameStateService.PlayerContentId : 0UL,
-            });
+            var key = new ResourceKey { OwnerId = ownerId, OwnerKind = kind, Container = container, ItemId = slot->ItemId, Slot = slot->Slot };
+            _service.RecordObservation(InventorySlotMapper.FromInventorySlot(slot, key, parentOwnerId));
         }
     }
 

@@ -43,10 +43,11 @@ public static class ResourceToLegacyAdapter
                 continue;
             }
 
-            // Skip other synthetic rows (MGP, WolfMarks, etc.) — legacy schema didn't carry them on InventoryCacheEntry.
-            if ((int)r.Key.Container >= 90000) continue;
-            // Skip Glamour/Armoire — old InventoryCacheService dual-write covers them and they aren't in the legacy entry shape.
-            if ((int)r.Key.Container is 40000 or 40001) continue;
+            // Skip other synthetic rows (MGP, WolfMarks, aggregates, etc.) — the legacy schema didn't
+            // carry them on InventoryCacheEntry. Synthetic specials start at Container.SpecialPlayer.
+            if ((int)r.Key.Container >= (int)Container.SpecialPlayer) continue;
+            // Skip Glamour/Armoire — not part of the legacy entry shape (and not captured by the new pipeline yet).
+            if (r.Key.Container is Container.GlamourChest or Container.Armoire) continue;
 
             entry.Items.Add(new InventoryItemSnapshot
             {

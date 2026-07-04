@@ -31,8 +31,9 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
 
         foreach (var e in events)
         {
-            // Skip Cosmopouch — handled by direct InventoryManager scan due to Dalamud #2329
-            if (e.Item.ContainerType.ToString().StartsWith("Cosmopouch")) continue;
+            // Skip Cosmopouch1 (5000) / Cosmopouch2 (5001) — handled by direct InventoryManager scan
+            // due to Dalamud #2329.
+            if ((int)e.Item.ContainerType is 5000 or 5001) continue;
 
             if (!ResourceCatalog.TryMapContainer((int)e.Item.ContainerType, out var container)) continue;
 

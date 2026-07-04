@@ -1,6 +1,6 @@
 using Kaleidoscope.Models.Resources;
 using Kaleidoscope.Services.Inventory;
-using Kaleidoscope.Services.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources.Sources;
 
@@ -9,29 +9,22 @@ namespace Kaleidoscope.Services.Resources.Sources;
 /// in the few seconds following retainer summon. Detail field holds the active retainer id
 /// as a hex string — venture-id resolution can be added later via RetainerManager.
 /// </summary>
-public sealed class RetainerVentureSource : IObservationSource
+public sealed class RetainerVentureSource : ObservationSourceBase, IRequiredService
 {
     private readonly InventoryChangeService _changes;
-    private readonly SourceTagSink _sink;
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(3);
 
-    public RetainerVentureSource(InventoryChangeService changes, ResourceObservationService obsSvc)
+    public RetainerVentureSource(InventoryChangeService changes, ResourceObservationService obsSvc) : base(obsSvc)
     {
         _changes = changes;
-        _sink = obsSvc.Sink;
         _changes.OnRetainerInventoryReady += OnReady;
     }
 
     private void OnReady()
     {
         var rid = GameStateService.GetActiveRetainerId();
-        _sink.Stamp(new SourceTag
-        {
-            Kind      = SourceKind.RetainerVenture,
-            Detail    = rid == 0 ? null : rid.ToString("X16"),
-            StampedAt = DateTime.UtcNow,
-        }, Ttl);
+        Stamp(SourceKind.RetainerVenture, rid == 0 ? null : rid.ToString("X16"), Ttl);
     }
 
-    public void Dispose() => _changes.OnRetainerInventoryReady -= OnReady;
+    public override void Dispose() => _changes.OnRetainerInventoryReady -= OnReady;
 }

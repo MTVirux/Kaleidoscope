@@ -102,38 +102,59 @@ public class ResourceStoreTests
     }
 
     [Fact]
-    public void TimeSeriesCache_RecordsRecentPoints()
+    public void GetSumForOwner_IndexTracksOwnerScopedTotals()
     {
         var store = new ResourceStore();
-        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.SpecialPlayer, ItemId = ResourceCatalog.GilItemId, Slot = -1 };
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 }, Quantity = 10, UpdatedAt = DateTime.UtcNow });
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 1 }, Quantity = 5,  UpdatedAt = DateTime.UtcNow });
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 2002, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 }, Quantity = 99, UpdatedAt = DateTime.UtcNow });
+        store.ApplyWithAggregate(new Resource { Key = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Retainer, Container = Container.RetainerPage1, ItemId = 5057, Slot = 0 }, Quantity = 7, UpdatedAt = DateTime.UtcNow });
 
-        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        store.AppendHistory(k, t0,                  100, 100, SourceKind.Unknown);
-        store.AppendHistory(k, t0.AddSeconds(10),   150,  50, SourceKind.DutyReward);
-        store.AppendHistory(k, t0.AddSeconds(20),   140, -10, SourceKind.Vendor);
-
-        var pts = store.GetRecentHistory(1001, ResourceCatalog.GilItemId);
-
-        Assert.Equal(3, pts.Count);
-        Assert.Equal(100, pts[0].Quantity);
-        Assert.Equal(SourceKind.DutyReward, pts[1].Source);
-        Assert.Equal(-10, pts[2].ChangeAmount);
+        Assert.Equal(15, store.GetSumForOwner(1001, OwnerKind.Player, 5057));
+        Assert.Equal(99, store.GetSumForOwner(2002, OwnerKind.Player, 5057));
+        Assert.Equal(7,  store.GetSumForOwner(1001, OwnerKind.Retainer, 5057));
+        Assert.Equal(0,  store.GetSumForOwner(9999, OwnerKind.Player, 5057));
     }
 
     [Fact]
-    public void TimeSeriesCache_BoundedAtCapacity()
+    public void GetSumForOwner_QuantityChange_DeltaApplied()
     {
         var store = new ResourceStore();
-        store.SetHistoryCapacityForTests(3);
-        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.SpecialPlayer, ItemId = ResourceCatalog.GilItemId, Slot = -1 };
-        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 };
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 10, UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(10, store.GetSumForOwner(1001, OwnerKind.Player, 5057));
 
-        for (int i = 0; i < 5; i++)
-            store.AppendHistory(k, t0.AddSeconds(i), i * 100, 100, SourceKind.Unknown);
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 3, UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(3, store.GetSumForOwner(1001, OwnerKind.Player, 5057));
 
-        var pts = store.GetRecentHistory(1001, ResourceCatalog.GilItemId);
-        Assert.Equal(3, pts.Count);
-        Assert.Equal(200, pts[0].Quantity);   // 0,100 evicted
-        Assert.Equal(400, pts[2].Quantity);
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 0, UpdatedAt = DateTime.UtcNow });
+        Assert.Equal(0, store.GetSumForOwner(1001, OwnerKind.Player, 5057));
+    }
+
+    [Fact]
+    public void GetItemIdForSlot_ReturnsCurrentOccupant()
+    {
+        var store = new ResourceStore();
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 3 };
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 12, UpdatedAt = DateTime.UtcNow });
+
+        Assert.Equal(5057u, store.GetItemIdForSlot(1001, OwnerKind.Player, Container.Inventory1, 3));
+        Assert.Null(store.GetItemIdForSlot(1001, OwnerKind.Player, Container.Inventory1, 4));
+        Assert.Null(store.GetItemIdForSlot(1001, OwnerKind.Retainer, Container.Inventory1, 3));
+    }
+
+    [Fact]
+    public void Clear_ResetsStateAggregatesAndIndexes()
+    {
+        var store = new ResourceStore();
+        var k = new ResourceKey { OwnerId = 1001, OwnerKind = OwnerKind.Player, Container = Container.Inventory1, ItemId = 5057, Slot = 0 };
+        store.ApplyWithAggregate(new Resource { Key = k, Quantity = 10, UpdatedAt = DateTime.UtcNow });
+
+        store.Clear();
+
+        Assert.Null(store.Get(k));
+        Assert.Equal(0, store.GetAggregate(5057));
+        Assert.Equal(0, store.GetSumForOwner(1001, OwnerKind.Player, 5057));
+        Assert.Null(store.GetItemIdForSlot(1001, OwnerKind.Player, Container.Inventory1, 0));
     }
 }

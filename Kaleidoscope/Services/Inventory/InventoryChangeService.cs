@@ -1,13 +1,23 @@
 using Dalamud.Plugin.Services;
 using Kaleidoscope.Models;
+using Kaleidoscope.Models.Resources;
+using Kaleidoscope.Services.Resources;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Inventory;
 
 /// <summary>
-/// Service that drives the retainer state machine and fires stabilization events.
-/// Also performs periodic value-change polling and fires OnValuesChanged for subscribers.
+/// Drives the retainer state machine (fires stabilization events) and projects the unified
+/// resource pipeline's change signal onto the legacy per-variable time-series.
 /// </summary>
+/// <remarks>
+/// Change detection now happens exactly once, in ResourceObservationService.RecordObservation.
+/// When it reports a real change, this service maps the changed key to the affected tracked-data
+/// types, recomputes each one's active-character aggregate, and raises OnValuesChanged — the same
+/// contract the old poll used, so CurrencyTrackerService and TopInventoryValueTool are unchanged.
+/// Deduplication is handled downstream (TimeSeriesCache last-point + SaveSampleIfChanged), so no
+/// second change-detector is kept here.
+/// </remarks>
 public sealed class InventoryChangeService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
@@ -15,11 +25,9 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly IFramework _framework;
     private readonly TrackedDataRegistry _registry;
     private readonly ConfigurationService _configService;
+    private readonly ResourceObservationService _observations;
 
-    // Value tracking - caches last known values to detect changes
-    private readonly Dictionary<TrackedDataType, long> _lastKnownValues = new();
-    private DateTime _lastValueCheck = DateTime.MinValue;
-    private readonly TimeSpan _valueCheckInterval = TimeSpan.FromMilliseconds(ConfigStatic.ValueCheckIntervalMs);
+    private static readonly HashSet<TrackedDataType> DefaultEnabledTypes = new() { TrackedDataType.Gil };
 
     // Retainer state tracking - waits for data to stabilize after opening a retainer
     private bool _wasRetainerActive = false;
@@ -29,7 +37,7 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
     /// <summary>
     /// Event fired when any tracked inventory/currency value may have changed.
-    /// Passes the already-captured values to avoid re-reading game memory.
+    /// Carries the recomputed per-type values so subscribers avoid re-reading game memory.
     /// </summary>
     public event Action<IReadOnlyDictionary<TrackedDataType, long>>? OnValuesChanged;
 
@@ -40,15 +48,17 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
     public event Action? OnRetainerClosed;
 
-    public InventoryChangeService(IPluginLog log, IClientState clientState, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService)
+    public InventoryChangeService(IPluginLog log, IClientState clientState, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService, ResourceObservationService observations)
     {
         _log = log;
         _clientState = clientState;
         _framework = framework;
         _registry = registry;
         _configService = configService;
+        _observations = observations;
 
         _framework.Update += OnFrameworkUpdate;
+        _observations.ObservationCommitted += OnObservationCommitted;
 
         LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Initialized");
     }
@@ -77,10 +87,9 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             }
             else
             {
-                // Retainer closed - stop stabilizing and clear cache
+                // Retainer closed - stop stabilizing
                 _isRetainerStabilizing = false;
-                LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed, clearing value cache");
-                ClearValueCache();
+                LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed");
                 try { OnRetainerClosed?.Invoke(); }
                 catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
             }
@@ -89,107 +98,50 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
         if (_isRetainerStabilizing && now - _retainerOpenedTime >= _retainerStabilizationDelay)
         {
             _isRetainerStabilizing = false;
-            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer data stabilized, resuming value checks");
-            ClearValueCache();
+            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer data stabilized");
             try { OnRetainerInventoryReady?.Invoke(); }
             catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
         }
-
-        // Skip value checks while retainer data is stabilizing
-        if (_isRetainerStabilizing)
-        {
-            return;
-        }
-
-        if (now - _lastValueCheck >= _valueCheckInterval)
-        {
-            _lastValueCheck = now;
-            CheckForValueChanges();
-        }
     }
 
     /// <summary>
-    /// Checks enabled data types for value changes using direct InventoryManager reads.
-    /// Uses GetCurrentValuesSnapshot() to batch expensive retainer lookups into a single pass.
+    /// Projects a committed resource change onto the legacy per-variable series. Recomputes only the
+    /// active-character aggregate(s) the changed key can affect, then raises OnValuesChanged for the
+    /// enabled ones. Runs on the framework thread (all RecordObservation callers marshal there), so
+    /// the game-memory reads in GetCurrentValue stay on the main thread as before.
     /// </summary>
-    private void CheckForValueChanges()
+    private void OnObservationCommitted(ResourceKey key)
     {
+        if (!_clientState.IsLoggedIn) return;
+
         try
         {
-            // Only check enabled types to avoid unnecessary game memory reads
             var enabledTypes = _configService.Config.EnabledTrackedDataTypes;
             if (enabledTypes == null || enabledTypes.Count == 0)
+                enabledTypes = DefaultEnabledTypes;
+
+            Dictionary<TrackedDataType, long>? changed = null;
+            foreach (var type in _registry.GetAffectedTypes(key))
             {
-                enabledTypes = new HashSet<TrackedDataType> { TrackedDataType.Gil };
+                if (!enabledTypes.Contains(type)) continue;
+                var value = _registry.GetCurrentValue(type);
+                if (!value.HasValue) continue;
+                (changed ??= new Dictionary<TrackedDataType, long>())[type] = value.Value;
             }
 
-            // Use snapshot method to fetch all values in one pass, caching expensive retainer lookups
-            var currentValues = _registry.GetCurrentValuesSnapshot(enabledTypes);
-            var changedValues = new Dictionary<TrackedDataType, long>();
-
-            foreach (var kvp in currentValues)
-            {
-                var dataType = kvp.Key;
-                var currentValue = kvp.Value;
-
-                if (_lastKnownValues.TryGetValue(dataType, out var lastValue))
-                {
-                    if (currentValue != lastValue)
-                    {
-                        _lastKnownValues[dataType] = currentValue;
-                        changedValues[dataType] = currentValue;
-                    }
-                }
-                else
-                {
-                    // First time seeing this value, cache it but also treat as "change" for initial sampling
-                    _lastKnownValues[dataType] = currentValue;
-                    changedValues[dataType] = currentValue;
-                }
-            }
-
-            if (changedValues.Count > 0)
-            {
-                try
-                {
-                    try
-                    {
-                        var characterName = GameStateService.LocalPlayerName ?? "Unknown";
-                        var changesSummary = string.Join(", ", changedValues.Select(kv => $"{kv.Key}={kv.Value}"));
-                        LogService.Debug(LogCategory.Inventory, characterName, $"[InventoryChangeService] Detected value changes: {changesSummary}");
-                    }
-                    catch
-                    {
-                        // ignore logging failure
-                    }
-
-                    // Pass the already-captured values to avoid re-reading game memory
-                    OnValuesChanged?.Invoke(changedValues);
-                }
-                catch (Exception ex)
-                {
-                    LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnValuesChanged callback error: {ex.Message}");
-                }
-            }
+            if (changed is { Count: > 0 })
+                OnValuesChanged?.Invoke(changed);
         }
         catch (Exception ex)
         {
-            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] CheckForValueChanges error: {ex.Message}");
+            LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Legacy projection error: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Clears cached values to force fresh detection on next check.
-    /// </summary>
-    public void ClearValueCache()
-    {
-        _lastKnownValues.Clear();
-        _lastValueCheck = DateTime.MinValue;
     }
 
     public void Dispose()
     {
         _framework.Update -= OnFrameworkUpdate;
+        _observations.ObservationCommitted -= OnObservationCommitted;
 
         LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Disposed");
     }

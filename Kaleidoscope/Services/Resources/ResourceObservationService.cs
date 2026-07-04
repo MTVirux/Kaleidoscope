@@ -32,7 +32,8 @@ public readonly record struct ResourceObservation
 /// <summary>
 /// Single entry point for the unified resources subsystem. Every capture source funnels
 /// through RecordObservation, which atomically updates the in-memory store + aggregates
-/// + time-series cache + DB write queue under one lock.
+/// + DB write queue under one lock, then signals ObservationCommitted so the legacy
+/// per-variable time-series is projected from the same change.
 /// </summary>
 public sealed class ResourceObservationService : IRequiredService
 {
@@ -54,6 +55,14 @@ public sealed class ResourceObservationService : IRequiredService
     public long DbVersion => _writer.DbFlushedVersion;
 
     /// <summary>
+    /// Raised after an observation produces a real change (quantity or flags), once the store,
+    /// aggregates and DB write-queue are all updated. Fired OUTSIDE the observation lock so
+    /// subscribers may read back the store (which takes its own lock) without deadlocking.
+    /// Drives the legacy time-series projection in InventoryChangeService.
+    /// </summary>
+    public event Action<ResourceKey>? ObservationCommitted;
+
+    /// <summary>
     /// Record one observation. Idempotent if (quantity, flags) are unchanged; in that case
     /// only the in-memory UpdatedAt refreshes and no DB row is queued.
     /// </summary>
@@ -62,15 +71,11 @@ public sealed class ResourceObservationService : IRequiredService
         lock (_observationLock)
         {
             var resource = obs.ToResource();
-            var before = _store.Get(obs.Key);
-            var changed = _store.ApplyWithAggregate(resource);
+            if (!_store.ApplyWithAggregate(resource, out var previousQuantity))
+                return;   // idempotent — no change, no DB row, no projection
 
-            if (!changed) return;
-
-            var changeAmount = obs.Quantity - (before?.Quantity ?? 0);
+            var changeAmount = obs.Quantity - previousQuantity;
             var tag = _sink.ConsumeIfFresh();
-
-            _store.AppendHistory(obs.Key, obs.UpdatedAt, obs.Quantity, changeAmount, tag?.Kind ?? SourceKind.Unknown);
 
             _writer.Enqueue(new ResourceWrite
             {
@@ -81,5 +86,8 @@ public sealed class ResourceObservationService : IRequiredService
                 ParentOwnerId = obs.ParentOwnerId,
             });
         }
+
+        // Notify the legacy projection outside the lock so its store read-backs don't reenter it.
+        ObservationCommitted?.Invoke(obs.Key);
     }
 }

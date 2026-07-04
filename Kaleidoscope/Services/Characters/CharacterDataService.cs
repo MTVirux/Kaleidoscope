@@ -31,7 +31,8 @@ public sealed record CharacterInfo(
 public sealed class CharacterDataService : IDisposable, IService
 {
     private readonly IPluginLog _log;
-    private readonly CurrencyTrackerService _currencyTrackerService;
+    private readonly CharacterDataCacheService _characterDataCache;
+    private readonly TimeSeriesCacheService _cacheService;
     private readonly ConfigurationService _configService;
     private readonly AutoRetainerService? _autoRetainerService;
     private readonly PriceTrackingService? _priceTrackingService;
@@ -55,14 +56,16 @@ public sealed class CharacterDataService : IDisposable, IService
 
     public CharacterDataService(
         IPluginLog log,
-        CurrencyTrackerService currencyTrackerService,
+        CharacterDataCacheService characterDataCache,
+        TimeSeriesCacheService cacheService,
         ConfigurationService configService,
         FavoritesService favoritesService,
         AutoRetainerService? autoRetainerService = null,
         PriceTrackingService? priceTrackingService = null)
     {
         _log = log;
-        _currencyTrackerService = currencyTrackerService;
+        _characterDataCache = characterDataCache;
+        _cacheService = cacheService;
         _configService = configService;
         _favoritesService = favoritesService;
         _autoRetainerService = autoRetainerService;
@@ -237,8 +240,8 @@ public sealed class CharacterDataService : IDisposable, IService
     {
         try
         {
-            var characterDataCache = _currencyTrackerService.CharacterDataCache;
-            var cacheService = _currencyTrackerService.CacheService;
+            var characterDataCache = _characterDataCache;
+            var cacheService = _cacheService;
             var worldData = _priceTrackingService?.WorldData;
             var nameFormat = _configService.Config.CharacterNameFormat;
 

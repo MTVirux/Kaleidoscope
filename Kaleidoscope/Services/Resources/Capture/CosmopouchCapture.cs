@@ -54,32 +54,15 @@ public sealed class CosmopouchCapture : IDisposable, IRequiredService
             if (slot == null) continue;
             if (slot->ItemId == 0) continue;
 
-            var flags = slot->Flags;
-            var isHq = (flags & InventoryItem.ItemFlags.HighQuality) != 0;
-            var isCollectable = (flags & InventoryItem.ItemFlags.Collectable) != 0;
-
-            var resourceFlags = ResourceFlags.None;
-            if (isHq) resourceFlags |= ResourceFlags.HQ;
-            if (isCollectable) resourceFlags |= ResourceFlags.Collectable;
-
-            _service.RecordObservation(new ResourceObservation
+            var key = new ResourceKey
             {
-                Key = new ResourceKey
-                {
-                    OwnerId   = pid,
-                    OwnerKind = OwnerKind.Player,
-                    Container = container,
-                    ItemId    = slot->ItemId,
-                    Slot      = slot->Slot,
-                },
-                Quantity       = slot->Quantity,
-                Flags          = resourceFlags,
-                Spiritbond     = (ushort)(isCollectable ? 0 : slot->SpiritbondOrCollectability),
-                Collectability = (ushort)(isCollectable ? slot->SpiritbondOrCollectability : 0),
-                Condition      = slot->Condition,
-                GlamourId      = slot->GlamourId,
-                UpdatedAt      = DateTime.UtcNow,
-            });
+                OwnerId   = pid,
+                OwnerKind = OwnerKind.Player,
+                Container = container,
+                ItemId    = slot->ItemId,
+                Slot      = slot->Slot,
+            };
+            _service.RecordObservation(InventorySlotMapper.FromInventorySlot(slot, key, 0UL));
         }
     }
 

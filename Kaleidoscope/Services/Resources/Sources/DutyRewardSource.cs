@@ -1,6 +1,6 @@
 using Dalamud.Game.DutyState;
-using Dalamud.Plugin.Services;
 using Kaleidoscope.Models.Resources;
+using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Resources.Sources;
 
@@ -9,16 +9,14 @@ namespace Kaleidoscope.Services.Resources.Sources;
 /// TTL is generous (5 s) because reward observations can lag the completion event by
 /// several frames as the game writes inventory.
 /// </summary>
-public sealed class DutyRewardSource : IObservationSource
+public sealed class DutyRewardSource : ObservationSourceBase, IRequiredService
 {
     private readonly IDutyState _dutyState;
-    private readonly SourceTagSink _sink;
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(5);
 
-    public DutyRewardSource(IDutyState dutyState, ResourceObservationService obsSvc)
+    public DutyRewardSource(IDutyState dutyState, ResourceObservationService obsSvc) : base(obsSvc)
     {
         _dutyState = dutyState;
-        _sink = obsSvc.Sink;
         _dutyState.DutyCompleted += OnDutyCompleted;
     }
 
@@ -32,13 +30,8 @@ public sealed class DutyRewardSource : IObservationSource
         }
         catch { /* best-effort */ }
 
-        _sink.Stamp(new SourceTag
-        {
-            Kind      = SourceKind.DutyReward,
-            Detail    = string.IsNullOrWhiteSpace(name) ? null : name,
-            StampedAt = DateTime.UtcNow,
-        }, Ttl);
+        Stamp(SourceKind.DutyReward, name, Ttl);
     }
 
-    public void Dispose() => _dutyState.DutyCompleted -= OnDutyCompleted;
+    public override void Dispose() => _dutyState.DutyCompleted -= OnDutyCompleted;
 }

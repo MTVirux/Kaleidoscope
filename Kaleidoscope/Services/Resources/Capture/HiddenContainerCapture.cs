@@ -5,15 +5,15 @@ using OtterGui.Services;
 namespace Kaleidoscope.Services.Resources.Capture;
 
 /// <summary>
-/// PHASE 1 STUB — GlamourChest and Armoire capture is deferred to a follow-up plan.
+/// STUB — GlamourChest and Armoire capture is deferred to a follow-up plan.
 /// These containers aren't in GameInventoryType so InventoryChangedRaw doesn't cover them;
 /// the proper implementation reads MirageManager (glamour) and UIState.Cabinet (armoire)
 /// gated by IAddonLifecycle for the relevant addons.
 ///
-/// Until then, glamour/armoire data is simply not captured by the new pipeline. The OLD
-/// InventoryCacheService still runs (Phase 1 dual-write) and continues to capture these
-/// for old-path consumers. This stub ensures the service graph compiles and binds correctly
-/// while making the gap explicit.
+/// Until then, glamour/armoire data is NOT captured anywhere: InventoryCacheService is now a
+/// read-only adapter over ResourceStore/DB and no longer dual-writes these containers, so the
+/// data gap is real. This stub only keeps the service graph binding correct while making that
+/// gap explicit.
 /// </summary>
 public sealed class HiddenContainerCapture : IDisposable, IRequiredService
 {

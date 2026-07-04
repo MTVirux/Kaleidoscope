@@ -438,7 +438,7 @@ public sealed class TrackedDataRegistry : IRequiredService
             TrackedDataType.Gil               => _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, Resources.ResourceCatalog.GilItemId),
 
             // Retainer gil — sum of retainers belonging to the active character
-            TrackedDataType.RetainerGil       => SumRetainersForActiveChar(pid, Resources.ResourceCatalog.GilItemId),
+            TrackedDataType.RetainerGil       => SumRetainersForActiveChar(Resources.ResourceCatalog.GilItemId),
 
             // FC gil — active character's free company (single owner; SumForOwner with FCID)
             TrackedDataType.FreeCompanyGil    => _resourceStore.GetSumForOwner(GameStateService.GetFreeCompanyId(), Models.Resources.OwnerKind.FreeCompany, Resources.ResourceCatalog.GilItemId),
@@ -463,20 +463,15 @@ public sealed class TrackedDataRegistry : IRequiredService
         };
     }
 
-    private long SumRetainersForActiveChar(ulong pid, uint itemId)
+    private long SumRetainersForActiveChar(uint itemId)
     {
         // Phase 3.5 sets parent_owner_id on retainer rows correctly in DB but in-memory Resource
         // doesn't carry it. As a best-effort heuristic, sum across all OwnerKind.Retainer rows for
         // the given item. This is correct when only one character's retainers exist in the store
         // (the common case). For users with multiple characters' retainers loaded simultaneously
         // this overcounts — that's a known gap; fix when reported.
-        long total = 0;
-        foreach (var r in _resourceStore.Snapshot())
-        {
-            if (r.Key.OwnerKind == Models.Resources.OwnerKind.Retainer && r.Key.ItemId == itemId)
-                total += r.Quantity;
-        }
-        return total;
+        // O(1) via the per-(item, kind) aggregate instead of a full-store snapshot scan.
+        return _resourceStore.GetAggregate(itemId, Models.Resources.OwnerKind.Retainer);
     }
 
     /// <summary>
@@ -491,7 +486,7 @@ public sealed class TrackedDataRegistry : IRequiredService
         foreach (var id in SpecialGroupingHelper.GetCrystalItemIdsForElement((CrystalElement)element))
         {
             total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
-            total += SumRetainersForActiveChar(pid, id);
+            total += SumRetainersForActiveChar(id);
         }
         return total;
     }
@@ -506,25 +501,69 @@ public sealed class TrackedDataRegistry : IRequiredService
         foreach (var id in SpecialGroupingHelper.GetAllCrystalItemIds())
         {
             total += _resourceStore.GetSumForOwner(pid, Models.Resources.OwnerKind.Player, id);
-            total += SumRetainersForActiveChar(pid, id);
+            total += SumRetainersForActiveChar(id);
         }
         return total;
     }
 
     /// <summary>
-    /// Gets current values for multiple data types in a single pass via ResourceStore.
+    /// Returns the tracked-data types whose active-character aggregate value could change when the
+    /// given resource key changes. Mirrors the scoping in <see cref="GetCurrentValue"/> so the legacy
+    /// series projection recomputes exactly the series a change can affect. Over-inclusion is harmless
+    /// (the recompute dedups against the stored value); under-inclusion would silently drop a sample.
+    /// Calculated/synthetic series with no store writer (InventoryValueItems, InventoryFreeSlots) are
+    /// intentionally never returned — they are persisted through their own paths, not this projection.
     /// </summary>
-    /// <param name="types">The set of data types to retrieve values for.</param>
-    /// <returns>Dictionary of type to current value. Types with no mapping are omitted.</returns>
-    public Dictionary<TrackedDataType, long> GetCurrentValuesSnapshot(IEnumerable<TrackedDataType> types)
+    public IEnumerable<TrackedDataType> GetAffectedTypes(Models.Resources.ResourceKey key)
     {
-        var results = new Dictionary<TrackedDataType, long>();
-        foreach (var type in types)
-        {
-            var v = GetCurrentValue(type);
-            if (v.HasValue) results[type] = v.Value;
-        }
-        return results;
-    }
+        var itemId = key.ItemId;
+        var kind = key.OwnerKind;
 
+        // Gil family — one type per owner kind (the store keys gil with the synthetic gil item id).
+        if (itemId == Resources.ResourceCatalog.GilItemId)
+        {
+            switch (kind)
+            {
+                case Models.Resources.OwnerKind.Player:      yield return TrackedDataType.Gil; break;
+                case Models.Resources.OwnerKind.Retainer:    yield return TrackedDataType.RetainerGil; break;
+                case Models.Resources.OwnerKind.FreeCompany: yield return TrackedDataType.FreeCompanyGil; break;
+            }
+            yield break;
+        }
+
+        if (itemId == Resources.ResourceCatalog.FCCreditsItemId)
+        {
+            if (kind == Models.Resources.OwnerKind.FreeCompany)
+                yield return TrackedDataType.FreeCompanyCredits;
+            yield break;
+        }
+
+        if (itemId == Resources.ResourceCatalog.MGPItemId)         { yield return TrackedDataType.MGP; yield break; }
+        if (itemId == Resources.ResourceCatalog.WolfMarksItemId)   { yield return TrackedDataType.WolfMarks; yield break; }
+        if (itemId == Resources.ResourceCatalog.AlliedSealsItemId) { yield return TrackedDataType.AlliedSeals; yield break; }
+
+        // Crystals — game item ids 2..19 (shards 2-7, crystals 8-13, clusters 14-19). Each affects its
+        // element series plus the grand total, whether owned by the player or one of their retainers.
+        if (itemId >= 2 && itemId <= 19)
+        {
+            yield return (int)((itemId - 2) % 6) switch
+            {
+                0 => TrackedDataType.FireCrystals,
+                1 => TrackedDataType.IceCrystals,
+                2 => TrackedDataType.WindCrystals,
+                3 => TrackedDataType.EarthCrystals,
+                4 => TrackedDataType.LightningCrystals,
+                _ => TrackedDataType.WaterCrystals,
+            };
+            yield return TrackedDataType.CrystalsTotal;
+            yield break;
+        }
+
+        // Real Currency-container items (tomestones, scrips, GC seals, Ventures, …) are player-scoped.
+        if (kind == Models.Resources.OwnerKind.Player &&
+            _byItemId != null && _byItemId.TryGetValue(itemId, out var def))
+        {
+            yield return def.Type;
+        }
+    }
 }
