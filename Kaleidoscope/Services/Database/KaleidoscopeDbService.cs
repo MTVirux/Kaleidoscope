@@ -258,6 +258,39 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     }
 
     /// <summary>
+    /// Lock-correct read execution that PROPAGATES body exceptions to the caller, unlike
+    /// <see cref="ExecuteRead{T}"/> which swallows them and returns a fallback. Shares the same
+    /// connection-resolution and lock discipline: the dedicated read connection is used under
+    /// <c>_readLock</c>, and if it is unavailable the query runs against the writer connection under
+    /// <c>_writeLock</c> — never against <c>_connection</c> while only holding <c>_readLock</c>, which
+    /// would race with writers. Intended for diagnostic/dev readers that build custom result objects or
+    /// need exceptions to surface to their own handlers.
+    /// </summary>
+    private T ExecuteReadThrowing<T>(Func<SqliteConnection, T> body)
+    {
+        lock (_readLock)
+        {
+            var conn = _readConnection;
+            if (conn != null)
+                return body(conn);
+        }
+
+        // Dedicated read connection unavailable — retry opening it, then run this call against the
+        // writer connection under _writeLock. Acquiring _writeLock only after releasing _readLock keeps
+        // the lock-ordering invariant (write before read) intact.
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_readConnection == null)
+                EnsureReadConnection();
+            if (_connection == null)
+                throw new InvalidOperationException("Database connection is not available.");
+
+            return body(_connection);
+        }
+    }
+
+    /// <summary>
     /// Runs a write operation against the writer connection, encapsulating <c>_writeLock</c> acquisition,
     /// <see cref="EnsureConnection"/>, and uniform error handling. Returns <paramref name="fallback"/> on failure.
     /// </summary>

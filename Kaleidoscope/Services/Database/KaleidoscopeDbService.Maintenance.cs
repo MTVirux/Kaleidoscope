@@ -28,12 +28,11 @@ public sealed partial class KaleidoscopeDbService
 
         try
         {
-            lock (_readLock)
+            return ExecuteReadThrowing(conn =>
             {
-                var conn = _readConnection ?? _connection;
                 var errors = new List<string>();
 
-                using var cmd = conn!.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "PRAGMA quick_check";
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -50,7 +49,7 @@ public sealed partial class KaleidoscopeDbService
                     LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Quick integrity check FAILED with {errors.Count} error(s)");
 
                 return new IntegrityCheckResult { IsHealthy = isHealthy, Errors = errors };
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -73,12 +72,11 @@ public sealed partial class KaleidoscopeDbService
 
         try
         {
-            lock (_readLock)
+            return ExecuteReadThrowing(conn =>
             {
-                var conn = _readConnection ?? _connection;
                 var errors = new List<string>();
 
-                using var cmd = conn!.CreateCommand();
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"PRAGMA integrity_check({maxErrors})";
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -95,7 +93,7 @@ public sealed partial class KaleidoscopeDbService
                     LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Full integrity check FAILED with {errors.Count} error(s)");
 
                 return new IntegrityCheckResult { IsHealthy = isHealthy, Errors = errors };
-            }
+            });
         }
         catch (Exception ex)
         {

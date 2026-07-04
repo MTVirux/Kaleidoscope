@@ -118,18 +118,17 @@ public sealed partial class KaleidoscopeDbService
 
     private RawQueryResult ExecuteSelectQuery(string sql, int maxRows, System.Diagnostics.Stopwatch stopwatch)
     {
-        lock (_readLock)
+        if (_readConnection == null && _connection == null)
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null)
+            return new RawQueryResult
             {
-                return new RawQueryResult
-                {
-                    Success = false,
-                    ErrorMessage = "Database connection not available."
-                };
-            }
+                Success = false,
+                ErrorMessage = "Database connection not available."
+            };
+        }
 
+        return ExecuteReadThrowing(conn =>
+        {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
 
@@ -175,7 +174,7 @@ public sealed partial class KaleidoscopeDbService
                 ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds,
                 IsSelectQuery = true
             };
-        }
+        });
     }
 
     private RawQueryResult ExecuteModificationQuery(string sql, System.Diagnostics.Stopwatch stopwatch)
