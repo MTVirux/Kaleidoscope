@@ -211,28 +211,17 @@ public sealed partial class KaleidoscopeDbService
     {
         var tables = new List<string>();
 
-        lock (_readLock)
+        return ExecuteRead("GetTableNames", tables, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return tables;
-
-            try
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    tables.Add(reader.GetString(0));
-                }
+                tables.Add(reader.GetString(0));
             }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetTableNames", ex);
-            }
-        }
-
-        return tables;
+            return tables;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -252,13 +241,8 @@ public sealed partial class KaleidoscopeDbService
     {
         var results = new List<TableSizeInfo>();
 
-        lock (_readLock)
+        return ExecuteRead("GetTableSizes", results, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return results;
-
-            try
-            {
                 // Get total database page count and page size
                 long totalPages = 0;
                 long pageSize = 0;
@@ -329,53 +313,38 @@ public sealed partial class KaleidoscopeDbService
 
                 // Sort by size descending
                 results.Sort((a, b) => b.SizeBytes.CompareTo(a.SizeBytes));
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetTableSizes", ex);
-            }
-        }
 
-        return results;
+            return results;
+        }, debugLog: true);
     }
 
     public List<(string Name, string Type, bool NotNull, string? DefaultValue, bool IsPrimaryKey)> GetTableSchema(string tableName)
     {
         var columns = new List<(string Name, string Type, bool NotNull, string? DefaultValue, bool IsPrimaryKey)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetTableSchema", columns, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return columns;
-
-            try
+            // Sanitize table name — only allow alphanumeric and underscores to prevent injection
+            if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
             {
-                // Sanitize table name — only allow alphanumeric and underscores to prevent injection
-                if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-                {
-                    return columns;
-                }
-                
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"PRAGMA table_info({tableName})";
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var name = reader.GetString(1);
-                    var type = reader.GetString(2);
-                    var notNull = reader.GetInt32(3) == 1;
-                    var defaultValue = reader.IsDBNull(4) ? null : reader.GetString(4);
-                    var isPk = reader.GetInt32(5) == 1;
-                    columns.Add((name, type, notNull, defaultValue, isPk));
-                }
+                return columns;
             }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetTableSchema", ex);
-            }
-        }
 
-        return columns;
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"PRAGMA table_info({tableName})";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var name = reader.GetString(1);
+                var type = reader.GetString(2);
+                var notNull = reader.GetInt32(3) == 1;
+                var defaultValue = reader.IsDBNull(4) ? null : reader.GetString(4);
+                var isPk = reader.GetInt32(5) == 1;
+                columns.Add((name, type, notNull, defaultValue, isPk));
+            }
+
+            return columns;
+        }, debugLog: true);
     }
 
 }

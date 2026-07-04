@@ -16,32 +16,21 @@ public sealed partial class KaleidoscopeDbService
             return false;
         }
 
-        lock (_writeLock)
+        return ExecuteWrite("ClearCharacterData", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
+            return RunInTransaction(tx =>
             {
-                return RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.CommandText = @"DELETE FROM resource_history
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"DELETE FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid";
-                    cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                    cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                    cmd.ExecuteNonQuery();
-                    return true;
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("ClearCharacterData", ex);
-                return false;
-            }
-        }
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                cmd.ExecuteNonQuery();
+                return true;
+            });
+        });
     }
 
     public bool ClearAllData(string variable)
@@ -56,32 +45,21 @@ public sealed partial class KaleidoscopeDbService
             return false;
         }
 
-        lock (_writeLock)
+        return ExecuteWrite("ClearAllData", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
+            return RunInTransaction(tx =>
             {
-                return RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.CommandText = "DELETE FROM resource_history WHERE item_id = $iid AND container = $cont";
-                    cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                    cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                    cmd.ExecuteNonQuery();
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM resource_history WHERE item_id = $iid AND container = $cont";
+                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                cmd.ExecuteNonQuery();
 
-                    LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
-                    return true;
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("ClearAllData", ex);
-                return false;
-            }
-        }
+                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleared all data for variable '{variable}'");
+                return true;
+            });
+        });
     }
 
     /// <summary>
@@ -89,60 +67,49 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public bool ClearAllTables()
     {
-        lock (_writeLock)
+        return ExecuteWrite("ClearAllTables", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
+            return RunInTransaction(tx =>
             {
-                return RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
 
-                    // Unified resources tables (Phase 1+)
-                    cmd.CommandText = "DELETE FROM resource_history";
-                    cmd.ExecuteNonQuery();
+                // Unified resources tables (Phase 1+)
+                cmd.CommandText = "DELETE FROM resource_history";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM resources";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM resources";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM owner_names";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM owner_names";
+                cmd.ExecuteNonQuery();
 
-                    // Character/identity registry
-                    cmd.CommandText = "DELETE FROM character_names";
-                    cmd.ExecuteNonQuery();
+                // Character/identity registry
+                cmd.CommandText = "DELETE FROM character_names";
+                cmd.ExecuteNonQuery();
 
-                    // Price tracking
-                    cmd.CommandText = "DELETE FROM item_prices";
-                    cmd.ExecuteNonQuery();
+                // Price tracking
+                cmd.CommandText = "DELETE FROM item_prices";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM price_history";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM price_history";
+                cmd.ExecuteNonQuery();
 
-                    // Inventory value history
-                    cmd.CommandText = "DELETE FROM inventory_value_items";
-                    cmd.ExecuteNonQuery();
+                // Inventory value history
+                cmd.CommandText = "DELETE FROM inventory_value_items";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM inventory_value_history";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM inventory_value_history";
+                cmd.ExecuteNonQuery();
 
-                    // Sales tracking
-                    cmd.CommandText = "DELETE FROM sale_records";
-                    cmd.ExecuteNonQuery();
+                // Sales tracking
+                cmd.CommandText = "DELETE FROM sale_records";
+                cmd.ExecuteNonQuery();
 
-                    LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all data from all tables");
-                    return true;
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("ClearAllTables", ex);
-                return false;
-            }
-        }
+                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all data from all tables");
+                return true;
+            });
+        });
     }
 
     /// <summary>
@@ -163,51 +130,41 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetPointsInRange", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$start", start.Ticks);
+            cmd.Parameters.AddWithValue("$end", end.Ticks);
 
-            try
+            if (characterId.HasValue && characterId.Value != 0)
             {
-                using var cmd = conn.CreateCommand();
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+                cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid
                           AND timestamp >= $start AND timestamp <= $end
                         ORDER BY timestamp DESC";
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                }
-                else
-                {
-                    cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            }
+            else
+            {
+                cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
                         WHERE item_id = $iid AND container = $cont
                           AND timestamp >= $start AND timestamp <= $end
                         ORDER BY timestamp DESC";
-                }
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = (ulong)reader.GetInt64(0);
-                    var ticks = reader.GetInt64(1);
-                    var value = reader.GetInt64(2);
-                    result.Add((cid, new DateTime(ticks, DateTimeKind.Utc), value));
-                }
             }
-            catch (Exception ex)
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbDebug("GetPointsInRange", ex);
+                var cid = (ulong)reader.GetInt64(0);
+                var ticks = reader.GetInt64(1);
+                var value = reader.GetInt64(2);
+                result.Add((cid, new DateTime(ticks, DateTimeKind.Utc), value));
             }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -228,42 +185,31 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
         if (mapping == null) return (0, 0);
 
-        lock (_readLock)
+        return ExecuteRead<(int count, long estimatedBytes)>("CountPointsInRange", (0, 0), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return (0, 0);
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$start", start.Ticks);
+            cmd.Parameters.AddWithValue("$end", end.Ticks);
 
-            try
+            if (characterId.HasValue && characterId.Value != 0)
             {
-                using var cmd = conn.CreateCommand();
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
+                cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid
                           AND timestamp >= $start AND timestamp <= $end";
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                }
-                else
-                {
-                    cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            }
+            else
+            {
+                cmd.CommandText = @"SELECT COUNT(*) FROM resource_history
                         WHERE item_id = $iid AND container = $cont
                           AND timestamp >= $start AND timestamp <= $end";
-                }
+            }
 
-                var count = Convert.ToInt32(cmd.ExecuteScalar());
-                return (count, count * BytesPerRow);
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("CountPointsInRange", ex);
-                return (0, 0);
-            }
-        }
+            var count = Convert.ToInt32(cmd.ExecuteScalar());
+            return (count, count * BytesPerRow);
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -281,43 +227,32 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
         if (mapping == null) return 0;
 
-        lock (_writeLock)
+        return ExecuteWrite("DeletePointsInRange", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$start", start.Ticks);
+            cmd.Parameters.AddWithValue("$end", end.Ticks);
 
-            try
+            if (characterId.HasValue && characterId.Value != 0)
             {
-                using var cmd = _connection.CreateCommand();
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    cmd.CommandText = @"DELETE FROM resource_history
+                cmd.CommandText = @"DELETE FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid
                           AND timestamp >= $start AND timestamp <= $end";
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                }
-                else
-                {
-                    cmd.CommandText = @"DELETE FROM resource_history
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            }
+            else
+            {
+                cmd.CommandText = @"DELETE FROM resource_history
                         WHERE item_id = $iid AND container = $cont
                           AND timestamp >= $start AND timestamp <= $end";
-                }
+            }
 
-                var deleted = cmd.ExecuteNonQuery();
-                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Deleted {deleted} history rows for '{variable}' between {start:O} and {end:O}");
-                return deleted;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("DeletePointsInRange", ex);
-                return 0;
-            }
-        }
+            var deleted = cmd.ExecuteNonQuery();
+            LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Deleted {deleted} history rows for '{variable}' between {start:O} and {end:O}");
+            return deleted;
+        });
     }
 
     /// <summary>
@@ -337,62 +272,52 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
         if (mapping == null) return sb.ToString();
 
-        lock (_readLock)
+        return ExecuteRead("ExportPointsInRangeToCsv", sb.ToString(), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return sb.ToString();
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$start", start.Ticks);
+            cmd.Parameters.AddWithValue("$end", end.Ticks);
 
-            try
+            if (characterId.HasValue && characterId.Value != 0)
             {
-                using var cmd = conn.CreateCommand();
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$start", start.Ticks);
-                cmd.Parameters.AddWithValue("$end", end.Ticks);
-
-                if (characterId.HasValue && characterId.Value != 0)
-                {
-                    sb.AppendLine("timestamp_utc,quantity");
-                    cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+                sb.AppendLine("timestamp_utc,quantity");
+                cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid
                           AND timestamp >= $start AND timestamp <= $end
                         ORDER BY timestamp ASC";
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                }
-                else
-                {
-                    sb.AppendLine("timestamp_utc,quantity,owner_id");
-                    cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            }
+            else
+            {
+                sb.AppendLine("timestamp_utc,quantity,owner_id");
+                cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
                         WHERE item_id = $iid AND container = $cont
                           AND timestamp >= $start AND timestamp <= $end
                         ORDER BY timestamp ASC";
-                }
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var ticks = reader.GetInt64(0);
-                    var value = reader.GetInt64(1);
-                    var ts = new DateTime(ticks, DateTimeKind.Utc);
-
-                    if (characterId.HasValue && characterId.Value != 0)
-                    {
-                        sb.AppendLine($"{ts:O},{value}");
-                    }
-                    else
-                    {
-                        var cid = reader.GetInt64(2);
-                        sb.AppendLine($"{ts:O},{value},{cid}");
-                    }
-                }
             }
-            catch (Exception ex)
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("ExportPointsInRangeToCsv", ex);
-            }
-        }
+                var ticks = reader.GetInt64(0);
+                var value = reader.GetInt64(1);
+                var ts = new DateTime(ticks, DateTimeKind.Utc);
 
-        return sb.ToString();
+                if (characterId.HasValue && characterId.Value != 0)
+                {
+                    sb.AppendLine($"{ts:O},{value}");
+                }
+                else
+                {
+                    var cid = reader.GetInt64(2);
+                    sb.AppendLine($"{ts:O},{value},{cid}");
+                }
+            }
+
+            return sb.ToString();
+        });
     }
 
     /// <summary>
@@ -402,25 +327,14 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>True if successful.</returns>
     public bool Vacuum()
     {
-        lock (_writeLock)
+        return ExecuteWrite("VACUUM", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "VACUUM";
-                cmd.ExecuteNonQuery();
-                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] VACUUM completed successfully");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("VACUUM", ex);
-                return false;
-            }
-        }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "VACUUM";
+            cmd.ExecuteNonQuery();
+            LogService.Info(LogCategory.Database, "[KaleidoscopeDb] VACUUM completed successfully");
+            return true;
+        });
     }
 
     /// <summary>
@@ -435,61 +349,50 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, 0);
         if (mapping == null) return 0;
 
-        lock (_writeLock)
+        return ExecuteWrite("CleanUnassociatedCharacters", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
-
-            try
+            // Find owner_ids that appear in resource_history for this (item, container) but
+            // have no matching entry in either character_names or owner_names.
+            var idsToRemove = new List<long>();
+            using (var selectCmd = conn.CreateCommand())
             {
-                // Find owner_ids that appear in resource_history for this (item, container) but
-                // have no matching entry in either character_names or owner_names.
-                var idsToRemove = new List<long>();
-                using (var selectCmd = _connection.CreateCommand())
-                {
-                    selectCmd.CommandText = @"
+                selectCmd.CommandText = @"
                         SELECT DISTINCT rh.owner_id FROM resource_history rh
                         WHERE rh.item_id = $iid AND rh.container = $cont
                           AND rh.owner_id != 0
                           AND rh.owner_id NOT IN (SELECT character_id FROM character_names)
                           AND rh.owner_id NOT IN (SELECT owner_id FROM owner_names)";
-                    selectCmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                    selectCmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                selectCmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                selectCmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-                    using var reader = selectCmd.ExecuteReader();
-                    while (reader.Read())
-                    {
-                        var oid = reader.GetInt64(0);
-                        if (oid != 0) idsToRemove.Add(oid);
-                    }
-                }
-
-                if (idsToRemove.Count == 0) return 0;
-
-                RunInTransaction(tx =>
+                using var reader = selectCmd.ExecuteReader();
+                while (reader.Read())
                 {
-                    foreach (var oid in idsToRemove)
-                    {
-                        using var cmd = _connection!.CreateCommand();
-                        cmd.Transaction = tx;
-                        cmd.CommandText = @"DELETE FROM resource_history
-                            WHERE item_id = $iid AND container = $cont AND owner_id = $oid";
-                        cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                        cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                        cmd.Parameters.AddWithValue("$oid", oid);
-                        cmd.ExecuteNonQuery();
-                    }
-                });
+                    var oid = reader.GetInt64(0);
+                    if (oid != 0) idsToRemove.Add(oid);
+                }
+            }
 
-                LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated character/owner entries for '{variable}'");
-                return idsToRemove.Count;
-            }
-            catch (Exception ex)
+            if (idsToRemove.Count == 0) return 0;
+
+            RunInTransaction(tx =>
             {
-                LogDbError("CleanUnassociatedCharacters", ex);
-                return 0;
-            }
-        }
+                foreach (var oid in idsToRemove)
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = @"DELETE FROM resource_history
+                            WHERE item_id = $iid AND container = $cont AND owner_id = $oid";
+                    cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+                    cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+                    cmd.Parameters.AddWithValue("$oid", oid);
+                    cmd.ExecuteNonQuery();
+                }
+            });
+
+            LogService.Info(LogCategory.Database, $"[KaleidoscopeDb] Cleaned {idsToRemove.Count} unassociated character/owner entries for '{variable}'");
+            return idsToRemove.Count;
+        });
     }
 
     /// <summary>
@@ -497,93 +400,82 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public void MigrateStoredNames()
     {
-        lock (_writeLock)
+        ExecuteWrite("MigrateStoredNames", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT character_id, name FROM character_names";
+            var updates = new List<(long cid, string newName)>();
+            var deletes = new List<long>();
 
-            try
+            using (var reader = cmd.ExecuteReader())
             {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name FROM character_names";
-                var updates = new List<(long cid, string newName)>();
-                var deletes = new List<long>();
-
-                using (var reader = cmd.ExecuteReader())
+                while (reader.Read())
                 {
-                    while (reader.Read())
+                    var cid = reader.GetInt64(0);
+                    var name = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var sanitized = NameSanitizer.Sanitize(name);
+
+                    // If the stored name contains any digit, treat it as invalid
+                    if (!string.IsNullOrEmpty(sanitized) && sanitized.Any(char.IsDigit))
                     {
-                        var cid = reader.GetInt64(0);
-                        var name = reader.IsDBNull(1) ? null : reader.GetString(1);
-                        var sanitized = NameSanitizer.Sanitize(name);
+                        deletes.Add(cid);
+                        continue;
+                    }
 
-                        // If the stored name contains any digit, treat it as invalid
-                        if (!string.IsNullOrEmpty(sanitized) && sanitized.Any(char.IsDigit))
-                        {
-                            deletes.Add(cid);
-                            continue;
-                        }
+                    // If the stored name sanitizes to just "You", treat it as a placeholder
+                    if (!string.IsNullOrEmpty(sanitized) && string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
+                    {
+                        deletes.Add(cid);
+                        continue;
+                    }
 
-                        // If the stored name sanitizes to just "You", treat it as a placeholder
-                        if (!string.IsNullOrEmpty(sanitized) && string.Equals(sanitized, "You", StringComparison.OrdinalIgnoreCase))
-                        {
-                            deletes.Add(cid);
-                            continue;
-                        }
+                    if (!string.IsNullOrEmpty(sanitized) && !string.Equals(sanitized, name, StringComparison.Ordinal))
+                    {
+                        updates.Add((cid, sanitized));
+                    }
+                }
+            }
 
-                        if (!string.IsNullOrEmpty(sanitized) && !string.Equals(sanitized, name, StringComparison.Ordinal))
-                        {
-                            updates.Add((cid, sanitized));
-                        }
+            if (updates.Count == 0 && deletes.Count == 0) return;
+
+            RunInTransaction(migrationTx =>
+            {
+                foreach (var (cid, newName) in updates)
+                {
+                    try
+                    {
+                        using var updateCmd = conn.CreateCommand();
+                        updateCmd.Transaction = migrationTx;
+                        updateCmd.CommandText = "UPDATE character_names SET name = $n WHERE character_id = $c";
+                        updateCmd.Parameters.AddWithValue("$n", newName);
+                        updateCmd.Parameters.AddWithValue("$c", cid);
+                        updateCmd.ExecuteNonQuery();
+                    }
+                    catch (Exception ex)
+                    {
+                        NotifyIfCorruption(ex);
+                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
                     }
                 }
 
-                if (updates.Count == 0 && deletes.Count == 0) return;
-
-                RunInTransaction(migrationTx =>
+                foreach (var cid in deletes)
                 {
-                    foreach (var (cid, newName) in updates)
+                    try
                     {
-                        try
-                        {
-                            using var updateCmd = _connection!.CreateCommand();
-                            updateCmd.Transaction = migrationTx;
-                            updateCmd.CommandText = "UPDATE character_names SET name = $n WHERE character_id = $c";
-                            updateCmd.Parameters.AddWithValue("$n", newName);
-                            updateCmd.Parameters.AddWithValue("$c", cid);
-                            updateCmd.ExecuteNonQuery();
-                        }
-                        catch (Exception ex)
-                        {
-                            NotifyIfCorruption(ex);
-                            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name update failed for CID {cid}: {ex.Message}");
-                        }
+                        using var deleteCmd = conn.CreateCommand();
+                        deleteCmd.Transaction = migrationTx;
+                        deleteCmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
+                        deleteCmd.Parameters.AddWithValue("$c", cid);
+                        deleteCmd.ExecuteNonQuery();
                     }
-
-                    foreach (var cid in deletes)
+                    catch (Exception ex)
                     {
-                        try
-                        {
-                            using var deleteCmd = _connection!.CreateCommand();
-                            deleteCmd.Transaction = migrationTx;
-                            deleteCmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
-                            deleteCmd.Parameters.AddWithValue("$c", cid);
-                            deleteCmd.ExecuteNonQuery();
-                        }
-                        catch (Exception ex)
-                        {
-                            NotifyIfCorruption(ex);
-                            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
-                        }
+                        NotifyIfCorruption(ex);
+                        LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Name delete failed for CID {cid}: {ex.Message}");
                     }
-                });
-            }
-            catch (Exception ex)
-            {
-                NotifyIfCorruption(ex);
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] MigrateStoredNames failed: {ex.Message}");
-            }
-        }
+                }
+            });
+        }, debugLog: true);
     }
 
 }

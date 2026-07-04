@@ -8,32 +8,22 @@ public sealed partial class KaleidoscopeDbService
 
     public void SaveSaleRecord(int itemId, int worldId, int pricePerUnit, int quantity, bool isHq, int total, string? buyerName = null)
     {
-        lock (_writeLock)
+        ExecuteWrite("SaveSaleRecord", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     INSERT INTO sale_records (item_id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name)
                     VALUES ($iid, $wid, $ppu, $qty, $hq, $total, $time, $buyer)";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$wid", worldId);
-                cmd.Parameters.AddWithValue("$ppu", pricePerUnit);
-                cmd.Parameters.AddWithValue("$qty", quantity);
-                cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
-                cmd.Parameters.AddWithValue("$total", total);
-                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                cmd.Parameters.AddWithValue("$buyer", (object?)buyerName ?? DBNull.Value);
-                cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveSaleRecord", ex);
-            }
-        }
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$wid", worldId);
+            cmd.Parameters.AddWithValue("$ppu", pricePerUnit);
+            cmd.Parameters.AddWithValue("$qty", quantity);
+            cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+            cmd.Parameters.AddWithValue("$total", total);
+            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+            cmd.Parameters.AddWithValue("$buyer", (object?)buyerName ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        });
     }
 
     /// <summary>
@@ -45,51 +35,41 @@ public sealed partial class KaleidoscopeDbService
         var recordList = records.ToList();
         if (recordList.Count == 0) return;
 
-        lock (_writeLock)
+        ExecuteWrite("SaveSaleRecordsBatch", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
+            RunInTransaction(tx =>
             {
-                RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.CommandText = @"
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"
                         INSERT INTO sale_records (item_id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name)
                         VALUES ($iid, $wid, $ppu, $qty, $hq, $total, $time, $buyer)";
 
-                    var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var ppuParam = cmd.Parameters.Add("$ppu", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var qtyParam = cmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var hqParam = cmd.Parameters.Add("$hq", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var totalParam = cmd.Parameters.Add("$total", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var buyerParam = cmd.Parameters.Add("$buyer", Microsoft.Data.Sqlite.SqliteType.Text);
+                var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var ppuParam = cmd.Parameters.Add("$ppu", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var qtyParam = cmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var hqParam = cmd.Parameters.Add("$hq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var totalParam = cmd.Parameters.Add("$total", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var buyerParam = cmd.Parameters.Add("$buyer", Microsoft.Data.Sqlite.SqliteType.Text);
 
-                    var now = DateTime.UtcNow.Ticks;
+                var now = DateTime.UtcNow.Ticks;
 
-                    foreach (var (itemId, worldId, pricePerUnit, quantity, isHq, total, buyerName) in recordList)
-                    {
-                        iidParam.Value = itemId;
-                        widParam.Value = worldId;
-                        ppuParam.Value = pricePerUnit;
-                        qtyParam.Value = quantity;
-                        hqParam.Value = isHq ? 1 : 0;
-                        totalParam.Value = total;
-                        timeParam.Value = now;
-                        buyerParam.Value = (object?)buyerName ?? DBNull.Value;
-                        cmd.ExecuteNonQuery();
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveSaleRecordsBatch", ex);
-            }
-        }
+                foreach (var (itemId, worldId, pricePerUnit, quantity, isHq, total, buyerName) in recordList)
+                {
+                    iidParam.Value = itemId;
+                    widParam.Value = worldId;
+                    ppuParam.Value = pricePerUnit;
+                    qtyParam.Value = quantity;
+                    hqParam.Value = isHq ? 1 : 0;
+                    totalParam.Value = total;
+                    timeParam.Value = now;
+                    buyerParam.Value = (object?)buyerName ?? DBNull.Value;
+                    cmd.ExecuteNonQuery();
+                }
+            });
+        });
     }
 
     /// <summary>
@@ -98,63 +78,41 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int GetMostRecentSalePrice(int itemId, bool isHq)
     {
-        lock (_readLock)
+        return ExecuteRead("GetMostRecentSalePrice", 0, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT price_per_unit
                     FROM sale_records
                     WHERE item_id = $iid AND is_hq = $hq
                     ORDER BY timestamp DESC
                     LIMIT 1";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
 
-                var result = cmd.ExecuteScalar();
-                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetMostRecentSalePrice", ex);
-                return 0;
-            }
-        }
+            var result = cmd.ExecuteScalar();
+            return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+        });
     }
 
     public int GetMostRecentSalePriceForWorld(int itemId, int worldId, bool isHq)
     {
-        lock (_readLock)
+        return ExecuteRead("GetMostRecentSalePriceForWorld", 0, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT price_per_unit
                     FROM sale_records
                     WHERE item_id = $iid AND world_id = $wid AND is_hq = $hq
                     ORDER BY timestamp DESC
                     LIMIT 1";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$wid", worldId);
-                cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$wid", worldId);
+            cmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
 
-                var result = cmd.ExecuteScalar();
-                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetMostRecentSalePriceForWorld", ex);
-                return 0;
-            }
-        }
+            var result = cmd.ExecuteScalar();
+            return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+        });
     }
 
     /// <summary>
@@ -173,24 +131,19 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetLatestSalePrices", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            var itemIdList = itemIds.ToList();
+            if (itemIdList.Count == 0) return result;
 
-            try
-            {
-                var itemIdList = itemIds.ToList();
-                if (itemIdList.Count == 0) return result;
+            var includedList = includedWorldIds?.ToList() ?? new List<int>();
+            var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
 
-                var includedList = includedWorldIds?.ToList() ?? new List<int>();
-                var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
+            using var cmd = conn.CreateCommand();
 
-                using var cmd = conn.CreateCommand();
-                
-                var itemInClause = AddParameterizedInClause(cmd, itemIdList, "$item");
-                
-                var sql = new System.Text.StringBuilder();
+            var itemInClause = AddParameterizedInClause(cmd, itemIdList, "$item");
+
+            var sql = new System.Text.StringBuilder();
                 sql.Append($@"
                     WITH latest_sales AS (
                         SELECT item_id, is_hq, price_per_unit,
@@ -226,24 +179,19 @@ public sealed partial class KaleidoscopeDbService
                     WHERE rn = 1
                     GROUP BY item_id");
 
-                cmd.CommandText = sql.ToString();
+            cmd.CommandText = sql.ToString();
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var iid = reader.GetInt32(0);
-                    var snq = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
-                    var shq = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                    result[iid] = (snq, shq);
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("GetLatestSalePrices", ex);
+                var iid = reader.GetInt32(0);
+                var snq = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                var shq = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                result[iid] = (snq, shq);
             }
-        }
 
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -259,17 +207,12 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<(int, int), (List<int>, List<int>)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetRecentSalesForCache", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            using var cmd = conn.CreateCommand();
 
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                
-                // Use window function to get the N most recent sales per item/world/hq combination
-                var sql = new System.Text.StringBuilder();
+            // Use window function to get the N most recent sales per item/world/hq combination
+            var sql = new System.Text.StringBuilder();
                 sql.Append(@"
                     WITH ranked_sales AS (
                         SELECT item_id, world_id, is_hq, price_per_unit,
@@ -309,19 +252,14 @@ public sealed partial class KaleidoscopeDbService
                         result[key] = prices;
                     }
 
-                    if (isHq)
-                        prices.Item2.Add(price);
-                    else
-                        prices.Item1.Add(price);
-                }
+                if (isHq)
+                    prices.Item2.Add(price);
+                else
+                    prices.Item1.Add(price);
             }
-            catch (Exception ex)
-            {
-                LogDbError("GetRecentSalesForCache", ex);
-            }
-        }
 
-        return result;
+            return result;
+        });
     }
 
     public List<(long Id, int WorldId, int PricePerUnit, int Quantity, bool IsHq, int Total, DateTime Timestamp, string? BuyerName)> GetSaleRecords(
@@ -332,17 +270,12 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(long, int, int, int, bool, int, DateTime, string?)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetSaleRecords", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
 
-            try
-            {
-                var excludedList = excludedWorldIds?.ToList() ?? new List<int>();
-
-                using var cmd = conn.CreateCommand();
-                var sql = new System.Text.StringBuilder();
+            using var cmd = conn.CreateCommand();
+            var sql = new System.Text.StringBuilder();
                 sql.Append("SELECT id, world_id, price_per_unit, quantity, is_hq, total, timestamp, buyer_name FROM sale_records WHERE item_id = $iid");
                 cmd.Parameters.AddWithValue("$iid", itemId);
 
@@ -368,51 +301,35 @@ public sealed partial class KaleidoscopeDbService
 
                 cmd.CommandText = sql.ToString();
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    result.Add((
-                        reader.GetInt64(0),
-                        reader.GetInt32(1),
-                        reader.GetInt32(2),
-                        reader.GetInt32(3),
-                        reader.GetInt32(4) == 1,
-                        reader.GetInt32(5),
-                        new DateTime(reader.GetInt64(6), DateTimeKind.Utc),
-                        reader.IsDBNull(7) ? null : reader.GetString(7)
-                    ));
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("GetSaleRecords", ex);
+                result.Add((
+                    reader.GetInt64(0),
+                    reader.GetInt32(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.GetInt32(4) == 1,
+                    reader.GetInt32(5),
+                    new DateTime(reader.GetInt64(6), DateTimeKind.Utc),
+                    reader.IsDBNull(7) ? null : reader.GetString(7)
+                ));
             }
-        }
 
-        return result;
+            return result;
+        });
     }
 
     public bool DeleteSaleRecord(long id)
     {
-        lock (_writeLock)
+        return ExecuteWrite("DeleteSaleRecord", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = "DELETE FROM sale_records WHERE id = $id";
-                cmd.Parameters.AddWithValue("$id", id);
-                var rowsAffected = cmd.ExecuteNonQuery();
-                return rowsAffected > 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("DeleteSaleRecord", ex);
-                return false;
-            }
-        }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM sale_records WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            var rowsAffected = cmd.ExecuteNonQuery();
+            return rowsAffected > 0;
+        });
     }
 
     /// <summary>
@@ -424,17 +341,12 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>True if the record was deleted, false otherwise.</returns>
     public bool DeleteSaleRecordWithHistoryCleanup(long id, DateTime saleTimestamp)
     {
-        lock (_writeLock)
+        return ExecuteWrite("DeleteSaleRecordWithHistoryCleanup", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
+            return RunInTransaction(tx =>
             {
-                return RunInTransaction(tx =>
-                {
-                    int? saleItemId = null;
-                    using (var getItemCmd = _connection!.CreateCommand())
+                int? saleItemId = null;
+                using (var getItemCmd = _connection!.CreateCommand())
                     {
                         getItemCmd.Transaction = tx;
                         getItemCmd.CommandText = "SELECT item_id FROM sale_records WHERE id = $id";
@@ -544,109 +456,70 @@ public sealed partial class KaleidoscopeDbService
                         }
                     }
 
-                    return rowsAffected > 0;
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("DeleteSaleRecordWithHistoryCleanup", ex);
-                return false;
-            }
-        }
+                return rowsAffected > 0;
+            });
+        });
     }
 
     public int GetSaleRecordCount()
     {
-        lock (_readLock)
+        return ExecuteRead("GetSaleRecordCount", 0, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT COUNT(*) FROM sale_records";
-                var result = cmd.ExecuteScalar();
-                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetSaleRecordCount", ex);
-                return 0;
-            }
-        }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM sale_records";
+            var result = cmd.ExecuteScalar();
+            return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+        });
     }
 
     public int CleanupOldPriceData(int retentionDays)
     {
-        lock (_writeLock)
+        return ExecuteWrite("CleanupOldPriceData", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var cutoffTicks = DateTime.UtcNow.AddDays(-retentionDays).Ticks;
+            var totalDeleted = 0;
 
-            try
+            RunInTransaction(tx =>
             {
-                var cutoffTicks = DateTime.UtcNow.AddDays(-retentionDays).Ticks;
-                var totalDeleted = 0;
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
 
-                RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
+                cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
+                totalDeleted += cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
-                    totalDeleted += cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
+                totalDeleted += cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
-                    totalDeleted += cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
+                totalDeleted += cmd.ExecuteNonQuery();
+            });
 
-                    cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
-                    totalDeleted += cmd.ExecuteNonQuery();
-                });
-
-                if (totalDeleted > 0)
-                {
-                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} old price/value/sale records");
-                }
-
-                return totalDeleted;
-            }
-            catch (Exception ex)
+            if (totalDeleted > 0)
             {
-                LogDbError("CleanupOldPriceData", ex);
-                return 0;
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} old price/value/sale records");
             }
-        }
+
+            return totalDeleted;
+        });
     }
 
     public long GetPriceDataSize()
     {
-        lock (_readLock)
+        return ExecuteRead("GetPriceDataSize", 0L, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT 
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    SELECT
                         (SELECT COUNT(*) FROM item_prices) * 50 +
                         (SELECT COUNT(*) FROM price_history) * 30 +
                         (SELECT COUNT(*) FROM inventory_value_history) * 40 +
                         (SELECT COUNT(*) FROM inventory_value_items) * 35 +
                         (SELECT COUNT(*) FROM sale_records) * 45";
-                
-                var result = cmd.ExecuteScalar();
-                return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetPriceDataSize", ex);
-                return 0;
-            }
-        }
+
+            var result = cmd.ExecuteScalar();
+            return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
+        });
     }
 
     public int CleanupPriceDataBySize(long maxSizeBytes)
@@ -654,54 +527,43 @@ public sealed partial class KaleidoscopeDbService
         var currentSize = GetPriceDataSize();
         if (currentSize <= maxSizeBytes) return 0;
 
-        lock (_writeLock)
+        return ExecuteWrite("CleanupPriceDataBySize", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
-
-            try
+            var totalDeleted = 0;
+            while (currentSize > maxSizeBytes)
             {
-                var totalDeleted = 0;
-                while (currentSize > maxSizeBytes)
-                {
-                    using var cmd = _connection.CreateCommand();
-                    
-                    cmd.CommandText = @"
-                        DELETE FROM price_history 
+                using var cmd = conn.CreateCommand();
+
+                cmd.CommandText = @"
+                        DELETE FROM price_history
                         WHERE id IN (SELECT id FROM price_history ORDER BY timestamp ASC LIMIT 1000)";
-                    var deleted = cmd.ExecuteNonQuery();
-                    
-                    cmd.CommandText = @"
-                        DELETE FROM sale_records 
+                var deleted = cmd.ExecuteNonQuery();
+
+                cmd.CommandText = @"
+                        DELETE FROM sale_records
                         WHERE id IN (SELECT id FROM sale_records ORDER BY timestamp ASC LIMIT 1000)";
-                    deleted += cmd.ExecuteNonQuery();
+                deleted += cmd.ExecuteNonQuery();
 
-                    // Delete inventory_value_history in smaller batches (100) since CASCADE
-                    // to inventory_value_items can remove many rows per parent row.
-                    cmd.CommandText = @"
-                        DELETE FROM inventory_value_history 
+                // Delete inventory_value_history in smaller batches (100) since CASCADE
+                // to inventory_value_items can remove many rows per parent row.
+                cmd.CommandText = @"
+                        DELETE FROM inventory_value_history
                         WHERE id IN (SELECT id FROM inventory_value_history ORDER BY timestamp ASC LIMIT 100)";
-                    deleted += cmd.ExecuteNonQuery();
-                    
-                    totalDeleted += deleted;
+                deleted += cmd.ExecuteNonQuery();
 
-                    if (deleted == 0) break;
-                    currentSize = GetPriceDataSize();
-                }
+                totalDeleted += deleted;
 
-                if (totalDeleted > 0)
-                {
-                    LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} price history/sale records to fit size limit");
-                }
-
-                return totalDeleted;
+                if (deleted == 0) break;
+                currentSize = GetPriceDataSize();
             }
-            catch (Exception ex)
+
+            if (totalDeleted > 0)
             {
-                LogDbError("CleanupPriceDataBySize", ex);
-                return 0;
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} price history/sale records to fit size limit");
             }
-        }
+
+            return totalDeleted;
+        });
     }
 
 }

@@ -63,38 +63,27 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, characterId);
         if (mapping == null) return null;
 
-        lock (_readLock)
+        return ExecuteRead<(DateTime timestamp, long value)?>("GetLastPointForCharacter", null, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT timestamp, quantity FROM resource_history
                     WHERE item_id = $iid AND owner_id = $oid AND container = $cont
                     ORDER BY timestamp DESC LIMIT 1";
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-                using var reader = cmd.ExecuteReader();
-                if (reader.Read())
-                {
-                    var ticks = reader.GetInt64(0);
-                    var value = reader.GetInt64(1);
-                    return (new DateTime(ticks, DateTimeKind.Utc), value);
-                }
-
-                return null;
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
             {
-                LogDbDebug("GetLastPointForCharacter", ex);
-                return null;
+                var ticks = reader.GetInt64(0);
+                var value = reader.GetInt64(1);
+                return (new DateTime(ticks, DateTimeKind.Utc), value);
             }
-        }
+
+            return null;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -109,15 +98,10 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, 0);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetLatestValuesForVariable", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT owner_id, quantity FROM (
                         SELECT owner_id, quantity,
                                ROW_NUMBER() OVER (PARTITION BY owner_id ORDER BY timestamp DESC) AS rn
@@ -125,25 +109,20 @@ public sealed partial class KaleidoscopeDbService
                         WHERE item_id = $iid AND container = $cont AND owner_id != 0
                     ) ranked
                     WHERE rn = 1";
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var ownerId = (ulong)reader.GetInt64(0);
-                    var value = reader.GetInt64(1);
-                    if (ownerId == 0) continue;
-                    result[ownerId] = value;
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbDebug("GetLatestValuesForVariable", ex);
+                var ownerId = (ulong)reader.GetInt64(0);
+                var value = reader.GetInt64(1);
+                if (ownerId == 0) continue;
+                result[ownerId] = value;
             }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -170,32 +149,21 @@ public sealed partial class KaleidoscopeDbService
         if (lastValue.HasValue && lastValue.Value == value)
             return false;
 
-        lock (_writeLock)
+        return ExecuteWrite("SaveSampleIfChanged", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     INSERT INTO resource_history (owner_id, owner_kind, container, item_id, timestamp, quantity, change_amount, source_kind, source_detail)
                     VALUES ($oid, $okind, $cont, $iid, $ts, $qty, 0, 0, NULL)";
-                cmd.Parameters.AddWithValue("$oid",   (long)mapping.Value.OwnerId);
-                cmd.Parameters.AddWithValue("$okind", (int)mapping.Value.OwnerKind);
-                cmd.Parameters.AddWithValue("$cont",  (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$iid",   (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$ts",    DateTime.UtcNow.Ticks);
-                cmd.Parameters.AddWithValue("$qty",   value);
-                cmd.ExecuteNonQuery();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveSampleIfChanged", ex);
-                return false;
-            }
-        }
+            cmd.Parameters.AddWithValue("$oid",   (long)mapping.Value.OwnerId);
+            cmd.Parameters.AddWithValue("$okind", (int)mapping.Value.OwnerKind);
+            cmd.Parameters.AddWithValue("$cont",  (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$iid",   (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$ts",    DateTime.UtcNow.Ticks);
+            cmd.Parameters.AddWithValue("$qty",   value);
+            cmd.ExecuteNonQuery();
+            return true;
+        });
     }
 
     /// <summary>
@@ -208,13 +176,8 @@ public sealed partial class KaleidoscopeDbService
     {
         if (samples == null || samples.Count == 0) return 0;
 
-        lock (_writeLock)
+        return ExecuteWrite("SaveSamplesIfChangedBatched", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
-
-            try
-            {
                 // Phase 1: resolve mappings and check last values under the write lock.
                 var rowsToInsert = new List<(long ItemId, long OwnerId, int OwnerKind, int Container, long Value)>();
 
@@ -225,7 +188,7 @@ public sealed partial class KaleidoscopeDbService
 
                     // Inline last-value check using the write connection (avoids _readLock
                     // while holding _writeLock — see lock-ordering invariant).
-                    using var lastCmd = _connection.CreateCommand();
+                    using var lastCmd = conn.CreateCommand();
                     lastCmd.CommandText = @"
                         SELECT quantity FROM resource_history
                         WHERE item_id = $iid AND owner_id = $oid AND container = $cont
@@ -245,7 +208,7 @@ public sealed partial class KaleidoscopeDbService
                 // Phase 2: batch-insert all changed rows in a single transaction.
                 return RunInTransaction(tx =>
                 {
-                    using var cmd = _connection.CreateCommand();
+                    using var cmd = conn.CreateCommand();
                     cmd.Transaction = tx;
                     cmd.CommandText = @"
                         INSERT INTO resource_history(owner_id, owner_kind, container, item_id, timestamp, quantity, change_amount, source_kind, source_detail)
@@ -273,13 +236,7 @@ public sealed partial class KaleidoscopeDbService
 
                     return rowsToInsert.Count;
                 });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveSamplesIfChangedBatched", ex);
-                return 0;
-            }
-        }
+        });
     }
 
     /// <summary>
@@ -293,44 +250,34 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, characterId);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetPoints", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                var sql = @"SELECT timestamp, quantity FROM resource_history
+            using var cmd = conn.CreateCommand();
+            var sql = @"SELECT timestamp, quantity FROM resource_history
                     WHERE item_id = $iid AND owner_id = $oid AND container = $cont
                     ORDER BY timestamp ASC";
 
-                if (limit.HasValue)
-                {
-                    sql += " LIMIT $lim";
-                    cmd.Parameters.AddWithValue("$lim", limit.Value);
-                }
-
-                cmd.CommandText = sql;
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var ticks = reader.GetInt64(0);
-                    var value = reader.GetInt64(1);
-                    result.Add((new DateTime(ticks, DateTimeKind.Utc), value));
-                }
-            }
-            catch (Exception ex)
+            if (limit.HasValue)
             {
-                LogDbDebug("GetPoints", ex);
+                sql += " LIMIT $lim";
+                cmd.Parameters.AddWithValue("$lim", limit.Value);
             }
-        }
 
-        return result;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var ticks = reader.GetInt64(0);
+                var value = reader.GetInt64(1);
+                result.Add((new DateTime(ticks, DateTimeKind.Utc), value));
+            }
+
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -345,38 +292,28 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, characterId);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetPointsSince", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
                     WHERE item_id = $iid AND owner_id = $oid AND container = $cont
                       AND timestamp >= $since
                     ORDER BY timestamp ASC";
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-                cmd.Parameters.AddWithValue("$since", since.Ticks);
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$since", since.Ticks);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var ticks = reader.GetInt64(0);
-                    var value = reader.GetInt64(1);
-                    result.Add((new DateTime(ticks, DateTimeKind.Utc), value));
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbDebug("GetPointsSince", ex);
+                var ticks = reader.GetInt64(0);
+                var value = reader.GetInt64(1);
+                result.Add((new DateTime(ticks, DateTimeKind.Utc), value));
             }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -390,37 +327,27 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, 0);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetAllPoints", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT owner_id, timestamp, quantity FROM resource_history
                     WHERE item_id = $iid AND container = $cont AND owner_id != 0
                     ORDER BY timestamp ASC";
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var ownerId = (ulong)reader.GetInt64(0);
-                    var ticks = reader.GetInt64(1);
-                    var value = reader.GetInt64(2);
-                    if (ownerId != 0)
-                        result.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), value));
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbDebug("GetAllPoints", ex);
+                var ownerId = (ulong)reader.GetInt64(0);
+                var ticks = reader.GetInt64(1);
+                var value = reader.GetInt64(2);
+                if (ownerId != 0)
+                    result.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), value));
             }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -435,14 +362,9 @@ public sealed partial class KaleidoscopeDbService
 
         // Resolve all (item_id, container) pairs that match the prefix by querying
         // resource_history directly, then reverse-map to legacy variable names.
-        lock (_readLock)
+        return ExecuteRead("GetAllPointsBatch", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
+            using var cmd = conn.CreateCommand();
 
                 // For legacy compatibility we need to return results keyed by variable name.
                 // We determine the variable name from the (item_id, container, owner_id) triple
@@ -493,14 +415,9 @@ public sealed partial class KaleidoscopeDbService
                     }
                     list.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), qty));
                 }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllPointsBatch", ex);
-            }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -534,15 +451,10 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
 
-        lock (_readLock)
+        return ExecuteRead("GetPointsInWindow", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     WITH series_ids AS (
                         SELECT DISTINCT item_id, owner_id, container
                         FROM resource_history WHERE owner_id != 0
@@ -597,14 +509,9 @@ public sealed partial class KaleidoscopeDbService
                     }
                     list.Add((ownerId, new DateTime(ticks, DateTimeKind.Utc), qty));
                 }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetPointsInWindow", ex);
-            }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -613,13 +520,8 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public (DateTime earliest, DateTime latest)? GetDataTimeRange(string variablePrefix)
     {
-        lock (_readLock)
+        return ExecuteRead<(DateTime earliest, DateTime latest)?>("GetDataTimeRange", null, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
                 // We need to find rows whose reverse-mapped variable name starts with the prefix.
                 // For efficiency, handle the common case where the prefix is a TrackedDataType name
                 // (e.g. "Gil") or an item prefix (e.g. "Item_", "ItemRetainer_").
@@ -660,14 +562,9 @@ public sealed partial class KaleidoscopeDbService
                     var latest   = new DateTime(reader.GetInt64(1), DateTimeKind.Utc);
                     return (earliest, latest);
                 }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetDataTimeRange", ex);
-            }
-        }
 
-        return null;
+            return null;
+        }, debugLog: true);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

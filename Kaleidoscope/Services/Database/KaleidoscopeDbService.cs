@@ -88,20 +88,7 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     /// Returns the placeholder string for use in SQL (e.g., "$p0, $p1, $p2").
     /// This enables SQLite prepared statement caching and follows parameterization best practices.
     /// </summary>
-    private static string AddParameterizedInClause(SqliteCommand cmd, IList<int> values, string prefix = "$p")
-    {
-        var sb = new StringBuilder();
-        for (int i = 0; i < values.Count; i++)
-        {
-            if (i > 0) sb.Append(", ");
-            var paramName = $"{prefix}{i}";
-            sb.Append(paramName);
-            cmd.Parameters.AddWithValue(paramName, values[i]);
-        }
-        return sb.ToString();
-    }
-
-    private static string AddParameterizedInClause(SqliteCommand cmd, IList<long> values, string prefix = "$p")
+    private static string AddParameterizedInClause<T>(SqliteCommand cmd, IList<T> values, string prefix = "$p")
     {
         var sb = new StringBuilder();
         for (int i = 0; i < values.Count; i++)
@@ -215,6 +202,103 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
     {
         NotifyIfCorruption(ex);
         LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] {method} failed: {ex.Message}");
+    }
+
+    /// <summary>
+    /// Runs a read query against the dedicated read connection, encapsulating lock acquisition,
+    /// connection resolution, and uniform error handling. On any failure the <paramref name="fallback"/>
+    /// is returned; pass a mutable accumulator (e.g. the result list/dictionary) as the fallback to
+    /// preserve any rows gathered before an exception.
+    /// </summary>
+    /// <remarks>
+    /// Thread-safety: the read connection is only ever touched under <c>_readLock</c>. If the dedicated
+    /// read connection is unavailable (a prior <see cref="EnsureReadConnection"/> failed), the query is
+    /// retried and, as a last resort, run against the writer connection under <c>_writeLock</c> — never
+    /// against <c>_connection</c> while only holding <c>_readLock</c>, which would race with writers.
+    /// </remarks>
+    private T ExecuteRead<T>(string caller, T fallback, Func<SqliteConnection, T> body, bool debugLog = false)
+    {
+        lock (_readLock)
+        {
+            var conn = _readConnection;
+            if (conn != null)
+            {
+                try
+                {
+                    return body(conn);
+                }
+                catch (Exception ex)
+                {
+                    if (debugLog) LogDbDebug(caller, ex); else LogDbError(caller, ex);
+                    return fallback;
+                }
+            }
+        }
+
+        // Dedicated read connection unavailable — retry opening it, then run this call against the
+        // writer connection under _writeLock. Acquiring _writeLock only after releasing _readLock keeps
+        // the lock-ordering invariant (write before read) intact.
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_readConnection == null)
+                EnsureReadConnection();
+            if (_connection == null) return fallback;
+
+            try
+            {
+                return body(_connection);
+            }
+            catch (Exception ex)
+            {
+                if (debugLog) LogDbDebug(caller, ex); else LogDbError(caller, ex);
+                return fallback;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Runs a write operation against the writer connection, encapsulating <c>_writeLock</c> acquisition,
+    /// <see cref="EnsureConnection"/>, and uniform error handling. Returns <paramref name="fallback"/> on failure.
+    /// </summary>
+    private T ExecuteWrite<T>(string caller, T fallback, Func<SqliteConnection, T> body, bool debugLog = false)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return fallback;
+
+            try
+            {
+                return body(_connection);
+            }
+            catch (Exception ex)
+            {
+                if (debugLog) LogDbDebug(caller, ex); else LogDbError(caller, ex);
+                return fallback;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Void overload of <see cref="ExecuteWrite{T}"/> for write operations that don't return a value.
+    /// </summary>
+    private void ExecuteWrite(string caller, Action<SqliteConnection> body, bool debugLog = false)
+    {
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            try
+            {
+                body(_connection);
+            }
+            catch (Exception ex)
+            {
+                if (debugLog) LogDbDebug(caller, ex); else LogDbError(caller, ex);
+            }
+        }
     }
 
     public KaleidoscopeDbService(FilenameService filenames, ConfigurationService configService)
@@ -390,10 +474,29 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         }
     }
 
+    /// <summary>
+    /// Single source of truth for the inventory_value_items table + its indexes. Referenced from both
+    /// EnsureSchema (fresh installs) and the v3 migration. Idempotent via CREATE IF NOT EXISTS.
+    /// </summary>
+    private const string InventoryValueItemsSchemaSql = @"
+CREATE TABLE IF NOT EXISTS inventory_value_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    history_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    unit_price INTEGER NOT NULL,
+    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
+
     private void EnsureSchema()
     {
         if (_connection == null) return;
 
+        // TIMESTAMP CONVENTION: every `timestamp`/`updated_at`/`last_updated` column below stores
+        // DateTime.UtcNow.Ticks (.NET ticks, 100ns since 0001-01-01 UTC) — NOT unix epoch seconds.
+        // Read back via `new DateTime(ticks, DateTimeKind.Utc)`.
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
 CREATE TABLE IF NOT EXISTS series (
@@ -487,15 +590,7 @@ CREATE TABLE IF NOT EXISTS inventory_value_history (
     item_value INTEGER NOT NULL DEFAULT 0
 );
 
--- Per-item breakdown for inventory value history (enables recalculation when sales are deleted)
-CREATE TABLE IF NOT EXISTS inventory_value_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    history_id INTEGER NOT NULL,
-    item_id INTEGER NOT NULL,
-    quantity INTEGER NOT NULL,
-    unit_price INTEGER NOT NULL,
-    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
-);
+-- inventory_value_items (per-item breakdown) is created via InventoryValueItemsSchemaSql below.
 
 -- Individual sale records table for per-world sale tracking
 CREATE TABLE IF NOT EXISTS sale_records (
@@ -517,14 +612,18 @@ CREATE INDEX IF NOT EXISTS idx_price_history_item_world ON price_history(item_id
 CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_char ON inventory_value_history(character_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_history(timestamp);
-CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_item ON sale_records(item_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_world ON sale_records(world_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_item_world ON sale_records(item_id, world_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp);
 ";
         cmd.ExecuteNonQuery();
+
+        using (var iviCmd = _connection.CreateCommand())
+        {
+            iviCmd.CommandText = InventoryValueItemsSchemaSql;
+            iviCmd.ExecuteNonQuery();
+        }
 
         ApplyResourcesSchema();
 
@@ -569,10 +668,14 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
             LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Running migrations from version {currentVersion} to {CurrentSchemaVersion}");
 
-            if (currentVersion < 2) MigrateAddLastSaleColumns();
+            if (currentVersion < 2)
+            {
+                AddColumnIfMissing("item_prices", "last_sale_nq", "last_sale_nq INTEGER NOT NULL DEFAULT 0");
+                AddColumnIfMissing("item_prices", "last_sale_hq", "last_sale_hq INTEGER NOT NULL DEFAULT 0");
+            }
             if (currentVersion < 3) MigrateAddInventoryValueItemsTable();
-            if (currentVersion < 4) MigrateAddDisplayNameColumn();
-            if (currentVersion < 5) MigrateAddTimeSeriesColorColumn();
+            if (currentVersion < 4) AddColumnIfMissing("character_names", "display_name", "display_name TEXT");
+            if (currentVersion < 5) AddColumnIfMissing("character_names", "time_series_color", "time_series_color INTEGER");
             if (currentVersion < 6) MigrateAddUnifiedResources();
             if (currentVersion < 7) MigrateDropLegacyTables();
 
@@ -592,40 +695,31 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         }
     }
 
-    private void MigrateAddLastSaleColumns()
+    /// <summary>
+    /// Adds <paramref name="column"/> to <paramref name="table"/> via ALTER TABLE if it is not
+    /// already present. Idempotent — reused by the column-adding migrations.
+    /// </summary>
+    private void AddColumnIfMissing(string table, string column, string columnDdl)
     {
         if (_connection == null) return;
 
-        using var checkCmd = _connection.CreateCommand();
-        checkCmd.CommandText = "PRAGMA table_info(item_prices)";
-        
-        bool hasLastSaleNq = false;
-        bool hasLastSaleHq = false;
-        
-        using (var reader = checkCmd.ExecuteReader())
+        bool hasColumn = false;
+        using (var checkCmd = _connection.CreateCommand())
         {
+            checkCmd.CommandText = $"PRAGMA table_info({table})";
+            using var reader = checkCmd.ExecuteReader();
             while (reader.Read())
             {
-                var columnName = reader.GetString(1);
-                if (columnName == "last_sale_nq") hasLastSaleNq = true;
-                if (columnName == "last_sale_hq") hasLastSaleHq = true;
+                if (reader.GetString(1) == column) { hasColumn = true; break; }
             }
         }
 
-        if (!hasLastSaleNq)
+        if (!hasColumn)
         {
             using var alterCmd = _connection.CreateCommand();
-            alterCmd.CommandText = "ALTER TABLE item_prices ADD COLUMN last_sale_nq INTEGER NOT NULL DEFAULT 0";
+            alterCmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {columnDdl}";
             alterCmd.ExecuteNonQuery();
-            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added last_sale_nq column to item_prices");
-        }
-
-        if (!hasLastSaleHq)
-        {
-            using var alterCmd = _connection.CreateCommand();
-            alterCmd.CommandText = "ALTER TABLE item_prices ADD COLUMN last_sale_hq INTEGER NOT NULL DEFAULT 0";
-            alterCmd.ExecuteNonQuery();
-            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added last_sale_hq column to item_prices");
+            LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Migration: Added {column} column to {table}");
         }
     }
 
@@ -640,81 +734,9 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
         if (!exists)
         {
             using var createCmd = _connection.CreateCommand();
-            createCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS inventory_value_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    history_id INTEGER NOT NULL,
-                    item_id INTEGER NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    unit_price INTEGER NOT NULL,
-                    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
-                CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
+            createCmd.CommandText = InventoryValueItemsSchemaSql;
             createCmd.ExecuteNonQuery();
             LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Created inventory_value_items table");
-        }
-    }
-
-    /// <summary>
-    /// Adds display_name column to character_names table if it doesn't exist.
-    /// This allows users to set custom display names separate from the game name.
-    /// </summary>
-    private void MigrateAddDisplayNameColumn()
-    {
-        if (_connection == null) return;
-
-        using var checkCmd = _connection.CreateCommand();
-        checkCmd.CommandText = "PRAGMA table_info(character_names)";
-        
-        bool hasDisplayName = false;
-        
-        using (var reader = checkCmd.ExecuteReader())
-        {
-            while (reader.Read())
-            {
-                var columnName = reader.GetString(1);
-                if (columnName == "display_name") hasDisplayName = true;
-            }
-        }
-
-        if (!hasDisplayName)
-        {
-            using var alterCmd = _connection.CreateCommand();
-            alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN display_name TEXT";
-            alterCmd.ExecuteNonQuery();
-            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added display_name column to character_names");
-        }
-    }
-
-    /// <summary>
-    /// Adds time_series_color column to character_names table if it doesn't exist.
-    /// This allows users to set custom colors for time-series graphs.
-    /// </summary>
-    private void MigrateAddTimeSeriesColorColumn()
-    {
-        if (_connection == null) return;
-
-        using var checkCmd = _connection.CreateCommand();
-        checkCmd.CommandText = "PRAGMA table_info(character_names)";
-        
-        bool hasTimeSeriesColor = false;
-        
-        using (var reader = checkCmd.ExecuteReader())
-        {
-            while (reader.Read())
-            {
-                var columnName = reader.GetString(1);
-                if (columnName == "time_series_color") hasTimeSeriesColor = true;
-            }
-        }
-
-        if (!hasTimeSeriesColor)
-        {
-            using var alterCmd = _connection.CreateCommand();
-            alterCmd.CommandText = "ALTER TABLE character_names ADD COLUMN time_series_color INTEGER";
-            alterCmd.ExecuteNonQuery();
-            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Added time_series_color column to character_names");
         }
     }
 

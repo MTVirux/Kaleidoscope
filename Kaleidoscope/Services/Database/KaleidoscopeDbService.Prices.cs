@@ -8,15 +8,10 @@ public sealed partial class KaleidoscopeDbService
 
     public void SaveItemPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, int avgPriceNq = 0, int avgPriceHq = 0, int lastSaleNq = 0, int lastSaleHq = 0, float saleVelocity = 0)
     {
-        lock (_writeLock)
+        ExecuteWrite("SaveItemPrice", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, last_sale_nq, last_sale_hq, sale_velocity, last_updated)
                     VALUES ($iid, $wid, $mnq, $mhq, $anq, $ahq, $lsnq, $lshq, $sv, $time)
                     ON CONFLICT(item_id, world_id) DO UPDATE SET
@@ -28,23 +23,18 @@ public sealed partial class KaleidoscopeDbService
                         last_sale_hq = excluded.last_sale_hq,
                         sale_velocity = excluded.sale_velocity,
                         last_updated = excluded.last_updated";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$wid", worldId);
-                cmd.Parameters.AddWithValue("$mnq", minPriceNq);
-                cmd.Parameters.AddWithValue("$mhq", minPriceHq);
-                cmd.Parameters.AddWithValue("$anq", avgPriceNq);
-                cmd.Parameters.AddWithValue("$ahq", avgPriceHq);
-                cmd.Parameters.AddWithValue("$lsnq", lastSaleNq);
-                cmd.Parameters.AddWithValue("$lshq", lastSaleHq);
-                cmd.Parameters.AddWithValue("$sv", saleVelocity);
-                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveItemPrice", ex);
-            }
-        }
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$wid", worldId);
+            cmd.Parameters.AddWithValue("$mnq", minPriceNq);
+            cmd.Parameters.AddWithValue("$mhq", minPriceHq);
+            cmd.Parameters.AddWithValue("$anq", avgPriceNq);
+            cmd.Parameters.AddWithValue("$ahq", avgPriceHq);
+            cmd.Parameters.AddWithValue("$lsnq", lastSaleNq);
+            cmd.Parameters.AddWithValue("$lshq", lastSaleHq);
+            cmd.Parameters.AddWithValue("$sv", saleVelocity);
+            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+            cmd.ExecuteNonQuery();
+        });
     }
 
     /// <summary>
@@ -56,18 +46,13 @@ public sealed partial class KaleidoscopeDbService
         var priceList = prices.ToList();
         if (priceList.Count == 0) return;
 
-        lock (_writeLock)
+        ExecuteWrite("SaveItemPricesBatch", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
+            RunInTransaction(tx =>
             {
-                RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.CommandText = @"
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"
                         INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, last_sale_nq, last_sale_hq, sale_velocity, last_updated)
                         VALUES ($iid, $wid, $mnq, $mhq, 0, 0, $lsnq, $lshq, 0, $time)
                         ON CONFLICT(item_id, world_id) DO UPDATE SET
@@ -77,61 +62,46 @@ public sealed partial class KaleidoscopeDbService
                             last_sale_hq = excluded.last_sale_hq,
                             last_updated = excluded.last_updated";
 
-                    var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var mnqParam = cmd.Parameters.Add("$mnq", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var mhqParam = cmd.Parameters.Add("$mhq", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var lsnqParam = cmd.Parameters.Add("$lsnq", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var lshqParam = cmd.Parameters.Add("$lshq", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var widParam = cmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var mnqParam = cmd.Parameters.Add("$mnq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var mhqParam = cmd.Parameters.Add("$mhq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var lsnqParam = cmd.Parameters.Add("$lsnq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var lshqParam = cmd.Parameters.Add("$lshq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var timeParam = cmd.Parameters.Add("$time", Microsoft.Data.Sqlite.SqliteType.Integer);
 
-                    var now = DateTime.UtcNow.Ticks;
+                var now = DateTime.UtcNow.Ticks;
 
-                    foreach (var (itemId, worldId, minNq, minHq, lastNq, lastHq) in priceList)
-                    {
-                        iidParam.Value = itemId;
-                        widParam.Value = worldId;
-                        mnqParam.Value = minNq;
-                        mhqParam.Value = minHq;
-                        lsnqParam.Value = lastNq;
-                        lshqParam.Value = lastHq;
-                        timeParam.Value = now;
-                        cmd.ExecuteNonQuery();
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveItemPricesBatch", ex);
-            }
-        }
+                foreach (var (itemId, worldId, minNq, minHq, lastNq, lastHq) in priceList)
+                {
+                    iidParam.Value = itemId;
+                    widParam.Value = worldId;
+                    mnqParam.Value = minNq;
+                    mhqParam.Value = minHq;
+                    lsnqParam.Value = lastNq;
+                    lshqParam.Value = lastHq;
+                    timeParam.Value = now;
+                    cmd.ExecuteNonQuery();
+                }
+            });
+        });
     }
 
     public void SavePriceHistory(int itemId, int worldId, int minPriceNq, int minPriceHq)
     {
-        lock (_writeLock)
+        ExecuteWrite("SavePriceHistory", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     INSERT INTO price_history (item_id, world_id, timestamp, min_price_nq, min_price_hq)
                     VALUES ($iid, $wid, $time, $mnq, $mhq)";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$wid", worldId);
-                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                cmd.Parameters.AddWithValue("$mnq", minPriceNq);
-                cmd.Parameters.AddWithValue("$mhq", minPriceHq);
-                cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SavePriceHistory", ex);
-            }
-        }
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$wid", worldId);
+            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+            cmd.Parameters.AddWithValue("$mnq", minPriceNq);
+            cmd.Parameters.AddWithValue("$mhq", minPriceHq);
+            cmd.ExecuteNonQuery();
+        });
     }
 
     /// <summary>
@@ -140,86 +110,66 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public (int MinPriceNq, int MinPriceHq, int AvgPriceNq, int AvgPriceHq, float SaleVelocity, DateTime LastUpdated)? GetItemPrice(int itemId, int worldId)
     {
-        lock (_readLock)
+        return ExecuteRead<(int, int, int, int, float, DateTime)?>("GetItemPrice", null, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, sale_velocity, last_updated
                     FROM item_prices
                     WHERE item_id = $iid AND world_id = $wid";
-                cmd.Parameters.AddWithValue("$iid", itemId);
-                cmd.Parameters.AddWithValue("$wid", worldId);
+            cmd.Parameters.AddWithValue("$iid", itemId);
+            cmd.Parameters.AddWithValue("$wid", worldId);
 
-                using var reader = cmd.ExecuteReader();
-                if (reader.Read())
-                {
-                    return (
-                        reader.GetInt32(0),
-                        reader.GetInt32(1),
-                        reader.GetInt32(2),
-                        reader.GetInt32(3),
-                        reader.GetFloat(4),
-                        new DateTime(reader.GetInt64(5), DateTimeKind.Utc)
-                    );
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
             {
-                LogDbError("GetItemPrice", ex);
+                return (
+                    reader.GetInt32(0),
+                    reader.GetInt32(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.GetFloat(4),
+                    new DateTime(reader.GetInt64(5), DateTimeKind.Utc)
+                );
             }
-        }
 
-        return null;
+            return null;
+        });
     }
 
     public int? GetMinPrice(int itemId, bool preferHq = false)
     {
-        lock (_readLock)
+        return ExecuteRead<int?>("GetMinPrice", null, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
+            using var cmd = conn.CreateCommand();
+            if (preferHq)
             {
-                using var cmd = conn.CreateCommand();
-                if (preferHq)
-                {
-                    cmd.CommandText = @"
-                        SELECT CASE 
-                            WHEN MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END) IS NOT NULL 
+                cmd.CommandText = @"
+                        SELECT CASE
+                            WHEN MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END) IS NOT NULL
                             THEN MIN(CASE WHEN min_price_hq > 0 THEN min_price_hq END)
                             ELSE MIN(CASE WHEN min_price_nq > 0 THEN min_price_nq END)
                         END
                         FROM item_prices
                         WHERE item_id = $iid";
-                }
-                else
-                {
-                    cmd.CommandText = @"
+            }
+            else
+            {
+                cmd.CommandText = @"
                         SELECT MIN(CASE WHEN min_price_nq > 0 THEN min_price_nq WHEN min_price_hq > 0 THEN min_price_hq END)
                         FROM item_prices
                         WHERE item_id = $iid";
-                }
-                cmd.Parameters.AddWithValue("$iid", itemId);
-
-                var result = cmd.ExecuteScalar();
-                if (result != null && result != DBNull.Value)
-                {
-                    return Convert.ToInt32(result);
-                }
             }
-            catch (Exception ex)
+            cmd.Parameters.AddWithValue("$iid", itemId);
+
+            var result = cmd.ExecuteScalar();
+            if (result != null && result != DBNull.Value)
             {
-                LogDbError("GetMinPrice", ex);
+                return Convert.ToInt32(result);
             }
-        }
 
-        return null;
+            return null;
+        });
     }
 
     /// <summary>
@@ -230,56 +180,46 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int, int)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetItemPricesBatch", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            var itemIdList = itemIds.ToList();
+            if (itemIdList.Count == 0) return result;
 
-            try
+            using var cmd = conn.CreateCommand();
+
+            var inClause = AddParameterizedInClause(cmd, itemIdList);
+
+            if (worldId.HasValue)
             {
-                var itemIdList = itemIds.ToList();
-                if (itemIdList.Count == 0) return result;
-
-                using var cmd = conn.CreateCommand();
-                
-                var inClause = AddParameterizedInClause(cmd, itemIdList);
-                
-                if (worldId.HasValue)
-                {
-                    cmd.CommandText = $@"
+                cmd.CommandText = $@"
                         SELECT item_id, last_sale_nq, last_sale_hq
                         FROM item_prices
                         WHERE item_id IN ({inClause}) AND world_id = $wid";
-                    cmd.Parameters.AddWithValue("$wid", worldId.Value);
-                }
-                else
-                {
-                    // Get the most recent last sale price across all worlds (prefer most recently updated)
-                    cmd.CommandText = $@"
-                        SELECT item_id, 
+                cmd.Parameters.AddWithValue("$wid", worldId.Value);
+            }
+            else
+            {
+                // Get the most recent last sale price across all worlds (prefer most recently updated)
+                cmd.CommandText = $@"
+                        SELECT item_id,
                                MAX(CASE WHEN last_sale_nq > 0 THEN last_sale_nq END) as sale_nq,
                                MAX(CASE WHEN last_sale_hq > 0 THEN last_sale_hq END) as sale_hq
                         FROM item_prices
                         WHERE item_id IN ({inClause})
                         GROUP BY item_id";
-                }
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var iid = reader.GetInt32(0);
-                    var snq = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
-                    var shq = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                    result[iid] = (snq, shq);
-                }
             }
-            catch (Exception ex)
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("GetItemPricesBatch", ex);
+                var iid = reader.GetInt32(0);
+                var snq = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                var shq = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                result[iid] = (snq, shq);
             }
-        }
 
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -290,23 +230,18 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<int, (int MinPrice, int WorldId, DateTime LastUpdated)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetItemPricesDetailedBatch", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
+            var itemIdList = itemIds.ToList();
+            if (itemIdList.Count == 0) return result;
 
-            try
-            {
-                var itemIdList = itemIds.ToList();
-                if (itemIdList.Count == 0) return result;
+            using var cmd = conn.CreateCommand();
 
-                using var cmd = conn.CreateCommand();
-                
-                var inClause = AddParameterizedInClause(cmd, itemIdList);
-                
-                // For each item, find the world with the lowest non-zero NQ price (or HQ if no NQ)
-                // Using a subquery to get the row with the minimum price per item
-                cmd.CommandText = $@"
+            var inClause = AddParameterizedInClause(cmd, itemIdList);
+
+            // For each item, find the world with the lowest non-zero NQ price (or HQ if no NQ)
+            // Using a subquery to get the row with the minimum price per item
+            cmd.CommandText = $@"
                     WITH min_prices AS (
                         SELECT item_id, 
                                CASE WHEN min_price_nq > 0 THEN min_price_nq ELSE min_price_hq END as effective_price,
@@ -324,23 +259,18 @@ public sealed partial class KaleidoscopeDbService
                     FROM min_prices
                     WHERE rn = 1";
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var iid = reader.GetInt32(0);
-                    var price = reader.GetInt32(1);
-                    var wid = reader.GetInt32(2);
-                    var lastUpdated = new DateTime(reader.GetInt64(3), DateTimeKind.Utc);
-                    result[iid] = (price, wid, lastUpdated);
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("GetItemPricesDetailedBatch", ex);
+                var iid = reader.GetInt32(0);
+                var price = reader.GetInt32(1);
+                var wid = reader.GetInt32(2);
+                var lastUpdated = new DateTime(reader.GetInt64(3), DateTimeKind.Utc);
+                result[iid] = (price, wid, lastUpdated);
             }
-        }
 
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -356,39 +286,29 @@ public sealed partial class KaleidoscopeDbService
         foreach (var id in itemIdList)
             staleItems.Add(id);
 
-        lock (_readLock)
+        return ExecuteRead("GetStaleItemIds", staleItems, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return staleItems;
+            var thresholdTicks = (DateTime.UtcNow - staleThreshold).Ticks;
 
-            try
-            {
-                var thresholdTicks = (DateTime.UtcNow - staleThreshold).Ticks;
-
-                using var cmd = conn.CreateCommand();
-                var inClause = AddParameterizedInClause(cmd, itemIdList);
-                cmd.CommandText = $@"
+            using var cmd = conn.CreateCommand();
+            var inClause = AddParameterizedInClause(cmd, itemIdList);
+            cmd.CommandText = $@"
                     SELECT item_id
                     FROM item_prices
                     WHERE item_id IN ({inClause})
                       AND last_updated > $threshold
                       AND (last_sale_nq > 0 OR last_sale_hq > 0)";
-                cmd.Parameters.AddWithValue("$threshold", thresholdTicks);
+            cmd.Parameters.AddWithValue("$threshold", thresholdTicks);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var itemId = reader.GetInt32(0);
-                    staleItems.Remove(itemId);
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbError("GetStaleItemIds", ex);
+                var itemId = reader.GetInt32(0);
+                staleItems.Remove(itemId);
             }
-        }
 
-        return staleItems;
+            return staleItems;
+        });
     }
 
     /// <summary>
@@ -402,153 +322,123 @@ public sealed partial class KaleidoscopeDbService
     public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue, 
         List<(int ItemId, long Quantity, int UnitPrice)>? itemContributions = null)
     {
-        lock (_writeLock)
+        ExecuteWrite("SaveInventoryValueHistory", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-
-            try
+            RunInTransaction(tx =>
             {
-                RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.CommandText = @"
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"
                         INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
                         VALUES ($cid, $time, $total, $gil, $item);
                         SELECT last_insert_rowid();";
-                    cmd.Parameters.AddWithValue("$cid", (long)characterId);
-                    cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                    cmd.Parameters.AddWithValue("$total", totalValue);
-                    cmd.Parameters.AddWithValue("$gil", gilValue);
-                    cmd.Parameters.AddWithValue("$item", itemValue);
-                    var historyId = (long)cmd.ExecuteScalar()!;
+                cmd.Parameters.AddWithValue("$cid", (long)characterId);
+                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+                cmd.Parameters.AddWithValue("$total", totalValue);
+                cmd.Parameters.AddWithValue("$gil", gilValue);
+                cmd.Parameters.AddWithValue("$item", itemValue);
+                var historyId = (long)cmd.ExecuteScalar()!;
 
-                    if (itemContributions != null && itemContributions.Count > 0)
-                    {
-                        using var itemCmd = _connection.CreateCommand();
-                        itemCmd.Transaction = tx;
-                        itemCmd.CommandText = @"
+                if (itemContributions != null && itemContributions.Count > 0)
+                {
+                    using var itemCmd = conn.CreateCommand();
+                    itemCmd.Transaction = tx;
+                    itemCmd.CommandText = @"
                             INSERT INTO inventory_value_items (history_id, item_id, quantity, unit_price)
                             VALUES ($hid, $iid, $qty, $price)";
-                        
-                        var hidParam = itemCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                        var iidParam = itemCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                        var qtyParam = itemCmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
-                        var priceParam = itemCmd.Parameters.Add("$price", Microsoft.Data.Sqlite.SqliteType.Integer);
-                        
-                        hidParam.Value = historyId;
-                        
-                        foreach (var (itemId, quantity, unitPrice) in itemContributions)
-                        {
-                            iidParam.Value = itemId;
-                            qtyParam.Value = quantity;
-                            priceParam.Value = unitPrice;
-                            itemCmd.ExecuteNonQuery();
-                        }
+
+                    var hidParam = itemCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var iidParam = itemCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var qtyParam = itemCmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
+                    var priceParam = itemCmd.Parameters.Add("$price", Microsoft.Data.Sqlite.SqliteType.Integer);
+
+                    hidParam.Value = historyId;
+
+                    foreach (var (itemId, quantity, unitPrice) in itemContributions)
+                    {
+                        iidParam.Value = itemId;
+                        qtyParam.Value = quantity;
+                        priceParam.Value = unitPrice;
+                        itemCmd.ExecuteNonQuery();
                     }
-                });
-                    
-                InvalidateInventoryValueStatsCache();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("SaveInventoryValueHistory", ex);
-            }
-        }
+                }
+            });
+
+            InvalidateInventoryValueStatsCache();
+        });
     }
 
     public List<(DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetInventoryValueHistory(ulong characterId, DateTime? since = null)
     {
         var result = new List<(DateTime, long, long, long)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetInventoryValueHistory", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                var sql = @"
+            using var cmd = conn.CreateCommand();
+            var sql = @"
                     SELECT timestamp, total_value, gil_value, item_value
                     FROM inventory_value_history
                     WHERE character_id = $cid";
-                
-                if (since.HasValue)
-                {
-                    sql += " AND timestamp >= $since";
-                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
-                }
-                
-                sql += " ORDER BY timestamp ASC";
-                cmd.CommandText = sql;
-                cmd.Parameters.AddWithValue("$cid", (long)characterId);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    result.Add((
-                        new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
-                        reader.GetInt64(1),
-                        reader.GetInt64(2),
-                        reader.GetInt64(3)
-                    ));
-                }
-            }
-            catch (Exception ex)
+            if (since.HasValue)
             {
-                LogDbError("GetInventoryValueHistory", ex);
+                sql += " AND timestamp >= $since";
+                cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
             }
-        }
 
-        return result;
+            sql += " ORDER BY timestamp ASC";
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$cid", (long)characterId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add((
+                    new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
+                    reader.GetInt64(1),
+                    reader.GetInt64(2),
+                    reader.GetInt64(3)
+                ));
+            }
+
+            return result;
+        });
     }
 
     public List<(ulong CharacterId, DateTime Timestamp, long TotalValue, long GilValue, long ItemValue)> GetAllInventoryValueHistory(DateTime? since = null)
     {
         var result = new List<(ulong, DateTime, long, long, long)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetAllInventoryValueHistory", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                var sql = @"
+            using var cmd = conn.CreateCommand();
+            var sql = @"
                     SELECT character_id, timestamp, total_value, gil_value, item_value
                     FROM inventory_value_history";
-                
-                if (since.HasValue)
-                {
-                    sql += " WHERE timestamp >= $since";
-                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
-                }
-                
-                sql += " ORDER BY timestamp ASC";
-                cmd.CommandText = sql;
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    result.Add((
-                        (ulong)reader.GetInt64(0),
-                        new DateTime(reader.GetInt64(1), DateTimeKind.Utc),
-                        reader.GetInt64(2),
-                        reader.GetInt64(3),
-                        reader.GetInt64(4)
-                    ));
-                }
-            }
-            catch (Exception ex)
+            if (since.HasValue)
             {
-                LogDbError("GetAllInventoryValueHistory", ex);
+                sql += " WHERE timestamp >= $since";
+                cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
             }
-        }
 
-        return result;
+            sql += " ORDER BY timestamp ASC";
+            cmd.CommandText = sql;
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add((
+                    (ulong)reader.GetInt64(0),
+                    new DateTime(reader.GetInt64(1), DateTimeKind.Utc),
+                    reader.GetInt64(2),
+                    reader.GetInt64(3),
+                    reader.GetInt64(4)
+                ));
+            }
+
+            return result;
+        });
     }
 
     /// <summary>
@@ -559,45 +449,35 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new List<(DateTime, long, long, long)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetAggregatedInventoryValueHistory", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                var sql = @"
+            using var cmd = conn.CreateCommand();
+            var sql = @"
                     SELECT timestamp, SUM(total_value), SUM(gil_value), SUM(item_value)
                     FROM inventory_value_history";
-                
-                if (since.HasValue)
-                {
-                    sql += " WHERE timestamp >= $since";
-                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
-                }
-                
-                sql += " GROUP BY timestamp ORDER BY timestamp ASC";
-                cmd.CommandText = sql;
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    result.Add((
-                        new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
-                        reader.GetInt64(1),
-                        reader.GetInt64(2),
-                        reader.GetInt64(3)
-                    ));
-                }
-            }
-            catch (Exception ex)
+            if (since.HasValue)
             {
-                LogDbError("GetAggregatedInventoryValueHistory", ex);
+                sql += " WHERE timestamp >= $since";
+                cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
             }
-        }
 
-        return result;
+            sql += " GROUP BY timestamp ORDER BY timestamp ASC";
+            cmd.CommandText = sql;
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add((
+                    new DateTime(reader.GetInt64(0), DateTimeKind.Utc),
+                    reader.GetInt64(1),
+                    reader.GetInt64(2),
+                    reader.GetInt64(3)
+                ));
+            }
+
+            return result;
+        });
     }
 
     /// <summary>
@@ -609,8 +489,11 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>Cached stats. Call RefreshInventoryValueStatsCacheAsync() to update from DB.</returns>
     public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStatsCached(ulong? characterId = null)
     {
-        // Note: characterId filtering is not supported in cached mode - returns global stats
-        // This is a deliberate trade-off for performance
+        // The in-memory cache only holds GLOBAL stats. A per-character request cannot be served
+        // from it, so fall through to a direct (uncached) query for that case.
+        if (characterId.HasValue)
+            return GetInventoryValueHistoryStats(characterId);
+
         lock (_inventoryValueStatsLock)
         {
             if (_inventoryValueStatsCacheValid)
@@ -662,35 +545,25 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public (long recordCount, long? maxTimestampTicks) GetInventoryValueHistoryStats(ulong? characterId = null)
     {
-        lock (_readLock)
+        return ExecuteRead<(long recordCount, long? maxTimestampTicks)>("GetInventoryValueHistoryStats", (0, null), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return (0, null);
+            using var cmd = conn.CreateCommand();
+            var whereClause = characterId.HasValue ? " WHERE character_id = $cid" : "";
+            cmd.CommandText = $"SELECT COUNT(*), MAX(timestamp) FROM inventory_value_history{whereClause}";
 
-            try
+            if (characterId.HasValue)
+                cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
+
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
             {
-                using var cmd = conn.CreateCommand();
-                var whereClause = characterId.HasValue ? " WHERE character_id = $cid" : "";
-                cmd.CommandText = $"SELECT COUNT(*), MAX(timestamp) FROM inventory_value_history{whereClause}";
-                
-                if (characterId.HasValue)
-                    cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
-
-                using var reader = cmd.ExecuteReader();
-                if (reader.Read())
-                {
-                    var count = reader.GetInt64(0);
-                    var maxTs = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
-                    return (count, maxTs);
-                }
+                var count = reader.GetInt64(0);
+                var maxTs = reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1);
+                return (count, maxTs);
             }
-            catch (Exception ex)
-            {
-                LogDbError("GetInventoryValueHistoryStats", ex);
-            }
-        }
 
-        return (0, null);
+            return (0, null);
+        });
     }
 
     /// <summary>
@@ -698,43 +571,32 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public bool ClearAllPriceData()
     {
-        lock (_writeLock)
+        return ExecuteWrite("ClearAllPriceData", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
+            return RunInTransaction(tx =>
             {
-                return RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
 
-                    cmd.CommandText = "DELETE FROM item_prices";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM item_prices";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM price_history";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM price_history";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM inventory_value_items";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM inventory_value_items";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM inventory_value_history";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM inventory_value_history";
+                cmd.ExecuteNonQuery();
 
-                    cmd.CommandText = "DELETE FROM sale_records";
-                    cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM sale_records";
+                cmd.ExecuteNonQuery();
 
-                    LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all price tracking data");
-                    return true;
-                });
-            }
-            catch (Exception ex)
-            {
-                LogDbError("ClearAllPriceData", ex);
-                return false;
-            }
-        }
+                LogService.Info(LogCategory.Database, "[KaleidoscopeDb] Cleared all price tracking data");
+                return true;
+            });
+        });
     }
 
 }

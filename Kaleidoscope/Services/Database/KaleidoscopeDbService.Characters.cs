@@ -16,39 +16,29 @@ public sealed partial class KaleidoscopeDbService
         var mapping = Kaleidoscope.Services.Resources.Adapters.LegacyVariableTranslator.Translate(variable, 0);
         if (mapping == null) return result;
 
-        lock (_readLock)
+        return ExecuteRead("GetAvailableCharacters", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                // For retainer-aggregate variables (ItemRetainer_) owner_id is the character,
-                // so we join owner_names to discover the real character owners.
-                // For all other variables, owner_id IS the character_id.
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            // For retainer-aggregate variables (ItemRetainer_) owner_id is the character,
+            // so we join owner_names to discover the real character owners.
+            // For all other variables, owner_id IS the character_id.
+            cmd.CommandText = @"
                     SELECT DISTINCT owner_id FROM resource_history
                     WHERE item_id = $iid AND container = $cont AND owner_id != 0
                     ORDER BY owner_id";
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = reader.GetInt64(0);
-                    if (cid != 0)
-                        result.Add((ulong)cid);
-                }
-            }
-            catch (Exception ex)
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                LogDbDebug("GetAvailableCharacters", ex);
+                var cid = reader.GetInt64(0);
+                if (cid != 0)
+                    result.Add((ulong)cid);
             }
-        }
 
-        return result;
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -65,14 +55,9 @@ public sealed partial class KaleidoscopeDbService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var result = new List<string>();
 
-        lock (_readLock)
+        return ExecuteRead("GetAllVariablesWithPrefix", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
+            using var cmd = conn.CreateCommand();
                 // Containers of interest (int values from Container enum):
                 //   PlayerAggregate   = item from player inventory  → "Item_{itemId}"
                 //   RetainerAggregate = item from retainer (agg)    → "ItemRetainer_{itemId}"
@@ -103,21 +88,16 @@ public sealed partial class KaleidoscopeDbService
                         _ => null,
                     };
 
-                    if (legacyName != null
-                        && legacyName.StartsWith(prefix, StringComparison.Ordinal)
-                        && seen.Add(legacyName))
-                        result.Add(legacyName);
-                }
-
-                result.Sort(StringComparer.Ordinal);
+                if (legacyName != null
+                    && legacyName.StartsWith(prefix, StringComparison.Ordinal)
+                    && seen.Add(legacyName))
+                    result.Add(legacyName);
             }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllVariablesWithPrefix", ex);
-            }
-        }
 
-        return result;
+            result.Sort(StringComparer.Ordinal);
+
+            return result;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -128,44 +108,22 @@ public sealed partial class KaleidoscopeDbService
     {
         if (string.IsNullOrEmpty(name)) return false;
 
-        lock (_writeLock)
+        return ExecuteWrite("SaveCharacterName", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
+            // Upsert only the name column; display_name and time_series_color are preserved on
+            // existing rows (and default to NULL on insert) — same result as the prior
+            // SELECT-then-INSERT-OR-REPLACE, matching the sibling upserts below.
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    INSERT INTO character_names(character_id, name)
+                    VALUES($c, $n)
+                    ON CONFLICT(character_id) DO UPDATE SET name = excluded.name";
+            cmd.Parameters.AddWithValue("$c", (long)characterId);
+            cmd.Parameters.AddWithValue("$n", name);
+            cmd.ExecuteNonQuery();
 
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                // First check if record exists to preserve display_name and time_series_color
-                cmd.CommandText = "SELECT display_name, time_series_color FROM character_names WHERE character_id = $c";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                string? existingDisplayName = null;
-                long? existingColor = null;
-                using (var reader = cmd.ExecuteReader())
-                {
-                    if (reader.Read())
-                    {
-                        existingDisplayName = reader.IsDBNull(0) ? null : reader.GetString(0);
-                        existingColor = reader.IsDBNull(1) ? null : reader.GetInt64(1);
-                    }
-                }
-                
-                cmd.CommandText = "INSERT OR REPLACE INTO character_names(character_id, name, display_name, time_series_color) VALUES($c, $n, $d, $col)";
-                cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                cmd.Parameters.AddWithValue("$n", name);
-                cmd.Parameters.AddWithValue("$d", existingDisplayName ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("$col", existingColor.HasValue ? (object)existingColor.Value : DBNull.Value);
-                cmd.ExecuteNonQuery();
-                
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("SaveCharacterName", ex);
-                return false;
-            }
-        }
+            return true;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -176,30 +134,19 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>True if successful.</returns>
     public bool SaveCharacterDisplayName(ulong characterId, string? displayName)
     {
-        lock (_writeLock)
+        return ExecuteWrite("SaveCharacterDisplayName", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
-                    INSERT INTO character_names(character_id, name, display_name) 
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    INSERT INTO character_names(character_id, name, display_name)
                     VALUES($c, NULL, $d)
                     ON CONFLICT(character_id) DO UPDATE SET display_name = $d";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                cmd.Parameters.AddWithValue("$d", string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName);
-                cmd.ExecuteNonQuery();
-                
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("SaveCharacterDisplayName", ex);
-                return false;
-            }
-        }
+            cmd.Parameters.AddWithValue("$c", (long)characterId);
+            cmd.Parameters.AddWithValue("$d", string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName);
+            cmd.ExecuteNonQuery();
+
+            return true;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -210,30 +157,19 @@ public sealed partial class KaleidoscopeDbService
     /// <returns>True if successful.</returns>
     public bool SaveCharacterTimeSeriesColor(ulong characterId, uint? color)
     {
-        lock (_writeLock)
+        return ExecuteWrite("SaveCharacterTimeSeriesColor", false, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return false;
-
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
-                    INSERT INTO character_names(character_id, name, display_name, time_series_color) 
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    INSERT INTO character_names(character_id, name, display_name, time_series_color)
                     VALUES($c, NULL, NULL, $col)
                     ON CONFLICT(character_id) DO UPDATE SET time_series_color = $col";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-                cmd.Parameters.AddWithValue("$col", color.HasValue ? (object)(long)color.Value : DBNull.Value);
-                cmd.ExecuteNonQuery();
-                
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("SaveCharacterTimeSeriesColor", ex);
-                return false;
-            }
-        }
+            cmd.Parameters.AddWithValue("$c", (long)characterId);
+            cmd.Parameters.AddWithValue("$col", color.HasValue ? (object)(long)color.Value : DBNull.Value);
+            cmd.ExecuteNonQuery();
+
+            return true;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -242,32 +178,8 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public string? GetCharacterName(ulong characterId)
     {
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT name, display_name FROM character_names WHERE character_id = $c";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-
-                using var reader = cmd.ExecuteReader();
-                if (reader.Read())
-                {
-                    var gameName = reader.IsDBNull(0) ? null : reader.GetString(0);
-                    var displayName = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    return displayName ?? gameName;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetCharacterName", ex);
-            }
-        }
-
-        return null;
+        var rows = ReadCharacterRows(characterId);
+        return rows.Count > 0 ? (rows[0].displayName ?? rows[0].gameName) : null;
     }
 
     /// <summary>
@@ -276,30 +188,8 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public uint? GetCharacterTimeSeriesColor(ulong characterId)
     {
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT time_series_color FROM character_names WHERE character_id = $c";
-                cmd.Parameters.AddWithValue("$c", (long)characterId);
-
-                using var reader = cmd.ExecuteReader();
-                if (reader.Read() && !reader.IsDBNull(0))
-                {
-                    return (uint)reader.GetInt64(0);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetCharacterTimeSeriesColor", ex);
-            }
-        }
-
-        return null;
+        var rows = ReadCharacterRows(characterId);
+        return rows.Count > 0 ? rows[0].timeSeriesColor : null;
     }
 
     /// <summary>
@@ -309,33 +199,9 @@ public sealed partial class KaleidoscopeDbService
     public List<(ulong characterId, string? name)> GetAllCharacterNames()
     {
         var result = new List<(ulong, string?)>();
-
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = reader.GetInt64(0);
-                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
-                    if (cid != 0)
-                        result.Add(((ulong)cid, displayName ?? gameName));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllCharacterNames", ex);
-            }
-        }
-
+        foreach (var (cid, gameName, displayName, _) in ReadCharacterRows())
+            if (cid != 0)
+                result.Add((cid, displayName ?? gameName));
         return result;
     }
 
@@ -346,33 +212,9 @@ public sealed partial class KaleidoscopeDbService
     public List<(ulong characterId, string? gameName, string? displayName)> GetAllCharacterNamesExtended()
     {
         var result = new List<(ulong, string?, string?)>();
-
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = reader.GetInt64(0);
-                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
-                    if (cid != 0)
-                        result.Add(((ulong)cid, gameName, displayName));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllCharacterNamesExtended", ex);
-            }
-        }
-
+        foreach (var (cid, gameName, displayName, _) in ReadCharacterRows())
+            if (cid != 0)
+                result.Add((cid, gameName, displayName));
         return result;
     }
 
@@ -383,34 +225,9 @@ public sealed partial class KaleidoscopeDbService
     public List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> GetAllCharacterDataExtended()
     {
         var result = new List<(ulong, string?, string?, uint?)>();
-
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name, display_name, time_series_color FROM character_names";
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = reader.GetInt64(0);
-                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
-                    uint? timeSeriesColor = reader.IsDBNull(3) ? null : (uint)reader.GetInt64(3);
-                    if (cid != 0)
-                        result.Add(((ulong)cid, gameName, displayName, timeSeriesColor));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllCharacterDataExtended", ex);
-            }
-        }
-
+        foreach (var row in ReadCharacterRows())
+            if (row.characterId != 0)
+                result.Add(row);
         return result;
     }
 
@@ -421,34 +238,45 @@ public sealed partial class KaleidoscopeDbService
     public IReadOnlyDictionary<ulong, string?> GetAllCharacterNamesDict()
     {
         var result = new Dictionary<ulong, string?>();
-
-        lock (_readLock)
-        {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT character_id, name, display_name FROM character_names";
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    var cid = reader.GetInt64(0);
-                    var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
-                    if (cid != 0)
-                        result[(ulong)cid] = displayName ?? gameName;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogDbDebug("GetAllCharacterNamesDict", ex);
-            }
-        }
-
+        foreach (var (cid, gameName, displayName, _) in ReadCharacterRows())
+            if (cid != 0)
+                result[cid] = displayName ?? gameName;
         return result;
+    }
+
+    /// <summary>
+    /// Shared full-row reader for character_names. Returns raw rows (NOT filtered by
+    /// character_id == 0 — the public projections apply that filter). When a specific
+    /// <paramref name="characterId"/> is given the lookup is a single indexed primary-key read.
+    /// </summary>
+    private List<(ulong characterId, string? gameName, string? displayName, uint? timeSeriesColor)> ReadCharacterRows(ulong? characterId = null)
+    {
+        var rows = new List<(ulong, string?, string?, uint?)>();
+        return ExecuteRead("ReadCharacterRows", rows, conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            if (characterId.HasValue)
+            {
+                cmd.CommandText = "SELECT character_id, name, display_name, time_series_color FROM character_names WHERE character_id = $c";
+                cmd.Parameters.AddWithValue("$c", (long)characterId.Value);
+            }
+            else
+            {
+                cmd.CommandText = "SELECT character_id, name, display_name, time_series_color FROM character_names";
+            }
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var cid = (ulong)reader.GetInt64(0);
+                var gameName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var displayName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                uint? color = reader.IsDBNull(3) ? null : (uint)reader.GetInt64(3);
+                rows.Add((cid, gameName, displayName, color));
+            }
+
+            return rows;
+        }, debugLog: true);
     }
 
     /// <summary>
@@ -460,20 +288,15 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int DeleteAllCharacterData(ulong characterId)
     {
-        lock (_writeLock)
+        return ExecuteWrite("DeleteAllCharacterData", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
+            var totalDeleted = 0;
 
-            try
+            RunInTransaction(tx =>
             {
-                var totalDeleted = 0;
-
-                RunInTransaction(tx =>
-                {
-                    using var cmd = _connection!.CreateCommand();
-                    cmd.Transaction = tx;
-                    cmd.Parameters.AddWithValue("$c", (long)characterId);
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.Parameters.AddWithValue("$c", (long)characterId);
 
                     // Unified resources tables — character-owned rows
                     cmd.CommandText = "DELETE FROM resource_history WHERE owner_id = $c";
@@ -514,23 +337,17 @@ public sealed partial class KaleidoscopeDbService
                             WHERE id IN (SELECT id FROM inventory_value_history WHERE character_id = $c LIMIT 100)";
                         batchDeleted = cmd.ExecuteNonQuery();
                         totalDeleted += batchDeleted;
-                    } while (batchDeleted > 0);
-                });
+                } while (batchDeleted > 0);
+            });
 
-                if (totalDeleted > 0)
-                {
-                    LogService.Info(LogCategory.Database,
-                        $"[KaleidoscopeDb] Deleted all data for character {characterId}: {totalDeleted} rows removed");
-                }
-
-                return totalDeleted;
-            }
-            catch (Exception ex)
+            if (totalDeleted > 0)
             {
-                LogDbError("DeleteAllCharacterData", ex);
-                return 0;
+                LogService.Info(LogCategory.Database,
+                    $"[KaleidoscopeDb] Deleted all data for character {characterId}: {totalDeleted} rows removed");
             }
-        }
+
+            return totalDeleted;
+        });
     }
 
 }

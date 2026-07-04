@@ -13,32 +13,23 @@ public sealed partial class KaleidoscopeDbService
     public void UpsertOwnerName(ulong ownerId, Kaleidoscope.Models.Resources.OwnerKind ownerKind, string name, string? world = null)
     {
         if (ownerId == 0 || string.IsNullOrEmpty(name)) return;
-        lock (_writeLock)
+        ExecuteWrite("UpsertOwnerName", conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return;
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     INSERT INTO owner_names (owner_id, owner_kind, name, world, updated_at)
                     VALUES ($oid, $okind, $n, $w, $ts)
                     ON CONFLICT(owner_id, owner_kind) DO UPDATE SET
                         name       = excluded.name,
                         world      = COALESCE(excluded.world, owner_names.world),
                         updated_at = excluded.updated_at;";
-                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
-                cmd.Parameters.AddWithValue("$okind", (int)ownerKind);
-                cmd.Parameters.AddWithValue("$n", name);
-                cmd.Parameters.AddWithValue("$w", (object?)world ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.Ticks);
-                cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("UpsertOwnerName", ex);
-            }
-        }
+            cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+            cmd.Parameters.AddWithValue("$okind", (int)ownerKind);
+            cmd.Parameters.AddWithValue("$n", name);
+            cmd.Parameters.AddWithValue("$w", (object?)world ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.Ticks);
+            cmd.ExecuteNonQuery();
+        });
     }
 
     /// <summary>
@@ -49,17 +40,11 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventoryCachesFromResources()
     {
-        var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
-
-        lock (_readLock)
+        return ExecuteRead("GetAllInventoryCachesFromResources", new List<InventoryCacheEntry>(), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return new List<InventoryCacheEntry>();
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT r.owner_id, r.owner_kind, r.parent_owner_id, r.container, r.item_id, r.slot,
                            r.quantity, r.flags, r.spiritbond, r.collectability, r.condition, r.glamour_id, r.updated_at,
                            n.name, n.world
@@ -68,16 +53,10 @@ public sealed partial class KaleidoscopeDbService
                     WHERE (r.container < 40000 OR (r.container = 90000 AND r.item_id = $gilId))
                       AND NOT (r.owner_kind = 1 AND r.owner_id = 0)
                     ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
-                cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
-                ReadResourcesIntoEntries(cmd, result);
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetAllInventoryCachesFromResources", ex);
-            }
-        }
-
-        return new List<InventoryCacheEntry>(result.Values);
+            cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
+            ReadResourcesIntoEntries(cmd, result);
+            return new List<InventoryCacheEntry>(result.Values);
+        });
     }
 
     /// <summary>
@@ -86,17 +65,11 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public List<InventoryCacheEntry> GetAllInventoryCachesFromResources(ulong characterId)
     {
-        var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
-
-        lock (_readLock)
+        return ExecuteRead("GetAllInventoryCachesFromResources(characterId)", new List<InventoryCacheEntry>(), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return new List<InventoryCacheEntry>();
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            var result = new Dictionary<(ulong OwnerId, OwnerKind Kind), InventoryCacheEntry>();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT r.owner_id, r.owner_kind, r.parent_owner_id, r.container, r.item_id, r.slot,
                            r.quantity, r.flags, r.spiritbond, r.collectability, r.condition, r.glamour_id, r.updated_at,
                            n.name, n.world
@@ -106,17 +79,11 @@ public sealed partial class KaleidoscopeDbService
                       AND (r.owner_id = $cid OR r.parent_owner_id = $cid)
                       AND NOT (r.owner_kind = 1 AND r.owner_id = 0)
                     ORDER BY r.owner_kind, r.owner_id, r.container, r.slot";
-                cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
-                cmd.Parameters.AddWithValue("$cid", (long)characterId);
-                ReadResourcesIntoEntries(cmd, result);
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetAllInventoryCachesFromResources(characterId)", ex);
-            }
-        }
-
-        return new List<InventoryCacheEntry>(result.Values);
+            cmd.Parameters.AddWithValue("$gilId", (long)Kaleidoscope.Services.Resources.ResourceCatalog.GilItemId);
+            cmd.Parameters.AddWithValue("$cid", (long)characterId);
+            ReadResourcesIntoEntries(cmd, result);
+            return new List<InventoryCacheEntry>(result.Values);
+        });
     }
 
     /// <summary>
@@ -190,29 +157,18 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long GetTotalRetainerItemFromResources(ulong characterId, uint itemId)
     {
-        lock (_readLock)
+        return ExecuteRead("GetTotalRetainerItemFromResources", 0L, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT COALESCE(SUM(quantity), 0)
                     FROM resources
                     WHERE owner_kind = 1 AND parent_owner_id = $cid AND item_id = $iid";
-                cmd.Parameters.AddWithValue("$cid", (long)characterId);
-                cmd.Parameters.AddWithValue("$iid", (long)itemId);
-                var v = cmd.ExecuteScalar();
-                return v != null && v != DBNull.Value ? (long)v : 0;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetTotalRetainerItemFromResources", ex);
-                return 0;
-            }
-        }
+            cmd.Parameters.AddWithValue("$cid", (long)characterId);
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            var v = cmd.ExecuteScalar();
+            return v != null && v != DBNull.Value ? (long)v : 0;
+        });
     }
 
     /// <summary>
@@ -222,36 +178,27 @@ public sealed partial class KaleidoscopeDbService
     public Dictionary<uint, long> GetItemCountSummaryFromResources(ulong? characterId = null, uint? itemId = null)
     {
         var result = new Dictionary<uint, long>();
-        lock (_readLock)
+        return ExecuteRead("GetItemCountSummaryFromResources", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
+            using var cmd = conn.CreateCommand();
+            var sql = "SELECT item_id, SUM(quantity) FROM resources WHERE container < 40000";
+            if (characterId.HasValue)
             {
-                using var cmd = conn.CreateCommand();
-                var sql = "SELECT item_id, SUM(quantity) FROM resources WHERE container < 40000";
-                if (characterId.HasValue)
-                {
-                    sql += " AND (owner_id = $cid OR parent_owner_id = $cid)";
-                    cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
-                }
-                if (itemId.HasValue)
-                {
-                    sql += " AND item_id = $iid";
-                    cmd.Parameters.AddWithValue("$iid", (long)itemId.Value);
-                }
-                sql += " GROUP BY item_id";
-                cmd.CommandText = sql;
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                    result[(uint)r.GetInt64(0)] = r.GetInt64(1);
+                sql += " AND (owner_id = $cid OR parent_owner_id = $cid)";
+                cmd.Parameters.AddWithValue("$cid", (long)characterId.Value);
             }
-            catch (Exception ex)
+            if (itemId.HasValue)
             {
-                LogDbError("GetItemCountSummaryFromResources", ex);
+                sql += " AND item_id = $iid";
+                cmd.Parameters.AddWithValue("$iid", (long)itemId.Value);
             }
-        }
-        return result;
+            sql += " GROUP BY item_id";
+            cmd.CommandText = sql;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result[(uint)r.GetInt64(0)] = r.GetInt64(1);
+            return result;
+        });
     }
 
     /// <summary>
@@ -262,35 +209,26 @@ public sealed partial class KaleidoscopeDbService
     public List<(long Timestamp, long Value)> GetHistoryPoints(uint itemId, ulong ownerId, int container, DateTime? since = null)
     {
         var result = new List<(long, long)>();
-        lock (_readLock)
+        return ExecuteRead("GetHistoryPoints", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                var sql = @"
+            using var cmd = conn.CreateCommand();
+            var sql = @"
                     SELECT timestamp, quantity FROM resource_history
                     WHERE item_id = $iid AND owner_id = $oid AND container = $cont";
-                cmd.Parameters.AddWithValue("$iid", (long)itemId);
-                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
-                cmd.Parameters.AddWithValue("$cont", container);
-                if (since.HasValue)
-                {
-                    sql += " AND timestamp >= $since";
-                    cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
-                }
-                sql += " ORDER BY timestamp";
-                cmd.CommandText = sql;
-                using var r = cmd.ExecuteReader();
-                while (r.Read()) result.Add((r.GetInt64(0), r.GetInt64(1)));
-            }
-            catch (Exception ex)
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+            cmd.Parameters.AddWithValue("$cont", container);
+            if (since.HasValue)
             {
-                LogDbError("GetHistoryPoints", ex);
+                sql += " AND timestamp >= $since";
+                cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
             }
-        }
-        return result;
+            sql += " ORDER BY timestamp";
+            cmd.CommandText = sql;
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) result.Add((r.GetInt64(0), r.GetInt64(1)));
+            return result;
+        });
     }
 
     /// <summary>
@@ -299,29 +237,19 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public long? GetLatestHistoryValue(uint itemId, ulong ownerId, int container)
     {
-        lock (_readLock)
+        return ExecuteRead<long?>("GetLatestHistoryValue", null, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return null;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT quantity FROM resource_history
                     WHERE item_id = $iid AND owner_id = $oid AND container = $cont
                     ORDER BY timestamp DESC LIMIT 1";
-                cmd.Parameters.AddWithValue("$iid", (long)itemId);
-                cmd.Parameters.AddWithValue("$oid", (long)ownerId);
-                cmd.Parameters.AddWithValue("$cont", container);
-                var v = cmd.ExecuteScalar();
-                return v != null && v != DBNull.Value ? (long?)(long)v : null;
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetLatestHistoryValue", ex);
-                return null;
-            }
-        }
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            cmd.Parameters.AddWithValue("$oid", (long)ownerId);
+            cmd.Parameters.AddWithValue("$cont", container);
+            var v = cmd.ExecuteScalar();
+            return v != null && v != DBNull.Value ? (long?)(long)v : null;
+        });
     }
 
     /// <summary>
@@ -332,23 +260,13 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int PurgeStaleRetainerGilRows()
     {
-        lock (_writeLock)
+        return ExecuteWrite("PurgeStaleRetainerGilRows", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
-            try
-            {
-                using var cmd = _connection.CreateCommand();
-                cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND container = 90000 AND item_id = $gilId";
-                cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
-                return cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                LogDbError("PurgeStaleRetainerGilRows", ex);
-                return 0;
-            }
-        }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND container = 90000 AND item_id = $gilId";
+            cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
+            return cmd.ExecuteNonQuery();
+        });
     }
 
     /// <summary>
@@ -357,31 +275,21 @@ public sealed partial class KaleidoscopeDbService
     /// </summary>
     public int PurgeZeroOwnerRetainerRows()
     {
-        lock (_writeLock)
+        return ExecuteWrite("PurgeZeroOwnerRetainerRows", 0, conn =>
         {
-            EnsureConnection();
-            if (_connection == null) return 0;
-            try
+            int removed = 0;
+            using (var cmd = conn.CreateCommand())
             {
-                int removed = 0;
-                using (var cmd = _connection.CreateCommand())
-                {
-                    cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND owner_id = 0";
-                    removed += cmd.ExecuteNonQuery();
-                }
-                using (var cmd = _connection.CreateCommand())
-                {
-                    cmd.CommandText = @"DELETE FROM resource_history WHERE owner_kind = 1 AND owner_id = 0";
-                    removed += cmd.ExecuteNonQuery();
-                }
-                return removed;
+                cmd.CommandText = @"DELETE FROM resources WHERE owner_kind = 1 AND owner_id = 0";
+                removed += cmd.ExecuteNonQuery();
             }
-            catch (Exception ex)
+            using (var cmd = conn.CreateCommand())
             {
-                LogDbError("PurgeZeroOwnerRetainerRows", ex);
-                return 0;
+                cmd.CommandText = @"DELETE FROM resource_history WHERE owner_kind = 1 AND owner_id = 0";
+                removed += cmd.ExecuteNonQuery();
             }
-        }
+            return removed;
+        });
     }
 
     /// <summary>
@@ -392,21 +300,16 @@ public sealed partial class KaleidoscopeDbService
     public int LoadAllResourcesInto(Kaleidoscope.Services.Resources.ResourceStore store)
     {
         var loaded = 0;
-        lock (_readLock)
+        return ExecuteRead("LoadAllResourcesInto", loaded, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return 0;
-
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT owner_id, owner_kind, container, item_id, slot,
                            quantity, flags, spiritbond, collectability, condition, glamour_id, updated_at
                     FROM resources";
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                {
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
                     var resource = new Kaleidoscope.Models.Resources.Resource
                     {
                         Key = new Kaleidoscope.Models.Resources.ResourceKey
@@ -425,16 +328,11 @@ public sealed partial class KaleidoscopeDbService
                         GlamourId = (uint)r.GetInt64(10),
                         UpdatedAt = new DateTime(r.GetInt64(11), DateTimeKind.Utc),
                     };
-                    store.ApplyWithAggregate(resource);
-                    loaded++;
-                }
+                store.ApplyWithAggregate(resource);
+                loaded++;
             }
-            catch (Exception ex)
-            {
-                LogDbError("LoadAllResourcesInto", ex);
-            }
-        }
-        return loaded;
+            return loaded;
+        });
     }
 
     /// <summary>
@@ -445,14 +343,10 @@ public sealed partial class KaleidoscopeDbService
     public Dictionary<ulong, long> GetRetainerGilPerCharacter()
     {
         var result = new Dictionary<ulong, long>();
-        lock (_readLock)
+        return ExecuteRead("GetRetainerGilPerCharacter", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT parent_owner_id, COALESCE(SUM(quantity), 0)
                     FROM resources
                     WHERE owner_kind = 1
@@ -460,19 +354,14 @@ public sealed partial class KaleidoscopeDbService
                       AND item_id = $gilId
                       AND parent_owner_id != 0
                     GROUP BY parent_owner_id";
-                cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                {
-                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
-                }
-            }
-            catch (Exception ex)
+            cmd.Parameters.AddWithValue("$gilId", (long)Resources.ResourceCatalog.GilItemId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
             {
-                LogDbError("GetRetainerGilPerCharacter", ex);
+                result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
             }
-        }
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -486,17 +375,11 @@ public sealed partial class KaleidoscopeDbService
         if (ids.Count == 0) return new Dictionary<ulong, long>();
 
         var result = new Dictionary<ulong, long>();
-        lock (_readLock)
+        return ExecuteRead("GetItemSumPerCharacterIncludingRetainers", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                // Build IN clause
-                var inClause = string.Join(",", ids);
-
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $@"
+            using var cmd = conn.CreateCommand();
+            var inClause = AddParameterizedInClause(cmd, ids);
+            cmd.CommandText = $@"
                     SELECT
                         CASE owner_kind WHEN 0 THEN owner_id ELSE parent_owner_id END AS character_id,
                         COALESCE(SUM(quantity), 0) AS total
@@ -505,18 +388,13 @@ public sealed partial class KaleidoscopeDbService
                       AND (owner_kind = 0 OR (owner_kind = 1 AND parent_owner_id != 0))
                     GROUP BY character_id
                     HAVING character_id != 0";
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                {
-                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
-                }
-            }
-            catch (Exception ex)
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
             {
-                LogDbError("GetItemSumPerCharacterIncludingRetainers", ex);
+                result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
             }
-        }
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -534,63 +412,44 @@ public sealed partial class KaleidoscopeDbService
     {
         var result = new Dictionary<ulong, long>();
 
-        lock (_readLock)
+        return ExecuteRead("GetFreeCompanyCreditsPerCharacter", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT owner_id, COALESCE(SUM(quantity), 0)
                     FROM resources
                     WHERE owner_kind = $okind AND item_id = $iid AND container = $cont
                     GROUP BY owner_id";
-                cmd.Parameters.AddWithValue("$okind", (int)Kaleidoscope.Models.Resources.OwnerKind.FreeCompany);
-                cmd.Parameters.AddWithValue("$iid", (long)Resources.ResourceCatalog.FCCreditsItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)Kaleidoscope.Models.Resources.Container.SpecialFreeCompany);
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetFreeCompanyCreditsPerCharacter", ex);
-            }
-        }
-
-        return result;
+            cmd.Parameters.AddWithValue("$okind", (int)Kaleidoscope.Models.Resources.OwnerKind.FreeCompany);
+            cmd.Parameters.AddWithValue("$iid", (long)Resources.ResourceCatalog.FCCreditsItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)Kaleidoscope.Models.Resources.Container.SpecialFreeCompany);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+            return result;
+        });
     }
 
     public Dictionary<ulong, long> GetItemSumPerCharacterPlayerOnly(uint itemId, int container)
     {
         var result = new Dictionary<ulong, long>();
-        lock (_readLock)
+        return ExecuteRead("GetItemSumPerCharacterPlayerOnly", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT owner_id, COALESCE(SUM(quantity), 0)
                     FROM resources
                     WHERE owner_kind = 0 AND item_id = $iid AND container = $cont
                     GROUP BY owner_id";
-                cmd.Parameters.AddWithValue("$iid", (long)itemId);
-                cmd.Parameters.AddWithValue("$cont", container);
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                {
-                    result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
-                }
-            }
-            catch (Exception ex)
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            cmd.Parameters.AddWithValue("$cont", container);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
             {
-                LogDbError("GetItemSumPerCharacterPlayerOnly", ex);
+                result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
             }
-        }
-        return result;
+            return result;
+        });
     }
 
     /// <summary>
@@ -605,18 +464,13 @@ public sealed partial class KaleidoscopeDbService
         var result = new List<(string, ulong)>();
         var seen   = new HashSet<(string, ulong)>();
 
-        lock (_readLock)
+        return ExecuteRead("GetSeriesByVariablePrefixSuffix", result, conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return result;
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
                     SELECT DISTINCT item_id, owner_id, container FROM resource_history
                     WHERE owner_id != 0";
-                cmd.CommandText = cmd.CommandText; // force assignment (no-op; keeps pattern)
-                using var r = cmd.ExecuteReader();
+            using var r = cmd.ExecuteReader();
                 while (r.Read())
                 {
                     var itemId  = (uint)r.GetInt64(0);
@@ -648,12 +502,8 @@ public sealed partial class KaleidoscopeDbService
                     if (seen.Add((varName, ownerId)))
                         result.Add((varName, ownerId));
                 }
-            }
-            catch (Exception ex)
-            {
-                LogDbError("GetSeriesByVariablePrefixSuffix", ex);
-            }
-        }
-        return result;
+
+            return result;
+        });
     }
 }

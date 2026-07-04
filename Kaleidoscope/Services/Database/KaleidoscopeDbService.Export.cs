@@ -19,57 +19,47 @@ public sealed partial class KaleidoscopeDbService
         var mapping = LegacyVariableTranslator.Translate(variable, resolvedOwnerId);
         if (mapping == null) return sb.ToString();
 
-        lock (_readLock)
+        return ExecuteRead("ExportToCsv", sb.ToString(), conn =>
         {
-            var conn = _readConnection ?? _connection;
-            if (conn == null) return sb.ToString();
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
+            cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
 
-            try
+            if (characterId == null || characterId == 0)
             {
-                using var cmd = conn.CreateCommand();
-                cmd.Parameters.AddWithValue("$iid", (long)mapping.Value.ItemId);
-                cmd.Parameters.AddWithValue("$cont", (int)mapping.Value.Container);
-
-                if (characterId == null || characterId == 0)
-                {
-                    sb.AppendLine("timestamp_utc,quantity,owner_id");
-                    cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
+                sb.AppendLine("timestamp_utc,quantity,owner_id");
+                cmd.CommandText = @"SELECT timestamp, quantity, owner_id FROM resource_history
                         WHERE item_id = $iid AND container = $cont
                         ORDER BY timestamp ASC";
 
-                    using var reader = cmd.ExecuteReader();
-                    while (reader.Read())
-                    {
-                        var ticks = reader.GetInt64(0);
-                        var value = reader.GetInt64(1);
-                        var cid = reader.GetInt64(2);
-                        sb.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{value},{cid}");
-                    }
-                }
-                else
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
                 {
-                    sb.AppendLine("timestamp_utc,quantity");
-                    cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
+                    var ticks = reader.GetInt64(0);
+                    var value = reader.GetInt64(1);
+                    var cid = reader.GetInt64(2);
+                    sb.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{value},{cid}");
+                }
+            }
+            else
+            {
+                sb.AppendLine("timestamp_utc,quantity");
+                cmd.CommandText = @"SELECT timestamp, quantity FROM resource_history
                         WHERE item_id = $iid AND container = $cont AND owner_id = $oid
                         ORDER BY timestamp ASC";
-                    cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
+                cmd.Parameters.AddWithValue("$oid", (long)mapping.Value.OwnerId);
 
-                    using var reader = cmd.ExecuteReader();
-                    while (reader.Read())
-                    {
-                        var ticks = reader.GetInt64(0);
-                        var value = reader.GetInt64(1);
-                        sb.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{value}");
-                    }
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var ticks = reader.GetInt64(0);
+                    var value = reader.GetInt64(1);
+                    sb.AppendLine($"{new DateTime(ticks, DateTimeKind.Utc):O},{value}");
                 }
             }
-            catch (Exception ex)
-            {
-                LogDbError("ExportToCsv", ex);
-            }
-        }
 
-        return sb.ToString();
+            return sb.ToString();
+        });
     }
 
 }

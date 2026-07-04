@@ -155,75 +155,138 @@ public sealed partial class KaleidoscopeDbService
 
         try
         {
-            // 1. Stop checkpoint timer
-            _checkpointTimer?.Dispose();
-            _checkpointTimer = null;
+            // 1. Stop connections + timer and clear pools so the file is unlocked for moves.
+            CloseConnectionsForRepair();
 
-            // 2. Prevent concurrent threads from reopening connections during repair.
-            //    Background workers (UniversalisService, CurrencyTrackerService) will
-            //    acquire _writeLock and call EnsureConnection the instant we release it.
-            //    The _repairing flag makes EnsureConnection/EnsureReadConnection return
-            //    immediately, keeping the file unlocked for File.Move operations.
-            _repairing = true;
+            // 2. Dump salvageable rows into a fresh recovery database.
+            var (tablesRecovered, tablesFailed, details) = CopyRecoveredDatabase(_dbPath, recoveredPath);
 
-            // 3. Close both connections, THEN clear their pool entries.
-            //    Order matters: Close() returns the handle to the pool, then ClearPool()
-            //    evicts it. If ClearPool is called first, Close() just puts it back.
-            lock (_writeLock)
+            // 3. Swap the corrupt file out and the recovered file in.
+            SwapRecoveredFiles(recoveredPath, corruptBackupPath);
+
+            // 4. Reopen connections, migrate, and clear the corruption flag.
+            ReopenAfterRepair();
+
+            var message = $"Recovery complete: {tablesRecovered} tables recovered, {tablesFailed} failed. Corrupt DB saved to {Path.GetFileName(corruptBackupPath)}\n{details}";
+            LogService.Warning(message);
+            return (true, message);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Database repair failed: {ex.Message}", ex);
+
+            // Try to reopen the original file if still available
+            try
             {
-                lock (_readLock)
-                {
-                    if (_readConnection != null)
-                    {
-                        _readConnection.Close();
-                        _readConnection.Dispose();
-                        SqliteConnection.ClearPool(_readConnection);
-                        _readConnection = null;
-                    }
+                // Clean up partial recovery file and its WAL/SHM siblings.
+                // With Pooling=false on repair connections, handles are already released.
+                DeleteFileQuiet(recoveredPath);
+                DeleteFileQuiet(recoveredPath + "-wal");
+                DeleteFileQuiet(recoveredPath + "-shm");
 
-                    if (_connection != null)
-                    {
-                        _connection.Close();
-                        _connection.Dispose();
-                        SqliteConnection.ClearPool(_connection);
-                        _connection = null;
-                    }
-                }
+                // If original was moved, move it back
+                if (!File.Exists(_dbPath) && File.Exists(corruptBackupPath))
+                    File.Move(corruptBackupPath, _dbPath);
+
+                _repairing = false;
+                EnsureConnection();
+            }
+            catch (Exception reopenEx)
+            {
+                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Failed to restore connection after repair failure: {reopenEx.Message}", reopenEx);
+            }
+            finally
+            {
+                // Ensure _repairing is always cleared so the DB isn't permanently locked out
+                _repairing = false;
             }
 
-            // Force GC to finalize any leaked native sqlite3 handles that might
-            // keep the file locked even after pool clearing (especially on large DBs).
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
+            return (false, $"Repair failed: {ex.Message}");
+        }
+    }
 
-            // 3. Open old DB in read-only mode with ignore-corruption workarounds.
-            //    Pooling=false ensures Close()/Dispose() immediately releases OS file handles
-            //    instead of returning them to the connection pool. This is critical —
-            //    without it, File.Move/Delete below will fail with "file in use" on Windows.
-            var oldCsb = new SqliteConnectionStringBuilder
+    /// <summary>
+    /// Stops the checkpoint timer, sets the _repairing guard, and closes + pool-clears both
+    /// connections so the database file is fully unlocked for the subsequent File.Move operations.
+    /// </summary>
+    private void CloseConnectionsForRepair()
+    {
+        // 1. Stop checkpoint timer
+        _checkpointTimer?.Dispose();
+        _checkpointTimer = null;
+
+        // 2. Prevent concurrent threads from reopening connections during repair.
+        //    Background workers (UniversalisService, CurrencyTrackerService) will
+        //    acquire _writeLock and call EnsureConnection the instant we release it.
+        //    The _repairing flag makes EnsureConnection/EnsureReadConnection return
+        //    immediately, keeping the file unlocked for File.Move operations.
+        _repairing = true;
+
+        // 3. Close both connections, THEN clear their pool entries.
+        //    Order matters: Close() returns the handle to the pool, then ClearPool()
+        //    evicts it. If ClearPool is called first, Close() just puts it back.
+        lock (_writeLock)
+        {
+            lock (_readLock)
             {
-                DataSource = _dbPath,
-                Mode = SqliteOpenMode.ReadOnly,
-                Pooling = false
-            };
+                if (_readConnection != null)
+                {
+                    _readConnection.Close();
+                    _readConnection.Dispose();
+                    SqliteConnection.ClearPool(_readConnection);
+                    _readConnection = null;
+                }
 
-            var newCsb = new SqliteConnectionStringBuilder
-            {
-                DataSource = recoveredPath,
-                Mode = SqliteOpenMode.ReadWriteCreate,
-                Pooling = false
-            };
+                if (_connection != null)
+                {
+                    _connection.Close();
+                    _connection.Dispose();
+                    SqliteConnection.ClearPool(_connection);
+                    _connection = null;
+                }
+            }
+        }
 
-            int tablesRecovered = 0;
-            int tablesFailed = 0;
-            var details = new StringBuilder();
+        // Force GC to finalize any leaked native sqlite3 handles that might
+        // keep the file locked even after pool clearing (especially on large DBs).
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
 
-            using (var oldConn = new SqliteConnection(oldCsb.ToString()))
-            using (var newConn = new SqliteConnection(newCsb.ToString()))
-            {
-                oldConn.Open();
-                newConn.Open();
+    /// <summary>
+    /// Opens the (corrupt) source database read-only and copies every salvageable table, row, and
+    /// index into a fresh recovery database at <paramref name="destPath"/>. Individual corrupt rows
+    /// are skipped. Returns (tablesRecovered, tablesFailed, details).
+    /// </summary>
+    private (int TablesRecovered, int TablesFailed, string Details) CopyRecoveredDatabase(string sourcePath, string destPath)
+    {
+        // Pooling=false ensures Close()/Dispose() immediately releases OS file handles
+        // instead of returning them to the connection pool. This is critical —
+        // without it, File.Move/Delete below will fail with "file in use" on Windows.
+        var oldCsb = new SqliteConnectionStringBuilder
+        {
+            DataSource = sourcePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        };
+
+        var newCsb = new SqliteConnectionStringBuilder
+        {
+            DataSource = destPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false
+        };
+
+        int tablesRecovered = 0;
+        int tablesFailed = 0;
+        var details = new StringBuilder();
+
+        using (var oldConn = new SqliteConnection(oldCsb.ToString()))
+        using (var newConn = new SqliteConnection(newCsb.ToString()))
+        {
+            oldConn.Open();
+            newConn.Open();
 
                 // Set PRAGMAs on the new database
                 ExecutePragma(newConn, "PRAGMA journal_mode = WAL");
@@ -345,71 +408,50 @@ public sealed partial class KaleidoscopeDbService
                 oldConn.Close();
             }
 
-            // 4. Swap files: rename corrupt → .corrupt.bak, rename recovery → original.
-            //    Use retry loop because Windows may briefly hold file handles after close.
-            MoveFileWithRetry(_dbPath, corruptBackupPath);
+            return (tablesRecovered, tablesFailed, details.ToString());
+    }
 
-            // Also move WAL/SHM files if they exist
-            var walPath = _dbPath + "-wal";
-            var shmPath = _dbPath + "-shm";
-            if (File.Exists(walPath))
-                MoveFileWithRetry(walPath, corruptBackupPath + "-wal");
-            if (File.Exists(shmPath))
-                MoveFileWithRetry(shmPath, corruptBackupPath + "-shm");
+    /// <summary>
+    /// Moves the corrupt database (and any WAL/SHM siblings) aside to the .corrupt.bak name, then
+    /// moves the recovered database into the original path. Uses retry loops for transient Windows
+    /// file locks that can briefly persist after SQLite handles are released.
+    /// </summary>
+    private void SwapRecoveredFiles(string recoveredPath, string corruptBackupPath)
+    {
+        // Swap files: rename corrupt → .corrupt.bak, rename recovery → original.
+        MoveFileWithRetry(_dbPath!, corruptBackupPath);
 
-            // Delete leftover recovery WAL/SHM (should be empty after TRUNCATE checkpoint above)
-            DeleteFileQuiet(recoveredPath + "-wal");
-            DeleteFileQuiet(recoveredPath + "-shm");
+        // Also move WAL/SHM files if they exist
+        var walPath = _dbPath + "-wal";
+        var shmPath = _dbPath + "-shm";
+        if (File.Exists(walPath))
+            MoveFileWithRetry(walPath, corruptBackupPath + "-wal");
+        if (File.Exists(shmPath))
+            MoveFileWithRetry(shmPath, corruptBackupPath + "-shm");
 
-            MoveFileWithRetry(recoveredPath, _dbPath);
+        // Delete leftover recovery WAL/SHM (should be empty after TRUNCATE checkpoint above)
+        DeleteFileQuiet(recoveredPath + "-wal");
+        DeleteFileQuiet(recoveredPath + "-shm");
 
-            // 5. Allow connections to be reopened again, then reopen.
-            _repairing = false;
-            EnsureConnection();
+        MoveFileWithRetry(recoveredPath, _dbPath!);
+    }
 
-            // 6. Run migrations on the recovered database
-            if (_connection != null)
-                RunMigrations();
+    /// <summary>
+    /// Clears the _repairing guard, reopens the connections against the recovered database,
+    /// runs migrations, and resets the corruption flag.
+    /// </summary>
+    private void ReopenAfterRepair()
+    {
+        // Allow connections to be reopened again, then reopen.
+        _repairing = false;
+        EnsureConnection();
 
-            // 7. Reset corruption flag after successful repair
-            _isCorrupt = false;
+        // Run migrations on the recovered database
+        if (_connection != null)
+            RunMigrations();
 
-            var message = $"Recovery complete: {tablesRecovered} tables recovered, {tablesFailed} failed. Corrupt DB saved to {Path.GetFileName(corruptBackupPath)}\n{details}";
-            LogService.Warning(message);
-            return (true, message);
-        }
-        catch (Exception ex)
-        {
-            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Database repair failed: {ex.Message}", ex);
-
-            // Try to reopen the original file if still available
-            try
-            {
-                // Clean up partial recovery file and its WAL/SHM siblings.
-                // With Pooling=false on repair connections, handles are already released.
-                DeleteFileQuiet(recoveredPath);
-                DeleteFileQuiet(recoveredPath + "-wal");
-                DeleteFileQuiet(recoveredPath + "-shm");
-
-                // If original was moved, move it back
-                if (!File.Exists(_dbPath) && File.Exists(corruptBackupPath))
-                    File.Move(corruptBackupPath, _dbPath);
-
-                _repairing = false;
-                EnsureConnection();
-            }
-            catch (Exception reopenEx)
-            {
-                LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Failed to restore connection after repair failure: {reopenEx.Message}", reopenEx);
-            }
-            finally
-            {
-                // Ensure _repairing is always cleared so the DB isn't permanently locked out
-                _repairing = false;
-            }
-
-            return (false, $"Repair failed: {ex.Message}");
-        }
+        // Reset corruption flag after successful repair
+        _isCorrupt = false;
     }
 
     private static void ExecutePragma(SqliteConnection conn, string pragma)
