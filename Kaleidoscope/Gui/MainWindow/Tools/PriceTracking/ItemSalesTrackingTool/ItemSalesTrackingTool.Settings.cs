@@ -110,7 +110,7 @@ public sealed partial class ItemSalesTrackingTool
 
     public override Dictionary<string, object?>? ExportToolSettings()
     {
-        return new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>
         {
             // Tool-specific
             ["SelectedItemIds"] = _itemCombo.SelectedItemIds.ToList(),
@@ -120,33 +120,17 @@ public sealed partial class ItemSalesTrackingTool
             ["SelectedRegions"] = Settings.SelectedRegions.ToList(),
             ["SelectedDataCenters"] = Settings.SelectedDataCenters.ToList(),
             ["SelectedWorldIds"] = Settings.SelectedWorldIds.ToList(),
-            ["ShowActionButtons"] = Settings.ShowActionButtons,
-            
-            // Graph settings
-            ["ColorMode"] = (int)Settings.ColorMode,
-            ["LegendWidth"] = Settings.LegendWidth,
-            ["LegendHeightPercent"] = Settings.LegendHeightPercent,
-            ["ShowLegend"] = Settings.ShowLegend,
-            ["LegendCollapsed"] = Settings.LegendCollapsed,
-            ["LegendPosition"] = (int)Settings.LegendPosition,
-            ["GraphType"] = (int)Settings.GraphType,
-            ["ShowXAxisTimestamps"] = Settings.ShowXAxisTimestamps,
-            ["ShowCrosshair"] = Settings.ShowCrosshair,
-            ["ShowGridLines"] = Settings.ShowGridLines,
-            ["ShowCurrentPriceLine"] = Settings.ShowCurrentPriceLine,
-            ["ShowValueLabel"] = Settings.ShowValueLabel,
-            ["ValueLabelOffsetX"] = Settings.ValueLabelOffsetX,
-            ["ValueLabelOffsetY"] = Settings.ValueLabelOffsetY,
-            ["AutoScrollEnabled"] = Settings.AutoScrollEnabled,
-            ["AutoScrollTimeValue"] = Settings.AutoScrollTimeValue,
-            ["AutoScrollTimeUnit"] = (int)Settings.AutoScrollTimeUnit,
-            ["AutoScrollNowPosition"] = Settings.AutoScrollNowPosition,
-            ["ShowControlsDrawer"] = Settings.ShowControlsDrawer,
-            ["TimeRangeValue"] = Settings.TimeRangeValue,
-            ["TimeRangeUnit"] = (int)Settings.TimeRangeUnit,
-            ["NumberFormatStyle"] = (int)Settings.NumberFormat.Style,
-            ["NumberFormatDecimalPlaces"] = Settings.NumberFormat.DecimalPlaces
+            ["ShowActionButtons"] = Settings.ShowActionButtons
         };
+
+        // Graph settings (shared serializer)
+        GraphSettingsSerializer.Export(Settings, result);
+
+        // Tool-specific number format (distinct key names from the DataTool's dual formats)
+        result["NumberFormatStyle"] = (int)Settings.NumberFormat.Style;
+        result["NumberFormatDecimalPlaces"] = Settings.NumberFormat.DecimalPlaces;
+
+        return result;
     }
 
     public override void ImportToolSettings(Dictionary<string, object?>? settings)
@@ -189,30 +173,10 @@ public sealed partial class ItemSalesTrackingTool
         }
 
         _worldSelectionWidgetInitialized = false;
-        
-        // Graph settings
-        Settings.ColorMode = (GraphColorMode)GetSetting(settings, "ColorMode", (int)Settings.ColorMode);
-        Settings.LegendWidth = GetSetting(settings, "LegendWidth", Settings.LegendWidth);
-        Settings.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", Settings.LegendHeightPercent);
-        Settings.ShowLegend = GetSetting(settings, "ShowLegend", Settings.ShowLegend);
-        Settings.LegendCollapsed = GetSetting(settings, "LegendCollapsed", Settings.LegendCollapsed);
-        Settings.LegendPosition = (LegendPosition)GetSetting(settings, "LegendPosition", (int)Settings.LegendPosition);
-        Settings.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)Settings.GraphType);
-        Settings.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", Settings.ShowXAxisTimestamps);
-        Settings.ShowCrosshair = GetSetting(settings, "ShowCrosshair", Settings.ShowCrosshair);
-        Settings.ShowGridLines = GetSetting(settings, "ShowGridLines", Settings.ShowGridLines);
-        Settings.ShowCurrentPriceLine = GetSetting(settings, "ShowCurrentPriceLine", Settings.ShowCurrentPriceLine);
-        Settings.ShowValueLabel = GetSetting(settings, "ShowValueLabel", Settings.ShowValueLabel);
-        Settings.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", Settings.ValueLabelOffsetX);
-        Settings.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", Settings.ValueLabelOffsetY);
-        Settings.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", Settings.AutoScrollEnabled);
-        Settings.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", Settings.AutoScrollTimeValue);
-        Settings.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)Settings.AutoScrollTimeUnit);
-        Settings.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", Settings.AutoScrollNowPosition);
-        Settings.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", Settings.ShowControlsDrawer);
-        Settings.TimeRangeValue = GetSetting(settings, "TimeRangeValue", Settings.TimeRangeValue);
-        Settings.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)Settings.TimeRangeUnit);
-        
+
+        // Graph settings (shared serializer)
+        GraphSettingsSerializer.Import(Settings, settings);
+
         if (settings.ContainsKey("NumberFormatStyle"))
         {
             Settings.NumberFormat.Style = (NumberFormatStyle)GetSetting(settings, "NumberFormatStyle", (int)Settings.NumberFormat.Style);

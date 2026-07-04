@@ -44,9 +44,6 @@ public readonly struct OverlayRegion
         IsValid = true;
     }
 
-    /// <summary>An empty region that no point is ever considered inside.</summary>
-    public static readonly OverlayRegion Invalid = default;
-
     /// <summary>Checks whether a point lies within this region's bounds.</summary>
     public bool Contains(Vector2 point) => GraphOverlay.RectContains(BoundsMin, BoundsMax, point);
 

@@ -354,32 +354,12 @@ public sealed partial class DataTool
             ["HideCharacterColumnInAllMode"] = settings.HideCharacterColumnInAllMode,
             ["TextColorMode"] = (int)settings.TextColorMode,
             ["ShowRetainerBreakdown"] = settings.ShowRetainerBreakdown,
-            ["ShowRetainerBreakdownInGraph"] = settings.ShowRetainerBreakdownInGraph,
-            
-            // Graph-specific
-            ["ColorMode"] = (int)settings.ColorMode,
-            ["LegendWidth"] = settings.LegendWidth,
-            ["LegendHeightPercent"] = settings.LegendHeightPercent,
-            ["ShowLegend"] = settings.ShowLegend,
-            ["LegendCollapsed"] = settings.LegendCollapsed,
-            ["LegendPosition"] = (int)settings.LegendPosition,
-            ["GraphType"] = (int)settings.GraphType,
-            ["ShowXAxisTimestamps"] = settings.ShowXAxisTimestamps,
-            ["ShowCrosshair"] = settings.ShowCrosshair,
-            ["ShowGridLines"] = settings.ShowGridLines,
-            ["ShowCurrentPriceLine"] = settings.ShowCurrentPriceLine,
-            ["ShowValueLabel"] = settings.ShowValueLabel,
-            ["ValueLabelOffsetX"] = settings.ValueLabelOffsetX,
-            ["ValueLabelOffsetY"] = settings.ValueLabelOffsetY,
-            ["AutoScrollEnabled"] = settings.AutoScrollEnabled,
-            ["AutoScrollTimeValue"] = settings.AutoScrollTimeValue,
-            ["AutoScrollTimeUnit"] = (int)settings.AutoScrollTimeUnit,
-            ["AutoScrollNowPosition"] = settings.AutoScrollNowPosition,
-            ["ShowControlsDrawer"] = settings.ShowControlsDrawer,
-            ["TimeRangeValue"] = settings.TimeRangeValue,
-            ["TimeRangeUnit"] = (int)settings.TimeRangeUnit
+            ["ShowRetainerBreakdownInGraph"] = settings.ShowRetainerBreakdownInGraph
         };
-        
+
+        // Graph-specific (shared serializer; graph number format is exported above)
+        GraphSettingsSerializer.Export(settings, result);
+
         // Colors (using array format helper)
         ExportColorArray(result, "CharacterColumnColor", settings.CharacterColumnColor);
         ExportColorArray(result, "HeaderColor", settings.HeaderColor);
@@ -505,28 +485,8 @@ public sealed partial class DataTool
         // Hidden characters
         target.HiddenCharacters = ImportHashSet(settings, "HiddenCharacters", target.HiddenCharacters);
         
-        // Graph-specific
-        target.ColorMode = (Models.GraphColorMode)GetSetting(settings, "ColorMode", (int)target.ColorMode);
-        target.LegendWidth = GetSetting(settings, "LegendWidth", target.LegendWidth);
-        target.LegendHeightPercent = GetSetting(settings, "LegendHeightPercent", target.LegendHeightPercent);
-        target.ShowLegend = GetSetting(settings, "ShowLegend", target.ShowLegend);
-        target.LegendCollapsed = GetSetting(settings, "LegendCollapsed", target.LegendCollapsed);
-        target.LegendPosition = (LegendPosition)GetSetting(settings, "LegendPosition", (int)target.LegendPosition);
-        target.GraphType = (GraphType)GetSetting(settings, "GraphType", (int)target.GraphType);
-        target.ShowXAxisTimestamps = GetSetting(settings, "ShowXAxisTimestamps", target.ShowXAxisTimestamps);
-        target.ShowCrosshair = GetSetting(settings, "ShowCrosshair", target.ShowCrosshair);
-        target.ShowGridLines = GetSetting(settings, "ShowGridLines", target.ShowGridLines);
-        target.ShowCurrentPriceLine = GetSetting(settings, "ShowCurrentPriceLine", target.ShowCurrentPriceLine);
-        target.ShowValueLabel = GetSetting(settings, "ShowValueLabel", target.ShowValueLabel);
-        target.ValueLabelOffsetX = GetSetting(settings, "ValueLabelOffsetX", target.ValueLabelOffsetX);
-        target.ValueLabelOffsetY = GetSetting(settings, "ValueLabelOffsetY", target.ValueLabelOffsetY);
-        target.AutoScrollEnabled = GetSetting(settings, "AutoScrollEnabled", target.AutoScrollEnabled);
-        target.AutoScrollTimeValue = GetSetting(settings, "AutoScrollTimeValue", target.AutoScrollTimeValue);
-        target.AutoScrollTimeUnit = (TimeUnit)GetSetting(settings, "AutoScrollTimeUnit", (int)target.AutoScrollTimeUnit);
-        target.AutoScrollNowPosition = GetSetting(settings, "AutoScrollNowPosition", target.AutoScrollNowPosition);
-        target.ShowControlsDrawer = GetSetting(settings, "ShowControlsDrawer", target.ShowControlsDrawer);
-        target.TimeRangeValue = GetSetting(settings, "TimeRangeValue", target.TimeRangeValue);
-        target.TimeRangeUnit = (TimeUnit)GetSetting(settings, "TimeRangeUnit", (int)target.TimeRangeUnit);
+        // Graph-specific (shared serializer; graph number format is imported above)
+        GraphSettingsSerializer.Import(target, settings);
         
         // Update character combo
         if (_characterCombo != null)
