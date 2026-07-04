@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Services;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
