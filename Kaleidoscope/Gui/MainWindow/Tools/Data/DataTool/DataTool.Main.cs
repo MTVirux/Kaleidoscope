@@ -159,7 +159,7 @@ public sealed partial class DataTool : ToolComponent
         // Bind graph widget to settings
         _graphWidget.BindSettings(
             _instanceSettings,
-            () => { _graphView.MarkDirty(); NotifyToolSettingsChanged(); },
+            () => { _graphView?.MarkDirty(); NotifyToolSettingsChanged(); },
             "Graph Settings");
         
         // Subscribe to auto-scroll settings changes from controls drawer
