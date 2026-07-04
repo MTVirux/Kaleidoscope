@@ -99,14 +99,14 @@ public sealed class RecentSalesCacheEntry
     }
 
     /// <summary>
-    /// Calculates the standard deviation of a list of prices. Callers must hold the lock.
+    /// Calculates the sample standard deviation of a list of prices. Callers must hold the lock.
     /// </summary>
     private static double GetStdDev(List<int> prices)
     {
         if (prices.Count < 2) return 0;
         var mean = prices.Average();
         var sumOfSquares = prices.Sum(p => Math.Pow(p - mean, 2));
-        return Math.Sqrt(sumOfSquares / prices.Count);
+        return Math.Sqrt(sumOfSquares / (prices.Count - 1));
     }
 
     /// <summary>
