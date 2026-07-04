@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
-using Kaleidoscope.Services.Profiler;
+using Kaleidoscope.Services.Common;
 
 namespace Kaleidoscope.Services;
 
@@ -138,15 +138,14 @@ public static class LogService
     {
         try
         {
+            // Re-read the configured max size each write so mid-session changes apply
+            // without re-enabling file logging. Split writers keep the fixed capture.
             _mainWriter = new RotatingFileWriter(
                 filePath,
-                _config?.FileLoggingMaxSizeMB ?? 10,
+                maxBytesProvider: () => (long)Math.Max(1, _config?.FileLoggingMaxSizeMB ?? 10) * 1024 * 1024,
                 headerLine: null,
                 rotatedPathProvider: LogRotatedPath,
-                onRotated: OnMainRotated,
-                // Re-read the configured max size each write so mid-session changes apply
-                // without re-enabling file logging. Split writers keep the fixed capture.
-                maxBytesProvider: () => (long)Math.Max(1, _config?.FileLoggingMaxSizeMB ?? 10) * 1024 * 1024);
+                onRotated: OnMainRotated);
             _logFilePath = filePath;
 
             WriteToMainFile("INF", $"=== File logging started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");

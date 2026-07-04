@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Kaleidoscope.Services.Profiler;
+namespace Kaleidoscope.Services.Common;
 
 /// <summary>
 /// Thread-safe append-only text writer with size-based rotation. On rotation the current file
@@ -26,16 +26,30 @@ public sealed class RotatingFileWriter : IDisposable
         int maxSizeMB,
         string? headerLine = null,
         Func<string, string>? rotatedPathProvider = null,
-        Action<string>? onRotated = null,
-        Func<long>? maxBytesProvider = null)
+        Action<string>? onRotated = null)
+        : this(filePath, FixedProvider(maxSizeMB), headerLine, rotatedPathProvider, onRotated)
+    {
+    }
+
+    public RotatingFileWriter(
+        string filePath,
+        Func<long> maxBytesProvider,
+        string? headerLine = null,
+        Func<string, string>? rotatedPathProvider = null,
+        Action<string>? onRotated = null)
     {
         _filePath = filePath;
-        var fixedMaxBytes = (long)Math.Max(1, maxSizeMB) * 1024 * 1024;
-        _maxBytesProvider = maxBytesProvider ?? (() => fixedMaxBytes);
+        _maxBytesProvider = maxBytesProvider;
         _headerLine = headerLine;
         _rotatedPathProvider = rotatedPathProvider ?? DefaultRotatedPath;
         _onRotated = onRotated;
         Open();
+    }
+
+    private static Func<long> FixedProvider(int maxSizeMB)
+    {
+        var fixedMaxBytes = (long)Math.Max(1, maxSizeMB) * 1024 * 1024;
+        return () => fixedMaxBytes;
     }
 
     private void Open()

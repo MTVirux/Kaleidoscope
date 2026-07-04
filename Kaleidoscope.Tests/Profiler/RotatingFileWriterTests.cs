@@ -1,4 +1,4 @@
-using Kaleidoscope.Services.Profiler;
+using Kaleidoscope.Services.Common;
 using Xunit;
 
 namespace Kaleidoscope.Tests.Profiler;

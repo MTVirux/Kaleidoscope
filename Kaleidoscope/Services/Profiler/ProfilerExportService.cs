@@ -1,4 +1,5 @@
 using System.Globalization;
+using Kaleidoscope.Services.Common;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services.Profiler;
