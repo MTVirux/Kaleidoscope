@@ -1,5 +1,6 @@
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Kaleidoscope.Services.Common;
 using Newtonsoft.Json.Linq;
 using OtterGui.Services;
 
@@ -204,7 +205,7 @@ public sealed class AutoRetainerService : IDisposable, IService
     public AutoRetainerCharacterData? GetFullCharacterData(ulong cid)
     {
         if (!IsAvailable || _getOfflineCharacterData == null) return null;
-        
+
         try
         {
             var data = _getOfflineCharacterData.InvokeFunc(cid);
@@ -212,210 +213,74 @@ public sealed class AutoRetainerService : IDisposable, IService
             {
                 return null;
             }
-            
-            
-            string name = "";
-            string world = "";
-            long gil = 0;
-            bool enabled = false;
-            bool workshopEnabled = false;
-            ulong fcid = 0;
-            long fcGil = 0;
+
+            // Single field-access path regardless of whether AutoRetainer hands us a JObject or a
+            // plain reflected object — the reader hides the representation difference.
+            var reader = data is JObject jObject
+                ? (FieldReader)new JTokenFieldReader(jObject)
+                : new ReflectionFieldReader(data);
+
             var retainers = new List<AutoRetainerRetainerData>();
+            foreach (var retainer in reader.GetArray("RetainerData"))
+            {
+                var retainerName = retainer.GetString("Name");
+                if (string.IsNullOrEmpty(retainerName)) continue;
+
+                retainers.Add(new AutoRetainerRetainerData(
+                    retainerName,
+                    retainer.GetLong("VentureEndsAt"),
+                    retainer.GetInt("Level"),
+                    retainer.GetUInt("Job"),
+                    retainer.GetBool("HasVenture"),
+                    // RetainerId — try multiple field names (AR may expose any of these)
+                    retainer.GetFirstNonZeroUlong("RetainerID", "RetainerId", "Id"),
+                    retainer.GetLong("Gil")));
+            }
+
             var vessels = new List<AutoRetainerVesselData>();
-            
-            if (data is JObject jObject)
-            {
-                name = jObject["Name"]?.Value<string>() ?? "";
-                world = jObject["World"]?.Value<string>() ?? "";
-                gil = jObject["Gil"]?.Value<long>() ?? 0L;
-                enabled = jObject["Enabled"]?.Value<bool>() ?? false;
-                workshopEnabled = jObject["WorkshopEnabled"]?.Value<bool>() ?? false;
+            ParseVessels(reader, "OfflineSubmarineData", vessels, isSubmersible: true);
+            ParseVessels(reader, "OfflineAirshipData", vessels, isSubmersible: false);
 
-                // FCID needs careful parsing as it's a ulong
-                var fcidToken = jObject["FCID"];
-                if (fcidToken != null)
-                {
-                    try { fcid = fcidToken.Value<ulong>(); }
-                    catch (Exception) { fcid = 0; } // FCID can be in various formats, default to 0 on parse failure
-                }
-
-                // Probe for FC gil — try multiple likely field names since field name is unconfirmed.
-                // The diagnostic log above will reveal the actual key once the user triggers a fetch.
-                try
-                {
-                    // Direct top-level field
-                    var fcGilToken = jObject["FCGil"] ?? jObject["FreeCompanyGil"];
-                    if (fcGilToken != null)
-                    {
-                        fcGil = fcGilToken.Value<long>();
-                    }
-                    else
-                    {
-                        // Try nested object — AR may store FC data under a child key
-                        foreach (var nested in new[] { "FCData", "FreeCompanyData", "OfflineFCData" })
-                        {
-                            var fcObj = jObject[nested] as JObject;
-                            if (fcObj == null) continue;
-                            var inner = fcObj["Gil"] ?? fcObj["FCGil"];
-                            if (inner != null)
-                            {
-                                fcGil = inner.Value<long>();
-                                break;
-                            }
-                        }
-                    }
-                }
-                catch { /* best-effort */ }
-
-                var retainerData = jObject["RetainerData"] as JArray;
-                if (retainerData != null)
-                {
-                    foreach (var retainer in retainerData)
-                    {
-                        var retainerName = retainer["Name"]?.Value<string>() ?? "";
-                        var ventureEndsAt = retainer["VentureEndsAt"]?.Value<long>() ?? 0L;
-                        var level = retainer["Level"]?.Value<int>() ?? 0;
-                        var job = retainer["Job"]?.Value<uint>() ?? 0;
-                        var hasVenture = retainer["HasVenture"]?.Value<bool>() ?? false;
-
-                        // RetainerId — try multiple field names (AR may expose any of these)
-                        ulong retainerId = 0;
-                        foreach (var key in new[] { "RetainerID", "RetainerId", "Id" })
-                        {
-                            var token = retainer[key];
-                            if (token != null)
-                            {
-                                try { retainerId = token.Value<ulong>(); if (retainerId != 0) break; }
-                                catch { }
-                            }
-                        }
-
-                        var retainerGil = retainer["Gil"]?.Value<long>() ?? 0L;
-
-                        if (!string.IsNullOrEmpty(retainerName))
-                        {
-                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture, retainerId, retainerGil));
-                        }
-                    }
-                }
-                
-                ParseVesselsFromJArray(jObject["OfflineSubmarineData"] as JArray, vessels, isSubmersible: true);
-                ParseVesselsFromJArray(jObject["OfflineAirshipData"] as JArray, vessels, isSubmersible: false);
-            }
-            else
-            {
-                // Fallback to reflection for regular objects
-                var type = data.GetType();
-                
-                name = type.GetProperty("Name")?.GetValue(data) as string ?? "";
-                world = type.GetProperty("World")?.GetValue(data) as string ?? "";
-                var gilProp = type.GetProperty("Gil")?.GetValue(data);
-                gil = gilProp != null ? Convert.ToInt64(gilProp) : 0L;
-                
-                var enabledProp = type.GetProperty("Enabled")?.GetValue(data);
-                enabled = enabledProp is bool b && b;
-                
-                var workshopProp = type.GetProperty("WorkshopEnabled")?.GetValue(data);
-                workshopEnabled = workshopProp is bool w && w;
-                
-                // FCID needs careful parsing
-                try
-                {
-                    var fcidProp = type.GetProperty("FCID")?.GetValue(data);
-                    fcid = fcidProp != null ? Convert.ToUInt64(fcidProp) : 0UL;
-                }
-                catch (Exception) { fcid = 0; } // FCID type may vary, default to 0 on conversion failure
-
-                // Probe for FC gil via reflection — same field names as JObject branch
-                try
-                {
-                    var fcGilProp = type.GetProperty("FCGil")?.GetValue(data)
-                        ?? type.GetProperty("FreeCompanyGil")?.GetValue(data);
-                    if (fcGilProp != null)
-                    {
-                        fcGil = Convert.ToInt64(fcGilProp);
-                    }
-                    else
-                    {
-                        // Try nested object (FCData / FreeCompanyData / OfflineFCData)
-                        foreach (var nestedPropName in new[] { "FCData", "FreeCompanyData", "OfflineFCData" })
-                        {
-                            var nestedObj = type.GetProperty(nestedPropName)?.GetValue(data);
-                            if (nestedObj == null) continue;
-                            var nestedType = nestedObj.GetType();
-                            var innerProp = nestedType.GetProperty("Gil")?.GetValue(nestedObj)
-                                ?? nestedType.GetProperty("FCGil")?.GetValue(nestedObj);
-                            if (innerProp != null)
-                            {
-                                fcGil = Convert.ToInt64(innerProp);
-                                break;
-                            }
-                        }
-                    }
-                }
-                catch { /* best-effort */ }
-
-                var retainerDataProp = type.GetProperty("RetainerData")?.GetValue(data);
-                if (retainerDataProp is System.Collections.IEnumerable retainerList)
-                {
-                    foreach (var retainer in retainerList)
-                    {
-                        var rType = retainer.GetType();
-                        var retainerName = rType.GetProperty("Name")?.GetValue(retainer) as string ?? "";
-                        var ventureEndsAtProp = rType.GetProperty("VentureEndsAt")?.GetValue(retainer);
-                        var ventureEndsAt = ventureEndsAtProp != null ? Convert.ToInt64(ventureEndsAtProp) : 0L;
-                        var levelProp = rType.GetProperty("Level")?.GetValue(retainer);
-                        var level = levelProp != null ? Convert.ToInt32(levelProp) : 0;
-                        var jobProp = rType.GetProperty("Job")?.GetValue(retainer);
-                        var job = jobProp != null ? Convert.ToUInt32(jobProp) : 0u;
-                        var hasVentureProp = rType.GetProperty("HasVenture")?.GetValue(retainer);
-                        var hasVenture = hasVentureProp is bool hv && hv;
-
-                        // RetainerId — try multiple property names (AR may expose any of these)
-                        ulong retainerId = 0;
-                        foreach (var propName in new[] { "RetainerID", "RetainerId", "Id" })
-                        {
-                            var ridProp = rType.GetProperty(propName)?.GetValue(retainer);
-                            if (ridProp != null)
-                            {
-                                try { retainerId = Convert.ToUInt64(ridProp); if (retainerId != 0) break; }
-                                catch { }
-                            }
-                        }
-
-                        long retainerGil = 0;
-                        var retainerGilProp = rType.GetProperty("Gil")?.GetValue(retainer);
-                        if (retainerGilProp != null)
-                        {
-                            try { retainerGil = Convert.ToInt64(retainerGilProp); }
-                            catch { }
-                        }
-
-                        if (!string.IsNullOrEmpty(retainerName))
-                        {
-                            retainers.Add(new AutoRetainerRetainerData(retainerName, ventureEndsAt, level, job, hasVenture, retainerId, retainerGil));
-                        }
-                    }
-                }
-                
-                ParseVesselsFromReflection(
-                    type.GetProperty("OfflineSubmarineData")?.GetValue(data) as System.Collections.IEnumerable, 
-                    vessels, 
-                    isSubmersible: true);
-                ParseVesselsFromReflection(
-                    type.GetProperty("OfflineAirshipData")?.GetValue(data) as System.Collections.IEnumerable, 
-                    vessels, 
-                    isSubmersible: false);
-            }
-            
-            
-            return new AutoRetainerCharacterData(name, world, gil, cid, enabled, workshopEnabled, retainers, vessels, fcid, fcGil);
+            return new AutoRetainerCharacterData(
+                reader.GetString("Name"),
+                reader.GetString("World"),
+                reader.GetLong("Gil"),
+                cid,
+                reader.GetBool("Enabled"),
+                reader.GetBool("WorkshopEnabled"),
+                retainers,
+                vessels,
+                reader.GetUlong("FCID"),
+                ReadFreeCompanyGil(reader));
         }
         catch (Exception)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Reads Free Company gil, probing multiple likely field names since AutoRetainer's exact key
+    /// is unconfirmed. Checks direct fields first, then a nested FC object.
+    /// </summary>
+    private static long ReadFreeCompanyGil(FieldReader reader)
+    {
+        if (reader.TryGetField<long>("FCGil", out var direct) || reader.TryGetField<long>("FreeCompanyGil", out direct))
+        {
+            return direct;
+        }
+
+        foreach (var nested in new[] { "FCData", "FreeCompanyData", "OfflineFCData" })
+        {
+            var fcObj = reader.GetChild(nested);
+            if (fcObj == null) continue;
+            if (fcObj.TryGetField<long>("Gil", out var inner) || fcObj.TryGetField<long>("FCGil", out inner))
+            {
+                return inner;
+            }
+        }
+
+        return 0;
     }
 
     public List<(string Name, string World, long Gil, ulong CID)> GetAllCharacterData()
@@ -455,64 +320,31 @@ public sealed class AutoRetainerService : IDisposable, IService
     }
 
     private T? SafeInvoke<T>(ICallGateSubscriber<T>? subscriber) where T : class
-    {
-        if (!IsAvailable || subscriber == null) return null;
-        try { return subscriber.InvokeFunc(); }
-        catch (Exception) { return null; }
-    }
+        => IpcInvoker.Invoke<T?>(IsAvailable && subscriber != null, () => subscriber!.InvokeFunc(), null);
 
     private T? SafeInvokeValue<T>(ICallGateSubscriber<T>? subscriber) where T : struct
-    {
-        if (!IsAvailable || subscriber == null) return null;
-        try { return subscriber.InvokeFunc(); }
-        catch (Exception) { return null; }
-    }
+        => IpcInvoker.Invoke<T?>(IsAvailable && subscriber != null, () => subscriber!.InvokeFunc(), null);
 
     private TResult? SafeInvokeValue<TArg, TResult>(ICallGateSubscriber<TArg, TResult>? subscriber, TArg arg) where TResult : struct
-    {
-        if (!IsAvailable || subscriber == null) return null;
-        try { return subscriber.InvokeFunc(arg); }
-        catch (Exception) { return null; }
-    }
+        => IpcInvoker.Invoke<TResult?>(IsAvailable && subscriber != null, () => subscriber!.InvokeFunc(arg), null);
 
     private TResult? SafeInvokeNullable<TArg, TResult>(ICallGateSubscriber<TArg, TResult?>? subscriber, TArg arg) where TResult : struct
-    {
-        if (!IsAvailable || subscriber == null) return null;
-        try { return subscriber.InvokeFunc(arg); }
-        catch (Exception) { return null; }
-    }
+        => IpcInvoker.Invoke<TResult?>(IsAvailable && subscriber != null, () => subscriber!.InvokeFunc(arg), null);
 
-    private static void ParseVesselsFromJArray(JArray? vesselArray, List<AutoRetainerVesselData> vessels, bool isSubmersible)
-    {
-        if (vesselArray == null) return;
-        
-        foreach (var vessel in vesselArray)
-        {
-            var vesselName = vessel["Name"]?.Value<string>() ?? "";
-            var returnTime = vessel["ReturnTime"]?.Value<long>() ?? 0L;
-            
-            if (!string.IsNullOrEmpty(vesselName))
-            {
-                vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, isSubmersible));
-            }
-        }
-    }
+    private bool SafeInvokeAction(ICallGateSubscriber<object?>? subscriber)
+        => IpcInvoker.TryInvoke(IsAvailable && subscriber != null, () => subscriber!.InvokeAction());
 
-    private static void ParseVesselsFromReflection(System.Collections.IEnumerable? vesselList, List<AutoRetainerVesselData> vessels, bool isSubmersible)
+    private bool SafeInvokeAction<TArg>(ICallGateSubscriber<TArg, object?>? subscriber, TArg arg)
+        => IpcInvoker.TryInvoke(IsAvailable && subscriber != null, () => subscriber!.InvokeAction(arg));
+
+    private static void ParseVessels(FieldReader reader, string field, List<AutoRetainerVesselData> vessels, bool isSubmersible)
     {
-        if (vesselList == null) return;
-        
-        foreach (var vessel in vesselList)
+        foreach (var vessel in reader.GetArray(field))
         {
-            var vType = vessel.GetType();
-            var vesselName = vType.GetProperty("Name")?.GetValue(vessel) as string ?? "";
-            var returnTimeProp = vType.GetProperty("ReturnTime")?.GetValue(vessel);
-            var returnTime = returnTimeProp != null ? Convert.ToInt64(returnTimeProp) : 0L;
-            
-            if (!string.IsNullOrEmpty(vesselName))
-            {
-                vessels.Add(new AutoRetainerVesselData(vesselName, returnTime, isSubmersible));
-            }
+            var vesselName = vessel.GetString("Name");
+            if (string.IsNullOrEmpty(vesselName)) continue;
+
+            vessels.Add(new AutoRetainerVesselData(vesselName, vessel.GetLong("ReturnTime"), isSubmersible));
         }
     }
 
@@ -545,83 +377,18 @@ public sealed class AutoRetainerService : IDisposable, IService
         return enabledRetainers.Contains(retainerName);
     }
 
-    public bool SetSuppressed(bool suppressed)
-    {
-        if (!IsAvailable || _setSuppressed == null) return false;
-        
-        try
-        {
-            _setSuppressed.InvokeAction(suppressed);
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool SetSuppressed(bool suppressed) => SafeInvokeAction(_setSuppressed, suppressed);
 
-    public bool SetMultiModeEnabled(bool enabled)
-    {
-        if (!IsAvailable || _setMultiModeEnabled == null) return false;
-        
-        try
-        {
-            _setMultiModeEnabled.InvokeAction(enabled);
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool SetMultiModeEnabled(bool enabled) => SafeInvokeAction(_setMultiModeEnabled, enabled);
 
-    public bool AbortAllTasks()
-    {
-        if (!IsAvailable || _abortAllTasks == null) return false;
-        
-        try
-        {
-            _abortAllTasks.InvokeAction();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool AbortAllTasks() => SafeInvokeAction(_abortAllTasks);
 
     /// <summary>
     /// Disables all AutoRetainer functions (Multi-Mode, Scheduler, Voyage Scheduler).
     /// </summary>
-    public bool DisableAllFunctions()
-    {
-        if (!IsAvailable || _disableAllFunctions == null) return false;
-        
-        try
-        {
-            _disableAllFunctions.InvokeAction();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool DisableAllFunctions() => SafeInvokeAction(_disableAllFunctions);
 
-    public bool EnableMultiMode()
-    {
-        if (!IsAvailable || _enableMultiMode == null) return false;
-        
-        try
-        {
-            _enableMultiMode.InvokeAction();
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool EnableMultiMode() => SafeInvokeAction(_enableMultiMode);
 
     /// <summary>
     /// Relogs to a specific character.
@@ -629,19 +396,7 @@ public sealed class AutoRetainerService : IDisposable, IService
     /// <param name="characterNameWithWorld">Character name in format "Name@World"</param>
     /// <returns>True if relog was initiated successfully</returns>
     public bool Relog(string characterNameWithWorld)
-    {
-        if (!IsAvailable || _relog == null) return false;
-        
-        try
-        {
-            var result = _relog.InvokeFunc(characterNameWithWorld);
-            return result;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+        => IpcInvoker.Invoke(IsAvailable && _relog != null, () => _relog!.InvokeFunc(characterNameWithWorld), false);
 
     public bool SetCharacterRetainersEnabled(ulong cid, bool enabled)
     {
@@ -717,27 +472,105 @@ public sealed class AutoRetainerService : IDisposable, IService
         }
     }
 
-    /// <summary>
-    /// Sets whether an individual retainer is enabled for a character.
-    /// Note: AutoRetainer does not expose an IPC to modify individual retainer enabled state.
-    /// This method always returns false as the functionality is not available via IPC.
-    /// </summary>
-    /// <param name="cid">Character content ID</param>
-    /// <param name="retainerName">Retainer name</param>
-    /// <param name="enabled">Whether the retainer is enabled</param>
-    /// <returns>Always returns false - individual retainer control not available via IPC</returns>
-    public bool SetRetainerEnabled(ulong cid, string retainerName, bool enabled)
-    {
-        // AutoRetainer stores SelectedRetainers in its Config (C.SelectedRetainers), which is
-        // a Dictionary<ulong, HashSet<string>> mapping CID to enabled retainer names.
-        // This is separate from OfflineCharacterData and there's no IPC exposed to modify it.
-        // The WriteOfflineCharacterData IPC only writes character data, not the config.
-        return false;
-    }
-
     public void Dispose()
     {
         StopRetryTimer();
+    }
+
+    /// <summary>
+    /// Uniform typed field access over AutoRetainer's offline character data, which arrives either
+    /// as a Newtonsoft <see cref="JObject"/> or as a plain reflected object. Concrete readers hide
+    /// that difference so the parsing in <see cref="GetFullCharacterData"/> exists only once.
+    /// </summary>
+    private abstract class FieldReader
+    {
+        public abstract bool TryGetField<T>(string name, out T value);
+        public abstract FieldReader? GetChild(string name);
+        public abstract IEnumerable<FieldReader> GetArray(string name);
+
+        public string GetString(string name) => TryGetField<string>(name, out var v) && v != null ? v : "";
+        public long GetLong(string name) => TryGetField<long>(name, out var v) ? v : 0L;
+        public int GetInt(string name) => TryGetField<int>(name, out var v) ? v : 0;
+        public uint GetUInt(string name) => TryGetField<uint>(name, out var v) ? v : 0u;
+        public bool GetBool(string name) => TryGetField<bool>(name, out var v) && v;
+        public ulong GetUlong(string name) => TryGetField<ulong>(name, out var v) ? v : 0UL;
+
+        /// <summary>Returns the first field (by the given names) that parses to a non-zero ulong, else 0.</summary>
+        public ulong GetFirstNonZeroUlong(params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (TryGetField<ulong>(name, out var v) && v != 0) return v;
+            }
+            return 0;
+        }
+    }
+
+    private sealed class JTokenFieldReader : FieldReader
+    {
+        private readonly JToken _token;
+        public JTokenFieldReader(JToken token) => _token = token;
+
+        public override bool TryGetField<T>(string name, out T value)
+        {
+            value = default!;
+            var token = _token[name];
+            if (token == null || token.Type == JTokenType.Null) return false;
+            try { value = token.Value<T>()!; return true; }
+            catch { return false; }
+        }
+
+        public override FieldReader? GetChild(string name)
+            => _token[name] is JObject o ? new JTokenFieldReader(o) : null;
+
+        public override IEnumerable<FieldReader> GetArray(string name)
+        {
+            if (_token[name] is JArray arr)
+            {
+                foreach (var element in arr)
+                {
+                    yield return new JTokenFieldReader(element);
+                }
+            }
+        }
+    }
+
+    private sealed class ReflectionFieldReader : FieldReader
+    {
+        private readonly object _obj;
+        private readonly Type _type;
+        public ReflectionFieldReader(object obj) { _obj = obj; _type = obj.GetType(); }
+
+        public override bool TryGetField<T>(string name, out T value)
+        {
+            value = default!;
+            var raw = _type.GetProperty(name)?.GetValue(_obj);
+            if (raw == null) return false;
+            try
+            {
+                if (raw is T typed) { value = typed; return true; }
+                value = (T)Convert.ChangeType(raw, typeof(T));
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public override FieldReader? GetChild(string name)
+        {
+            var raw = _type.GetProperty(name)?.GetValue(_obj);
+            return raw == null ? null : new ReflectionFieldReader(raw);
+        }
+
+        public override IEnumerable<FieldReader> GetArray(string name)
+        {
+            if (_type.GetProperty(name)?.GetValue(_obj) is System.Collections.IEnumerable list)
+            {
+                foreach (var element in list)
+                {
+                    if (element != null) yield return new ReflectionFieldReader(element);
+                }
+            }
+        }
     }
 }
 

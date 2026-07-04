@@ -5,6 +5,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
 using Dalamud.Plugin.Services;
+using Kaleidoscope.Services.Common;
 using OtterGui.Services;
 
 namespace Kaleidoscope.Services;
@@ -163,55 +164,52 @@ public sealed class FrameLimiterService : IDisposable, IService
     private void DisableChillFrames()
     {
         if (_chillFramesDisabled) return;
-        
-        try
-        {
-            var result = _chillFramesDisable?.InvokeFunc(PluginName);
-            if (result == true)
+
+        var result = IpcInvoker.Invoke<bool?>(
+            _chillFramesDisable != null,
+            () => _chillFramesDisable!.InvokeFunc(PluginName),
+            null,
+            ex =>
             {
-                _chillFramesDisabled = true;
-                LogService.Debug(LogCategory.UI, "ChillFrames limiter disabled via IPC");
-            }
-        }
-        catch (IpcNotReadyError)
+                IsChillFramesAvailable = false;
+                if (ex is not IpcNotReadyError)
+                {
+                    LogService.Debug(LogCategory.UI, $"Failed to disable ChillFrames: {ex.Message}");
+                }
+            });
+
+        if (result == true)
         {
-            // ChillFrames not loaded, this is fine
-            IsChillFramesAvailable = false;
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.UI, $"Failed to disable ChillFrames: {ex.Message}");
-            IsChillFramesAvailable = false;
+            _chillFramesDisabled = true;
+            LogService.Debug(LogCategory.UI, "ChillFrames limiter disabled via IPC");
         }
     }
-    
+
     /// <summary>
     /// Re-enables ChillFrames limiter via IPC.
     /// </summary>
     private void EnableChillFrames()
     {
         if (!_chillFramesDisabled) return;
-        
-        try
-        {
-            var result = _chillFramesEnable?.InvokeFunc(PluginName);
-            if (result == true)
+
+        var result = IpcInvoker.Invoke<bool?>(
+            _chillFramesEnable != null,
+            () => _chillFramesEnable!.InvokeFunc(PluginName),
+            null,
+            ex =>
             {
+                IsChillFramesAvailable = false;
                 _chillFramesDisabled = false;
-                LogService.Debug(LogCategory.UI, "ChillFrames limiter re-enabled via IPC");
-            }
-        }
-        catch (IpcNotReadyError)
+                if (ex is not IpcNotReadyError)
+                {
+                    LogService.Debug(LogCategory.UI, $"Failed to enable ChillFrames: {ex.Message}");
+                }
+            });
+
+        if (result == true)
         {
-            // ChillFrames not loaded, this is fine
-            IsChillFramesAvailable = false;
             _chillFramesDisabled = false;
-        }
-        catch (Exception ex)
-        {
-            LogService.Debug(LogCategory.UI, $"Failed to enable ChillFrames: {ex.Message}");
-            IsChillFramesAvailable = false;
-            _chillFramesDisabled = false;
+            LogService.Debug(LogCategory.UI, "ChillFrames limiter re-enabled via IPC");
         }
     }
     
