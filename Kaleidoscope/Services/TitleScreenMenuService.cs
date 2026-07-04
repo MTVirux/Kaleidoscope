@@ -15,6 +15,7 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
     private readonly ITitleScreenMenu _titleScreenMenu;
     private readonly ITextureProvider _textureProvider;
     private readonly IDalamudPluginInterface _pluginInterface;
+    private readonly IFramework _framework;
     private readonly WindowService _windowService;
 
     private IReadOnlyTitleScreenMenuEntry? _menuEntry;
@@ -23,14 +24,18 @@ public sealed class TitleScreenMenuService : IDisposable, IRequiredService
         ITitleScreenMenu titleScreenMenu,
         ITextureProvider textureProvider,
         IDalamudPluginInterface pluginInterface,
+        IFramework framework,
         WindowService windowService)
     {
         _titleScreenMenu = titleScreenMenu;
         _textureProvider = textureProvider;
         _pluginInterface = pluginInterface;
+        _framework = framework;
         _windowService = windowService;
 
-        CreateEntry();
+        // Deferred startup builds this on a background thread; AddEntry mutates the title-screen
+        // menu list that the game iterates on the framework thread, so marshal the registration.
+        _framework.RunOnFrameworkThread(CreateEntry).GetAwaiter().GetResult();
 
         LogService.Debug(LogCategory.UI, "TitleScreenMenuService initialized");
     }

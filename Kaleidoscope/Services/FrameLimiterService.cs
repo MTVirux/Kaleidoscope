@@ -127,8 +127,12 @@ public sealed class FrameLimiterService : IDisposable, IService
         _targetFramerate = Math.Clamp(_configService.Config.FrameLimiterTargetFps, 10, 1000);
         
         InitializeChillFramesIpc();
-        _framework.Update += OnFrameworkUpdate;
-        
+
+        // Deferred startup constructs this on a background thread; subscribe to the framework
+        // update on the framework thread so the handler is hooked in the update dispatcher's
+        // own context rather than off-thread.
+        _framework.RunOnFrameworkThread(() => _framework.Update += OnFrameworkUpdate).GetAwaiter().GetResult();
+
         if (_isEnabled)
         {
             DisableChillFrames();

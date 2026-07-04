@@ -13,6 +13,7 @@ public sealed class WindowService : IDisposable, IRequiredService
 {
     private readonly IPluginLog _log;
     private readonly IDalamudPluginInterface _pluginInterface;
+    private readonly IFramework _framework;
     private readonly ConfigurationService _configService;
     private readonly StateService _stateService;
     private readonly FileDialogService _fileDialogService;
@@ -25,6 +26,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     public WindowService(
         IPluginLog log,
         IDalamudPluginInterface pluginInterface,
+        IFramework framework,
         IUiBuilder uiBuilder,
         ConfigurationService configService,
         StateService stateService,
@@ -35,6 +37,7 @@ public sealed class WindowService : IDisposable, IRequiredService
     {
         _log = log;
         _pluginInterface = pluginInterface;
+        _framework = framework;
         _configService = configService;
         _stateService = stateService;
         _fileDialogService = fileDialogService;
@@ -47,11 +50,17 @@ public sealed class WindowService : IDisposable, IRequiredService
 
         _windowSystem = new WindowSystem("Kaleidoscope");
 
-        RegisterWindows();
-        AttachEvents(uiBuilder);
-        ApplyInitialWindowState();
-        
-        _stateService.OnFullscreenChanged += OnFullscreenChanged;
+        // Deferred startup constructs services on a background thread, but hooking the UiBuilder
+        // draw loop and registering windows must happen on the framework thread — marshal that
+        // work there. Heavy dependencies are already built, so only these registrations run here.
+        _framework.RunOnFrameworkThread(() =>
+        {
+            RegisterWindows();
+            AttachEvents(_uiBuilder);
+            ApplyInitialWindowState();
+
+            _stateService.OnFullscreenChanged += OnFullscreenChanged;
+        }).GetAwaiter().GetResult();
 
         LogService.Debug(LogCategory.UI, "WindowService initialized");
     }
