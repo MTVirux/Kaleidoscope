@@ -252,7 +252,6 @@ public sealed class GraphWidget : ISettingsProvider
         if (_boundSettings == null) return;
         
         var config = _graph.Config;
-        config.LegendWidth = _boundSettings.LegendWidth;
         config.LegendHeightPercent = _boundSettings.LegendHeightPercent;
         config.ShowLegend = _boundSettings.ShowLegend;
         config.LegendCollapsed = _boundSettings.LegendCollapsed;

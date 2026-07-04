@@ -48,11 +48,6 @@ public class GraphConfig
     public float ValueLabelOffsetY { get; set; } = 0f;
     
     /// <summary>
-    /// Width of the scrollable legend panel in multi-series mode.
-    /// </summary>
-    public float LegendWidth { get; set; } = 140f;
-    
-    /// <summary>
     /// Whether to show the legend panel in multi-series mode.
     /// </summary>
     public bool ShowLegend { get; set; } = true;
@@ -155,7 +150,6 @@ public class GraphConfig
 public interface IGraphSettings
 {
     // Legend settings
-    float LegendWidth { get; set; }
     float LegendHeightPercent { get; set; }
     bool ShowLegend { get; set; }
     bool LegendCollapsed { get; set; }
@@ -195,7 +189,6 @@ public interface IGraphSettings
 public class MTGraphSettings : IGraphSettings
 {
     // Legend settings
-    public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
@@ -250,7 +243,6 @@ public class MTGraphSettings : IGraphSettings
     /// </summary>
     public void CopyFrom(IGraphSettings other)
     {
-        LegendWidth = other.LegendWidth;
         LegendHeightPercent = other.LegendHeightPercent;
         ShowLegend = other.ShowLegend;
         LegendCollapsed = other.LegendCollapsed;

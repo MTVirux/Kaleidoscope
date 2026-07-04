@@ -10,6 +10,12 @@ namespace Kaleidoscope;
 /// Settings for the Item Table tool.
 /// Implements IItemTableWidgetSettings for automatic widget binding.
 /// </summary>
+/// <remarks>
+/// The table-display properties below are intentionally duplicated in the table region of the
+/// sibling DataToolSettings class. Each class is serialized independently into the user's config
+/// JSON, so the flat property layout must be preserved; do NOT collapse these into a shared nested
+/// object, as that would change persisted JSON paths and break loading of existing configs.
+/// </remarks>
 public sealed class ItemTableSettings : IItemTableWidgetSettings
 {
     public List<ItemColumnConfig> Columns { get; set; } = new();
@@ -123,6 +129,13 @@ public sealed class ItemTableSettings : IItemTableWidgetSettings
 /// Settings for the Item Graph tool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
+/// <remarks>
+/// The graph-display properties below are intentionally duplicated in the sibling settings classes
+/// DataToolSettings, GraphWidgetSettings, InventoryValueSettings and ItemSalesTrackingSettings. Each
+/// class is serialized independently into the user's config JSON, so the flat property layout must be
+/// preserved; do NOT collapse these into a shared nested object, as that would change persisted JSON
+/// paths and break loading of existing configs.
+/// </remarks>
 public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
 {
     public List<ItemColumnConfig> Series { get; set; } = new();
@@ -137,9 +150,6 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     public NumberFormatConfig NumberFormat { get; set; } = new();
     
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
-    
-    /// <summary>Width of the scrollable legend panel on the right side of the graph.</summary>
-    public float LegendWidth { get; set; } = 140f;
     
     /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
@@ -212,7 +222,14 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
 /// Unified settings for the Data Tool, combining table and graph functionality.
 /// Implements both IItemTableWidgetSettings and IGraphWidgetSettings for widget binding.
 /// </summary>
-public sealed class DataToolSettings : 
+/// <remarks>
+/// The table region duplicates ItemTableSettings and the graph region duplicates ItemGraphSettings,
+/// GraphWidgetSettings and InventoryValueSettings. The duplication is intentional: each class is
+/// serialized independently into the user's config JSON, so the flat property layout must be
+/// preserved; do NOT collapse these into a shared nested object, as that would change persisted
+/// JSON paths and break loading of existing configs.
+/// </remarks>
+public sealed class DataToolSettings :
     IItemTableWidgetSettings,
     Kaleidoscope.Models.IGraphWidgetSettings
 {
@@ -349,8 +366,6 @@ public sealed class DataToolSettings :
     public Models.GraphColorMode ColorMode { get; set; } = Models.GraphColorMode.PreferredItemColors;
     
     // Legend
-    /// <summary>Width of the scrollable legend panel.</summary>
-    public float LegendWidth { get; set; } = 140f;
     /// <summary>Maximum height of the inside legend as a percentage of the graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;

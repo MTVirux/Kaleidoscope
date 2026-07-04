@@ -67,6 +67,13 @@ public sealed class WebsocketFeedSettings
 /// Settings for the Inventory Value tool.
 /// Implements IGraphWidgetSettings for automatic graph widget binding.
 /// </summary>
+/// <remarks>
+/// The graph-display properties below are intentionally duplicated in the sibling settings classes
+/// ItemGraphSettings, DataToolSettings, GraphWidgetSettings and ItemSalesTrackingSettings. Each class
+/// is serialized independently into the user's config JSON, so the flat property layout must be
+/// preserved; do NOT collapse these into a shared nested object, as that would change persisted JSON
+/// paths and break loading of existing configs.
+/// </remarks>
 public sealed class InventoryValueSettings : IGraphWidgetSettings
 {
     /// <summary>Whether to show multiple lines per character.</summary>
@@ -112,9 +119,6 @@ public sealed class InventoryValueSettings : IGraphWidgetSettings
 
     /// <summary>Whether the legend is collapsed.</summary>
     public bool LegendCollapsed { get; set; } = false;
-
-    /// <summary>Legend width in pixels.</summary>
-    public float LegendWidth { get; set; } = 140f;
 
     /// <summary>Legend position (inside corners).</summary>
     public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;

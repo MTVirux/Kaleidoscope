@@ -28,10 +28,16 @@ public interface IGraphWidgetSettings : IGraphSettings
 /// Used by tools that embed an GraphWidget to avoid duplicating settings definitions.
 /// Implements IGraphWidgetSettings for automatic binding with GraphWidget.
 /// </summary>
+/// <remarks>
+/// The graph-display properties below are intentionally duplicated in the sibling settings classes
+/// ItemGraphSettings, DataToolSettings, InventoryValueSettings and ItemSalesTrackingSettings. Each
+/// class is serialized independently into the user's config JSON, so the flat property layout must be
+/// preserved; do NOT collapse these into a shared nested object, as that would change persisted JSON
+/// paths and break loading of existing configs.
+/// </remarks>
 public sealed class GraphWidgetSettings : IGraphWidgetSettings
 {
     public GraphColorMode ColorMode { get; set; } = GraphColorMode.PreferredItemColors;
-    public float LegendWidth { get; set; } = 140f;
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
@@ -60,7 +66,6 @@ public sealed class GraphWidgetSettings : IGraphWidgetSettings
     public void CopyFrom(IGraphWidgetSettings other)
     {
         ColorMode = other.ColorMode;
-        LegendWidth = other.LegendWidth;
         LegendHeightPercent = other.LegendHeightPercent;
         ShowLegend = other.ShowLegend;
         LegendPosition = other.LegendPosition;
