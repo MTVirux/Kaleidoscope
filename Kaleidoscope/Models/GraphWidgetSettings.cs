@@ -35,7 +35,7 @@ public sealed class GraphWidgetSettings : IGraphWidgetSettings
     public float LegendHeightPercent { get; set; } = 25f;
     public bool ShowLegend { get; set; } = true;
     public bool LegendCollapsed { get; set; } = false;
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
     public GraphType GraphType { get; set; } = GraphType.Area;
     public bool ShowXAxisTimestamps { get; set; } = true;
     public bool ShowCrosshair { get; set; } = true;

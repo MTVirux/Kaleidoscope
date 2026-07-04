@@ -148,7 +148,7 @@ public sealed class ItemGraphSettings : Kaleidoscope.Models.IGraphWidgetSettings
     
     public bool LegendCollapsed { get; set; } = false;
     
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
     
     public GraphType GraphType { get; set; } = GraphType.Area;
     

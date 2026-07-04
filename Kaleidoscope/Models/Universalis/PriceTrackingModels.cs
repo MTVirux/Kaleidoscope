@@ -229,8 +229,8 @@ public sealed class InventoryValueSettings : IGraphWidgetSettings
     /// <summary>Legend width in pixels.</summary>
     public float LegendWidth { get; set; } = 140f;
 
-    /// <summary>Legend position (outside or inside corners).</summary>
-    public LegendPosition LegendPosition { get; set; } = LegendPosition.Outside;
+    /// <summary>Legend position (inside corners).</summary>
+    public LegendPosition LegendPosition { get; set; } = LegendPosition.InsideTopLeft;
 
     /// <summary>Maximum height of inside legend as percentage of graph height.</summary>
     public float LegendHeightPercent { get; set; } = 25f;
