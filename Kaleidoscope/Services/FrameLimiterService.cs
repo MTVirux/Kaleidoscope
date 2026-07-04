@@ -131,7 +131,7 @@ public sealed class FrameLimiterService : IDisposable, IService
         // Deferred startup constructs this on a background thread; subscribe to the framework
         // update on the framework thread so the handler is hooked in the update dispatcher's
         // own context rather than off-thread.
-        _framework.RunOnFrameworkThread(() => _framework.Update += OnFrameworkUpdate).GetAwaiter().GetResult();
+        _framework.RunOnFrameworkThread(() => { _framework.Update += OnFrameworkUpdate; }).GetAwaiter().GetResult();
 
         if (_isEnabled)
         {
