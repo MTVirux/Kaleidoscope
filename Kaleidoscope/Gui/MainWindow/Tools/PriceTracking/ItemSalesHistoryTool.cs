@@ -218,30 +218,16 @@ public sealed class ItemSalesHistoryTool : ToolComponent
             var itemId = (int)_itemCombo.SelectedItemId;
             var listingsService = _priceTrackingService.ListingsService;
             var threshold = priceTrackingSettings.SaleDiscrepancyThreshold / 100.0;
-            var minRatio = 1.0 - threshold;
-            var maxRatio = 1.0 + threshold;
             entries = entries.Where(e =>
             {
                 if (!e.WorldId.HasValue) return true; // Keep entries without world info
-                
+
                 var listing = listingsService.GetListing(itemId, e.WorldId.Value);
                 var listingPrice = listing != null ? (e.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
                 var recentSalePrice = _salePriceCacheService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
-                
-                // Calculate reference price as average of listing and recent sale (if both available)
-                double referencePrice;
-                if (listingPrice > 0 && recentSalePrice > 0)
-                    referencePrice = (listingPrice + recentSalePrice) / 2.0;
-                else if (listingPrice > 0)
-                    referencePrice = listingPrice;
-                else if (recentSalePrice > 0)
-                    referencePrice = recentSalePrice;
-                else
-                    return true; // No reference data available, keep entry
-                
-                // Check if sale price is within threshold of reference price (either direction)
-                var ratio = e.PricePerUnit / referencePrice;
-                return ratio >= minRatio && ratio <= maxRatio;
+
+                var referencePrice = SaleOutlierFilter.ComputeReferencePrice(listingPrice, recentSalePrice);
+                return !SaleOutlierFilter.IsRatioOutlier(e.PricePerUnit, referencePrice, threshold, out _);
             });
         }
 

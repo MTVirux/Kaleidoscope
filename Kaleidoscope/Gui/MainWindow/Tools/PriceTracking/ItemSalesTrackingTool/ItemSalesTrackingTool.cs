@@ -174,9 +174,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
         ImGui.TextUnformatted("Track Items:");
         ImGui.SameLine();
 
-        if (_itemCombo.DrawMultiSelect(comboWidth))
-        {
-        }
+        _itemCombo.DrawMultiSelect(comboWidth);
 
         var hasSelectedItems = _itemCombo.SelectedItemIds.Count > 0;
         // World scope selector inline
@@ -312,8 +310,6 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
         var filterOutliers = Settings.FilterOutliers;
         var priceSettings = _configService.Config.PriceTracking;
         var threshold = priceSettings.SaleDiscrepancyThreshold / 100.0;
-        var minRatio = 1.0 - threshold;
-        var maxRatio = 1.0 + threshold;
         var listingsService = _priceTrackingService.ListingsService;
 
         foreach (var itemId in _itemCombo.SelectedItemIds)
@@ -344,25 +340,13 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
                 var listingPrice = listing?.MinPriceNq ?? 0;
                 var recentSalePrice = _salePriceCacheService.GetMostRecentSalePrice((int)itemId, isHq: false);
 
-                // Calculate reference price
-                double referencePrice = 0;
-                if (listingPrice > 0 && recentSalePrice > 0)
-                    referencePrice = (listingPrice + recentSalePrice) / 2.0;
-                else if (listingPrice > 0)
-                    referencePrice = listingPrice;
-                else if (recentSalePrice > 0)
-                    referencePrice = recentSalePrice;
+                var referencePrice = SaleOutlierFilter.ComputeReferencePrice(listingPrice, recentSalePrice);
 
                 // Only filter if we have a reference price
                 if (referencePrice > 0)
                 {
-                    var beforeCount = salesData.Count;
                     filteredData = salesData.Where(sale =>
-                    {
-                        var ratio = sale.Price / referencePrice;
-                        return ratio >= minRatio && ratio <= maxRatio;
-                    });
-                    // We'll log after ToList since filteredData is lazy
+                        !SaleOutlierFilter.IsRatioOutlier(sale.Price, referencePrice, threshold, out _));
                 }
                 else
                 {

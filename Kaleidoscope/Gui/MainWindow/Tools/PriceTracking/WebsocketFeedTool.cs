@@ -428,47 +428,21 @@ public sealed class WebsocketFeedTool : ToolComponent
     private HashSet<int> GetEffectiveFilterWorldIds()
     {
         var settings = Settings;
-        var worldData = _priceTrackingService.WorldData;
+        if (settings.FilterScopeMode == PriceTrackingScopeMode.All)
+            return new HashSet<int>();
 
-        if (worldData == null) return new HashSet<int>();
-
-        var result = new HashSet<int>();
-
-        switch (settings.FilterScopeMode)
+        // Resolve the persisted feed filter through the shared widget expansion so the
+        // DC/region -> world-ID logic lives in exactly one place.
+        var mode = settings.FilterScopeMode switch
         {
-            case PriceTrackingScopeMode.ByRegion:
-                foreach (var region in settings.FilterRegions)
-                {
-                    foreach (var dc in worldData.GetDataCentersForRegion(region))
-                    {
-                        if (dc.Worlds != null)
-                        {
-                            foreach (var wid in dc.Worlds)
-                                result.Add(wid);
-                        }
-                    }
-                }
-                break;
+            PriceTrackingScopeMode.ByRegion => WorldSelectionMode.Regions,
+            PriceTrackingScopeMode.ByDataCenter => WorldSelectionMode.DataCenters,
+            _ => WorldSelectionMode.Worlds
+        };
 
-            case PriceTrackingScopeMode.ByDataCenter:
-                foreach (var dcName in settings.FilterDataCenters)
-                {
-                    var dc = worldData.DataCenters.FirstOrDefault(d => d.Name == dcName);
-                    if (dc?.Worlds != null)
-                    {
-                        foreach (var wid in dc.Worlds)
-                            result.Add(wid);
-                    }
-                }
-                break;
-
-            case PriceTrackingScopeMode.ByWorld:
-                foreach (var wid in settings.FilterWorldIds)
-                    result.Add(wid);
-                break;
-        }
-
-        return result;
+        var widget = new WorldSelectionWidget(_priceTrackingService.WorldData) { Mode = mode };
+        widget.InitializeFrom(settings.FilterRegions, settings.FilterDataCenters, settings.FilterWorldIds);
+        return widget.GetEffectiveWorldIds();
     }
 
     public override Dictionary<string, object?>? ExportToolSettings()
