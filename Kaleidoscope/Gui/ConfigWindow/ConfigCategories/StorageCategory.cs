@@ -6,7 +6,6 @@ using Kaleidoscope.Gui.Common;
 using Kaleidoscope.Gui.Widgets;
 using Kaleidoscope.Gui.Widgets.Combo;
 using Kaleidoscope.Models;
-using Kaleidoscope.Models.Universalis;
 using Kaleidoscope.Services;
 using Kaleidoscope.Services.Database;
 using Kaleidoscope.Services.Inventory;
@@ -742,57 +741,21 @@ public sealed class StorageCategory : IConfigCategory, IDisposable
             return;
         }
 
-        // Retention type
-        var retentionType = (int)settings.RetentionType;
-        string[] retentionTypeNames = { "By Time (days)", "By Size (MB)" };
-        ImGui.SetNextItemWidth(150);
-        if (ImGui.Combo("Retention Policy##PriceRetentionStorage", ref retentionType, retentionTypeNames, retentionTypeNames.Length))
+        var retentionDays = settings.RetentionDays;
+        ImGui.SetNextItemWidth(100);
+        if (ImGui.InputInt("Days to Retain##RetentionDaysStorage", ref retentionDays, 1, 7))
         {
-            settings.RetentionType = (PriceRetentionType)retentionType;
+            settings.RetentionDays = Math.Max(1, Math.Min(365, retentionDays));
             _configService.Save();
         }
         ImGuiHelpers.HelpMarker(
-            "How to limit stored price history data.\n\n" +
-            "By Time: Deletes records older than N days.\n" +
-            "  • Predictable retention period\n" +
-            "  • Database size varies with data volume\n\n" +
-            "By Size: Deletes oldest records when database exceeds N MB.\n" +
-            "  • Predictable storage usage\n" +
-            "  • Retention period varies with data volume\n\n" +
-            "Recommended: 'By Time' for most users.", sameLine: true, wrapMultiplier: 25f);
-
-        if (settings.RetentionType == PriceRetentionType.ByTime)
-        {
-            var retentionDays = settings.RetentionDays;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Days to Retain##RetentionDaysStorage", ref retentionDays, 1, 7))
-            {
-                settings.RetentionDays = Math.Max(1, Math.Min(365, retentionDays));
-                _configService.Save();
-            }
-            ImGuiHelpers.HelpMarker(
-                "Number of days to keep price history in database.\n\n" +
-                "• 1-3 days: Minimal storage, limited trend analysis\n" +
-                "• 7 days: Good balance (default)\n" +
-                "• 30+ days: Extended history, larger database\n\n" +
-                "Older data is automatically deleted during cleanup.", sameLine: true, wrapMultiplier: 25f);
-        }
-        else
-        {
-            var retentionMb = settings.RetentionSizeMb;
-            ImGui.SetNextItemWidth(100);
-            if (ImGui.InputInt("Max Size (MB)##RetentionSizeStorage", ref retentionMb, 10, 50))
-            {
-                settings.RetentionSizeMb = Math.Max(10, Math.Min(1000, retentionMb));
-                _configService.Save();
-            }
-            ImGuiHelpers.HelpMarker(
-                "Maximum database size for price history data.\n\n" +
-                "• 50 MB: Conservative, suitable for limited tracking\n" +
-                "• 100 MB: Good balance (default)\n" +
-                "• 500+ MB: Extended history, more storage\n\n" +
-                "Oldest records are deleted when limit is exceeded.", sameLine: true, wrapMultiplier: 25f);
-        }
+            "Number of days to keep inventory value history in the database.\n\n" +
+            "• 1-3 days: Minimal storage, limited trend analysis\n" +
+            "• 7 days: Good balance (default)\n" +
+            "• 30+ days: Extended history, larger database\n\n" +
+            "Only inventory value history is time-limited. Sale records self-cap at a " +
+            "fixed count, and current prices are always kept as live state.\n\n" +
+            "Older history is automatically deleted during cleanup.", sameLine: true, wrapMultiplier: 25f);
 
         // Cleanup interval
         var cleanupInterval = settings.CleanupIntervalMinutes;
@@ -844,7 +807,7 @@ public sealed class StorageCategory : IConfigCategory, IDisposable
         if (!canRun) ImGui.EndDisabled();
         ImGui.SameLine();
         ImGuiHelpers.HelpMarker(
-            "Immediately runs the retention cleanup using the current policy.\n\n" +
+            "Immediately deletes inventory value history older than the configured retention period.\n\n" +
             "This is the same operation that runs automatically on the configured interval.", sameLine: true, wrapMultiplier: 25f);
 
         // Show result/error for a few seconds

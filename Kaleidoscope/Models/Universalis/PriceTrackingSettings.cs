@@ -1,17 +1,6 @@
 namespace Kaleidoscope.Models.Universalis;
 
 /// <summary>
-/// Retention policy type for price data.
-/// </summary>
-public enum PriceRetentionType
-{
-    /// <summary>Keep data for a specified number of days.</summary>
-    ByTime = 0,
-    /// <summary>Keep data up to a specified size in MB.</summary>
-    BySize = 1
-}
-
-/// <summary>
 /// Scope mode for price tracking subscriptions.
 /// </summary>
 public enum PriceTrackingScopeMode
@@ -34,14 +23,8 @@ public sealed class PriceTrackingSettings
     /// <summary>Whether price tracking is enabled.</summary>
     public bool Enabled { get; set; } = false;
 
-    /// <summary>Retention policy type (by time or by size).</summary>
-    public PriceRetentionType RetentionType { get; set; } = PriceRetentionType.ByTime;
-
-    /// <summary>Number of days to retain price data when using ByTime retention.</summary>
+    /// <summary>Number of days to retain inventory value history.</summary>
     public int RetentionDays { get; set; } = 7;
-
-    /// <summary>Maximum size in MB for price data when using BySize retention.</summary>
-    public int RetentionSizeMb { get; set; } = 100;
 
     /// <summary>Scope mode for which worlds/DCs to track.</summary>
     public PriceTrackingScopeMode ScopeMode { get; set; } = PriceTrackingScopeMode.All;

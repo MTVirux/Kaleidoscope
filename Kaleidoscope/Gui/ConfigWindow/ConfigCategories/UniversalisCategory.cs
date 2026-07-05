@@ -24,7 +24,6 @@ public sealed class UniversalisCategory : IConfigCategory
     private Configuration Config => _configService.Config;
 
     private static readonly string[] ScopeNames = { "World", "Data Center", "Region" };
-    private static readonly string[] RetentionTypeNames = { "By Time (Days)", "By Size (MB)" };
 
     // World selection widget for price tracking scope
     private WorldSelectionWidget? _worldSelectionWidget;
@@ -247,7 +246,7 @@ public sealed class UniversalisCategory : IConfigCategory
         // Data Retention - reference to Storage category
         ImGui.TextColored(new System.Numerics.Vector4(0.7f, 0.7f, 0.7f, 1f), 
             "Price data retention settings have been moved to the Storage category.");
-        ImGui.TextDisabled($"Current: {(settings.RetentionType == PriceRetentionType.ByTime ? $"{settings.RetentionDays} days" : $"{settings.RetentionSizeMb} MB")} retention");
+        ImGui.TextDisabled($"Current: {settings.RetentionDays} days retention (value history)");
 
         ImGui.Spacing();
 
