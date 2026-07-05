@@ -23,6 +23,14 @@ public sealed partial class KaleidoscopeDbService
             cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
             cmd.Parameters.AddWithValue("$buyer", (object?)buyerName ?? DBNull.Value);
             cmd.ExecuteNonQuery();
+
+            using var trimCmd = conn.CreateCommand();
+            trimCmd.CommandText = StorageSql.TrimSaleRingForKeySql;
+            trimCmd.Parameters.AddWithValue("$iid", itemId);
+            trimCmd.Parameters.AddWithValue("$wid", worldId);
+            trimCmd.Parameters.AddWithValue("$hq", isHq ? 1 : 0);
+            trimCmd.Parameters.AddWithValue("$keep", StorageSql.SaleRingKeep);
+            trimCmd.ExecuteNonQuery();
         });
     }
 
@@ -67,6 +75,25 @@ public sealed partial class KaleidoscopeDbService
                     timeParam.Value = now;
                     buyerParam.Value = (object?)buyerName ?? DBNull.Value;
                     cmd.ExecuteNonQuery();
+                }
+
+                // Enforce the recent-N ring for every key this batch touched, in the same
+                // transaction so a crash can't leave a key over-cap.
+                using var trimCmd = cmd.Connection!.CreateCommand();
+                trimCmd.Transaction = tx;
+                trimCmd.CommandText = StorageSql.TrimSaleRingForKeySql;
+                var trimIid = trimCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var trimWid = trimCmd.Parameters.Add("$wid", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var trimHq = trimCmd.Parameters.Add("$hq", Microsoft.Data.Sqlite.SqliteType.Integer);
+                trimCmd.Parameters.AddWithValue("$keep", StorageSql.SaleRingKeep);
+
+                foreach (var (itemId, worldId, isHq) in recordList
+                             .Select(r => (r.ItemId, r.WorldId, r.IsHq)).Distinct())
+                {
+                    trimIid.Value = itemId;
+                    trimWid.Value = worldId;
+                    trimHq.Value = isHq ? 1 : 0;
+                    trimCmd.ExecuteNonQuery();
                 }
             });
         });
@@ -485,19 +512,13 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Transaction = tx;
                 cmd.Parameters.AddWithValue("$cutoff", cutoffTicks);
 
-                cmd.CommandText = "DELETE FROM price_history WHERE timestamp < $cutoff";
-                totalDeleted += cmd.ExecuteNonQuery();
-
                 cmd.CommandText = "DELETE FROM inventory_value_history WHERE timestamp < $cutoff";
-                totalDeleted += cmd.ExecuteNonQuery();
-
-                cmd.CommandText = "DELETE FROM sale_records WHERE timestamp < $cutoff";
                 totalDeleted += cmd.ExecuteNonQuery();
             });
 
             if (totalDeleted > 0)
             {
-                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} old price/value/sale records");
+                LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Cleaned up {totalDeleted} old inventory value records");
             }
 
             return totalDeleted;
