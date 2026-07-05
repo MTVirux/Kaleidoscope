@@ -60,9 +60,7 @@ public sealed class SqlQueryCategory : IConfigCategory
         ["owner_names"]            = "Owner identity mapping. Stores names for players (owner_kind=0) and retainers (owner_kind=1).",
         ["character_names"]        = "Character identity mapping. Stores game name, display name, and time-series color per character ID.",
         ["item_prices"]            = "Current market prices. At most one row per (item, world) pair, updated via UPSERT from Universalis.",
-        ["price_history"]          = "Historical market price snapshots. Appended on each Universalis WebSocket update. Pruned by retention policy.",
         ["inventory_value_history"] = "Periodic inventory value snapshots. Stores total_value = gil_value + item_value per character per timestamp.",
-        ["inventory_value_items"]  = "Per-item breakdown of inventory value snapshots. Linked to inventory_value_history via CASCADE DELETE.",
         ["sale_records"]           = "Market sale records from Universalis. Pruned by retention policy.",
     };
 

@@ -525,22 +525,6 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
         }
     }
 
-    /// <summary>
-    /// Single source of truth for the inventory_value_items table + its indexes. Referenced from both
-    /// EnsureSchema (fresh installs) and the v3 migration. Idempotent via CREATE IF NOT EXISTS.
-    /// </summary>
-    private const string InventoryValueItemsSchemaSql = @"
-CREATE TABLE IF NOT EXISTS inventory_value_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    history_id INTEGER NOT NULL,
-    item_id INTEGER NOT NULL,
-    quantity INTEGER NOT NULL,
-    unit_price INTEGER NOT NULL,
-    FOREIGN KEY(history_id) REFERENCES inventory_value_history(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_inventory_value_items_history ON inventory_value_items(history_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_items(item_id);";
-
     private void EnsureSchema()
     {
         if (_connection == null) return;
@@ -550,62 +534,12 @@ CREATE INDEX IF NOT EXISTS idx_inventory_value_items_item ON inventory_value_ite
         // Read back via `new DateTime(ticks, DateTimeKind.Utc)`.
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-CREATE TABLE IF NOT EXISTS series (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    variable TEXT NOT NULL,
-    character_id INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS points (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    series_id INTEGER NOT NULL,
-    timestamp INTEGER NOT NULL,
-    value INTEGER NOT NULL,
-    FOREIGN KEY(series_id) REFERENCES series(id)
-);
-
 CREATE TABLE IF NOT EXISTS character_names (
     character_id INTEGER PRIMARY KEY,
     name TEXT,
     display_name TEXT,
     time_series_color INTEGER
 );
-
-CREATE TABLE IF NOT EXISTS inventory_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    character_id INTEGER NOT NULL,
-    source_type INTEGER NOT NULL,
-    retainer_id INTEGER NOT NULL DEFAULT 0,
-    name TEXT,
-    world TEXT,
-    gil INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL,
-    UNIQUE (character_id, source_type, retainer_id)
-);
-
-CREATE TABLE IF NOT EXISTS inventory_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cache_id INTEGER NOT NULL,
-    item_id INTEGER NOT NULL,
-    quantity INTEGER NOT NULL,
-    is_hq INTEGER NOT NULL DEFAULT 0,
-    is_collectable INTEGER NOT NULL DEFAULT 0,
-    slot INTEGER NOT NULL,
-    container_type INTEGER NOT NULL,
-    spiritbond INTEGER NOT NULL DEFAULT 0,
-    condition INTEGER NOT NULL DEFAULT 0,
-    glamour_id INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY(cache_id) REFERENCES inventory_cache(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_series_variable_character ON series(variable, character_id);
-CREATE INDEX IF NOT EXISTS idx_series_variable ON series(variable);
-CREATE INDEX IF NOT EXISTS idx_points_series_timestamp ON points(series_id, timestamp);
-CREATE INDEX IF NOT EXISTS idx_points_series_timestamp_value ON points(series_id, timestamp DESC, value);
-CREATE INDEX IF NOT EXISTS idx_inventory_cache_char ON inventory_cache(character_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_cache_lookup ON inventory_cache(character_id, source_type, retainer_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_cache ON inventory_items(cache_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_item ON inventory_items(item_id);
 
 -- Price tracking tables
 CREATE TABLE IF NOT EXISTS item_prices (
@@ -623,15 +557,6 @@ CREATE TABLE IF NOT EXISTS item_prices (
     UNIQUE (item_id, world_id)
 );
 
-CREATE TABLE IF NOT EXISTS price_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id INTEGER NOT NULL,
-    world_id INTEGER NOT NULL,
-    timestamp INTEGER NOT NULL,
-    min_price_nq INTEGER NOT NULL DEFAULT 0,
-    min_price_hq INTEGER NOT NULL DEFAULT 0
-);
-
 CREATE TABLE IF NOT EXISTS inventory_value_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     character_id INTEGER NOT NULL,
@@ -640,8 +565,6 @@ CREATE TABLE IF NOT EXISTS inventory_value_history (
     gil_value INTEGER NOT NULL DEFAULT 0,
     item_value INTEGER NOT NULL DEFAULT 0
 );
-
--- inventory_value_items (per-item breakdown) is created via InventoryValueItemsSchemaSql below.
 
 -- Individual sale records table for per-world sale tracking
 CREATE TABLE IF NOT EXISTS sale_records (
@@ -659,22 +582,13 @@ CREATE TABLE IF NOT EXISTS sale_records (
 CREATE INDEX IF NOT EXISTS idx_item_prices_item ON item_prices(item_id);
 CREATE INDEX IF NOT EXISTS idx_item_prices_world ON item_prices(world_id);
 CREATE INDEX IF NOT EXISTS idx_item_prices_lookup ON item_prices(item_id, world_id);
-CREATE INDEX IF NOT EXISTS idx_price_history_item_world ON price_history(item_id, world_id);
-CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_char ON inventory_value_history(character_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_history(timestamp);
-CREATE INDEX IF NOT EXISTS idx_sale_records_item ON sale_records(item_id);
+CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_id, is_hq, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_sale_records_world ON sale_records(world_id);
-CREATE INDEX IF NOT EXISTS idx_sale_records_item_world ON sale_records(item_id, world_id);
 CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp);
 ";
         cmd.ExecuteNonQuery();
-
-        using (var iviCmd = _connection.CreateCommand())
-        {
-            iviCmd.CommandText = InventoryValueItemsSchemaSql;
-            iviCmd.ExecuteNonQuery();
-        }
 
         ApplyResourcesSchema();
 
@@ -684,7 +598,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
     /// <summary>
     /// Current schema version. Increment this whenever a new migration is added.
     /// </summary>
-    private const int CurrentSchemaVersion = 7; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources, 7=drop_legacy_tables
+    private const int CurrentSchemaVersion = 8; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources, 7=drop_legacy_tables, 8=storage_optimization
 
     /// <summary>
     /// Runs database migrations for schema updates.
@@ -729,6 +643,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
             if (currentVersion < 5) AddColumnIfMissing("character_names", "time_series_color", "time_series_color INTEGER");
             if (currentVersion < 6) MigrateAddUnifiedResources();
             if (currentVersion < 7) MigrateDropLegacyTables();
+            if (currentVersion < 8) MigrateStorageOptimization();
 
             using (var updateCmd = _connection.CreateCommand())
             {
@@ -776,19 +691,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp)
 
     private void MigrateAddInventoryValueItemsTable()
     {
-        if (_connection == null) return;
-
-        using var checkCmd = _connection.CreateCommand();
-        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_value_items'";
-        var exists = checkCmd.ExecuteScalar() != null;
-
-        if (!exists)
-        {
-            using var createCmd = _connection.CreateCommand();
-            createCmd.CommandText = InventoryValueItemsSchemaSql;
-            createCmd.ExecuteNonQuery();
-            LogService.Debug(LogCategory.Database, "[KaleidoscopeDb] Migration: Created inventory_value_items table");
-        }
+        // v8 drops inventory_value_items; creating it for v3 upgraders is pointless.
     }
 
     /// <summary>

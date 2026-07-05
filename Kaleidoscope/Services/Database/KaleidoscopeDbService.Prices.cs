@@ -87,23 +87,6 @@ public sealed partial class KaleidoscopeDbService
         });
     }
 
-    public void SavePriceHistory(int itemId, int worldId, int minPriceNq, int minPriceHq)
-    {
-        ExecuteWrite("SavePriceHistory", conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                    INSERT INTO price_history (item_id, world_id, timestamp, min_price_nq, min_price_hq)
-                    VALUES ($iid, $wid, $time, $mnq, $mhq)";
-            cmd.Parameters.AddWithValue("$iid", itemId);
-            cmd.Parameters.AddWithValue("$wid", worldId);
-            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-            cmd.Parameters.AddWithValue("$mnq", minPriceNq);
-            cmd.Parameters.AddWithValue("$mhq", minPriceHq);
-            cmd.ExecuteNonQuery();
-        });
-    }
-
     /// <summary>
     /// Gets the current price for an item on a world.
     /// Returns (minPriceNq, minPriceHq, lastUpdated) or null if not found.
@@ -567,7 +550,7 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
-    /// Clears all price tracking data (item_prices, price_history, inventory_value_history, inventory_value_items, sale_records).
+    /// Clears all price tracking data (item_prices, inventory_value_history, sale_records).
     /// </summary>
     public bool ClearAllPriceData()
     {
@@ -579,12 +562,6 @@ public sealed partial class KaleidoscopeDbService
                 cmd.Transaction = tx;
 
                 cmd.CommandText = "DELETE FROM item_prices";
-                cmd.ExecuteNonQuery();
-
-                cmd.CommandText = "DELETE FROM price_history";
-                cmd.ExecuteNonQuery();
-
-                cmd.CommandText = "DELETE FROM inventory_value_items";
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = "DELETE FROM inventory_value_history";

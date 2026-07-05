@@ -92,13 +92,7 @@ public sealed partial class KaleidoscopeDbService
                 cmd.CommandText = "DELETE FROM item_prices";
                 cmd.ExecuteNonQuery();
 
-                cmd.CommandText = "DELETE FROM price_history";
-                cmd.ExecuteNonQuery();
-
                 // Inventory value history
-                cmd.CommandText = "DELETE FROM inventory_value_items";
-                cmd.ExecuteNonQuery();
-
                 cmd.CommandText = "DELETE FROM inventory_value_history";
                 cmd.ExecuteNonQuery();
 

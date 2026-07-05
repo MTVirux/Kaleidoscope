@@ -68,9 +68,18 @@ CREATE TABLE IF NOT EXISTS owner_names (
         cmd.ExecuteNonQuery();
     }
 
+    private bool TableExists(string name)
+    {
+        using var cmd = _connection!.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=$n";
+        cmd.Parameters.AddWithValue("$n", name);
+        return cmd.ExecuteScalar() != null;
+    }
+
     private void BackfillResourcesFromInventoryItems()
     {
         if (_connection == null) return;
+        if (!TableExists("inventory_items")) return;
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = MigrationSql.BackfillResourcesFromInventoryItemsSql;
         var rows = cmd.ExecuteNonQuery();
@@ -80,6 +89,7 @@ CREATE TABLE IF NOT EXISTS owner_names (
     private void BackfillGilRowsFromInventoryCache()
     {
         if (_connection == null) return;
+        if (!TableExists("inventory_cache")) return;
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = MigrationSql.BackfillGilRowsSql;
         var rows = cmd.ExecuteNonQuery();
@@ -89,6 +99,7 @@ CREATE TABLE IF NOT EXISTS owner_names (
     private void BackfillResourceHistoryFromSeries()
     {
         if (_connection == null) return;
+        if (!TableExists("series") || !TableExists("points")) return;
         var (written, skipped) = MigrationSql.BackfillResourceHistoryFromSeries(_connection, null);
         LogService.Info(LogCategory.Database, $"[Migration v6] resource_history: wrote {written} rows, skipped {skipped} unrecognized series");
     }
@@ -137,6 +148,44 @@ CREATE TABLE IF NOT EXISTS owner_names (
                 LogService.Error(LogCategory.Database, $"[Migration v7] Failed: {ex.Message}", ex);
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// Migration v8: storage optimization. Drops dead/retired tables (price_history was never
+    /// written; series/points/inventory_items/inventory_cache are v7 leftovers EnsureSchema used
+    /// to recreate; inventory_value_items breakdown is no longer persisted), trims sale_records
+    /// to the recent-N ring, and swaps sale indexes for the ring index. No VACUUM here — the
+    /// startup maintenance pass that follows reclaims space when the freelist is large.
+    /// </summary>
+    private void MigrateStorageOptimization()
+    {
+        if (_connection == null) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            ExecuteDropDdl("DROP TABLE IF EXISTS price_history;");
+            ExecuteDropDdl("DROP TABLE IF EXISTS inventory_value_items;");
+            ExecuteDropDdl("DROP TABLE IF EXISTS inventory_items;");
+            ExecuteDropDdl("DROP TABLE IF EXISTS inventory_cache;");
+            ExecuteDropDdl("DROP TABLE IF EXISTS points;");
+            ExecuteDropDdl("DROP TABLE IF EXISTS series;");
+            ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_item;");
+            ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_item_world;");
+            ExecuteDropDdl("CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_id, is_hq, timestamp DESC);");
+
+            using (var trimCmd = _connection.CreateCommand())
+            {
+                trimCmd.CommandText = StorageSql.TrimSaleRingAllSql;
+                trimCmd.Parameters.AddWithValue("$keep", StorageSql.SaleRingKeep);
+                var trimmed = trimCmd.ExecuteNonQuery();
+                LogService.Info(LogCategory.Database, $"[Migration v8] Trimmed {trimmed} sale_records rows to recent-{StorageSql.SaleRingKeep} ring");
+            }
+
+            LogService.Info(LogCategory.Database, "[Migration v8] Storage optimization migration complete");
         }
     }
 
