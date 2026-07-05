@@ -282,8 +282,8 @@ public sealed partial class KaleidoscopeDbService
     /// <summary>
     /// Deletes all data associated with a character across all character-scoped tables:
     /// resource_history, resources, owner_names (character + its retainers),
-    /// character_names, and inventory value history + items (CASCADE).
-    /// World-scoped tables (sale_records, price_history, item_prices) are not affected.
+    /// character_names, and inventory_value_history.
+    /// World-scoped tables (sale_records, item_prices) are not affected.
     /// Returns the total number of rows deleted.
     /// </summary>
     public int DeleteAllCharacterData(ulong characterId)
@@ -328,16 +328,9 @@ public sealed partial class KaleidoscopeDbService
                     cmd.CommandText = "DELETE FROM character_names WHERE character_id = $c";
                     totalDeleted += cmd.ExecuteNonQuery();
 
-                    // Inventory value history (CASCADE deletes inventory_value_items)
-                    // Delete in batches of 100 to limit CASCADE impact
-                    int batchDeleted;
-                    do
-                    {
-                        cmd.CommandText = @"DELETE FROM inventory_value_history
-                            WHERE id IN (SELECT id FROM inventory_value_history WHERE character_id = $c LIMIT 100)";
-                        batchDeleted = cmd.ExecuteNonQuery();
-                        totalDeleted += batchDeleted;
-                } while (batchDeleted > 0);
+                    // Inventory value history (no child table — direct delete)
+                    cmd.CommandText = "DELETE FROM inventory_value_history WHERE character_id = $c";
+                    totalDeleted += cmd.ExecuteNonQuery();
             });
 
             if (totalDeleted > 0)

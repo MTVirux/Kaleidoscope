@@ -43,20 +43,6 @@ public sealed class CurrencyTrackerService : IDisposable, IRequiredService
     public CharacterDataCacheService CharacterDataCache => _characterDataCache;
 
     /// <summary>
-    /// Event fired when inventory value history is modified (e.g., sale record deleted).
-    /// </summary>
-    public event Action? OnInventoryValueHistoryChanged;
-
-    /// <summary>
-    /// Notifies subscribers that inventory value history has changed.
-    /// Call this after modifying inventory_value_history records.
-    /// </summary>
-    public void NotifyInventoryValueHistoryChanged()
-    {
-        OnInventoryValueHistoryChanged?.Invoke();
-    }
-
-    /// <summary>
     /// Queues inventory item value sample to the background thread for database persistence.
     /// This integrates calculated Universalis values into the standard time-series tracking.
     /// Gil is tracked separately via the Gil TrackedDataType.

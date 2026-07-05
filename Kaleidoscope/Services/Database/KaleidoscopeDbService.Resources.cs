@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS owner_names (
             ExecuteDropDdl("DROP TABLE IF EXISTS series;");
             ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_item;");
             ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_item_world;");
+            ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_world;");
+            ExecuteDropDdl("DROP INDEX IF EXISTS idx_sale_records_timestamp;");
             ExecuteDropDdl("CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_id, is_hq, timestamp DESC);");
 
             using (var trimCmd = _connection.CreateCommand())

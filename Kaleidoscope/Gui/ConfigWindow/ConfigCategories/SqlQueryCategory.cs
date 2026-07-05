@@ -61,7 +61,7 @@ public sealed class SqlQueryCategory : IConfigCategory
         ["character_names"]        = "Character identity mapping. Stores game name, display name, and time-series color per character ID.",
         ["item_prices"]            = "Current market prices. At most one row per (item, world) pair, updated via UPSERT from Universalis.",
         ["inventory_value_history"] = "Periodic inventory value snapshots. Stores total_value = gil_value + item_value per character per timestamp.",
-        ["sale_records"]           = "Market sale records from Universalis. Pruned by retention policy.",
+        ["sale_records"]           = "Market sale records from Universalis. Self-capping ring: keeps the most recent 10 per (item, world, HQ).",
     };
 
     public SqlQueryCategory(CurrencyTrackerService currencyTrackerService)

@@ -595,8 +595,6 @@ CREATE INDEX IF NOT EXISTS idx_item_prices_lookup ON item_prices(item_id, world_
 CREATE INDEX IF NOT EXISTS idx_inventory_value_char ON inventory_value_history(character_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_value_timestamp ON inventory_value_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_id, is_hq, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_sale_records_world ON sale_records(world_id);
-CREATE INDEX IF NOT EXISTS idx_sale_records_timestamp ON sale_records(timestamp);
 ";
         cmd.ExecuteNonQuery();
 
