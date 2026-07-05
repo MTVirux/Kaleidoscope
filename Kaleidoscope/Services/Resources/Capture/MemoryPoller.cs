@@ -17,43 +17,23 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
     private readonly ResourceObservationService _service;
     private readonly KaleidoscopeDbService _db;
     private readonly GameStateService _gameState;
-    private readonly AutoRetainerService? _autoRetainerIpc;
     private DateTime _nextPoll;
     private const int PollIntervalMs = 500;
     private ulong _lastNameStampedPid;
-    private bool _arWasBusy = false;
 
-    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service, KaleidoscopeDbService db, GameStateService gameState, AutoRetainerService? autoRetainerIpc = null)
+    public MemoryPoller(IFramework framework, IClientState clientState, ResourceObservationService service, KaleidoscopeDbService db, GameStateService gameState)
     {
         _framework = framework;
         _clientState = clientState;
         _service = service;
         _db = db;
         _gameState = gameState;
-        _autoRetainerIpc = autoRetainerIpc;
         _framework.Update += OnFrameworkUpdate;
     }
 
     private unsafe void OnFrameworkUpdate(IFramework f)
     {
         var now = DateTime.UtcNow;
-
-        // AR busy → idle transition: force an immediate retainer-gil read by resetting _nextPoll.
-        // This catches retainer gil changes from AR's auto-sell as soon as AR finishes its task,
-        // rather than waiting up to 500ms for the next regular poll.
-        if (_autoRetainerIpc?.IsAvailable == true)
-        {
-            try
-            {
-                var isBusy = _autoRetainerIpc.IsBusy() == true;
-                if (_arWasBusy && !isBusy)
-                {
-                    _nextPoll = DateTime.MinValue;  // force immediate poll this tick
-                }
-                _arWasBusy = isBusy;
-            }
-            catch { /* AR may throw if disconnected mid-poll; ignore */ }
-        }
 
         if (now < _nextPoll || !_clientState.IsLoggedIn) return;
         _nextPoll = now.AddMilliseconds(PollIntervalMs);
