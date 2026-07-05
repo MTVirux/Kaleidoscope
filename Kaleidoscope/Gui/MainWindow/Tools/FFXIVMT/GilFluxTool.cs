@@ -455,17 +455,8 @@ public sealed class GilFluxTool : ToolComponent
         }
         else
         {
-            ImGui.TextColored(UiColors.Value, FormatGil(value));
+            ImGui.TextColored(UiColors.Value, FormatUtils.FormatGil(value));
         }
-    }
-
-    private static string FormatGil(long value)
-    {
-        if (value >= 1_000_000)
-            return $"{value / 1_000_000.0:F1}M";
-        if (value >= 1_000)
-            return $"{value / 1_000.0:F1}K";
-        return value.ToString("N0");
     }
 
     private void SortItems(List<GilfluxItem> items, ImGuiTableSortSpecsPtr sortSpecs)
