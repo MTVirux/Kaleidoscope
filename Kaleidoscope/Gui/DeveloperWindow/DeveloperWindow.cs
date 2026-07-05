@@ -69,6 +69,7 @@ public sealed class DeveloperWindow : Window, IService, IDisposable
         _categories.Add(new ProfilerCategory(profilerService, configService, currencyTrackerService));
         _categories.Add(new CachesCategory(currencyTrackerService, inventoryCacheService, listingsService, characterDataService));
         _categories.Add(new LoggingCategory(configService, filenameService, fileDialogService));
+        _categories.Add(new DataCategory(currencyTrackerService, configService, resourceStore));
 
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(300, 200) };
     }

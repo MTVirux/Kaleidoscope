@@ -106,7 +106,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
         MessageService messageService,
         StateService stateService,
         ResourceObservationService resourcesService,
-        ResourceStore resourceStore,
         AutoRetainerFcPointsSyncService fcPointsSync,
         DeveloperWindow.DeveloperWindow developerWindow)
         : base("Kaleidoscope Configuration")
@@ -175,7 +174,6 @@ public sealed class ConfigWindow : Window, IService, IDisposable
             _arIpc,
             _priceTrackingService)));
         _categories.Add((TabIndex.Integrations, new IntegrationsCategory(_arIpc, _currencyTrackerService, _currencyTrackerService.DbService, resourcesService, fcPointsSync)));
-        _categories.Add((TabIndex.Data, new DataCategory(_currencyTrackerService, _configService, resourceStore)));
         // The remaining developer categories (Tests, SQL Query, Profiler, Caches, Logging) now live
         // in the standalone DeveloperWindow, opened from the developer section of this sidebar.
 
