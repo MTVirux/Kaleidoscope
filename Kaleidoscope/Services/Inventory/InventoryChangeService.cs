@@ -45,11 +45,14 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly object _pendingLock = new();
     private readonly HashSet<TrackedDataType> _pendingTypes = new();
 
-    // Retainer state tracking - waits for data to stabilize after opening a retainer
+    // Retainer readiness tracking. On open we begin waiting; each tick OnRetainerInventoryReady fires
+    // as soon as GameStateService.AreRetainerContainersLoaded reports every retainer container loaded,
+    // or when RetainerStabilizationDelay elapses as a max-wait fallback (ReconcileScanner safely skips
+    // any still-unloaded container). Fired exactly once per retainer-open; cleared on close.
     private bool _wasRetainerActive = false;
     private DateTime _retainerOpenedTime = DateTime.MinValue;
     private readonly TimeSpan _retainerStabilizationDelay = TimeSpan.FromMilliseconds(ConfigStatic.RetainerStabilizationDelayMs);
-    private bool _isRetainerStabilizing = false;
+    private bool _awaitingRetainerReady = false;
 
     /// <summary>
     /// Event fired when any tracked inventory/currency value may have changed.
@@ -97,27 +100,37 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
             _wasRetainerActive = isRetainerActive;
             if (isRetainerActive)
             {
-                // Retainer just opened - start stabilization period
+                // Retainer just opened - begin waiting for its containers to load
                 _retainerOpenedTime = now;
-                _isRetainerStabilizing = true;
-                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Retainer opened, waiting {ConfigStatic.RetainerStabilizationDelayMs}ms for data stabilization");
+                _awaitingRetainerReady = true;
+                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Retainer opened, waiting for containers to load (max {ConfigStatic.RetainerStabilizationDelayMs}ms)");
             }
             else
             {
-                // Retainer closed - stop stabilizing
-                _isRetainerStabilizing = false;
+                // Retainer closed - stop waiting
+                _awaitingRetainerReady = false;
                 LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed");
                 try { OnRetainerClosed?.Invoke(); }
                 catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
             }
         }
 
-        if (_isRetainerStabilizing && now - _retainerOpenedTime >= _retainerStabilizationDelay)
+        // Fire readiness as soon as all retainer containers report loaded; otherwise fall back to the
+        // fixed delay as a max-wait so a slow/partial load still gets one reconcile pass (the scanner
+        // skips any container still unloaded). Fires exactly once per open — the flag guards re-entry.
+        if (_awaitingRetainerReady)
         {
-            _isRetainerStabilizing = false;
-            LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer data stabilized");
-            try { OnRetainerInventoryReady?.Invoke(); }
-            catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
+            var loaded = _gameState.AreRetainerContainersLoaded();
+            var timedOut = now - _retainerOpenedTime >= _retainerStabilizationDelay;
+            if (loaded || timedOut)
+            {
+                _awaitingRetainerReady = false;
+                LogService.Debug(LogCategory.Inventory, loaded
+                    ? "[InventoryChangeService] Retainer containers loaded"
+                    : "[InventoryChangeService] Retainer readiness timed out; scanning loaded containers only");
+                try { OnRetainerInventoryReady?.Invoke(); }
+                catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerInventoryReady callback error: {ex.Message}"); }
+            }
         }
 
         // Flush last, after the retainer events above: the reconcile scans they trigger commit

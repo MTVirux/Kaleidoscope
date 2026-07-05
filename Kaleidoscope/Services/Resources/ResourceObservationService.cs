@@ -68,26 +68,75 @@ public sealed class ResourceObservationService : IRequiredService
     /// </summary>
     public void RecordObservation(ResourceObservation obs)
     {
+        bool changed;
         lock (_observationLock)
-        {
-            var resource = obs.ToResource();
-            if (!_store.ApplyWithAggregate(resource, out var previousQuantity))
-                return;   // idempotent — no change, no DB row, no projection
-
-            var changeAmount = obs.Quantity - previousQuantity;
-            var tag = _sink.ConsumeIfFresh();
-
-            _writer.Enqueue(new ResourceWrite
-            {
-                Resource = resource,
-                ChangeAmount = changeAmount,
-                SourceKind = tag?.Kind ?? SourceKind.Unknown,
-                SourceDetail = tag?.Detail,
-                ParentOwnerId = obs.ParentOwnerId,
-            });
-        }
+            changed = ApplyLocked(obs);
 
         // Notify the legacy projection outside the lock so its store read-backs don't reenter it.
-        ObservationCommitted?.Invoke(obs.Key);
+        if (changed)
+            ObservationCommitted?.Invoke(obs.Key);
+    }
+
+    /// <summary>
+    /// Record a batch of observations under a SINGLE acquisition of the observation lock, instead
+    /// of one lock cycle per row. Full-container scans (ReconcileScanner's ~350-slot retainer sweep,
+    /// TradeReconcileCapture's bag sweep) use this so a whole scan costs one lock, one contiguous
+    /// aggregate/index update, and one enqueue burst rather than N of each.
+    /// Each row is applied exactly as <see cref="RecordObservation"/> does — including a per-changed-row
+    /// <see cref="SourceTagSink.ConsumeIfFresh"/>, which preserves the sink's single-consumption
+    /// semantics unchanged from the sequential loop this replaces (see remarks). ObservationCommitted
+    /// fires once per changed row, in batch order, AFTER the lock is released so subscribers' store
+    /// read-backs don't reenter it.
+    /// </summary>
+    /// <remarks>
+    /// SourceTagSink.ConsumeIfFresh clears the tag on the first fresh consume, so within one batch the
+    /// first changed row claims any pending tag and later changed rows fall back to SourceKind.Unknown.
+    /// This is deliberately identical to calling RecordObservation in a loop: it neither widens a tag
+    /// across a batch (which would let a stale tag mis-paint an untagged reconcile sweep) nor drops one.
+    /// </remarks>
+    public void RecordObservations(IReadOnlyList<ResourceObservation> batch)
+    {
+        if (batch is null || batch.Count == 0)
+            return;
+
+        List<ResourceKey>? changedKeys = null;
+        lock (_observationLock)
+        {
+            foreach (var obs in batch)
+            {
+                if (ApplyLocked(obs))
+                    (changedKeys ??= new List<ResourceKey>(batch.Count)).Add(obs.Key);
+            }
+        }
+
+        if (changedKeys == null)
+            return;
+        foreach (var key in changedKeys)
+            ObservationCommitted?.Invoke(key);
+    }
+
+    /// <summary>
+    /// Applies one observation to the store, aggregates and DB write-queue. The caller MUST hold
+    /// <see cref="_observationLock"/>. Returns true if the row produced a real change (and thus an
+    /// ObservationCommitted should be fired for it once the lock is released), false if idempotent.
+    /// </summary>
+    private bool ApplyLocked(ResourceObservation obs)
+    {
+        var resource = obs.ToResource();
+        if (!_store.ApplyWithAggregate(resource, out var previousQuantity))
+            return false;   // idempotent — no change, no DB row, no projection
+
+        var changeAmount = obs.Quantity - previousQuantity;
+        var tag = _sink.ConsumeIfFresh();
+
+        _writer.Enqueue(new ResourceWrite
+        {
+            Resource = resource,
+            ChangeAmount = changeAmount,
+            SourceKind = tag?.Kind ?? SourceKind.Unknown,
+            SourceDetail = tag?.Detail,
+            ParentOwnerId = obs.ParentOwnerId,
+        });
+        return true;
     }
 }

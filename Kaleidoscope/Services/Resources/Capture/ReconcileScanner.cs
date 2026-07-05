@@ -24,14 +24,6 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
     private readonly KaleidoscopeDbService _db;
     private readonly GameStateService _gameState;
 
-    private static readonly InventoryType[] RetainerContainers =
-    {
-        InventoryType.RetainerPage1, InventoryType.RetainerPage2, InventoryType.RetainerPage3,
-        InventoryType.RetainerPage4, InventoryType.RetainerPage5, InventoryType.RetainerPage6,
-        InventoryType.RetainerPage7,
-        InventoryType.RetainerEquippedItems, InventoryType.RetainerCrystals, InventoryType.RetainerMarket,
-    };
-
     public ReconcileScanner(InventoryChangeService changes, LoadedContainerSet loaded, ResourceObservationService service, KaleidoscopeDbService db, GameStateService gameState)
     {
         _changes = changes;
@@ -55,25 +47,30 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         if (!string.IsNullOrEmpty(retainerName))
             _db.UpsertOwnerName(rid, OwnerKind.Retainer, retainerName);
 
-        foreach (var type in RetainerContainers)
+        // Accumulate every slot across all containers into one batch so the whole retainer sweep
+        // commits under a single observation-lock acquisition rather than ~350 of them.
+        var batch = new List<ResourceObservation>();
+        foreach (var type in InventoryConstants.RetainerScanContainers)
         {
             if (!ResourceCatalog.TryMapContainer((int)type, out var container)) continue;
-            ScanContainer(im, type, container, rid, OwnerKind.Retainer);
+            ScanContainer(im, type, container, rid, OwnerKind.Retainer, batch);
             _loaded.Add(rid, container);
         }
+
+        _service.RecordObservations(batch);
     }
 
     private void OnRetainerClosed()
     {
         var rid = _gameState.GetActiveRetainerId();
-        foreach (var type in RetainerContainers)
+        foreach (var type in InventoryConstants.RetainerScanContainers)
         {
             if (ResourceCatalog.TryMapContainer((int)type, out var container))
                 _loaded.Remove(rid, container);
         }
     }
 
-    private unsafe void ScanContainer(InventoryManager* im, InventoryType type, Container container, ulong ownerId, OwnerKind kind)
+    private unsafe void ScanContainer(InventoryManager* im, InventoryType type, Container container, ulong ownerId, OwnerKind kind, List<ResourceObservation> batch)
     {
         var c = im->GetInventoryContainer(type);
         if (c == null || !c->IsLoaded) return;
@@ -86,7 +83,7 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
             if (slot == null || slot->ItemId == 0) continue;
 
             var key = new ResourceKey { OwnerId = ownerId, OwnerKind = kind, Container = container, ItemId = slot->ItemId, Slot = slot->Slot };
-            _service.RecordObservation(InventorySlotMapper.FromInventorySlot(slot, key, parentOwnerId));
+            batch.Add(InventorySlotMapper.FromInventorySlot(slot, key, parentOwnerId));
         }
     }
 

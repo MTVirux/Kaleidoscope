@@ -58,11 +58,16 @@ public sealed class TradeReconcileCapture : IDisposable, IRequiredService
         var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
 
+        // Accumulate the cleared slots across all four bags into one batch so the sweep commits
+        // under a single observation-lock acquisition.
+        var batch = new List<ResourceObservation>();
         foreach (var (gameType, container) in PlayerBags)
-            ScanBag(im, gameType, container, pid);
+            ScanBag(im, gameType, container, pid, batch);
+
+        _service.RecordObservations(batch);
     }
 
-    private unsafe void ScanBag(InventoryManager* im, InventoryType gameType, Container container, ulong pid)
+    private unsafe void ScanBag(InventoryManager* im, InventoryType gameType, Container container, ulong pid, List<ResourceObservation> batch)
     {
         var c = im->GetInventoryContainer(gameType);
         if (c == null || !c->IsLoaded) return;
@@ -86,7 +91,7 @@ public sealed class TradeReconcileCapture : IDisposable, IRequiredService
                 ItemId    = prevItemId.Value,
                 Slot      = slot->Slot,
             };
-            _service.RecordObservation(InventorySlotMapper.FromInventorySlot(slot, key, 0UL));
+            batch.Add(InventorySlotMapper.FromInventorySlot(slot, key, 0UL));
         }
     }
 

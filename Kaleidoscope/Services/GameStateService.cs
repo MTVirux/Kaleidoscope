@@ -207,6 +207,35 @@ public sealed unsafe class GameStateService : IService
     }
 
     /// <summary>
+    /// Returns true only when every retainer container in
+    /// <see cref="InventoryConstants.RetainerScanContainers"/> reports IsLoaded. Used as the
+    /// readiness gate before a reconcile scan so it can fire as soon as the client has populated all
+    /// containers, rather than after a fixed blind delay. Any null manager/container reads as
+    /// not-ready. (AllaganTools likewise requires all retainer containers loaded before scanning, so
+    /// requiring the full set — including RetainerMarket/RetainerCrystals — is the safe gate.)
+    /// </summary>
+    public bool AreRetainerContainersLoaded()
+    {
+        try
+        {
+            var im = InventoryManagerInstance();
+            if (im == null) return false;
+
+            foreach (var type in InventoryConstants.RetainerScanContainers)
+            {
+                var c = im->GetInventoryContainer(type);
+                if (c == null || !c->IsLoaded) return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug(LogCategory.GameState, $"AreRetainerContainersLoaded failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Checks if a retainer is currently active (selected/open).
     /// </summary>
     public bool IsRetainerActive()

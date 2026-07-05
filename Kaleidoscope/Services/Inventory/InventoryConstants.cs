@@ -11,7 +11,7 @@ public static class InventoryConstants
     /// <summary>
     /// Retainer inventory pages only (excludes equipped items, crystals, and market).
     /// Used for counting item quantities in retainer storage.
-    /// The retainer full-scan list lives at ReconcileScanner.RetainerContainers (single source).
+    /// For the full retainer reconcile/readiness set see <see cref="RetainerScanContainers"/>.
     /// </summary>
     public static readonly InventoryType[] RetainerStoragePages =
     [
@@ -22,5 +22,25 @@ public static class InventoryConstants
         InventoryType.RetainerPage5,
         InventoryType.RetainerPage6,
         InventoryType.RetainerPage7,
+    ];
+
+    /// <summary>
+    /// Every retainer container touched by a retainer-open reconcile: the seven storage pages plus
+    /// equipped items, crystals and market. Single source shared by ReconcileScanner (the full scan)
+    /// and GameStateService.AreRetainerContainersLoaded (the readiness gate) so the readiness check
+    /// and the scan operate on exactly the same set.
+    /// </summary>
+    public static readonly InventoryType[] RetainerScanContainers =
+    [
+        InventoryType.RetainerPage1,
+        InventoryType.RetainerPage2,
+        InventoryType.RetainerPage3,
+        InventoryType.RetainerPage4,
+        InventoryType.RetainerPage5,
+        InventoryType.RetainerPage6,
+        InventoryType.RetainerPage7,
+        InventoryType.RetainerEquippedItems,
+        InventoryType.RetainerCrystals,
+        InventoryType.RetainerMarket,
     ];
 }
