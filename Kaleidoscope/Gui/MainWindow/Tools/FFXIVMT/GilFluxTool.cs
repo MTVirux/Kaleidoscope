@@ -637,24 +637,25 @@ public sealed class GilFluxTool : ToolComponent
             liveSnapshot = _liveItems.ToList();
         }
 
-        // Step 1: Aggregate base items by ItemId (server-side totals)
-        var aggregated = baseSnapshot
-            .GroupBy(i => i.ItemId)
-            .ToDictionary(
-                g => g.Key,
-                g => new GilfluxItem
+        var labels = _timeframeLabels.ToList();
+
+        // Step 1: Aggregate base items by ItemId, summing rankings per timeframe label
+        var aggregated = new Dictionary<int, GilfluxItem>();
+        foreach (var source in baseSnapshot)
+        {
+            if (!aggregated.TryGetValue(source.ItemId, out var item))
+            {
+                item = new GilfluxItem
                 {
-                    ItemId = g.Key,
-                    ItemName = _itemDataService?.GetItemName(g.Key) ?? $"Item #{g.Key}",
-                    RankingAllTime = g.Sum(i => i.RankingAllTime),
-                    Ranking1h = g.Sum(i => i.Ranking1h),
-                    Ranking3h = g.Sum(i => i.Ranking3h),
-                    Ranking6h = g.Sum(i => i.Ranking6h),
-                    Ranking12h = g.Sum(i => i.Ranking12h),
-                    Ranking1d = g.Sum(i => i.Ranking1d),
-                    Ranking3d = g.Sum(i => i.Ranking3d),
-                    Ranking7d = g.Sum(i => i.Ranking7d),
-                });
+                    ItemId = source.ItemId,
+                    ItemName = _itemDataService?.GetItemName(source.ItemId) ?? $"Item #{source.ItemId}",
+                };
+                aggregated[source.ItemId] = item;
+            }
+
+            foreach (var (label, value) in source.Rankings)
+                item.Rankings[label] = item.GetRanking(label) + value;
+        }
 
         // Step 2: Merge live sales, only contributing to applicable time buckets
         foreach (var sale in liveSnapshot)
@@ -671,17 +672,11 @@ public sealed class GilFluxTool : ToolComponent
                 aggregated[sale.ItemId] = item;
             }
 
-            // Always add to alltime
-            item.RankingAllTime += sale.Total;
-
-            // Only add to buckets the sale still falls within
-            if (age <= GetTimeframeDuration("1h"))  item.Ranking1h  += sale.Total;
-            if (age <= GetTimeframeDuration("3h"))  item.Ranking3h  += sale.Total;
-            if (age <= GetTimeframeDuration("6h"))  item.Ranking6h  += sale.Total;
-            if (age <= GetTimeframeDuration("12h")) item.Ranking12h += sale.Total;
-            if (age <= GetTimeframeDuration("1d"))  item.Ranking1d  += sale.Total;
-            if (age <= GetTimeframeDuration("3d"))  item.Ranking3d  += sale.Total;
-            if (age <= GetTimeframeDuration("7d"))  item.Ranking7d  += sale.Total;
+            foreach (var label in labels)
+            {
+                if (age <= GetTimeframeDuration(label))
+                    item.Rankings[label] = item.GetRanking(label) + sale.Total;
+            }
         }
 
         var result = aggregated.Values.ToList();

@@ -94,92 +94,33 @@ public sealed class FFXIVMTService : IDisposable, IService
         var url = $"gilflux?target_location={Uri.EscapeDataString(targetLocation)}&crafted_only=0&request_id={requestId}";
 
         var response = await GetAsync<GilfluxResponse>(url, cancellationToken);
-        if (response?.Data == null || response.Data.Value.ValueKind == JsonValueKind.Undefined)
-            return null;
-
-        try
+        if (response is not { Status: true, Data: not null })
         {
-            // The "data" field can be a JSON object (dict), a JSON array, or a JSON-encoded string
-            List<GilfluxItem>? itemList = null;
-            var dataElement = response.Data.Value;
-            var dataJson = dataElement.ValueKind == JsonValueKind.String
-                ? dataElement.GetString()
-                : dataElement.GetRawText();
-
-            if (!string.IsNullOrEmpty(dataJson))
-            {
-                var trimmed = dataJson.TrimStart();
-                if (trimmed.StartsWith('['))
-                {
-                    // Array of items
-                    itemList = JsonSerializer.Deserialize<List<GilfluxItem>>(dataJson, _jsonOptions);
-                }
-                else if (trimmed.StartsWith('{'))
-                {
-                    // Dictionary keyed by item id
-                    var dict = JsonSerializer.Deserialize<Dictionary<string, GilfluxItem>>(dataJson, _jsonOptions);
-                    itemList = dict?.Values.ToList();
-                }
-            }
-
-            // Parse the timeframe labels and durations from the gilflux_timeframe_in_ms field
-            var timeframeLabels = new List<string>();
-            var timeframeDurations = new Dictionary<string, TimeSpan>();
-            if (response.GilfluxTimeframeInMs != null && response.GilfluxTimeframeInMs.Value.ValueKind != JsonValueKind.Undefined)
-            {
-                try
-                {
-                    Dictionary<string, long>? timeframes;
-                    var tfElement = response.GilfluxTimeframeInMs.Value;
-                    if (tfElement.ValueKind == JsonValueKind.String)
-                    {
-                        var tfString = tfElement.GetString();
-                        timeframes = string.IsNullOrEmpty(tfString)
-                            ? null
-                            : JsonSerializer.Deserialize<Dictionary<string, long>>(tfString, _jsonOptions);
-                    }
-                    else if (tfElement.ValueKind == JsonValueKind.Object)
-                    {
-                        timeframes = JsonSerializer.Deserialize<Dictionary<string, long>>(tfElement.GetRawText(), _jsonOptions);
-                    }
-                    else
-                    {
-                        timeframes = null;
-                    }
-
-                    if (timeframes != null)
-                    {
-                        // Sort by duration ascending (shortest timeframe first: 1h, 3h, ... 7d)
-                        timeframeLabels = timeframes.OrderBy(kv => kv.Value).Select(kv => kv.Key).ToList();
-
-                        // Convert ms durations to TimeSpan
-                        foreach (var kv in timeframes)
-                            timeframeDurations[kv.Key] = TimeSpan.FromMilliseconds(kv.Value);
-                    }
-                }
-                catch (JsonException)
-                {
-                    // Fall back to default timeframe labels if parsing fails (shortest first)
-                    timeframeLabels = new List<string> { "1h", "3h", "6h", "12h", "1d", "3d", "7d" };
-                }
-            }
-
-            // If no timeframes were returned, use defaults (shortest first)
-            if (timeframeLabels.Count == 0)
-                timeframeLabels = new List<string> { "1h", "3h", "6h", "12h", "1d", "3d", "7d" };
-
-            return new GilfluxResult
-            {
-                Items = itemList ?? new List<GilfluxItem>(),
-                TimeframeLabels = timeframeLabels,
-                TimeframeDurations = timeframeDurations,
-            };
-        }
-        catch (JsonException ex)
-        {
-            LogService.Error(LogCategory.FFXIVMT, $"[FFXIVMTService] Failed to parse Gilflux data: {ex.Message}");
+            if (response?.Message != null)
+                LogService.Warning(LogCategory.FFXIVMT, $"[FFXIVMTService] Gilflux request rejected: {response.Message}");
             return null;
         }
+
+        // Derive column labels and durations from gilflux_timeframe_in_ms (shortest first: 1h ... 7d)
+        List<string> timeframeLabels;
+        var timeframeDurations = new Dictionary<string, TimeSpan>();
+        if (response.GilfluxTimeframeInMs is { Count: > 0 } timeframes)
+        {
+            timeframeLabels = timeframes.OrderBy(kv => kv.Value).Select(kv => kv.Key).ToList();
+            foreach (var kv in timeframes)
+                timeframeDurations[kv.Key] = TimeSpan.FromMilliseconds(kv.Value);
+        }
+        else
+        {
+            timeframeLabels = new List<string> { "1h", "3h", "6h", "12h", "1d", "3d", "7d" };
+        }
+
+        return new GilfluxResult
+        {
+            Items = response.Data,
+            TimeframeLabels = timeframeLabels,
+            TimeframeDurations = timeframeDurations,
+        };
     }
 
     /// <summary>

@@ -47,7 +47,8 @@ public sealed partial class DataTool : ToolComponent
     private readonly FavoritesService? _favoritesService;
     private readonly ITextureProvider? _textureProvider;
     private readonly ResourceObservationService? _resourceObservationService;
-    
+    private readonly ItemCountHistoryService? _itemCountHistoryService;
+
     // Widgets
     private readonly ItemTableWidget _tableWidget;
     private readonly GraphWidget _graphWidget;
@@ -93,7 +94,8 @@ public sealed partial class DataTool : ToolComponent
         PriceTrackingService? priceTrackingService = null,
         LifestreamService? lifestreamService = null,
         INotificationManager? notificationManager = null,
-        ResourceObservationService? resourceObservationService = null)
+        ResourceObservationService? resourceObservationService = null,
+        ItemCountHistoryService? itemCountHistoryService = null)
     {
         _currencyTrackerService = currencyTrackerService;
         _configService = configService;
@@ -107,6 +109,7 @@ public sealed partial class DataTool : ToolComponent
         _favoritesService = favoritesService;
         _textureProvider = textureProvider;
         _resourceObservationService = resourceObservationService;
+        _itemCountHistoryService = itemCountHistoryService;
 
         
         // Initialize instance-specific settings with global defaults

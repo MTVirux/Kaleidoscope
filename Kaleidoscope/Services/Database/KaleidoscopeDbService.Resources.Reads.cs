@@ -202,6 +202,26 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Distinct retainer owner ids whose parent is the given character. Used by
+    /// ItemCountHistoryService to attribute retainer-owned counts to the character's series.
+    /// </summary>
+    public List<ulong> GetRetainerIdsForCharacter(ulong characterId)
+    {
+        var result = new List<ulong>();
+        return ExecuteRead("GetRetainerIdsForCharacter", result, conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    SELECT DISTINCT owner_id FROM resources
+                    WHERE owner_kind = 1 AND parent_owner_id = $cid AND owner_id != 0";
+            cmd.Parameters.AddWithValue("$cid", (long)characterId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) result.Add((ulong)r.GetInt64(0));
+            return result;
+        });
+    }
+
+    /// <summary>
     /// All historical points for a given (item, owner, container) tuple, optionally filtered
     /// to points after a timestamp. Returns (timestamp, quantity) tuples ordered by timestamp.
     /// Used by TimeSeriesCacheService when UseUnifiedResources is enabled.

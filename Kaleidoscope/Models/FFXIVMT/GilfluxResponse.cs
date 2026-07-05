@@ -1,12 +1,9 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Kaleidoscope.Models.FFXIVMT;
 
 /// <summary>
 /// Top-level response from the FFXIVMT Gilflux API endpoint.
-/// Note: The "data" field may be either a JSON-encoded string or a raw JSON object,
-/// so it is captured as a JsonElement for flexible parsing.
 /// </summary>
 public sealed class GilfluxResponse
 {
@@ -16,21 +13,17 @@ public sealed class GilfluxResponse
     [JsonPropertyName("message")]
     public string? Message { get; set; }
 
-    /// <summary>
-    /// Contains a dictionary of GilfluxItem objects.
-    /// May be a JSON object or a JSON-encoded string — handled as JsonElement for flexibility.
-    /// </summary>
+    /// <summary>One entry per (item, world) pair; aggregation across worlds is client-side.</summary>
     [JsonPropertyName("data")]
-    public JsonElement? Data { get; set; }
+    public List<GilfluxItem>? Data { get; set; }
 
     /// <summary>
     /// Timeframe labels mapped to their duration in ms.
     /// e.g. {"7d":604800000,"3d":259200000,"1d":86400000,"12h":43200000,"6h":21600000,"3h":10800000,"1h":3600000}
-    /// May be a JSON object or a JSON-encoded string — handled as JsonElement for flexibility.
     /// The keys define which ranking columns should be displayed.
     /// </summary>
     [JsonPropertyName("gilflux_timeframe_in_ms")]
-    public JsonElement? GilfluxTimeframeInMs { get; set; }
+    public Dictionary<string, long>? GilfluxTimeframeInMs { get; set; }
 
     [JsonPropertyName("request_id")]
     public string? RequestId { get; set; }
@@ -45,7 +38,7 @@ public sealed class GilfluxResult
     public List<GilfluxItem> Items { get; init; } = new();
 
     /// <summary>
-    /// Ordered list of timeframe labels (e.g. ["7d", "3d", "1d", "12h", "6h", "3h", "1h"]).
+    /// Ordered list of timeframe labels (e.g. ["1h", "3h", "6h", "12h", "1d", "3d", "7d"]).
     /// Derived from the gilflux_timeframe_in_ms field. Defines which columns to show.
     /// </summary>
     public List<string> TimeframeLabels { get; init; } = new();
@@ -69,7 +62,7 @@ public sealed class GilfluxItem
     public string? ItemName { get; set; }
 
     [JsonPropertyName("world_id")]
-    public int WorldId { get; set; }
+    public int? WorldId { get; set; }
 
     [JsonPropertyName("world_name")]
     public string? WorldName { get; set; }
@@ -80,72 +73,19 @@ public sealed class GilfluxItem
     [JsonPropertyName("region")]
     public string? Region { get; set; }
 
-    [JsonPropertyName("ranking_alltime")]
-    public long RankingAllTime { get; set; }
+    /// <summary>Gil moved per timeframe, keyed by timeframe label (e.g. "1h", "7d").</summary>
+    [JsonPropertyName("rankings")]
+    public Dictionary<string, long> Rankings { get; set; } = new();
 
-    [JsonPropertyName("ranking_1h")]
-    public long Ranking1h { get; set; }
-
-    [JsonPropertyName("ranking_3h")]
-    public long Ranking3h { get; set; }
-
-    [JsonPropertyName("ranking_6h")]
-    public long Ranking6h { get; set; }
-
-    [JsonPropertyName("ranking_12h")]
-    public long Ranking12h { get; set; }
-
-    [JsonPropertyName("ranking_1d")]
-    public long Ranking1d { get; set; }
-
-    [JsonPropertyName("ranking_3d")]
-    public long Ranking3d { get; set; }
-
-    [JsonPropertyName("ranking_7d")]
-    public long Ranking7d { get; set; }
-
+    /// <summary>Epoch millis of the last ranking refresh; null if never refreshed.</summary>
     [JsonPropertyName("updated_at")]
-    public long UpdatedAt { get; set; }
+    public long? UpdatedAt { get; set; }
 
+    /// <summary>Epoch millis of the most recent sale used for the ranking; null if no sales yet.</summary>
     [JsonPropertyName("last_sale_time")]
-    public long LastSaleTime { get; set; }
+    public long? LastSaleTime { get; set; }
 
-    /// <summary>
-    /// Additional ranking values keyed by timeframe label (e.g. "7d", "1h").
-    /// Populated from the JSON via the overflow extension data handler.
-    /// </summary>
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
-
-    /// <summary>
-    /// Retrieves the ranking value for a given timeframe label.
-    /// Checks the typed properties first, then falls back to extension data.
-    /// </summary>
+    /// <summary>Retrieves the ranking value for a given timeframe label, or 0 if absent.</summary>
     public long GetRanking(string label)
-    {
-        // Fast path: match known typed properties
-        return label switch
-        {
-            "1h" => Ranking1h,
-            "3h" => Ranking3h,
-            "6h" => Ranking6h,
-            "12h" => Ranking12h,
-            "1d" => Ranking1d,
-            "3d" => Ranking3d,
-            "7d" => Ranking7d,
-            "alltime" => RankingAllTime,
-            _ => GetRankingFromExtensionData(label)
-        };
-    }
-
-    private long GetRankingFromExtensionData(string label)
-    {
-        // Try "ranking_<label>" key in extension data (captures any new timeframes the backend adds)
-        if (ExtensionData != null && ExtensionData.TryGetValue($"ranking_{label}", out var element))
-        {
-            if (element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var val))
-                return val;
-        }
-        return 0;
-    }
+        => Rankings.TryGetValue(label, out var value) ? value : 0;
 }

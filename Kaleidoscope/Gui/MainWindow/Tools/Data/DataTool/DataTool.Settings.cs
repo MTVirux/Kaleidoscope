@@ -201,6 +201,8 @@ public sealed partial class DataTool
                 if (enabled)
                 {
                     _configService.Config.ItemsWithHistoricalTracking.Add(itemId);
+                    // Seed a baseline sample right away instead of waiting for the next quantity change.
+                    _itemCountHistoryService?.RequestSample(itemId);
                 }
                 else
                 {
