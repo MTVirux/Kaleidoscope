@@ -489,6 +489,65 @@ public sealed partial class KaleidoscopeDbService
         catch { /* best effort */ }
     }
 
+    private const long AutoVacuumMinFreeBytes = 50L * 1024 * 1024;
+    private const double AutoVacuumMinFreeRatio = 0.25;
+
+    /// <summary>
+    /// Runs once during EnsureConnection, after migrations and before the read connection and
+    /// background writers exist — the only moment with guaranteed exclusive access. Collapses
+    /// an inherited oversized WAL, then VACUUMs when the freelist says the file is mostly air.
+    /// </summary>
+    private void StartupStorageMaintenance()
+    {
+        if (_connection == null) return;
+
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            using (var cpCmd = _connection.CreateCommand())
+            {
+                cpCmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
+                cpCmd.ExecuteNonQuery();
+            }
+
+            long pageSize, pageCount, freeCount;
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA page_size";
+                pageSize = Convert.ToInt64(cmd.ExecuteScalar());
+                cmd.CommandText = "PRAGMA page_count";
+                pageCount = Convert.ToInt64(cmd.ExecuteScalar());
+                cmd.CommandText = "PRAGMA freelist_count";
+                freeCount = Convert.ToInt64(cmd.ExecuteScalar());
+            }
+
+            var freeBytes = freeCount * pageSize;
+            var freeRatio = pageCount > 0 ? (double)freeCount / pageCount : 0;
+
+            if (freeBytes > AutoVacuumMinFreeBytes && freeRatio > AutoVacuumMinFreeRatio)
+            {
+                LogService.Info(LogCategory.Database,
+                    $"[KaleidoscopeDb] Auto-VACUUM: {freeBytes / 1048576:N0} MB free ({freeRatio:P0} of file), reclaiming...");
+                using var vacCmd = _connection.CreateCommand();
+                vacCmd.CommandText = "VACUUM";
+                vacCmd.ExecuteNonQuery();
+                sw.Stop();
+                LogService.Info(LogCategory.Database,
+                    $"[KaleidoscopeDb] Auto-VACUUM complete in {sw.ElapsedMilliseconds:N0} ms, file now {new FileInfo(_dbPath!).Length / 1048576:N0} MB");
+            }
+            else
+            {
+                LogService.Debug(LogCategory.Database,
+                    $"[KaleidoscopeDb] Startup maintenance: {freeBytes / 1048576:N0} MB free ({freeRatio:P0}), no VACUUM needed ({sw.ElapsedMilliseconds} ms)");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Error(LogCategory.Database, $"[KaleidoscopeDb] Startup storage maintenance failed: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>
     /// Performs a non-blocking WAL checkpoint using PASSIVE mode.
     /// Does not block readers or writers — only checkpoints pages that are not in use.
@@ -518,6 +577,18 @@ public sealed partial class KaleidoscopeDbService
             LogService.Debug(LogCategory.Database, $"[KaleidoscopeDb] Passive WAL checkpoint failed: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Periodic checkpoint: tries a full TRUNCATE checkpoint (shrinks the WAL file); if readers
+    /// keep it from completing, falls back to PASSIVE so WAL pages still drain. Runs on a timer
+    /// thread, never on the framework thread.
+    /// </summary>
+    private void CheckpointWithTruncateFallback()
+    {
+        var (success, _) = Checkpoint();
+        if (!success)
+            CheckpointPassive();
     }
 
     /// <summary>

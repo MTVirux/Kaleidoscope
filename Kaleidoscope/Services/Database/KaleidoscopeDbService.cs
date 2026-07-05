@@ -423,6 +423,14 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
                     walCmd.ExecuteNonQuery();
                 }
 
+                // Cap the WAL file: after each successful checkpoint/reset SQLite truncates
+                // it back to this size instead of leaving the high-water mark on disk.
+                using (var walLimitCmd = _connection.CreateCommand())
+                {
+                    walLimitCmd.CommandText = "PRAGMA journal_size_limit = 33554432";
+                    walLimitCmd.ExecuteNonQuery();
+                }
+
                 // Enable foreign key constraints for CASCADE deletes
                 using (var pragmaCmd = _connection.CreateCommand())
                 {
@@ -459,12 +467,14 @@ public sealed partial class KaleidoscopeDbService : IDisposable, IRequiredServic
                 }
 
                 EnsureSchema();
-                
+
+                StartupStorageMaintenance();
+
                 EnsureReadConnection();
-                
-                // Start periodic passive checkpoints to keep WAL small
+
+                // Start periodic checkpoints to keep WAL small
                 _checkpointTimer = new Timer(
-                    _ => CheckpointPassive(),
+                    _ => CheckpointWithTruncateFallback(),
                     null,
                     CheckpointInterval,
                     CheckpointInterval);
