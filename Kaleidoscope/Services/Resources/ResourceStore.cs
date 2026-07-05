@@ -149,6 +149,26 @@ public sealed class ResourceStore : IRequiredService
         }
     }
 
+    /// <summary>
+    /// Snapshot of (slot, item id) for every positive-quantity entry belonging to one
+    /// (owner, kind, container). Used by the hidden-container captures (Glamour Dresser,
+    /// Armoire) to reconcile removals: any stored slot not seen in a fresh scan is zeroed out.
+    /// Copies under the lock so the caller iterates without holding it.
+    /// </summary>
+    public IReadOnlyList<(short Slot, uint ItemId)> GetOccupiedSlots(ulong ownerId, OwnerKind ownerKind, Container container)
+    {
+        var list = new List<(short, uint)>();
+        lock (_lock)
+        {
+            foreach (var (key, resource) in _state)
+            {
+                if (key.OwnerId == ownerId && key.OwnerKind == ownerKind && key.Container == container && resource.Quantity > 0)
+                    list.Add((key.Slot, key.ItemId));
+            }
+        }
+        return list;
+    }
+
     /// <summary>Snapshot copy — caller iterates without holding the store lock.</summary>
     public IReadOnlyList<Resource> Snapshot()
     {
