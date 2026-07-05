@@ -263,58 +263,21 @@ public sealed partial class KaleidoscopeDbService
         });
     }
 
-    /// <summary>
-    /// Saves inventory value history for a character.
-    /// </summary>
-    /// <param name="characterId">The character ID.</param>
-    /// <param name="totalValue">Total value (gil + items).</param>
-    /// <param name="gilValue">Gil value.</param>
-    /// <param name="itemValue">Item value.</param>
-    /// <param name="itemContributions">Optional per-item breakdown: (itemId, quantity, unitPrice).</param>
-    public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue, 
-        List<(int ItemId, long Quantity, int UnitPrice)>? itemContributions = null)
+    /// <summary>Saves an inventory value snapshot (totals only) for a character.</summary>
+    public void SaveInventoryValueHistory(ulong characterId, long totalValue, long gilValue, long itemValue)
     {
         ExecuteWrite("SaveInventoryValueHistory", conn =>
         {
-            RunInTransaction(tx =>
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = @"
-                        INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
-                        VALUES ($cid, $time, $total, $gil, $item);
-                        SELECT last_insert_rowid();";
-                cmd.Parameters.AddWithValue("$cid", (long)characterId);
-                cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-                cmd.Parameters.AddWithValue("$total", totalValue);
-                cmd.Parameters.AddWithValue("$gil", gilValue);
-                cmd.Parameters.AddWithValue("$item", itemValue);
-                var historyId = (long)cmd.ExecuteScalar()!;
-
-                if (itemContributions != null && itemContributions.Count > 0)
-                {
-                    using var itemCmd = conn.CreateCommand();
-                    itemCmd.Transaction = tx;
-                    itemCmd.CommandText = @"
-                            INSERT INTO inventory_value_items (history_id, item_id, quantity, unit_price)
-                            VALUES ($hid, $iid, $qty, $price)";
-
-                    var hidParam = itemCmd.Parameters.Add("$hid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var iidParam = itemCmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var qtyParam = itemCmd.Parameters.Add("$qty", Microsoft.Data.Sqlite.SqliteType.Integer);
-                    var priceParam = itemCmd.Parameters.Add("$price", Microsoft.Data.Sqlite.SqliteType.Integer);
-
-                    hidParam.Value = historyId;
-
-                    foreach (var (itemId, quantity, unitPrice) in itemContributions)
-                    {
-                        iidParam.Value = itemId;
-                        qtyParam.Value = quantity;
-                        priceParam.Value = unitPrice;
-                        itemCmd.ExecuteNonQuery();
-                    }
-                }
-            });
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    INSERT INTO inventory_value_history (character_id, timestamp, total_value, gil_value, item_value)
+                    VALUES ($cid, $time, $total, $gil, $item)";
+            cmd.Parameters.AddWithValue("$cid", (long)characterId);
+            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
+            cmd.Parameters.AddWithValue("$total", totalValue);
+            cmd.Parameters.AddWithValue("$gil", gilValue);
+            cmd.Parameters.AddWithValue("$item", itemValue);
+            cmd.ExecuteNonQuery();
 
             InvalidateInventoryValueStatsCache();
         });

@@ -630,27 +630,21 @@ public sealed class ItemDetailsPopup
         // Handle deletion outside the loop to avoid modifying collection while iterating
         if (saleToDelete.HasValue)
         {
-            DeleteLocalSale(saleToDelete.Value.Id, saleToDelete.Value.Timestamp);
+            DeleteLocalSale(saleToDelete.Value.Id);
         }
     }
 
-    private void DeleteLocalSale(long saleId, DateTime saleTimestamp)
+    private void DeleteLocalSale(long saleId)
     {
         if (_currencyTrackerService == null) return;
 
         try
         {
-            // Use the method that also cleans up inventory value history
-            if (_currencyTrackerService.DbService.DeleteSaleRecordWithHistoryCleanup(saleId, saleTimestamp))
+            if (_currencyTrackerService.DbService.DeleteSaleRecord(saleId))
             {
-                // Reload the sales list
                 _localSalesLoaded = false;
                 LoadLocalSales();
-                
-                // Notify that inventory value history was modified
-                _currencyTrackerService.NotifyInventoryValueHistoryChanged();
-                
-                LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Deleted sale record {saleId} and cleaned up history after {saleTimestamp}");
+                LogService.Debug(LogCategory.UI, $"[ItemDetailsPopup] Deleted sale record {saleId}");
             }
         }
         catch (Exception ex)

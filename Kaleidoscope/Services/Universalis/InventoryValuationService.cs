@@ -212,7 +212,7 @@ public sealed class InventoryValuationService : IService, IDisposable
             // Save results to database (must be sequential due to SQLite single-writer)
             foreach (var (charId, total, gil, item, contributions, characterName) in results)
             {
-                _dbService.SaveInventoryValueHistory(charId, total, gil, item, contributions);
+                _dbService.SaveInventoryValueHistory(charId, total, gil, item);
 
                 // Also queue to standard time-series tracking
                 // Only item value - Gil is tracked via Gil currency, Total can be merged in UI
