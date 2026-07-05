@@ -529,7 +529,7 @@ public sealed class ProfilerService : IDisposable, IService
         private readonly ProfileTargetType _targetType;
         private readonly string _toolId;
         private readonly string _toolName;
-        private readonly Stopwatch _stopwatch;
+        private readonly long _startTimestamp;
         private readonly ProfilerContext? _previousContext;
 
         public ProfileScope(ProfilerService service, ProfileTargetType targetType, string toolId, string toolName)
@@ -538,8 +538,10 @@ public sealed class ProfilerService : IDisposable, IService
             _targetType = targetType;
             _toolId = toolId;
             _toolName = toolName;
-            _stopwatch = Stopwatch.StartNew();
-            
+            // Zero-alloc timestamp instead of a heap Stopwatch (this ctor runs per tool per frame,
+            // even when the profiler is disabled).
+            _startTimestamp = Stopwatch.GetTimestamp();
+
             // Set up async-local context for Tool scopes
             _previousContext = _currentContext.Value;
             if (targetType == ProfileTargetType.Tool && service.IsEnabled)
@@ -552,9 +554,8 @@ public sealed class ProfilerService : IDisposable, IService
         {
             // Restore previous context
             _currentContext.Value = _previousContext;
-            
-            _stopwatch.Stop();
-            var elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;
+
+            var elapsedMs = Stopwatch.GetElapsedTime(_startTimestamp).TotalMilliseconds;
 
             switch (_targetType)
             {

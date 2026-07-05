@@ -65,6 +65,14 @@ public class GraphRenderer : IDisposable
     private int _lastHiddenSeriesHash;
     private bool _lastAutoScrollEnabled;
     private DateTime _lastPreparedDataTime;
+
+    // === "{name}##shaded" fill-layer labels (cached per series name to avoid per-frame interpolation) ===
+    private readonly Dictionary<string, string> _shadedLabelCache = new();
+
+    // === Y-bounds recompute throttle (auto-scroll) ===
+    private const double YBoundsRecomputeIntervalMs = 250.0;
+    private DateTime _lastYBoundsUpdateTime;
+    private PreparedGraphData? _lastYBoundsData;
     
     // === Disposed flag ===
     private bool _disposed;
@@ -187,12 +195,24 @@ public class GraphRenderer : IDisposable
     /// <param name="series">List of data series with names, timestamped values, and optional colors.</param>
     public void RenderMultipleSeries(IReadOnlyList<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)> series)
     {
-        if (series == null || series.Count == 0 || series.All(s => s.samples == null || s.samples.Count == 0))
+        if (series == null || series.Count == 0)
         {
             DrawNoDataMessage();
             return;
         }
-        
+
+        var allEmpty = true;
+        for (var i = 0; i < series.Count; i++)
+        {
+            var samples = series[i].samples;
+            if (samples != null && samples.Count > 0) { allEmpty = false; break; }
+        }
+        if (allEmpty)
+        {
+            DrawNoDataMessage();
+            return;
+        }
+
         PreparedGraphData data;
         var needsRecompute = NeedsPreparedDataRecompute(series);
         
@@ -442,7 +462,12 @@ public class GraphRenderer : IDisposable
         // Draw current price line for single series
         if (_config.ShowCurrentPriceLine && !data.HasMultipleSeries)
         {
-            var lastVisibleSeries = data.Series.LastOrDefault(s => s.Visible && !IsSeriesEffectivelyHidden(s));
+            GraphSeriesData? lastVisibleSeries = null;
+            for (var i = data.Series.Count - 1; i >= 0; i--)
+            {
+                var s = data.Series[i];
+                if (s.Visible && !IsSeriesEffectivelyHidden(s)) { lastVisibleSeries = s; break; }
+            }
             if (lastVisibleSeries != null && lastVisibleSeries.PointCount > 0)
             {
                 var currentValue = lastVisibleSeries.YValues[lastVisibleSeries.PointCount - 1];
@@ -597,7 +622,7 @@ public class GraphRenderer : IDisposable
                 default:
                     var fillAlpha = data.HasMultipleSeries ? _config.Style.MultiSeriesFillAlpha : _config.Style.FillAlpha + 0.25f;
                     ImPlot.SetNextFillStyle(new Vector4(series.Color.X, series.Color.Y, series.Color.Z, fillAlpha));
-                    ImPlot.PlotShaded($"{series.Name}##shaded", xPtr, yPtr, count, 0.0);
+                    ImPlot.PlotShaded(GetShadedLabel(series.Name), xPtr, yPtr, count, 0.0);
                     ImPlot.SetNextLineStyle(colorVec4, _config.Style.LineWeight);
                     ImPlot.PlotLine(series.Name, xPtr, yPtr, count);
                     break;
@@ -644,7 +669,7 @@ public class GraphRenderer : IDisposable
             fixed (double* expYPtr = expandedY)
             {
                 ImPlot.SetNextFillStyle(new Vector4(series.Color.X, series.Color.Y, series.Color.Z, fillAlpha));
-                ImPlot.PlotShaded($"{series.Name}##shaded", expXPtr, expYPtr, expandedCount, 0.0);
+                ImPlot.PlotShaded(GetShadedLabel(series.Name), expXPtr, expYPtr, expandedCount, 0.0);
             }
         }
         finally
@@ -1120,14 +1145,24 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
             data.TotalTimeSpan = newTotalTimeSpan;
         }
         
-        // Recalculate X limits based on auto-scroll settings or default behavior
+        // Recalculate X limits every frame so the X-window slides smoothly during auto-scroll
         var (xMin, xMax) = CalculateXLimits(data.TotalTimeSpan);
         data.XMin = xMin;
         data.XMax = xMax;
-        
-        var (yMin, yMax) = CalculateYBounds(data.Series, xMin, xMax);
-        data.YMin = yMin;
-        data.YMax = yMax;
+
+        // Throttle the O(all points) Y-bounds recompute to ~4x/sec (or immediately when the
+        // prepared-data instance changes). data.YMin/YMax persist between recomputes because
+        // the cached PreparedGraphData instance is reused across frames.
+        var now = DateTime.UtcNow;
+        if (!ReferenceEquals(data, _lastYBoundsData) ||
+            (now - _lastYBoundsUpdateTime).TotalMilliseconds >= YBoundsRecomputeIntervalMs)
+        {
+            var (yMin, yMax) = CalculateYBounds(data.Series, xMin, xMax);
+            data.YMin = yMin;
+            data.YMax = yMax;
+            _lastYBoundsData = data;
+            _lastYBoundsUpdateTime = now;
+        }
     }
     
     private bool NeedsPreparedDataRecompute(
@@ -1170,6 +1205,19 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
         return hash;
     }
     
+    /// <summary>
+    /// Returns the cached "{name}##shaded" ImPlot label for a series, building it on first use.
+    /// </summary>
+    private string GetShadedLabel(string seriesName)
+    {
+        if (!_shadedLabelCache.TryGetValue(seriesName, out var label))
+        {
+            label = $"{seriesName}##shaded";
+            _shadedLabelCache[seriesName] = label;
+        }
+        return label;
+    }
+
     private static double[] GetOrCreatePooledArray(Dictionary<string, double[]> pool, string key, int requiredSize)
     {
         if (pool.TryGetValue(key, out var existing) && existing.Length >= requiredSize)
@@ -1222,8 +1270,10 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
         
         _pooledXArrays.Clear();
         _pooledYArrays.Clear();
+        _shadedLabelCache.Clear();
         _cachedPreparedData = null;
         _lastSeriesData = null;
+        _lastYBoundsData = null;
     }
     
     #endregion

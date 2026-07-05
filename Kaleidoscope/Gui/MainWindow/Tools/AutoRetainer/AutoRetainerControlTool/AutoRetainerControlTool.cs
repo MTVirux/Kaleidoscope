@@ -65,14 +65,42 @@ public sealed partial class AutoRetainerControlTool : ToolComponent
 
     // Cached state to avoid spamming IPC calls
     private DateTime _lastRefresh = DateTime.MinValue;
-    private readonly TimeSpan _refreshInterval = TimeSpan.FromSeconds(1);
-    
+    private readonly TimeSpan _refreshInterval = TimeSpan.FromSeconds(2);
+
     private bool? _isBusy;
-    private bool? _isSuppressed;
     private bool? _isMultiModeEnabled;
     private bool? _canAutoLogin;
     private List<AutoRetainerCharacterData>? _characters;
     private Dictionary<ulong, HashSet<string>>? _enabledRetainers;
+
+    // Per-character display model, rebuilt only when the IPC data refreshes (never per frame). The
+    // expensive LINQ/string work moves here; the draw path just iterates the cached views. Countdown
+    // text on expanded entries is still computed live each frame from the cached end times.
+    private readonly List<CharacterView> _characterViews = new();
+    private static readonly HashSet<string> EmptyRetainerNames = new();
+
+    // Which configurable color a cached status string resolves to. The concrete Vector4 is looked up
+    // live at draw time (via ColorFor) so color-setting changes apply immediately without a rebuild.
+    private enum StatusColorKind { Disabled, Ready, Enabled }
+
+    private sealed class CharacterView
+    {
+        public required AutoRetainerCharacterData Character { get; init; }
+        public required string HeaderLabel { get; init; }
+        public required HashSet<string> EnabledRetainerNames { get; init; }
+        public required bool HasRetainers { get; init; }
+        public required bool HasVessels { get; init; }
+        public required string? GilText { get; init; }
+        public required float Progress { get; init; }
+        public required bool HasAnythingReady { get; init; }
+        public required string StatusText { get; init; }
+        public required string? RetainerStatus { get; init; }
+        public required StatusColorKind RetainerColorKind { get; init; }
+        public required string? VesselStatus { get; init; }
+        public required StatusColorKind VesselColorKind { get; init; }
+        public required List<AutoRetainerRetainerData> SortedRetainers { get; init; }
+        public required List<AutoRetainerVesselData> SortedVessels { get; init; }
+    }
 
     // Expanded character states for tree view
     private readonly HashSet<ulong> _expandedCharacters = new();
@@ -148,17 +176,28 @@ public sealed partial class AutoRetainerControlTool : ToolComponent
         try
         {
             _isBusy = _autoRetainerIpc.IsBusy();
-            _isSuppressed = _autoRetainerIpc.GetSuppressed();
             _isMultiModeEnabled = _autoRetainerIpc.GetMultiModeEnabled();
             _canAutoLogin = _autoRetainerIpc.CanAutoLogin();
             _characters = _autoRetainerIpc.GetAllFullCharacterData();
             _enabledRetainers = _autoRetainerIpc.GetEnabledRetainers();
+            RebuildCharacterViews(DateTimeOffset.Now.ToUnixTimeSeconds());
         }
         catch (Exception ex)
         {
             LogDebug($"Refresh error: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Resolves a cached <see cref="StatusColorKind"/> to its current configurable color. Kept out of
+    /// the cached view so color-setting changes take effect immediately without rebuilding the model.
+    /// </summary>
+    private Vector4 ColorFor(StatusColorKind kind) => kind switch
+    {
+        StatusColorKind.Ready => ReadyColor,
+        StatusColorKind.Enabled => EnabledColor,
+        _ => DisabledColor,
+    };
 
     private void DrawUnavailableState()
     {

@@ -31,8 +31,10 @@ internal sealed class DataToolGraphView
 
     private (long timeSeries, long character, long resources) _lastCacheVersions;
 
-    // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries)
-    private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
+    // Graph view cached data (tuple format matching GraphWidget.RenderMultipleSeries). The series list
+    // reference is swapped once per completed rebuild — its stability is load-bearing for GraphWidget's
+    // ReferenceEquals-based prepared-data cache. Published from the background thread, read on render.
+    private volatile List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
     private List<GraphSeriesGroup>? _cachedSeriesGroups;
     private volatile bool _cacheIsDirty = true;
     private int _cachedSeriesCount;
@@ -41,6 +43,19 @@ internal sealed class DataToolGraphView
     private bool _cachedIncludeRetainers;
     private TableGroupingMode _cachedGroupingMode;
     private bool _cachedShowRetainerBreakdownInGraph;
+
+    // Background rebuild state (mirrors DataToolTableView). Only one rebuild runs at a time; a trigger
+    // arriving mid-flight is remembered and run once afterwards. _graphResultReady signals the render
+    // thread to apply the completed groups to the (render-thread-only) GraphWidget.
+    private volatile bool _refreshInFlight;
+    private volatile bool _graphResultReady;
+    private bool _pendingVersionRefresh;
+    private DateTime _lastRefreshLaunchUtc = DateTime.MinValue;
+    private static readonly TimeSpan RefreshDebounce = TimeSpan.FromSeconds(2);
+
+    // AutoRetainer character->world map, snapshotted on the render thread (IPC is framework-thread-only)
+    // and read by the background rebuild via GetCharacterWorldsMap.
+    private Dictionary<ulong, string> _characterWorldsSnapshot = new();
 
     // Retainer names cache (refreshed periodically)
     private Dictionary<ulong, string>? _cachedRetainerNames;
@@ -84,21 +99,22 @@ internal sealed class DataToolGraphView
         {
             _graphWidget.SyncFromBoundSettings();
 
-            if (NeedsGraphCacheRefresh(settings))
-            {
-                using (ProfilerService.BeginStaticChildScope("RefreshGraphData"))
-                {
-                    RefreshGraphData(settings);
-                }
+            MaybeStartRefresh(settings);
 
+            // Apply completed groups on the render thread (GraphWidget is render-thread-only).
+            if (_graphResultReady)
+            {
                 _graphWidget.Groups = _cachedSeriesGroups;
+                _graphResultReady = false;
             }
 
-            if (_cachedSeriesData != null && _cachedSeriesData.Count > 0)
+            // Render the most recently completed snapshot; the background rebuild swaps in new data.
+            var series = _cachedSeriesData;
+            if (series != null && series.Count > 0)
             {
                 using (ProfilerService.BeginStaticChildScope("RenderGraph"))
                 {
-                    _graphWidget.RenderMultipleSeries(_cachedSeriesData);
+                    _graphWidget.RenderMultipleSeries(series);
                 }
             }
             else
@@ -115,19 +131,125 @@ internal sealed class DataToolGraphView
         }
     }
 
-    private bool NeedsGraphCacheRefresh(DataToolSettings settings)
+    /// <summary>
+    /// Decides on the render thread whether to launch a background rebuild, snapshots the inputs it
+    /// needs, and runs the heavy DB work off the render thread. Only one rebuild runs at a time; a
+    /// trigger arriving mid-flight is remembered and run once afterwards. Settings/manual changes
+    /// refresh immediately (bypassing the debounce); version-driven refreshes are debounced.
+    /// </summary>
+    private void MaybeStartRefresh(DataToolSettings settings)
     {
-        if (_cacheIsDirty) return true;
+        if (HasCacheVersionChanged())
+            _pendingVersionRefresh = true;
 
+        if (_refreshInFlight)
+            return;
+
+        var settingsTriggered = _cacheIsDirty || SettingsSignatureChanged(settings);
+        var versionRefreshDue = _pendingVersionRefresh &&
+            (DateTime.UtcNow - _lastRefreshLaunchUtc) >= RefreshDebounce;
+        if (!settingsTriggered && !versionRefreshDue)
+            return;
+
+        var input = BuildGraphRefreshInput(settings);
+        CaptureGraphSignature(settings);
+        _cacheIsDirty = false;
+        _pendingVersionRefresh = false;
+        _lastRefreshLaunchUtc = DateTime.UtcNow;
+        _refreshInFlight = true;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                using (ProfilerService.BeginStaticChildScope("RefreshGraphData"))
+                {
+                    BuildGraphData(input, settings);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logDebug($"RefreshGraphData error: {ex.Message}");
+            }
+            finally
+            {
+                _refreshInFlight = false;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Returns true when a settings change requires an immediate (non-debounced) rebuild. Compared
+    /// against the signature captured when the last rebuild was launched.
+    /// </summary>
+    private bool SettingsSignatureChanged(DataToolSettings settings)
+    {
         if (_cachedSeriesCount != settings.Columns.Count) return true;
         if (_cachedTimeRangeValue != settings.TimeRangeValue) return true;
         if (_cachedTimeRangeUnit != settings.TimeRangeUnit) return true;
         if (_cachedIncludeRetainers != settings.IncludeRetainers) return true;
         if (_cachedShowRetainerBreakdownInGraph != settings.ShowRetainerBreakdownInGraph) return true;
         if (_cachedGroupingMode != settings.GroupingMode) return true;
+        return false;
+    }
 
-        // Use version counters for data change detection instead of blind 5s polling
-        return HasCacheVersionChanged();
+    /// <summary>Records, on the render thread, the settings signature the current rebuild was launched for.</summary>
+    private void CaptureGraphSignature(DataToolSettings settings)
+    {
+        _cachedSeriesCount = settings.Columns.Count;
+        _cachedTimeRangeValue = settings.TimeRangeValue;
+        _cachedTimeRangeUnit = settings.TimeRangeUnit;
+        _cachedIncludeRetainers = settings.IncludeRetainers;
+        _cachedShowRetainerBreakdownInGraph = settings.ShowRetainerBreakdownInGraph;
+        _cachedGroupingMode = settings.GroupingMode;
+    }
+
+    /// <summary>
+    /// Captures, on the render thread, an immutable snapshot of the mutable settings collections a
+    /// rebuild enumerates, plus the AutoRetainer world map (IPC is framework-thread-only). Scalar
+    /// settings are read live in the background (atomic reads; any change re-triggers via the signature).
+    /// </summary>
+    private GraphRefreshInput BuildGraphRefreshInput(DataToolSettings settings)
+    {
+        var sg = settings.SpecialGrouping;
+        var sgCopy = new SpecialGroupingSettings
+        {
+            Enabled = sg.Enabled,
+            ActiveGrouping = sg.ActiveGrouping,
+            EnabledElements = new HashSet<CrystalElement>(sg.EnabledElements),
+            EnabledTiers = new HashSet<CrystalTier>(sg.EnabledTiers),
+            AllGilEnabled = sg.AllGilEnabled,
+            MergeGilCurrencies = sg.MergeGilCurrencies,
+            AllCrystalsEnabled = sg.AllCrystalsEnabled
+        };
+
+        var mergedGroups = settings.MergedColumnGroups
+            .Select(g => new GraphMergedGroup(g.Name, g.Color, g.ShowInGraph, g.ColumnIndices.ToList()))
+            .ToList();
+
+        HashSet<ulong>? allowed = null;
+        if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+            allowed = settings.SelectedCharacterIds.ToHashSet();
+
+        // AutoRetainer world map is framework-thread-only IPC; snapshot it for the background rebuild.
+        var characterWorlds = new Dictionary<ulong, string>();
+        if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
+        {
+            foreach (var (_, world, _, cid) in _autoRetainerService.GetAllCharacterData())
+            {
+                if (!string.IsNullOrEmpty(world))
+                    characterWorlds[cid] = world;
+            }
+        }
+        _characterWorldsSnapshot = characterWorlds;
+
+        return new GraphRefreshInput
+        {
+            Columns = settings.Columns.ToList(),
+            MergedGroups = mergedGroups,
+            SpecialGrouping = sgCopy,
+            AllowedCharacters = allowed
+        };
     }
 
     /// <summary>
@@ -145,18 +267,16 @@ internal sealed class DataToolGraphView
         return false;
     }
 
-    private void RefreshGraphData(DataToolSettings settings)
+    /// <summary>
+    /// Rebuilds the graph series and legend groups from a render-thread snapshot. Runs on a background
+    /// thread: every service it touches is safe for concurrent reads, framework-thread-only inputs
+    /// (settings collections, AutoRetainer world map) arrive pre-snapshotted, and the completed series
+    /// list reference is published once for the render thread and GraphWidget's prepared-data cache.
+    /// </summary>
+    private void BuildGraphData(GraphRefreshInput input, DataToolSettings settings)
     {
-        _cachedSeriesCount = settings.Columns.Count;
-        _cachedTimeRangeValue = settings.TimeRangeValue;
-        _cachedTimeRangeUnit = settings.TimeRangeUnit;
-        _cachedIncludeRetainers = settings.IncludeRetainers;
-        _cachedShowRetainerBreakdownInGraph = settings.ShowRetainerBreakdownInGraph;
-        _cachedGroupingMode = settings.GroupingMode;
-        _cacheIsDirty = false;
-
         var mergedIndicesWithGraph = new HashSet<int>();
-        foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
+        foreach (var group in input.MergedGroups.Where(g => g.ShowInGraph))
         {
             foreach (var idx in group.ColumnIndices)
             {
@@ -167,7 +287,7 @@ internal sealed class DataToolGraphView
         List<ItemColumnConfig> series;
         using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
         {
-            var filteredColumns = SpecialGroupingHelper.ApplySpecialGroupingFilter(settings.Columns, settings.SpecialGrouping);
+            var filteredColumns = SpecialGroupingHelper.ApplySpecialGroupingFilter(input.Columns, input.SpecialGrouping);
             series = filteredColumns
                 .Where((c, idx) => c.ShowInGraph && !mergedIndicesWithGraph.Contains(idx))
                 .ToList();
@@ -176,18 +296,14 @@ internal sealed class DataToolGraphView
         var timeRange = GetTimeRange(settings);
         var startTime = timeRange.HasValue ? DateTime.UtcNow - timeRange.Value : (DateTime?)null;
 
-        HashSet<ulong>? allowedCharacters = null;
-        if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
-        {
-            allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
-        }
+        HashSet<ulong>? allowedCharacters = input.AllowedCharacters;
 
         var seriesList = new List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>();
 
         var seriesByItem = new Dictionary<string, List<string>>();
         var itemColors = new Dictionary<string, Vector4>();
 
-        var totalItemCount = series.Count + settings.MergedColumnGroups.Count(g => g.ShowInGraph);
+        var totalItemCount = series.Count + input.MergedGroups.Count(g => g.ShowInGraph);
         var isSingleItem = totalItemCount == 1;
 
         using (ProfilerService.BeginStaticChildScope("LoadAllSeries"))
@@ -217,10 +333,10 @@ internal sealed class DataToolGraphView
                 itemIndex++;
             }
 
-            foreach (var group in settings.MergedColumnGroups.Where(g => g.ShowInGraph))
+            foreach (var group in input.MergedGroups.Where(g => g.ShowInGraph))
             {
                 var groupName = group.Name;
-                var mergedSeriesData = LoadMergedSeriesData(group, settings, startTime, allowedCharacters, isSingleItem);
+                var mergedSeriesData = LoadMergedSeriesData(group, input.Columns, settings, startTime, allowedCharacters, isSingleItem);
                 if (mergedSeriesData != null)
                 {
                     if (!isSingleItem)
@@ -248,9 +364,10 @@ internal sealed class DataToolGraphView
             }
         }
 
-        _cachedSeriesData = seriesList.Count > 0 ? seriesList : null;
+        var newSeries = seriesList.Count > 0 ? seriesList : null;
 
         // Build groups for the legend (only when there are multiple items with multiple series each)
+        List<GraphSeriesGroup>? newGroups;
         if (!isSingleItem && seriesByItem.Count > 1)
         {
             var groups = new List<GraphSeriesGroup>();
@@ -271,12 +388,19 @@ internal sealed class DataToolGraphView
                     });
                 }
             }
-            _cachedSeriesGroups = groups.Count > 0 ? groups : null;
+            newGroups = groups.Count > 0 ? groups : null;
         }
         else
         {
-            _cachedSeriesGroups = null;
+            newGroups = null;
         }
+
+        // Publish the completed rebuild for the render thread. Groups are written before the series
+        // reference (a single swap per rebuild, load-bearing for GraphWidget's ReferenceEquals cache),
+        // then _graphResultReady signals the render thread to apply the groups to the widget.
+        _cachedSeriesGroups = newGroups;
+        _cachedSeriesData = newSeries;
+        _graphResultReady = true;
     }
 
     private TimeSpan? GetTimeRange(DataToolSettings settings)
@@ -499,7 +623,8 @@ internal sealed class DataToolGraphView
     /// When isSingleItem is true, respects the grouping mode to create per-character/world/etc. series.
     /// </summary>
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? LoadMergedSeriesData(
-        MergedColumnGroup group,
+        GraphMergedGroup group,
+        IReadOnlyList<ItemColumnConfig> columns,
         DataToolSettings settings,
         DateTime? startTime,
         HashSet<ulong>? allowedCharacters,
@@ -508,8 +633,8 @@ internal sealed class DataToolGraphView
         try
         {
             var memberColumns = group.ColumnIndices
-                .Where(idx => idx >= 0 && idx < settings.Columns.Count)
-                .Select(idx => settings.Columns[idx])
+                .Where(idx => idx >= 0 && idx < columns.Count)
+                .Select(idx => columns[idx])
                 .ToList();
 
             if (memberColumns.Count == 0)
@@ -776,24 +901,11 @@ internal sealed class DataToolGraphView
     }
 
     /// <summary>
-    /// Gets a mapping of character ID to world name from AutoRetainer.
+    /// Gets a mapping of character ID to world name. Returns the snapshot captured on the render
+    /// thread in <see cref="BuildGraphRefreshInput"/>, because AutoRetainer IPC is framework-thread-only
+    /// and this runs during the background rebuild.
     /// </summary>
-    private Dictionary<ulong, string> GetCharacterWorldsMap()
-    {
-        var characterWorlds = new Dictionary<ulong, string>();
-        if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
-        {
-            var arData = _autoRetainerService.GetAllCharacterData();
-            foreach (var (_, world, _, cid) in arData)
-            {
-                if (!string.IsNullOrEmpty(world))
-                {
-                    characterWorlds[cid] = world;
-                }
-            }
-        }
-        return characterWorlds;
-    }
+    private Dictionary<ulong, string> GetCharacterWorldsMap() => _characterWorldsSnapshot;
 
     /// <summary>
     /// Builds a mapping of character ID to location group name (World, DataCenter, or Region).
@@ -1103,4 +1215,23 @@ internal sealed class DataToolGraphView
     }
 
     #endregion
+
+    /// <summary>
+    /// Immutable snapshot of the mutable settings collections a graph rebuild enumerates, captured on
+    /// the render thread so the background rebuild never enumerates a mutating list. Scalar settings are
+    /// read live from <see cref="DataToolSettings"/> in the background (atomic reads).
+    /// </summary>
+    private sealed class GraphRefreshInput
+    {
+        public required IReadOnlyList<ItemColumnConfig> Columns { get; init; }
+        public required IReadOnlyList<GraphMergedGroup> MergedGroups { get; init; }
+        public required SpecialGroupingSettings SpecialGrouping { get; init; }
+        public required HashSet<ulong>? AllowedCharacters { get; init; }
+    }
+
+    /// <summary>
+    /// Snapshot of the graph-relevant fields of a <see cref="MergedColumnGroup"/>, with a private copy
+    /// of ColumnIndices so the background rebuild never enumerates the live list.
+    /// </summary>
+    private sealed record GraphMergedGroup(string Name, Vector4? Color, bool ShowInGraph, IReadOnlyList<int> ColumnIndices);
 }

@@ -11,9 +11,61 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.AutoRetainer;
 /// </summary>
 public sealed partial class AutoRetainerControlTool
 {
+    /// <summary>
+    /// Rebuilds the per-character display model from the current IPC data. Runs once per data refresh
+    /// (never per frame), moving all the LINQ/string work out of the render path.
+    /// </summary>
+    private void RebuildCharacterViews(long nowUnix)
+    {
+        _characterViews.Clear();
+        if (_characters == null) return;
+
+        foreach (var character in _characters)
+        {
+            var enabled = _enabledRetainers != null && _enabledRetainers.TryGetValue(character.CID, out var names)
+                ? names
+                : EmptyRetainerNames;
+
+            var enabledCount = character.Retainers.Count(r => enabled.Contains(r.Name));
+            var readyRetainers = character.Retainers.Count(r => r.HasVenture && r.VentureEndsAt <= nowUnix && enabled.Contains(r.Name));
+            var readyVessels = character.Vessels.Count(v => v.ReturnTime > 0 && v.ReturnTime <= nowUnix);
+            var hasRetainers = character.Retainers.Count > 0;
+            var hasVessels = character.Vessels.Count > 0;
+
+            var (retainerStatus, retainerColorKind) = BuildRetainerStatus(character, enabledCount, hasRetainers, readyRetainers > 0);
+            var (vesselStatus, vesselColorKind) = BuildVesselStatus(character, readyVessels, hasVessels, readyVessels > 0);
+            var statusText = BuildStatusText(retainerStatus, vesselStatus);
+            var progress = CalculateCharacterProgress(character, nowUnix, out var hasAnythingReady);
+
+            // Precompute gil text unconditionally; the ShowGil toggle is applied live at draw time.
+            var gilText = $"{character.Gil:N0} gil";
+            if (character.FCGil > 0)
+                gilText += $" (+{character.FCGil:N0} FC)";
+
+            _characterViews.Add(new CharacterView
+            {
+                Character = character,
+                HeaderLabel = $"{character.Name} @ {character.World}",
+                EnabledRetainerNames = enabled,
+                HasRetainers = hasRetainers,
+                HasVessels = hasVessels,
+                GilText = gilText,
+                Progress = progress,
+                HasAnythingReady = hasAnythingReady,
+                StatusText = statusText,
+                RetainerStatus = retainerStatus,
+                RetainerColorKind = retainerColorKind,
+                VesselStatus = vesselStatus,
+                VesselColorKind = vesselColorKind,
+                SortedRetainers = character.Retainers.OrderBy(r => r.HasVenture ? r.VentureEndsAt : long.MaxValue).ToList(),
+                SortedVessels = character.Vessels.OrderBy(v => v.ReturnTime == 0 ? long.MaxValue : v.ReturnTime).ToList(),
+            });
+        }
+    }
+
     private void DrawCharacterSection()
     {
-        if (_characters == null || _characters.Count == 0)
+        if (_characterViews.Count == 0)
         {
             ImGui.TextColored(DisabledColor, "No characters registered");
             return;
@@ -24,71 +76,45 @@ public sealed partial class AutoRetainerControlTool
         if (ImGui.BeginChild("CharacterList", new Vector2(0, availableHeight), false, ImGuiWindowFlags.None))
         {
             var now = DateTimeOffset.Now.ToUnixTimeSeconds();
-            
-            foreach (var character in _characters)
+
+            foreach (var view in _characterViews)
             {
                 // Skip hidden characters
-                if (HiddenCharacters.Contains(character.CID))
+                if (HiddenCharacters.Contains(view.Character.CID))
                     continue;
-                    
-                DrawCharacterEntry(character, now);
+
+                DrawCharacterEntry(view, now);
             }
         }
         ImGui.EndChild();
     }
 
-    private void DrawCharacterEntry(AutoRetainerCharacterData character, long nowUnix)
+    private void DrawCharacterEntry(CharacterView view, long nowUnix)
     {
+        var character = view.Character;
         var isExpanded = _expandedCharacters.Contains(character.CID);
-        
-        // Get enabled retainers for this character
-        var enabledRetainerNames = new HashSet<string>();
-        if (_enabledRetainers != null && _enabledRetainers.TryGetValue(character.CID, out var names))
-        {
-            enabledRetainerNames = names;
-        }
-        
-        // Calculate overall character status
-        var enabledRetainerCount = character.Retainers.Count(r => enabledRetainerNames.Contains(r.Name));
-        var readyRetainers = character.Retainers.Count(r => r.HasVenture && r.VentureEndsAt <= nowUnix && enabledRetainerNames.Contains(r.Name));
-        var hasReadyRetainers = readyRetainers > 0;
-        var readyVessels = character.Vessels.Count(v => v.ReturnTime > 0 && v.ReturnTime <= nowUnix);
-        var hasReadyVessels = readyVessels > 0;
-        var hasRetainers = character.Retainers.Count > 0;
-        var hasVessels = character.Vessels.Count > 0;
-        
+
         // Character header row
         ImGui.PushID((int)character.CID);
-        
+
         // Calculate vertical offset to center buttons with the collapsing header
         var headerHeight = ImGui.CalcTextSize("A").Y + ImGui.GetStyle().FramePadding.Y * 2;
         var smallButtonHeight = ImGui.CalcTextSize("R").Y + ImGui.GetStyle().FramePadding.Y;
         var verticalOffset = (headerHeight - smallButtonHeight) * 0.5f;
         var startY = ImGui.GetCursorPosY();
         ImGui.SetCursorPosY(startY + verticalOffset);
-        
+
         // Draw R/D/L buttons FIRST (outside progress bar area)
-        DrawCharacterButtons(character, hasRetainers, hasVessels);
-        
+        DrawCharacterButtons(character, view.HasRetainers, view.HasVessels);
+
         ImGui.SameLine();
-        
+
         // Reset cursor Y for the collapsing header to align properly
         ImGui.SetCursorPosY(startY);
-        
-        // Calculate progress for the header background
-        var progress = CalculateCharacterProgress(character, nowUnix, out var hasAnythingReady);
-        
-        // Build status text for the header
-        var (retainerStatus, retainerStatusColor) = BuildRetainerStatus(character, enabledRetainerCount, hasRetainers, hasReadyRetainers);
-        var (vesselStatus, vesselStatusColor) = BuildVesselStatus(character, readyVessels, hasVessels, hasReadyVessels);
-        
-        // Calculate full status width for positioning (with separator and spacing)
-        var statusText = BuildStatusText(retainerStatus, vesselStatus);
-        
+
         // Draw custom collapsing header with progress bar fill
-        var headerLabel = $"{character.Name} @ {character.World}";
-        var headerOpen = DrawProgressCollapsingHeader(headerLabel, progress, hasAnythingReady, isExpanded, ProgressBarColor, ProgressBarReadyColor);
-        
+        var headerOpen = DrawProgressCollapsingHeader(view.HeaderLabel, view.Progress, view.HasAnythingReady, isExpanded, ProgressBarColor, ProgressBarReadyColor);
+
         // Update expanded state
         if (headerOpen != isExpanded)
         {
@@ -97,7 +123,7 @@ public sealed partial class AutoRetainerControlTool
             else
                 _expandedCharacters.Remove(character.CID);
         }
-        
+
         // Right-click context menu for hiding character
         if (ImGui.BeginPopupContextItem($"CharacterContext_{character.CID}"))
         {
@@ -108,16 +134,16 @@ public sealed partial class AutoRetainerControlTool
             }
             ImGui.EndPopup();
         }
-        
+
         // Draw status on the same line (right-aligned)
-        DrawStatusText(statusText, retainerStatus, retainerStatusColor, vesselStatus, vesselStatusColor);
-        
+        DrawStatusText(view.StatusText, view.RetainerStatus, ColorFor(view.RetainerColorKind), view.VesselStatus, ColorFor(view.VesselColorKind));
+
         // Expanded content
         if (headerOpen)
         {
-            DrawExpandedCharacterContent(character, nowUnix, enabledRetainerNames);
+            DrawExpandedCharacterContent(view, nowUnix);
         }
-        
+
         ImGui.PopID();
     }
 
@@ -161,44 +187,44 @@ public sealed partial class AutoRetainerControlTool
         ImGui.EndDisabled();
     }
 
-    private (string? status, Vector4 color) BuildRetainerStatus(AutoRetainerCharacterData character, int enabledCount, bool hasRetainers, bool hasReady)
+    private static (string? status, StatusColorKind kind) BuildRetainerStatus(AutoRetainerCharacterData character, int enabledCount, bool hasRetainers, bool hasReady)
     {
         if (!hasRetainers)
-            return (null, DisabledColor);
-        
+            return (null, StatusColorKind.Disabled);
+
         var status = $"Ret: {enabledCount}/{character.Retainers.Count}";
-        Vector4 color;
-        
+        StatusColorKind kind;
+
         if (!character.Enabled || enabledCount == 0)
-            color = DisabledColor;
+            kind = StatusColorKind.Disabled;
         else if (hasReady)
-            color = ReadyColor;
+            kind = StatusColorKind.Ready;
         else
-            color = EnabledColor;
-        
-        return (status, color);
+            kind = StatusColorKind.Enabled;
+
+        return (status, kind);
     }
 
-    private (string? status, Vector4 color) BuildVesselStatus(AutoRetainerCharacterData character, int readyVessels, bool hasVessels, bool hasReady)
+    private static (string? status, StatusColorKind kind) BuildVesselStatus(AutoRetainerCharacterData character, int readyVessels, bool hasVessels, bool hasReady)
     {
         if (!hasVessels)
-            return (null, DisabledColor);
-        
+            return (null, StatusColorKind.Disabled);
+
         var totalDeployed = character.Vessels.Count(v => v.ReturnTime > 0);
         if (totalDeployed == 0)
-            return (null, DisabledColor);
-        
+            return (null, StatusColorKind.Disabled);
+
         var status = $"Sub: {readyVessels}/{totalDeployed}";
-        Vector4 color;
-        
+        StatusColorKind kind;
+
         if (!character.WorkshopEnabled)
-            color = DisabledColor;
+            kind = StatusColorKind.Disabled;
         else if (hasReady)
-            color = ReadyColor;
+            kind = StatusColorKind.Ready;
         else
-            color = EnabledColor;
-        
-        return (status, color);
+            kind = StatusColorKind.Enabled;
+
+        return (status, kind);
     }
 
     private static string BuildStatusText(string? retainerStatus, string? vesselStatus)
@@ -238,40 +264,35 @@ public sealed partial class AutoRetainerControlTool
         ImGui.TextUnformatted("  ");
     }
 
-    private void DrawExpandedCharacterContent(AutoRetainerCharacterData character, long nowUnix, HashSet<string> enabledRetainerNames)
+    private void DrawExpandedCharacterContent(CharacterView view, long nowUnix)
     {
         ImGui.Indent();
-        
+
         // Gil info (optional)
-        if (ShowGil)
+        if (ShowGil && view.GilText != null)
         {
-            var gilText = $"{character.Gil:N0} gil";
-            if (character.FCGil > 0)
-            {
-                gilText += $" (+{character.FCGil:N0} FC)";
-            }
-            ImGui.TextColored(DisabledColor, gilText);
+            ImGui.TextColored(DisabledColor, view.GilText);
         }
-        
-        // Retainer list
-        if (character.Retainers.Count > 0)
+
+        // Retainer list (pre-sorted at refresh time)
+        if (view.SortedRetainers.Count > 0)
         {
-            foreach (var retainer in character.Retainers.OrderBy(r => r.HasVenture ? r.VentureEndsAt : long.MaxValue))
+            foreach (var retainer in view.SortedRetainers)
             {
-                DrawRetainerEntry(character.CID, retainer, nowUnix, enabledRetainerNames);
+                DrawRetainerEntry(view.Character.CID, retainer, nowUnix, view.EnabledRetainerNames);
             }
         }
-        
-        // Vessel list (deployables)
-        if (character.Vessels.Count > 0)
+
+        // Vessel list (deployables, pre-sorted at refresh time)
+        if (view.SortedVessels.Count > 0)
         {
             ImGui.Spacing();
-            foreach (var vessel in character.Vessels.OrderBy(v => v.ReturnTime == 0 ? long.MaxValue : v.ReturnTime))
+            foreach (var vessel in view.SortedVessels)
             {
                 DrawVesselEntry(vessel, nowUnix);
             }
         }
-        
+
         ImGui.Unindent();
     }
 

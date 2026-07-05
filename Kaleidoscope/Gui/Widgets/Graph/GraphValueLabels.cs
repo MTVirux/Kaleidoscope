@@ -18,6 +18,16 @@ public static class GraphValueLabels
     /// <summary>Extra horizontal padding between label columns, in pixels.</summary>
     private const float ColumnPadding = 5f;
 
+    // Reusable per-frame buffers (Clear()ed on each use) to avoid render-thread allocations.
+    // ThreadStatic mirrors the pattern in GraphLegend; the render thread runs these serially.
+    [ThreadStatic] private static List<(string Name, double LastX, double LastY, Vector3 Color)>? _allBuffer;
+    [ThreadStatic] private static List<(string Name, double LastX, double LastY, Vector3 Color)>? _sortedByValueBuffer;
+    [ThreadStatic] private static List<PositionedLabel>? _labelsBuffer;
+    [ThreadStatic] private static List<ValueLabelBounds>? _labelBoundsBuffer;
+    [ThreadStatic] private static List<(PositionedLabel Label, float X, float Y)>? _positionsBuffer;
+    [ThreadStatic] private static float[]? _columnLastYBuffer;
+    [ThreadStatic] private static int[]? _columnRowCountBuffer;
+
     /// <summary>
     /// Contains information about a rendered value label for hover detection.
     /// </summary>
@@ -121,10 +131,14 @@ public static class GraphValueLabels
         
         // Sort by value for display priority (highest values get priority)
         // Build a reusable list and sort in-place to avoid LINQ allocations
-        var sortedByValue = new List<(string Name, double LastX, double LastY, Vector3 Color)>(visibleCount);
+        _sortedByValueBuffer ??= new List<(string Name, double LastX, double LastY, Vector3 Color)>();
+        var sortedByValue = _sortedByValueBuffer;
+        sortedByValue.Clear();
         {
             // Copy all to a temp list, sort, then take top N
-            var all = new List<(string Name, double LastX, double LastY, Vector3 Color)>(seriesData.Count);
+            _allBuffer ??= new List<(string Name, double LastX, double LastY, Vector3 Color)>();
+            var all = _allBuffer;
+            all.Clear();
             for (var i = 0; i < seriesData.Count; i++)
                 all.Add(seriesData[i]);
             all.Sort((a, b) => b.LastY.CompareTo(a.LastY)); // descending
@@ -132,9 +146,11 @@ public static class GraphValueLabels
             for (var i = 0; i < count; i++)
                 sortedByValue.Add(all[i]);
         }
-        
+
         // Build positioned labels with pixel coordinates
-        var labels = new List<PositionedLabel>();
+        _labelsBuffer ??= new List<PositionedLabel>();
+        var labels = _labelsBuffer;
+        labels.Clear();
         var padding = style.ValueLabelPadding;
         
         // Find the rightmost data point X position
@@ -187,9 +203,11 @@ public static class GraphValueLabels
         labelPositions.Sort((a, b) => a.Label.Value.CompareTo(b.Label.Value));
         var sortedForDrawing = labelPositions;
         
-        // Collect bounds for hover detection
-        var labelBounds = new List<ValueLabelBounds>();
-        
+        // Collect bounds for hover detection (reused buffer; consumed by the caller within this frame)
+        _labelBoundsBuffer ??= new List<ValueLabelBounds>();
+        var labelBounds = _labelBoundsBuffer;
+        labelBounds.Clear();
+
         // Clip drawing to the plot area
         drawList.PushClipRect(plotPos, new Vector2(plotPos.X + plotSize.X, plotPos.Y + plotSize.Y), true);
         
@@ -268,10 +286,12 @@ public static class GraphValueLabels
         float maxY,
         int stepsPerRow)
     {
+        _positionsBuffer ??= new List<(PositionedLabel Label, float X, float Y)>();
+        var result = _positionsBuffer;
+        result.Clear();
+
         if (labels.Count == 0)
-            return new List<(PositionedLabel, float, float)>();
-        
-        var result = new List<(PositionedLabel Label, float X, float Y)>();
+            return result;
         
         // Find the highest value label (first in the list since sorted by value desc)
         var highestLabel = labels[0];
@@ -307,9 +327,15 @@ public static class GraphValueLabels
         // Calculate starting Y for stair pattern (one label height below highest, plus a small margin)
         var stairStartY = highestY + labelHeight + (labelHeight * StairVerticalMarginFactor);
         
-        // Track the last Y position for each column (to handle wrapping with proper spacing)
-        var columnLastY = new float[numColumns];
-        var columnRowCount = new int[numColumns]; // Track how many labels are in each column
+        // Track the last Y position for each column (to handle wrapping with proper spacing).
+        // Reused buffers grown on demand; only indices [0, numColumns) are read.
+        if (_columnLastYBuffer == null || _columnLastYBuffer.Length < numColumns)
+        {
+            _columnLastYBuffer = new float[numColumns];
+            _columnRowCountBuffer = new int[numColumns];
+        }
+        var columnLastY = _columnLastYBuffer;
+        var columnRowCount = _columnRowCountBuffer!;
         for (var c = 0; c < numColumns; c++)
         {
             columnLastY[c] = float.MinValue;

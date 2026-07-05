@@ -59,6 +59,10 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
     private List<(string name, IReadOnlyList<(DateTime ts, float value)> samples, Vector4? color)>? _cachedSeriesData;
     // Set when settings/data change so the cached graph series are rebuilt on the next draw.
     private bool _seriesDataDirty = true;
+    // Throttles dirty-driven rebuilds: a burst of WebSocket sales coalesces into at most one
+    // rebuild per interval instead of one per frame.
+    private DateTime _lastSeriesBuildTime = DateTime.MinValue;
+    private const double SeriesRebuildIntervalMs = 500;
 
     private ItemSalesTrackingSettings Settings => _instanceSettings;
 
@@ -265,10 +269,18 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
 
     private void DrawSalesGraph()
     {
-        if (_seriesDataDirty || _cachedSeriesData == null)
+        if (_cachedSeriesData == null)
         {
             BuildSeriesData();
             _seriesDataDirty = false;
+            _lastSeriesBuildTime = DateTime.UtcNow;
+        }
+        else if (_seriesDataDirty
+                 && (DateTime.UtcNow - _lastSeriesBuildTime).TotalMilliseconds >= SeriesRebuildIntervalMs)
+        {
+            BuildSeriesData();
+            _seriesDataDirty = false;
+            _lastSeriesBuildTime = DateTime.UtcNow;
         }
 
         var availableSize = ImGui.GetContentRegionAvail();
@@ -313,6 +325,10 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
         var threshold = priceSettings.SaleDiscrepancyThreshold / 100.0;
         var listingsService = _priceTrackingService.ListingsService;
 
+        // World scope for outlier reference pricing. Resolved once so the per-item reference
+        // lookup can hit the cache per world instead of scanning the entire listings cache.
+        var outlierScopeWorldIds = filterOutliers ? GetEffectiveWorldIds() : null;
+
         foreach (var itemId in _itemCombo.SelectedItemIds)
         {
             if (!_salesDataCache.TryGetValue(itemId, out var salesData))
@@ -337,8 +353,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
             if (filterOutliers)
             {
                 // Get reference prices for this item (using NQ as baseline since we don't track HQ in the cache)
-                var listing = listingsService.GetLowestListingAcrossWorlds((int)itemId);
-                var listingPrice = listing?.MinPriceNq ?? 0;
+                var listingPrice = GetLowestNqListingPrice(listingsService, (int)itemId, outlierScopeWorldIds);
                 var recentSalePrice = _salePriceCacheService.GetMostRecentSalePrice((int)itemId, isHq: false);
 
                 var referencePrice = SaleOutlierFilter.ComputeReferencePrice(listingPrice, recentSalePrice);
@@ -394,6 +409,27 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
                     maxPrice + padding);
             }
         }
+    }
+
+    /// <summary>
+    /// Lowest NQ listing price used as the outlier-filter reference. When a world scope is
+    /// active, this does per-world O(1) cache lookups across just those worlds instead of the
+    /// full-cache scan in <see cref="ListingsService.GetLowestListingAcrossWorlds"/>.
+    /// </summary>
+    private static int GetLowestNqListingPrice(ListingsService listingsService, int itemId, HashSet<int>? worldIds)
+    {
+        if (worldIds == null || worldIds.Count == 0)
+            return listingsService.GetLowestListingAcrossWorlds(itemId)?.MinPriceNq ?? 0;
+
+        var lowest = int.MaxValue;
+        foreach (var worldId in worldIds)
+        {
+            var price = listingsService.GetListing(itemId, worldId)?.MinPriceNq ?? 0;
+            if (price > 0 && price < lowest)
+                lowest = price;
+        }
+
+        return lowest == int.MaxValue ? 0 : lowest;
     }
 
     /// <summary>

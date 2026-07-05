@@ -12,7 +12,22 @@ public static class GraphLegend
 {
     // Reusable sort buffer to avoid per-frame allocations
     [ThreadStatic] private static List<GraphSeriesData>? _sortBuffer;
-    
+
+    // Cached "[name]" group labels to avoid per-group-per-frame interpolation.
+    // Keyed by group name; "[name]" depends only on the name, so entries stay valid across rebuilds.
+    [ThreadStatic] private static Dictionary<string, string>? _groupLabelCache;
+
+    private static string GetGroupLabel(string groupName)
+    {
+        _groupLabelCache ??= new Dictionary<string, string>();
+        if (!_groupLabelCache.TryGetValue(groupName, out var label))
+        {
+            label = $"[{groupName}]";
+            _groupLabelCache[groupName] = label;
+        }
+        return label;
+    }
+
     private static int CompareByLastValueDescending(GraphSeriesData a, GraphSeriesData b)
     {
         var va = a.PointCount > 0 ? a.YValues[a.PointCount - 1] : 0.0;
@@ -134,7 +149,7 @@ public static class GraphLegend
         {
             foreach (var group in data.Groups)
             {
-                var textSize = ImGui.CalcTextSize($"[{group.Name}]");
+                var textSize = ImGui.CalcTextSize(GetGroupLabel(group.Name));
                 maxTextWidth = Math.Max(maxTextWidth, textSize.X);
             }
         }
@@ -384,7 +399,7 @@ public static class GraphLegend
                     var textColor = isHidden ? colors.TextSecondary : colors.TextPrimary;
                     var textY = yOffset + (rowHeight - ImGui.GetTextLineHeight()) / 2;
                     var textPos = new Vector2(indicatorPos.X + indicatorSize + indicatorTextGap, textY);
-                    drawList.AddText(textPos, ImGui.GetColorU32(textColor), $"[{group.Name}]");
+                    drawList.AddText(textPos, ImGui.GetColorU32(textColor), GetGroupLabel(group.Name));
                 }
                 
                 yOffset += rowHeight;

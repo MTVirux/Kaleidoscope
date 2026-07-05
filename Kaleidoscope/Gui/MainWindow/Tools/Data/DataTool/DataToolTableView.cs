@@ -22,9 +22,19 @@ internal sealed class DataToolTableView
     private readonly Func<(long timeSeries, long character, long resources)> _getCacheVersions;
     private readonly Action<string> _logDebug;
 
-    private PreparedItemTableData? _cachedTableData;
+    // Completed table data, published by the background rebuild and consumed by the render thread.
+    // Reference assignment/read is atomic; the draw path reads it into a local each frame.
+    private volatile PreparedItemTableData? _cachedTableData;
     private (long timeSeries, long character, long resources) _lastCacheVersions;
+
+    // Refresh triggers/state. _pendingRefresh is a settings/manual trigger that bypasses the version
+    // debounce; version-driven refreshes are rate-limited to RefreshDebounce. Only one background
+    // rebuild runs at a time; a trigger arriving mid-flight is remembered and run once afterwards.
     private volatile bool _pendingRefresh = true;
+    private volatile bool _refreshInFlight;
+    private bool _pendingVersionRefresh;
+    private DateTime _lastRefreshLaunchUtc = DateTime.MinValue;
+    private static readonly TimeSpan RefreshDebounce = TimeSpan.FromSeconds(2);
 
     private TimeSeriesCacheService CacheService => _currencyTrackerService.CacheService;
     private CharacterDataCacheService CharacterDataCache => _currencyTrackerService.CharacterDataCache;
@@ -74,171 +84,293 @@ internal sealed class DataToolTableView
     {
         using (ProfilerService.BeginStaticChildScope("TableView"))
         {
-            // Check cache versions — only refresh when data actually changed or settings triggered it
-            var cacheChanged = HasCacheVersionChanged();
+            MaybeStartRefresh(settings);
 
-            if (_pendingRefresh || cacheChanged)
-            {
-                using (ProfilerService.BeginStaticChildScope("RefreshTableData"))
-                {
-                    RefreshTableData(settings);
-                }
-            }
-
+            // Render the most recently completed snapshot; the background rebuild swaps in new data.
+            var data = _cachedTableData;
             using (ProfilerService.BeginStaticChildScope("DrawTable"))
             {
-                _tableWidget.Draw(_cachedTableData, settings);
+                _tableWidget.Draw(data, settings);
             }
         }
     }
 
-    private void RefreshTableData(DataToolSettings settings)
+    /// <summary>
+    /// Decides on the render thread whether to launch a background rebuild, snapshots the inputs it
+    /// needs (mutating settings collections and framework-thread-only AutoRetainer data), and runs the
+    /// heavy DB work off the render thread. Only one rebuild runs at a time; a trigger arriving while a
+    /// rebuild is in flight is remembered and run once afterwards. Version-driven refreshes are
+    /// debounced; settings/manual refreshes (via <see cref="RequestRefresh"/>) bypass the debounce.
+    /// </summary>
+    private void MaybeStartRefresh(DataToolSettings settings)
     {
-        try
+        if (HasCacheVersionChanged())
+            _pendingVersionRefresh = true;
+
+        if (_refreshInFlight)
+            return;
+
+        var versionRefreshDue = _pendingVersionRefresh &&
+            (DateTime.UtcNow - _lastRefreshLaunchUtc) >= RefreshDebounce;
+        if (!_pendingRefresh && !versionRefreshDue)
+            return;
+
+        var input = BuildTableRefreshInput(settings);
+
+        _pendingRefresh = false;
+        _pendingVersionRefresh = false;
+        _lastRefreshLaunchUtc = DateTime.UtcNow;
+        _refreshInFlight = true;
+
+        _ = Task.Run(() =>
         {
-            var allColumns = settings.Columns;
-
-            // Apply special grouping filter to get visible columns
-            List<ItemColumnConfig> columns;
-            using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
+            try
             {
-                columns = SpecialGroupingHelper.ApplySpecialGroupingFilter(allColumns, settings.SpecialGrouping).ToList();
-            }
-
-            if (columns.Count == 0)
-            {
-                _cachedTableData = new PreparedItemTableData
+                using (ProfilerService.BeginStaticChildScope("RefreshTableData"))
                 {
-                    Rows = Array.Empty<ItemTableCharacterRow>(),
-                    Columns = columns
-                };
-                _pendingRefresh = false;
-                return;
-            }
-
-            // Get all character names with disambiguation (from cache, no DB access)
-            IReadOnlyDictionary<ulong, string?> characterNames;
-            IReadOnlyDictionary<ulong, string> disambiguatedNames;
-            Dictionary<ulong, string?> gameNames;
-            using (ProfilerService.BeginStaticChildScope("GetCharacterNames"))
-            {
-                characterNames = CharacterDataCache.GetAllCharacterNamesDict();
-                disambiguatedNames = CharacterDataCache.GetDisambiguatedNames(characterNames.Keys);
-
-                // Build game name lookup for IPC calls (e.g., Lifestream relog)
-                var extendedNames = CharacterDataCache.GetAllCharacterNamesExtended();
-                gameNames = extendedNames.ToDictionary(x => x.characterId, x => x.gameName);
-            }
-            var rows = new Dictionary<ulong, ItemTableCharacterRow>();
-
-            // Get world data for DC/Region lookups (from PriceTrackingService)
-            var worldData = _priceTrackingService?.WorldData;
-
-            // Get character world info from AutoRetainer (maps CID to world name)
-            var characterWorlds = new Dictionary<ulong, string>();
-            if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
-            {
-                var arData = _autoRetainerService.GetAllCharacterData();
-                foreach (var (_, world, _, cid) in arData)
-                {
-                    if (!string.IsNullOrEmpty(world))
-                    {
-                        characterWorlds[cid] = world;
-                    }
+                    var data = BuildTableData(input);
+                    if (data != null)
+                        _cachedTableData = data;
                 }
             }
-
-            // Get character filter (if using multi-select)
-            HashSet<ulong>? allowedCharacters = null;
-            if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+            catch (Exception ex)
             {
-                allowedCharacters = settings.SelectedCharacterIds.ToHashSet();
+                _logDebug($"RefreshTableData error: {ex.Message}");
             }
-
-            // Initialize rows for all known characters (filtered if applicable)
-            foreach (var (charId, name) in characterNames)
+            finally
             {
-                // Skip characters not in the allowed set (if filtering is enabled)
-                if (allowedCharacters != null && !allowedCharacters.Contains(charId))
-                    continue;
-
-                var displayName = disambiguatedNames.TryGetValue(charId, out var formatted)
-                    ? formatted : name ?? $"CID:{charId}";
-
-                // Get world info for this character
-                var charWorldName = characterWorlds.TryGetValue(charId, out var w) ? w : string.Empty;
-                var dcName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetDataCenterForWorld(charWorldName)?.Name ?? string.Empty : string.Empty;
-                var regionName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetRegionForWorld(charWorldName) ?? string.Empty : string.Empty;
-
-                rows[charId] = new ItemTableCharacterRow
-                {
-                    CharacterId = charId,
-                    Name = displayName,
-                    GameName = gameNames.TryGetValue(charId, out var gn) ? gn ?? displayName : displayName,
-                    WorldName = charWorldName,
-                    DataCenterName = dcName,
-                    RegionName = regionName,
-                    ItemCounts = new Dictionary<uint, long>()
-                };
+                _refreshInFlight = false;
             }
+        });
+    }
 
-            // Fetch inventories once for all item columns (cache-first, avoids per-column DB calls)
-            List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories = null;
-            var hasItemColumns = columns.Any(c => !c.IsCurrency);
-            if (hasItemColumns && _inventoryCacheService != null)
+    /// <summary>
+    /// Captures, on the render thread, an immutable snapshot of everything a rebuild reads: the
+    /// mutable settings collections (copied so the background never enumerates a mutating list) and
+    /// the AutoRetainer world map and registration order (IPC is framework-thread-only).
+    /// </summary>
+    private TableRefreshInput BuildTableRefreshInput(DataToolSettings settings)
+    {
+        var sg = settings.SpecialGrouping;
+        var sgCopy = new SpecialGroupingSettings
+        {
+            Enabled = sg.Enabled,
+            ActiveGrouping = sg.ActiveGrouping,
+            EnabledElements = new HashSet<CrystalElement>(sg.EnabledElements),
+            EnabledTiers = new HashSet<CrystalTier>(sg.EnabledTiers),
+            AllGilEnabled = sg.AllGilEnabled,
+            MergeGilCurrencies = sg.MergeGilCurrencies,
+            AllCrystalsEnabled = sg.AllCrystalsEnabled
+        };
+
+        HashSet<ulong>? allowed = null;
+        if (settings.UseCharacterFilter && settings.SelectedCharacterIds.Count > 0)
+            allowed = settings.SelectedCharacterIds.ToHashSet();
+
+        // AutoRetainer world map (CID -> world) is framework-thread-only IPC; read it here.
+        var characterWorlds = new Dictionary<ulong, string>();
+        if (_autoRetainerService != null && _autoRetainerService.IsAvailable)
+        {
+            foreach (var (_, world, _, cid) in _autoRetainerService.GetAllCharacterData())
             {
-                using (ProfilerService.BeginStaticChildScope("GetAllInventories"))
-                {
-                    allInventories = _inventoryCacheService.GetAllInventories();
-                }
+                if (!string.IsNullOrEmpty(world))
+                    characterWorlds[cid] = world;
             }
+        }
 
-            // Populate data for each column
-            using (ProfilerService.BeginStaticChildScope("PopulateColumns"))
+        // AutoRetainer registration order (used only by the AutoRetainer sort) is also IPC-bound.
+        var sortOrder = _configService.Config.CharacterSortOrder;
+        Dictionary<ulong, int>? arOrderLookup = null;
+        if (sortOrder == CharacterSortOrder.AutoRetainer)
+        {
+            var arOrder = _autoRetainerService?.GetRegisteredCharacterIds();
+            if (arOrder != null && arOrder.Count > 0)
             {
-                foreach (var column in columns)
-                {
-                    if (column.IsCurrency)
-                    {
-                        PopulateCurrencyData(column, rows);
-                    }
-                    else
-                    {
-                        PopulateItemData(column, rows, settings.IncludeRetainers, settings.ShowRetainerBreakdown, allInventories);
-                    }
-                }
+                arOrderLookup = new Dictionary<ulong, int>(arOrder.Count);
+                for (var i = 0; i < arOrder.Count; i++)
+                    arOrderLookup[arOrder[i]] = i;
             }
+        }
 
-            // Apply gil merging if enabled
-            if (settings.SpecialGrouping.AllGilEnabled && settings.SpecialGrouping.MergeGilCurrencies)
-            {
-                ApplyGilMerging(rows);
-            }
+        return new TableRefreshInput
+        {
+            Columns = settings.Columns.ToList(),
+            SpecialGrouping = sgCopy,
+            AllowedCharacters = allowed,
+            IncludeRetainers = settings.IncludeRetainers,
+            ShowRetainerBreakdown = settings.ShowRetainerBreakdown,
+            CharacterWorlds = characterWorlds,
+            SortOrder = sortOrder,
+            ArOrderLookup = arOrderLookup
+        };
+    }
 
-            // Sort rows
-            List<ItemTableCharacterRow> sortedRows;
-            using (ProfilerService.BeginStaticChildScope("SortRows"))
-            {
-                sortedRows = CharacterSortHelper.SortByCharacter(
-                    rows.Values,
-                    _configService,
-                    _autoRetainerService,
-                    r => r.CharacterId,
-                    r => r.Name).ToList();
-            }
+    /// <summary>
+    /// Builds the prepared table data from a render-thread snapshot. Runs on a background thread:
+    /// every service it touches (character/time-series/inventory caches, world data) is safe for
+    /// concurrent reads, and all framework-thread-only inputs arrive pre-snapshotted in <paramref name="input"/>.
+    /// </summary>
+    private PreparedItemTableData? BuildTableData(TableRefreshInput input)
+    {
+        var allColumns = input.Columns;
 
-            _cachedTableData = new PreparedItemTableData
+        // Apply special grouping filter to get visible columns
+        List<ItemColumnConfig> columns;
+        using (ProfilerService.BeginStaticChildScope("ApplyGroupingFilter"))
+        {
+            columns = SpecialGroupingHelper.ApplySpecialGroupingFilter(allColumns, input.SpecialGrouping).ToList();
+        }
+
+        if (columns.Count == 0)
+        {
+            return new PreparedItemTableData
             {
-                Rows = sortedRows,
+                Rows = Array.Empty<ItemTableCharacterRow>(),
                 Columns = columns
             };
+        }
 
-            _pendingRefresh = false;
-        }
-        catch (Exception ex)
+        // Get all character names with disambiguation (from cache, no DB access)
+        IReadOnlyDictionary<ulong, string?> characterNames;
+        IReadOnlyDictionary<ulong, string> disambiguatedNames;
+        Dictionary<ulong, string?> gameNames;
+        using (ProfilerService.BeginStaticChildScope("GetCharacterNames"))
         {
-            _logDebug($"RefreshTableData error: {ex.Message}");
+            characterNames = CharacterDataCache.GetAllCharacterNamesDict();
+            disambiguatedNames = CharacterDataCache.GetDisambiguatedNames(characterNames.Keys);
+
+            // Build game name lookup for IPC calls (e.g., Lifestream relog)
+            var extendedNames = CharacterDataCache.GetAllCharacterNamesExtended();
+            gameNames = extendedNames.ToDictionary(x => x.characterId, x => x.gameName);
         }
+        var rows = new Dictionary<ulong, ItemTableCharacterRow>();
+
+        // Get world data for DC/Region lookups (from PriceTrackingService; effectively immutable snapshot)
+        var worldData = _priceTrackingService?.WorldData;
+
+        // Character world info (CID -> world), snapshotted from AutoRetainer on the render thread
+        var characterWorlds = input.CharacterWorlds;
+
+        // Get character filter (if using multi-select)
+        HashSet<ulong>? allowedCharacters = input.AllowedCharacters;
+
+        // Initialize rows for all known characters (filtered if applicable)
+        foreach (var (charId, name) in characterNames)
+        {
+            // Skip characters not in the allowed set (if filtering is enabled)
+            if (allowedCharacters != null && !allowedCharacters.Contains(charId))
+                continue;
+
+            var displayName = disambiguatedNames.TryGetValue(charId, out var formatted)
+                ? formatted : name ?? $"CID:{charId}";
+
+            // Get world info for this character
+            var charWorldName = characterWorlds.TryGetValue(charId, out var w) ? w : string.Empty;
+            var dcName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetDataCenterForWorld(charWorldName)?.Name ?? string.Empty : string.Empty;
+            var regionName = !string.IsNullOrEmpty(charWorldName) ? worldData?.GetRegionForWorld(charWorldName) ?? string.Empty : string.Empty;
+
+            rows[charId] = new ItemTableCharacterRow
+            {
+                CharacterId = charId,
+                Name = displayName,
+                GameName = gameNames.TryGetValue(charId, out var gn) ? gn ?? displayName : displayName,
+                WorldName = charWorldName,
+                DataCenterName = dcName,
+                RegionName = regionName,
+                ItemCounts = new Dictionary<uint, long>()
+            };
+        }
+
+        // Fetch inventories once for all item columns (cache-first, avoids per-column DB calls)
+        List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories = null;
+        var hasItemColumns = columns.Any(c => !c.IsCurrency);
+        if (hasItemColumns && _inventoryCacheService != null)
+        {
+            using (ProfilerService.BeginStaticChildScope("GetAllInventories"))
+            {
+                allInventories = _inventoryCacheService.GetAllInventories();
+            }
+        }
+
+        // Populate data for each column
+        using (ProfilerService.BeginStaticChildScope("PopulateColumns"))
+        {
+            foreach (var column in columns)
+            {
+                if (column.IsCurrency)
+                {
+                    PopulateCurrencyData(column, rows);
+                }
+                else
+                {
+                    PopulateItemData(column, rows, input.IncludeRetainers, input.ShowRetainerBreakdown, allInventories);
+                }
+            }
+        }
+
+        // Apply gil merging if enabled
+        if (input.SpecialGrouping.AllGilEnabled && input.SpecialGrouping.MergeGilCurrencies)
+        {
+            ApplyGilMerging(rows);
+        }
+
+        // Sort rows
+        List<ItemTableCharacterRow> sortedRows;
+        using (ProfilerService.BeginStaticChildScope("SortRows"))
+        {
+            sortedRows = SortRows(rows.Values, input.SortOrder, input.ArOrderLookup);
+        }
+
+        return new PreparedItemTableData
+        {
+            Rows = sortedRows,
+            Columns = columns
+        };
+    }
+
+    /// <summary>
+    /// Applies the configured character sort order to freshly built rows on the background thread.
+    /// Uses the AutoRetainer order snapshotted on the render thread rather than calling AutoRetainer
+    /// IPC (which is framework-thread-only); alphabetical orders are name-only and delegate to
+    /// <see cref="CharacterSortHelper"/> with no AutoRetainer dependency.
+    /// </summary>
+    private List<ItemTableCharacterRow> SortRows(
+        IEnumerable<ItemTableCharacterRow> rows,
+        CharacterSortOrder sortOrder,
+        Dictionary<ulong, int>? arOrderLookup)
+    {
+        if (sortOrder == CharacterSortOrder.AutoRetainer && arOrderLookup != null)
+        {
+            // Registered characters first in AR order; the rest fall to the end, ordered by name.
+            return rows
+                .OrderBy(r => arOrderLookup.TryGetValue(r.CharacterId, out var order) ? order : int.MaxValue)
+                .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return CharacterSortHelper.SortByCharacter(
+            rows,
+            _configService,
+            null,
+            r => r.CharacterId,
+            r => r.Name).ToList();
+    }
+
+    /// <summary>
+    /// Immutable snapshot of the settings and framework-thread-only data a table rebuild needs,
+    /// captured on the render thread so the background rebuild never enumerates a mutating settings
+    /// collection or calls AutoRetainer IPC off the framework thread.
+    /// </summary>
+    private sealed class TableRefreshInput
+    {
+        public required IReadOnlyList<ItemColumnConfig> Columns { get; init; }
+        public required SpecialGroupingSettings SpecialGrouping { get; init; }
+        public required HashSet<ulong>? AllowedCharacters { get; init; }
+        public required bool IncludeRetainers { get; init; }
+        public required bool ShowRetainerBreakdown { get; init; }
+        public required Dictionary<ulong, string> CharacterWorlds { get; init; }
+        public required CharacterSortOrder SortOrder { get; init; }
+        public required Dictionary<ulong, int>? ArOrderLookup { get; init; }
     }
 
     private void PopulateCurrencyData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows)

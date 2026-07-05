@@ -47,6 +47,35 @@ public sealed class WebsocketFeedTool : ToolComponent
     private readonly HashSet<int> _cachedFilterWorldIds = new();
     private UniversalisWorldData? _cachedFilterWorldData;
 
+    // Cached display rows for the live feed. Re-filtering the whole queue and formatting every
+    // row's text each frame is wasteful when nothing changed, so the result is cached and only
+    // rebuilt when the feed size or a filter/setting input changes. Row text is fully static
+    // (absolute HH:mm:ss timestamps), so it is formatted once at build time.
+    private readonly List<FeedRow> _cachedFeedRows = new();
+    private readonly List<PriceFeedEntry> _feedMatchBuffer = new();
+    private int _lastBuiltFeedCount = -1;
+    private int _snapMaxEntries = -1;
+    private int _snapFilterItemId = -1;
+    private bool _snapShowListingsAdd;
+    private bool _snapShowListingsRemove;
+    private bool _snapShowSales;
+    private bool _snapLatestOnTop;
+    private PriceTrackingScopeMode _snapFilterScopeMode = (PriceTrackingScopeMode)(-1);
+    private HashSet<int>? _snapEffectiveWorldIds;
+
+    // World-id -> name lookup built from WorldData, replacing the per-row O(n) GetWorldName scan.
+    // Rebuilt only when the WorldData reference changes.
+    private Dictionary<int, string>? _worldNameLookup;
+    private UniversalisWorldData? _worldNameLookupData;
+
+    private readonly record struct FeedRow(
+        string TimeStr,
+        string EventIcon,
+        Vector4 EventColor,
+        string MainText,
+        string SelectableId,
+        int ItemId);
+
     private readonly ItemDetailsPopup _itemDetailsPopup;
 
     private static readonly string[] EventTypeFilters = { "All Events", "Listings Added", "Listings Removed", "Sales" };
@@ -133,45 +162,44 @@ public sealed class WebsocketFeedTool : ToolComponent
     private void DrawFeed()
     {
         var settings = Settings;
-        var entries = _webSocketService.LiveFeed.ToList();
 
-        if (settings.FilterScopeMode != PriceTrackingScopeMode.All)
-        {
-            var effectiveWorldIds = GetEffectiveFilterWorldIds();
-            if (effectiveWorldIds.Count > 0)
-            {
-                entries = entries.Where(e => effectiveWorldIds.Contains(e.WorldId)).ToList();
-            }
-        }
+        EnsureWorldNameLookup();
 
-        if (settings.FilterItemId > 0)
-        {
-            entries = entries.Where(e => e.ItemId == settings.FilterItemId).ToList();
-        }
-        if (!settings.ShowListingsAdd)
-        {
-            entries = entries.Where(e => e.EventType != "Listing Added").ToList();
-        }
-        if (!settings.ShowListingsRemove)
-        {
-            entries = entries.Where(e => e.EventType != "Listing Removed").ToList();
-        }
-        if (!settings.ShowSales)
-        {
-            entries = entries.Where(e => e.EventType != "Sale").ToList();
-        }
+        // Resolve the (cached) effective world filter. Reference-equality against the previous
+        // resolution doubles as an invalidation trigger for the cached row list.
+        var effectiveWorldIds = settings.FilterScopeMode != PriceTrackingScopeMode.All
+            ? GetEffectiveFilterWorldIds()
+            : null;
 
-        entries = entries.TakeLast(settings.MaxEntries).ToList();
+        var feedCount = _webSocketService.LiveFeedCount;
 
-        if (settings.LatestOnTop)
+        if (feedCount != _lastBuiltFeedCount
+            || settings.MaxEntries != _snapMaxEntries
+            || settings.FilterItemId != _snapFilterItemId
+            || settings.ShowListingsAdd != _snapShowListingsAdd
+            || settings.ShowListingsRemove != _snapShowListingsRemove
+            || settings.ShowSales != _snapShowSales
+            || settings.LatestOnTop != _snapLatestOnTop
+            || settings.FilterScopeMode != _snapFilterScopeMode
+            || !ReferenceEquals(effectiveWorldIds, _snapEffectiveWorldIds))
         {
-            entries.Reverse();
+            RebuildFeedRows(settings, effectiveWorldIds);
+
+            _lastBuiltFeedCount = feedCount;
+            _snapMaxEntries = settings.MaxEntries;
+            _snapFilterItemId = settings.FilterItemId;
+            _snapShowListingsAdd = settings.ShowListingsAdd;
+            _snapShowListingsRemove = settings.ShowListingsRemove;
+            _snapShowSales = settings.ShowSales;
+            _snapLatestOnTop = settings.LatestOnTop;
+            _snapFilterScopeMode = settings.FilterScopeMode;
+            _snapEffectiveWorldIds = effectiveWorldIds;
         }
 
         var availableHeight = ImGui.GetContentRegionAvail().Y;
         if (ImGui.BeginChild("##PriceFeed", new Vector2(0, availableHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
         {
-            if (entries.Count == 0)
+            if (_cachedFeedRows.Count == 0)
             {
                 ImGui.TextDisabled("No price updates yet...");
             }
@@ -182,9 +210,20 @@ public sealed class WebsocketFeedTool : ToolComponent
                     ImGui.SetScrollY(0);
                 }
 
-                foreach (var entry in entries)
+                unsafe
                 {
-                    DrawFeedEntry(entry);
+                    var clipper = ImGui.ImGuiListClipper();
+                    clipper.Begin(_cachedFeedRows.Count, -1f);
+                    while (clipper.Step())
+                    {
+                        for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                        {
+                            if (i >= 0 && i < _cachedFeedRows.Count)
+                                DrawFeedRow(_cachedFeedRows[i]);
+                        }
+                    }
+                    clipper.End();
+                    clipper.Destroy();
                 }
 
                 if (settings.AutoScroll && !settings.LatestOnTop)
@@ -196,12 +235,46 @@ public sealed class WebsocketFeedTool : ToolComponent
         }
     }
 
-    private void DrawFeedEntry(PriceFeedEntry entry)
+    private void RebuildFeedRows(WebsocketFeedSettings settings, HashSet<int>? effectiveWorldIds)
     {
-        var worldName = _priceTrackingService.WorldData?.GetWorldName(entry.WorldId) ?? $"World {entry.WorldId}";
-        
+        _cachedFeedRows.Clear();
+        _feedMatchBuffer.Clear();
+
+        var applyWorldFilter = effectiveWorldIds != null && effectiveWorldIds.Count > 0;
+
+        // Single pass over one snapshot of the feed, applying every filter inline instead of
+        // chaining Where/ToList copies.
+        foreach (var entry in _webSocketService.LiveFeed)
+        {
+            if (applyWorldFilter && !effectiveWorldIds!.Contains(entry.WorldId)) continue;
+            if (settings.FilterItemId > 0 && entry.ItemId != settings.FilterItemId) continue;
+            if (!settings.ShowListingsAdd && entry.EventType == "Listing Added") continue;
+            if (!settings.ShowListingsRemove && entry.EventType == "Listing Removed") continue;
+            if (!settings.ShowSales && entry.EventType == "Sale") continue;
+            _feedMatchBuffer.Add(entry);
+        }
+
+        // Keep only the most recent MaxEntries matches, formatting rows for just those.
+        var start = Math.Max(0, _feedMatchBuffer.Count - settings.MaxEntries);
+        for (var i = start; i < _feedMatchBuffer.Count; i++)
+        {
+            _cachedFeedRows.Add(BuildFeedRow(_feedMatchBuffer[i]));
+        }
+
+        if (settings.LatestOnTop)
+        {
+            _cachedFeedRows.Reverse();
+        }
+    }
+
+    private FeedRow BuildFeedRow(PriceFeedEntry entry)
+    {
+        var worldName = _worldNameLookup != null && _worldNameLookup.TryGetValue(entry.WorldId, out var wn)
+            ? wn
+            : $"World {entry.WorldId}";
+
         var itemName = _itemDataService.GetItemName(entry.ItemId);
-        
+
         var eventColor = entry.EventType switch
         {
             "Listing Added" => UiColors.Good,      // Green for new listings
@@ -224,21 +297,27 @@ public sealed class WebsocketFeedTool : ToolComponent
         var priceStr = FormatUtils.FormatGil(entry.PricePerUnit);
         var totalStr = FormatUtils.FormatGil(entry.Total);
 
-        // Make the entire entry clickable to open item details
-        var entryText = $"{timeStr} {eventIcon} {itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}";
+        var mainText = $"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}";
+        var selectableId = $"##{entry.ReceivedAt.Ticks}_{entry.ItemId}";
+
+        return new FeedRow(timeStr, eventIcon, eventColor, mainText, selectableId, entry.ItemId);
+    }
+
+    private void DrawFeedRow(FeedRow row)
+    {
         var cursorPos = ImGui.GetCursorPos();
-        
+
         // Draw the selectable (invisible, just for click detection)
         ImGui.PushStyleColor(ImGuiCol.Header, new Vector4(0.3f, 0.3f, 0.3f, 0.4f));
         ImGui.PushStyleColor(ImGuiCol.HeaderHovered, new Vector4(0.4f, 0.4f, 0.4f, 0.6f));
         ImGui.PushStyleColor(ImGuiCol.HeaderActive, new Vector4(0.5f, 0.5f, 0.5f, 0.8f));
-        
-        if (ImGui.Selectable($"##{entry.ReceivedAt.Ticks}_{entry.ItemId}", false, ImGuiSelectableFlags.SpanAllColumns))
+
+        if (ImGui.Selectable(row.SelectableId, false, ImGuiSelectableFlags.SpanAllColumns))
         {
             // Open the item details popup via Universalis API
-            _itemDetailsPopup.Open(entry.ItemId);
+            _itemDetailsPopup.Open(row.ItemId);
         }
-        
+
         ImGui.PopStyleColor(3);
 
         // Show tooltip hint on hover
@@ -249,11 +328,32 @@ public sealed class WebsocketFeedTool : ToolComponent
 
         // Draw the actual text on top of the selectable
         ImGui.SetCursorPos(cursorPos);
-        ImGui.TextDisabled(timeStr);
+        ImGui.TextDisabled(row.TimeStr);
         ImGui.SameLine();
-        ImGui.TextColored(eventColor, eventIcon);
+        ImGui.TextColored(row.EventColor, row.EventIcon);
         ImGui.SameLine();
-        ImGui.TextUnformatted($"{itemName}{hqStr} x{entry.Quantity} @ {priceStr} ({totalStr} total) - {worldName}");
+        ImGui.TextUnformatted(row.MainText);
+    }
+
+    private void EnsureWorldNameLookup()
+    {
+        var worldData = _priceTrackingService.WorldData;
+        if (_worldNameLookup != null && ReferenceEquals(worldData, _worldNameLookupData))
+            return;
+
+        _worldNameLookupData = worldData;
+        _worldNameLookup = new Dictionary<int, string>();
+        if (worldData != null)
+        {
+            foreach (var w in worldData.Worlds)
+            {
+                if (w.Name != null)
+                    _worldNameLookup[w.Id] = w.Name;
+            }
+        }
+
+        // World names changed: force the cached rows (which bake in world names) to rebuild.
+        _lastBuiltFeedCount = -1;
     }
 
     protected override bool HasToolSettings => true;

@@ -18,6 +18,7 @@ public sealed class DatabaseSizeTool : StatusToolBase
     private long _cachedFileSize;
     private DateTime _lastSizeCheck = DateTime.MinValue;
     private readonly TimeSpan _sizeCheckInterval = TimeSpan.FromSeconds(5);
+    private int _sizeUpdateInFlight;
 
     public DatabaseSizeTool(CurrencyTrackerService currencyTrackerService)
     {
@@ -45,8 +46,8 @@ public sealed class DatabaseSizeTool : StatusToolBase
             var now = DateTime.UtcNow;
             if (now - _lastSizeCheck >= _sizeCheckInterval)
             {
-                _cachedFileSize = GetDatabaseFileSize(dbPath);
                 _lastSizeCheck = now;
+                QueueFileSizeUpdate(dbPath);
             }
 
             if (_cachedFileSize < 0)
@@ -81,6 +82,26 @@ public sealed class DatabaseSizeTool : StatusToolBase
         {
             LogDebug($"Draw error: {ex.Message}");
         }
+    }
+
+    private void QueueFileSizeUpdate(string dbPath)
+    {
+        // File.Exists + FileInfo.Length are blocking file-system stat calls; keep them off the
+        // render thread. Single-flight: skip if the previous update is still running.
+        if (Interlocked.CompareExchange(ref _sizeUpdateInFlight, 1, 0) != 0)
+            return;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                _cachedFileSize = GetDatabaseFileSize(dbPath);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _sizeUpdateInFlight, 0);
+            }
+        });
     }
 
     private static long GetDatabaseFileSize(string dbPath)

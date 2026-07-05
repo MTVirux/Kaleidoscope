@@ -32,6 +32,16 @@ internal sealed class ToolEntry
     /// <summary>Unique animation key prefix for this tool entry (stable across frames).</summary>
     public string AnimKey;
 
+    // Precomputed animation-controller keys and ImGui child id, cached once at construction to
+    // avoid per-tool-per-frame string interpolation on the render thread.
+    public readonly string AnimKeyPos;
+    public readonly string AnimKeySize;
+    public readonly string AnimKeyAlpha;
+    public readonly string AnimKeyHover;
+
+    /// <summary>Instance-stable ImGui id for this tool's PushID/child window (unique across same-type tools).</summary>
+    public readonly string ChildId;
+
     /// <summary>Whether this tool is pending removal (playing fade-out).</summary>
     public bool PendingRemoval;
 
@@ -41,6 +51,11 @@ internal sealed class ToolEntry
         OrigPos = t.Position;
         OrigSize = t.Size;
         AnimKey = $"tool_{t.GetHashCode():X8}";
+        AnimKeyPos = AnimKey + "_pos";
+        AnimKeySize = AnimKey + "_size";
+        AnimKeyAlpha = AnimKey + "_alpha";
+        AnimKeyHover = AnimKey + "_hover";
+        ChildId = $"{AnimKey}_{t.Id}";
     }
 }
 

@@ -21,6 +21,7 @@ public sealed class CacheSizeTool : StatusToolBase
     private long _estimatedBytes;
     private DateTime _lastCacheCheck = DateTime.MinValue;
     private readonly TimeSpan _cacheCheckInterval = TimeSpan.FromSeconds(2);
+    private int _statsUpdateInFlight;
 
     public CacheSizeTool(InventoryCacheService inventoryCacheService)
     {
@@ -39,8 +40,8 @@ public sealed class CacheSizeTool : StatusToolBase
             var now = DateTime.UtcNow;
             if (now - _lastCacheCheck >= _cacheCheckInterval)
             {
-                UpdateCacheStats();
                 _lastCacheCheck = now;
+                QueueCacheStatsUpdate();
             }
 
             var sizeStr = FormatUtils.FormatByteSize(_estimatedBytes);
@@ -63,6 +64,26 @@ public sealed class CacheSizeTool : StatusToolBase
         {
             LogDebug($"Draw error: {ex.Message}");
         }
+    }
+
+    private void QueueCacheStatsUpdate()
+    {
+        // GetAllInventories() is a full resources-table scan under the DB read lock; keep it off
+        // the render thread. Single-flight: skip if the previous update is still running.
+        if (Interlocked.CompareExchange(ref _statsUpdateInFlight, 1, 0) != 0)
+            return;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                UpdateCacheStats();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _statsUpdateInFlight, 0);
+            }
+        });
     }
 
     private void UpdateCacheStats()

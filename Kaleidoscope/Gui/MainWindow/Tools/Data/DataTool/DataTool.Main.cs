@@ -242,7 +242,7 @@ public sealed partial class DataTool : ToolComponent
             trackedDataRegistry,
             _graphWidget,
             GetCacheVersions,
-            GetCharacterDisplayName,
+            GetCharacterDisplayNameCached,
             LogDebug);
     }
     
@@ -563,6 +563,18 @@ public sealed partial class DataTool : ToolComponent
 
         // Fallback to ID
         return $"Character {characterId}";
+    }
+
+    /// <summary>
+    /// Background-safe character display-name resolver used by the graph view's off-thread rebuild.
+    /// Resolves only from the (thread-safe) cache service; unlike <see cref="GetCharacterDisplayName"/>
+    /// it never touches the game object table, which is framework-thread-only. Characters with
+    /// time-series data are already in the cache, so the runtime lookup is not needed here.
+    /// </summary>
+    private string GetCharacterDisplayNameCached(ulong characterId)
+    {
+        var formattedName = CacheService.GetFormattedCharacterName(characterId);
+        return string.IsNullOrEmpty(formattedName) ? $"Character {characterId}" : formattedName;
     }
 
     public override void Dispose()

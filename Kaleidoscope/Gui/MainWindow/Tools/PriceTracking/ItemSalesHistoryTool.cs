@@ -43,6 +43,19 @@ public sealed class ItemSalesHistoryTool : ToolComponent
     private bool _showNqOnly = false;
     private bool _showActionButtons = true;
 
+    // Cached filtered view + summary. The per-frame filter (including per-entry outlier lookups)
+    // and the min/avg/max summary are rebuilt only when an input that affects them changes.
+    private List<HistorySale>? _cachedFilteredEntries;
+    private string _cachedSummary = string.Empty;
+    private bool _hasCachedSummary;
+    private uint _cacheSelectedItemId = uint.MaxValue;
+    private MarketHistory? _cacheHistoryRef;
+    private bool _cacheShowHqOnly;
+    private bool _cacheShowNqOnly;
+    private bool _cacheFilterByListing;
+    private int _cacheThreshold = -1;
+    private int _cacheMaxEntries = -1;
+
     public ItemSalesHistoryTool(
         UniversalisService universalisService,
         PriceTrackingService priceTrackingService,
@@ -204,43 +217,26 @@ public sealed class ItemSalesHistoryTool : ToolComponent
             return;
         }
 
-        // Filter entries
-        var entries = _currentHistory.Entries.AsEnumerable();
-        if (_showHqOnly)
-            entries = entries.Where(e => e.IsHq);
-        else if (_showNqOnly)
-            entries = entries.Where(e => !e.IsHq);
-
-        // Filter by listing price discrepancy (configurable threshold)
-        // Uses average of lowest listing and most recent sale for that world as reference
-        var priceTrackingSettings = _configService.Config.PriceTracking;
-        if (priceTrackingSettings.FilterSalesByListingPrice && _itemCombo.SelectedItemId > 0)
+        if (FilteredHistoryNeedsRebuild())
         {
-            var itemId = (int)_itemCombo.SelectedItemId;
-            var listingsService = _priceTrackingService.ListingsService;
-            var threshold = priceTrackingSettings.SaleDiscrepancyThreshold / 100.0;
-            entries = entries.Where(e =>
-            {
-                if (!e.WorldId.HasValue) return true; // Keep entries without world info
+            RebuildFilteredHistory();
 
-                var listing = listingsService.GetListing(itemId, e.WorldId.Value);
-                var listingPrice = listing != null ? (e.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
-                var recentSalePrice = _salePriceCacheService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
-
-                var referencePrice = SaleOutlierFilter.ComputeReferencePrice(listingPrice, recentSalePrice);
-                return !SaleOutlierFilter.IsRatioOutlier(e.PricePerUnit, referencePrice, threshold, out _);
-            });
+            var pts = _configService.Config.PriceTracking;
+            _cacheSelectedItemId = _itemCombo.SelectedItemId;
+            _cacheHistoryRef = _currentHistory;
+            _cacheShowHqOnly = _showHqOnly;
+            _cacheShowNqOnly = _showNqOnly;
+            _cacheFilterByListing = pts.FilterSalesByListingPrice;
+            _cacheThreshold = pts.SaleDiscrepancyThreshold;
+            _cacheMaxEntries = _maxEntries;
         }
 
-        var filteredEntries = entries.Take(_maxEntries).ToList();
+        var filteredEntries = _cachedFilteredEntries!;
 
         // Summary
-        if (filteredEntries.Count > 0)
+        if (_hasCachedSummary)
         {
-            var avgPrice = filteredEntries.Average(e => e.PricePerUnit);
-            var minPrice = filteredEntries.Min(e => e.PricePerUnit);
-            var maxPrice = filteredEntries.Max(e => e.PricePerUnit);
-            ImGui.TextUnformatted($"Showing {filteredEntries.Count} sales | Avg: {FormatUtils.FormatGil(avgPrice)} | Min: {FormatUtils.FormatGil(minPrice)} | Max: {FormatUtils.FormatGil(maxPrice)}");
+            ImGui.TextUnformatted(_cachedSummary);
             ImGui.Spacing();
         }
 
@@ -302,6 +298,68 @@ public sealed class ItemSalesHistoryTool : ToolComponent
             }
 
             ImGui.EndTable();
+        }
+    }
+
+    private bool FilteredHistoryNeedsRebuild()
+    {
+        var pts = _configService.Config.PriceTracking;
+        return _cachedFilteredEntries == null
+            || _cacheSelectedItemId != _itemCombo.SelectedItemId
+            || !ReferenceEquals(_cacheHistoryRef, _currentHistory)
+            || _cacheShowHqOnly != _showHqOnly
+            || _cacheShowNqOnly != _showNqOnly
+            || _cacheFilterByListing != pts.FilterSalesByListingPrice
+            || _cacheThreshold != pts.SaleDiscrepancyThreshold
+            || _cacheMaxEntries != _maxEntries;
+    }
+
+    private void RebuildFilteredHistory()
+    {
+        var result = new List<HistorySale>();
+        _cachedFilteredEntries = result;
+        _hasCachedSummary = false;
+        _cachedSummary = string.Empty;
+
+        if (_currentHistory?.Entries == null)
+            return;
+
+        IEnumerable<HistorySale> entries = _currentHistory.Entries;
+        if (_showHqOnly)
+            entries = entries.Where(e => e.IsHq);
+        else if (_showNqOnly)
+            entries = entries.Where(e => !e.IsHq);
+
+        // Filter by listing price discrepancy (configurable threshold).
+        // Uses average of lowest listing and most recent sale for that world as reference.
+        var priceTrackingSettings = _configService.Config.PriceTracking;
+        if (priceTrackingSettings.FilterSalesByListingPrice && _itemCombo.SelectedItemId > 0)
+        {
+            var itemId = (int)_itemCombo.SelectedItemId;
+            var listingsService = _priceTrackingService.ListingsService;
+            var threshold = priceTrackingSettings.SaleDiscrepancyThreshold / 100.0;
+            entries = entries.Where(e =>
+            {
+                if (!e.WorldId.HasValue) return true; // Keep entries without world info
+
+                var listing = listingsService.GetListing(itemId, e.WorldId.Value);
+                var listingPrice = listing != null ? (e.IsHq ? listing.MinPriceHq : listing.MinPriceNq) : 0;
+                var recentSalePrice = _salePriceCacheService.GetMostRecentSalePriceForWorld(itemId, e.WorldId.Value, e.IsHq);
+
+                var referencePrice = SaleOutlierFilter.ComputeReferencePrice(listingPrice, recentSalePrice);
+                return !SaleOutlierFilter.IsRatioOutlier(e.PricePerUnit, referencePrice, threshold, out _);
+            });
+        }
+
+        result.AddRange(entries.Take(_maxEntries));
+
+        if (result.Count > 0)
+        {
+            var avgPrice = result.Average(e => e.PricePerUnit);
+            var minPrice = result.Min(e => e.PricePerUnit);
+            var maxPrice = result.Max(e => e.PricePerUnit);
+            _cachedSummary = $"Showing {result.Count} sales | Avg: {FormatUtils.FormatGil(avgPrice)} | Min: {FormatUtils.FormatGil(minPrice)} | Max: {FormatUtils.FormatGil(maxPrice)}";
+            _hasCachedSummary = true;
         }
     }
 

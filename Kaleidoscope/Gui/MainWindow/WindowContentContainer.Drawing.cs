@@ -113,11 +113,11 @@ public sealed partial class WindowContentContainer
         for (var i = Tools.Count - 1; i >= 0; i--)
         {
             var te = Tools[i];
-            if (te.PendingRemoval && !Animator.IsAnimating($"{te.AnimKey}_alpha"))
+            if (te.PendingRemoval && !Animator.IsAnimating(te.AnimKeyAlpha))
             {
-                Animator.Cancel($"{te.AnimKey}_pos");
-                Animator.Cancel($"{te.AnimKey}_size");
-                Animator.Cancel($"{te.AnimKey}_hover");
+                Animator.Cancel(te.AnimKeyPos);
+                Animator.Cancel(te.AnimKeySize);
+                Animator.Cancel(te.AnimKeyHover);
                 te.Tool.Dispose();
                 Tools.RemoveAt(i);
                 MarkLayoutDirty();
@@ -166,16 +166,16 @@ public sealed partial class WindowContentContainer
             return;
 
         // Resolve animated position/size (falls back to model values when no animation is active)
-        var animPos = Animator.GetVec2($"{te.AnimKey}_pos", t.Position);
-        var animSize = Animator.GetVec2($"{te.AnimKey}_size", t.Size);
+        var animPos = Animator.GetVec2(te.AnimKeyPos, t.Position);
+        var animSize = Animator.GetVec2(te.AnimKeySize, t.Size);
 
         ImGui.SetCursorScreenPos(animPos + contentOrigin);
-        var id = $"tool_{i}_{t.Id}";
+        var id = te.ChildId;
 
         ImGui.PushID(id);
 
         // Alpha: use animation value (1.0 = fully visible when no animation active)
-        var alpha = Animator.Get($"{te.AnimKey}_alpha", 1f);
+        var alpha = Animator.Get(te.AnimKeyAlpha, 1f);
         var pushedAlpha = false;
         if (alpha < 0.999f)
         {
@@ -268,12 +268,12 @@ public sealed partial class WindowContentContainer
             var mouse = ImGui.GetIO().MousePos;
             var isHovered = mouse.X >= min.X && mouse.X <= max.X && mouse.Y >= min.Y && mouse.Y <= max.Y
                             && !te.Dragging && !te.Resizing;
-            if (isHovered && !Animator.IsAnimating($"{te.AnimKey}_hover"))
-                Animator.Start($"{te.AnimKey}_hover", 0f, 1f, 0.10f, Easing.QuadOut);
-            else if (!isHovered && Animator.Get($"{te.AnimKey}_hover", 0f) > 0f && !Animator.IsAnimating($"{te.AnimKey}_hover"))
-                Animator.Start($"{te.AnimKey}_hover", Animator.Get($"{te.AnimKey}_hover", 0f), 0f, 0.10f, Easing.QuadIn);
+            if (isHovered && !Animator.IsAnimating(te.AnimKeyHover))
+                Animator.Start(te.AnimKeyHover, 0f, 1f, 0.10f, Easing.QuadOut);
+            else if (!isHovered && Animator.Get(te.AnimKeyHover, 0f) > 0f && !Animator.IsAnimating(te.AnimKeyHover))
+                Animator.Start(te.AnimKeyHover, Animator.Get(te.AnimKeyHover, 0f), 0f, 0.10f, Easing.QuadIn);
 
-            var hoverAlpha = Animator.Get($"{te.AnimKey}_hover", 0f);
+            var hoverAlpha = Animator.Get(te.AnimKeyHover, 0f);
             if (hoverAlpha > 0.01f)
             {
                 var accentColor = new Vector4(0.26f, 0.59f, 0.98f, 0.5f * hoverAlpha);

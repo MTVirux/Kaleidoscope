@@ -148,6 +148,22 @@ public sealed class GilFluxTool : ToolComponent
     private DateTime _lastRebuildTime = DateTime.MinValue;
     private const double RebuildDebounceMs = 500;
 
+    // Display cache — the filtered+sorted list reused every frame to avoid per-frame LINQ/sort.
+    private List<GilfluxItem> _displayCache = new();
+    private int _dataVersion;               // bumped whenever _items is replaced (may be off-thread)
+    private int _cachedDataVersion = -1;
+    private string _cacheFilterText = "\0"; // sentinel that never equals a real filter value
+    private bool _cacheCraftedOnly;
+    private int _cacheIgnoredCount = -1;
+    private int _cachePinnedVersion = -1;
+    private int _pinnedVersion;             // bumped whenever the pinned-item selection changes
+    private int _sortColumnIndex = -1;
+    private bool _sortAscending;
+
+    // Background rebuild single-flight guard
+    private int _rebuildRunning;
+    private volatile bool _rebuildDirtyAgain;
+
     public GilFluxTool(
         FFXIVMTService ffxivmtService,
         PriceTrackingService? priceTrackingService,
@@ -178,6 +194,7 @@ public sealed class GilFluxTool : ToolComponent
     private void OnItemPickerSelectionChanged(IReadOnlySet<uint> ids)
     {
         _settings.PinnedItemIds = new HashSet<uint>(ids);
+        _pinnedVersion++;
         NotifyToolSettingsChanged();
     }
 
@@ -208,12 +225,12 @@ public sealed class GilFluxTool : ToolComponent
         {
             EnsureWorldSelector();
 
-            // Process debounced rebuild from WebSocket updates
+            // Process debounced rebuild from WebSocket updates (aggregation runs off the draw thread)
             if (_rebuildPending && (DateTime.UtcNow - _lastRebuildTime).TotalMilliseconds >= RebuildDebounceMs)
             {
                 _rebuildPending = false;
                 _lastRebuildTime = DateTime.UtcNow;
-                RebuildAggregatedItems();
+                ScheduleRebuild();
             }
 
             // Periodic re-fetch of API data to keep server-side rankings fresh
@@ -290,36 +307,25 @@ public sealed class GilFluxTool : ToolComponent
 
     private void DrawTable()
     {
-        if (_items == null || _items.Count == 0)
+        // Read the version before the list so a concurrent swap only ever causes a
+        // harmless redundant rebuild next frame, never a stale display.
+        var dataVersion = _dataVersion;
+        var items = _items;
+
+        if (items == null || items.Count == 0)
         {
             if (!_isLoading)
-                ImGui.TextColored(UiColors.Muted, _items == null ? "Configure worlds in settings to load data." : "No results.");
+                ImGui.TextColored(UiColors.Muted, items == null ? "Configure worlds in settings to load data." : "No results.");
             return;
         }
 
-        // Purge expired ignores
+        // Purge expired ignores (may change the filter signature below)
         PurgeExpiredIgnores();
 
-        // Apply filters: ignored items, search text, pinned items
-        var filtered = _items.AsEnumerable();
+        // Rebuild the filtered+sorted display list only when the data or a filter input changed
+        EnsureDisplayCache(items, dataVersion);
 
-        // Filter crafted-only if enabled (client-side via RecipeLookup sheet)
-        if (_settings.CraftedOnly && _itemDataService != null)
-            filtered = filtered.Where(i => _itemDataService.IsCraftable(i.ItemId));
-
-        // Hide ignored items
-        var now = DateTime.UtcNow;
-        filtered = filtered.Where(i => !IsItemIgnored(i.ItemId, now));
-
-        // If item picker has selections, only show those
-        if (_settings.PinnedItemIds.Count > 0)
-            filtered = filtered.Where(i => _settings.PinnedItemIds.Contains((uint)i.ItemId));
-
-        // Text search filter
-        if (!string.IsNullOrWhiteSpace(_filterText))
-            filtered = filtered.Where(i => i.ItemName != null && i.ItemName.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
-
-        var displayItems = filtered.ToList();
+        var displayItems = _displayCache;
         var columnCount = 1 + _timeframeLabels.Count; // Item + dynamic timeframe columns
 
         var flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Sortable |
@@ -346,58 +352,125 @@ public sealed class GilFluxTool : ToolComponent
             }
             ImGui.TableHeadersRow();
 
+            // Re-sort only when the user changes the sort column/direction
             var sortSpecs = ImGui.TableGetSortSpecs();
-            SortItems(displayItems, sortSpecs);
-            sortSpecs.SpecsDirty = false;
-
-            var rowIndex = 0;
-            foreach (var item in displayItems)
+            if (sortSpecs.SpecsDirty)
             {
-                ImGui.TableNextRow();
+                UpdateSortFromSpecs(sortSpecs);
+                SortDisplayCache();
+                sortSpecs.SpecsDirty = false;
+            }
 
-                // Apply even/odd row colors if set
-                var isEven = rowIndex % 2 == 0;
-                if (isEven && _settings.EvenRowColor.HasValue)
-                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.EvenRowColor.Value));
-                else if (!isEven && _settings.OddRowColor.HasValue)
-                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.OddRowColor.Value));
-
-                ImGui.TableNextColumn();
-                var displayName = string.IsNullOrEmpty(item.ItemName) ? "(No Name)" : item.ItemName;
-                ImGui.Text(displayName);
-
-                // Right-click context menu for ignore options
-                if (ImGui.BeginPopupContextItem($"gilflux_ctx_{item.ItemId}"))
+            // Clipper: only visible rows are submitted (all rows are uniform single-line text)
+            unsafe
+            {
+                var clipper = ImGui.ImGuiListClipper();
+                clipper.Begin(displayItems.Count, -1f);
+                while (clipper.Step())
                 {
-                    ImGui.TextDisabled(displayName);
-                    ImGui.Separator();
-
-                    if (ImGui.MenuItem("Ignore permanently"))
-                        IgnoreItem(item.ItemId, item.ItemName, null);
-                    if (ImGui.MenuItem("Ignore for 7 days"))
-                        IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(7));
-                    if (ImGui.MenuItem("Ignore for 3 days"))
-                        IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(3));
-                    if (ImGui.MenuItem("Ignore for 2 days"))
-                        IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(2));
-                    if (ImGui.MenuItem("Ignore for 1 day"))
-                        IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(1));
-
-                    ImGui.EndPopup();
+                    for (var rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; rowIndex++)
+                    {
+                        if (rowIndex < 0 || rowIndex >= displayItems.Count) continue;
+                        DrawItemRow(displayItems[rowIndex], rowIndex);
+                    }
                 }
-
-                foreach (var label in _timeframeLabels)
-                {
-                    ImGui.TableNextColumn();
-                    DrawGilValue(item.GetRanking(label));
-                }
-
-                rowIndex++;
+                clipper.End();
+                clipper.Destroy();
             }
 
             ImGui.EndTable();
         }
     }
+
+    private void DrawItemRow(GilfluxItem item, int rowIndex)
+    {
+        ImGui.TableNextRow();
+
+        // Apply even/odd row colors if set
+        var isEven = rowIndex % 2 == 0;
+        if (isEven && _settings.EvenRowColor.HasValue)
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.EvenRowColor.Value));
+        else if (!isEven && _settings.OddRowColor.HasValue)
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(_settings.OddRowColor.Value));
+
+        ImGui.TableNextColumn();
+        var displayName = string.IsNullOrEmpty(item.ItemName) ? "(No Name)" : item.ItemName;
+        ImGui.Text(displayName);
+
+        // Right-click context menu for ignore options
+        if (ImGui.BeginPopupContextItem($"gilflux_ctx_{item.ItemId}"))
+        {
+            ImGui.TextDisabled(displayName);
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Ignore permanently"))
+                IgnoreItem(item.ItemId, item.ItemName, null);
+            if (ImGui.MenuItem("Ignore for 7 days"))
+                IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(7));
+            if (ImGui.MenuItem("Ignore for 3 days"))
+                IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(3));
+            if (ImGui.MenuItem("Ignore for 2 days"))
+                IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(2));
+            if (ImGui.MenuItem("Ignore for 1 day"))
+                IgnoreItem(item.ItemId, item.ItemName, TimeSpan.FromDays(1));
+
+            ImGui.EndPopup();
+        }
+
+        foreach (var label in _timeframeLabels)
+        {
+            ImGui.TableNextColumn();
+            DrawGilValue(item.GetRanking(label));
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the filtered display list only when the underlying data version or any
+    /// filter input changed; otherwise the cached list is reused unchanged.
+    /// </summary>
+    private void EnsureDisplayCache(List<GilfluxItem> items, int dataVersion)
+    {
+        if (_cachedDataVersion == dataVersion && !FilterInputsChanged())
+            return;
+
+        var now = DateTime.UtcNow;
+        var filtered = items.AsEnumerable();
+
+        // Filter crafted-only if enabled (client-side via RecipeLookup sheet)
+        if (_settings.CraftedOnly && _itemDataService != null)
+            filtered = filtered.Where(i => _itemDataService.IsCraftable(i.ItemId));
+
+        // Hide ignored items
+        filtered = filtered.Where(i => !IsItemIgnored(i.ItemId, now));
+
+        // If item picker has selections, only show those
+        if (_settings.PinnedItemIds.Count > 0)
+            filtered = filtered.Where(i => _settings.PinnedItemIds.Contains((uint)i.ItemId));
+
+        // Text search filter
+        if (!string.IsNullOrWhiteSpace(_filterText))
+            filtered = filtered.Where(i => i.ItemName != null && i.ItemName.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
+
+        _displayCache = filtered.ToList();
+        SortDisplayCache();
+
+        _cachedDataVersion = dataVersion;
+        _cacheFilterText = _filterText;
+        _cacheCraftedOnly = _settings.CraftedOnly;
+        _cacheIgnoredCount = _settings.IgnoredItems.Count;
+        _cachePinnedVersion = _pinnedVersion;
+    }
+
+    /// <summary>
+    /// Returns true if any filter input has changed since the display cache was last built.
+    /// Ignored-item count is a sufficient proxy (re-ignoring an already-ignored item does not
+    /// change the visible set); pinned changes are tracked via an explicit version counter.
+    /// </summary>
+    private bool FilterInputsChanged()
+        => _cacheFilterText != _filterText
+           || _cacheCraftedOnly != _settings.CraftedOnly
+           || _cacheIgnoredCount != _settings.IgnoredItems.Count
+           || _cachePinnedVersion != _pinnedVersion;
 
     /// <summary>
     /// Returns true if the given item is currently ignored.
@@ -459,15 +532,31 @@ public sealed class GilFluxTool : ToolComponent
         }
     }
 
-    private void SortItems(List<GilfluxItem> items, ImGuiTableSortSpecsPtr sortSpecs)
+    /// <summary>
+    /// Records the active sort column/direction from ImGui so the display cache can be
+    /// re-sorted with the same key after a data or filter rebuild.
+    /// </summary>
+    private void UpdateSortFromSpecs(ImGuiTableSortSpecsPtr sortSpecs)
     {
-        if (sortSpecs.SpecsCount == 0) return;
+        if (sortSpecs.SpecsCount == 0)
+        {
+            _sortColumnIndex = -1;
+            return;
+        }
 
         var spec = sortSpecs.Specs;
-        var ascending = spec.SortDirection == ImGuiSortDirection.Ascending;
-        var colIdx = spec.ColumnIndex;
+        _sortColumnIndex = spec.ColumnIndex;
+        _sortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
+    }
 
-        items.Sort((a, b) =>
+    private void SortDisplayCache()
+    {
+        if (_sortColumnIndex < 0) return;
+
+        var colIdx = _sortColumnIndex;
+        var ascending = _sortAscending;
+
+        _displayCache.Sort((a, b) =>
         {
             int result;
             if (colIdx == 0)
@@ -575,7 +664,7 @@ public sealed class GilFluxTool : ToolComponent
 
                 if (newBaseItems.Count == 0)
                 {
-                    _items = new List<GilfluxItem>();
+                    ApplyAggregatedItems(new List<GilfluxItem>());
                     _errorMessage = $"No data returned. {failed} location(s) failed.";
                 }
                 else
@@ -617,11 +706,65 @@ public sealed class GilFluxTool : ToolComponent
     }
 
     /// <summary>
-    /// Rebuilds the aggregated and name-resolved item list by merging base (API) data
-    /// with time-pruned live (WebSocket) data. Each live sale only contributes to
-    /// timeframe buckets it still falls within based on its age.
+    /// Rebuilds the aggregated item list synchronously and publishes it. Only call from a
+    /// background thread (e.g. the fetch task); the draw thread uses <see cref="ScheduleRebuild"/>.
     /// </summary>
-    private void RebuildAggregatedItems()
+    private void RebuildAggregatedItems() => ApplyAggregatedItems(ComputeAggregatedItems());
+
+    /// <summary>
+    /// Publishes a freshly computed aggregation and bumps the data version so the draw
+    /// thread knows to rebuild its filtered display cache. Reference swap is atomic.
+    /// </summary>
+    private void ApplyAggregatedItems(List<GilfluxItem> result)
+    {
+        _items = result;
+        Interlocked.Increment(ref _dataVersion);
+    }
+
+    /// <summary>
+    /// Runs <see cref="RebuildAggregatedItems"/> on a background thread, coalescing overlapping
+    /// requests (single-flight). If new data arrives while a rebuild is running, it re-runs once
+    /// more so the latest sales are never lost.
+    /// </summary>
+    private void ScheduleRebuild()
+    {
+        _rebuildDirtyAgain = true;
+        if (Interlocked.Exchange(ref _rebuildRunning, 1) == 1)
+            return;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                do
+                {
+                    _rebuildDirtyAgain = false;
+                    ApplyAggregatedItems(ComputeAggregatedItems());
+                }
+                while (_rebuildDirtyAgain);
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug(LogCategory.PriceTracking, $"[GilFlux] Background rebuild failed: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _rebuildRunning, 0);
+                // Cover the race where a request arrived after the last dirty check but
+                // before the running flag was cleared, which would otherwise be dropped.
+                if (_rebuildDirtyAgain)
+                    ScheduleRebuild();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Computes the aggregated and name-resolved item list by merging base (API) data
+    /// with time-pruned live (WebSocket) data. Each live sale only contributes to
+    /// timeframe buckets it still falls within based on its age. Thread-safe: reads shared
+    /// state under <see cref="_itemsLock"/> and returns a fresh list without mutating _items.
+    /// </summary>
+    private List<GilfluxItem> ComputeAggregatedItems()
     {
         List<GilfluxItem> baseSnapshot;
         List<TimestampedSale> liveSnapshot;
@@ -682,7 +825,7 @@ public sealed class GilFluxTool : ToolComponent
         var result = aggregated.Values.ToList();
         var primaryLabel = _timeframeLabels.Count > 0 ? _timeframeLabels[^1] : "7d";
         result.Sort((a, b) => b.GetRanking(primaryLabel).CompareTo(a.GetRanking(primaryLabel)));
-        _items = result;
+        return result;
     }
 
     /// <summary>
@@ -915,6 +1058,7 @@ public sealed class GilFluxTool : ToolComponent
             _settings.SelectedDataCenters = ImportHashSet(settings, "SelectedDataCenters", _settings.SelectedDataCenters);
             _settings.SelectedRegions = ImportHashSet(settings, "SelectedRegions", _settings.SelectedRegions);
             _settings.PinnedItemIds = ImportHashSet(settings, "PinnedItemIds", _settings.PinnedItemIds);
+            _pinnedVersion++;
             if (settings.TryGetValue("IgnoredItems", out var ignoredObj))
                 _settings.IgnoredItems = DeserializeIgnoredItems(ignoredObj);
 
