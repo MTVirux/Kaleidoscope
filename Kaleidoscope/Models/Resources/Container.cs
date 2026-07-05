@@ -36,13 +36,11 @@ public enum Container : int
     ArmorySoulCrystal = 3400,
     ArmoryMainHand    = 3500,
 
-    // Saddlebags + cosmopouch
+    // Saddlebags
     SaddleBag1        = 4000,
     SaddleBag2        = 4001,
     PremiumSaddleBag1 = 4100,
     PremiumSaddleBag2 = 4101,
-    Cosmopouch1       = 5000,
-    Cosmopouch2       = 5001,
 
     // Retainer
     RetainerPage1         = 10000,

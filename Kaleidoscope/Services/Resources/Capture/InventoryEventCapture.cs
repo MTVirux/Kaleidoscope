@@ -8,8 +8,8 @@ namespace Kaleidoscope.Services.Resources.Capture;
 
 /// <summary>
 /// Subscribes to IGameInventory.InventoryChangedRaw and forwards each per-slot change
-/// to ResourceObservationService.RecordObservation. Cosmopouch1/Cosmopouch2 events
-/// are skipped here — see CosmopouchCapture for the workaround until Dalamud #2329 lands.
+/// to ResourceObservationService.RecordObservation. Containers not tracked by the plugin
+/// (e.g. Cosmopouch1/2) fail TryMapContainer and are dropped.
 /// </summary>
 public sealed class InventoryEventCapture : IDisposable, IRequiredService
 {
@@ -33,10 +33,6 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
 
         foreach (var e in events)
         {
-            // Skip Cosmopouch1 (5000) / Cosmopouch2 (5001) — handled by direct InventoryManager scan
-            // due to Dalamud #2329.
-            if ((int)e.Item.ContainerType is 5000 or 5001) continue;
-
             if (!ResourceCatalog.TryMapContainer((int)e.Item.ContainerType, out var container)) continue;
 
             var ownerId = ResolveOwnerId(e.Item.ContainerType);

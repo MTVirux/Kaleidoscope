@@ -191,6 +191,26 @@ CREATE TABLE IF NOT EXISTS owner_names (
         }
     }
 
+    /// <summary>
+    /// Migration v9: cosmopouch tracking removed. Purges stored Cosmopouch1/2 (5000/5001) rows so
+    /// aggregates no longer include quantities that would never update again.
+    /// </summary>
+    private void MigrateDropCosmopouch()
+    {
+        if (_connection == null) return;
+
+        lock (_writeLock)
+        {
+            EnsureConnection();
+            if (_connection == null) return;
+
+            ExecuteDropDdl("DELETE FROM resources WHERE container IN (5000, 5001);");
+            ExecuteDropDdl("DELETE FROM resource_history WHERE container IN (5000, 5001);");
+
+            LogService.Info(LogCategory.Database, "[Migration v9] Purged cosmopouch rows from resources/resource_history");
+        }
+    }
+
     private void ExecuteDropDdl(string sql)
     {
         using var cmd = _connection!.CreateCommand();

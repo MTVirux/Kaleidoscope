@@ -6,7 +6,7 @@ namespace Kaleidoscope.Services.Resources.Capture;
 /// <summary>
 /// Shared mapping from a raw <see cref="InventoryItem"/> slot to a <see cref="ResourceObservation"/>.
 /// Single home for the HQ/Collectable flag demux and spiritbond-vs-collectability split so the direct
-/// InventoryManager scanners (ReconcileScanner, CosmopouchCapture, TradeReconcileCapture) don't each
+/// InventoryManager scanners (ReconcileScanner, TradeReconcileCapture) don't each
 /// copy it. The caller supplies the resource key (so empty-slot reconciles can carry the previous
 /// item id) and the parent owner id.
 /// </summary>

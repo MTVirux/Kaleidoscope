@@ -606,7 +606,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_
     /// <summary>
     /// Current schema version. Increment this whenever a new migration is added.
     /// </summary>
-    private const int CurrentSchemaVersion = 8; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources, 7=drop_legacy_tables, 8=storage_optimization
+    private const int CurrentSchemaVersion = 9; // 1=base, 2=last_sale, 3=value_items, 4=display_name, 5=color, 6=unified_resources, 7=drop_legacy_tables, 8=storage_optimization, 9=drop_cosmopouch
 
     /// <summary>
     /// Runs database migrations for schema updates.
@@ -652,6 +652,7 @@ CREATE INDEX IF NOT EXISTS idx_sale_records_ring ON sale_records(item_id, world_
             if (currentVersion < 6) MigrateAddUnifiedResources();
             if (currentVersion < 7) MigrateDropLegacyTables();
             if (currentVersion < 8) MigrateStorageOptimization();
+            if (currentVersion < 9) MigrateDropCosmopouch();
 
             using (var updateCmd = _connection.CreateCommand())
             {

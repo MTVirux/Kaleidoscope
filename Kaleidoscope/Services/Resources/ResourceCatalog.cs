@@ -52,8 +52,6 @@ public static class ResourceCatalog
             4001  => Container.SaddleBag2,
             4100  => Container.PremiumSaddleBag1,
             4101  => Container.PremiumSaddleBag2,
-            5000  => Container.Cosmopouch1,
-            5001  => Container.Cosmopouch2,
             10000 => Container.RetainerPage1,
             10001 => Container.RetainerPage2,
             10002 => Container.RetainerPage3,
