@@ -27,8 +27,8 @@ public sealed partial class KaleidoscopeDbService
                         ON CONFLICT(item_id, world_id) DO UPDATE SET
                             min_price_nq = excluded.min_price_nq,
                             min_price_hq = excluded.min_price_hq,
-                            last_sale_nq = excluded.last_sale_nq,
-                            last_sale_hq = excluded.last_sale_hq,
+                            last_sale_nq = CASE WHEN excluded.last_sale_nq > 0 THEN excluded.last_sale_nq ELSE item_prices.last_sale_nq END,
+                            last_sale_hq = CASE WHEN excluded.last_sale_hq > 0 THEN excluded.last_sale_hq ELSE item_prices.last_sale_hq END,
                             last_updated = excluded.last_updated";
 
                 var iidParam = cmd.Parameters.Add("$iid", Microsoft.Data.Sqlite.SqliteType.Integer);
