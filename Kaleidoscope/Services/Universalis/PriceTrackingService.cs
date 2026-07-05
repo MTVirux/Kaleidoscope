@@ -44,6 +44,12 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
     // Key: (itemId, worldId), Value: recent sales cache entry with up to 5 NQ and 5 HQ prices per world
     private readonly ConcurrentDictionary<(int itemId, int worldId), RecentSalesCacheEntry> _recentSalesCache = new();
 
+    // (minNq, minHq, lastSaleNq, lastSaleHq) pending DB persistence. Live reads never touch the
+    // DB — this batches upserts so the websocket firehose doesn't rewrite item_prices constantly.
+    private readonly ConcurrentDictionary<(int ItemId, int WorldId), (int MinNq, int MinHq, int LastSaleNq, int LastSaleHq)> _dirtyItemPrices = new();
+    private DateTime _lastItemPriceFlush = DateTime.UtcNow;
+    private const int ItemPriceFlushIntervalMinutes = 5;
+
     private readonly CancellationTokenSource _cts = new();
     private volatile bool _disposed;
 
@@ -257,6 +263,16 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             });
         }
 
+        if ((now - _lastItemPriceFlush).TotalMinutes >= ItemPriceFlushIntervalMinutes)
+        {
+            _lastItemPriceFlush = now;
+            _ = Task.Run(() =>
+            {
+                try { FlushDirtyItemPrices(); }
+                catch (Exception ex) { LogService.Debug(LogCategory.PriceTracking, $"[PriceTracking] Item price flush failed: {ex.Message}"); }
+            });
+        }
+
         // Periodic value snapshots (fallback for when no events trigger updates)
         if ((now - _lastValueSnapshot).TotalMinutes >= ValueSnapshotIntervalMinutes && Settings.Enabled)
         {
@@ -287,6 +303,35 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 catch (Exception ex) { LogService.Error(LogCategory.Universalis, $"[PriceTracking] Marketable items refresh failed: {ex.Message}"); }
             });
         }
+    }
+
+    private void MarkItemPriceDirty(int itemId, int worldId, int minNq, int minHq, int lastSaleNq, int lastSaleHq)
+    {
+        _dirtyItemPrices.AddOrUpdate(
+            (itemId, worldId),
+            _ => (minNq, minHq, lastSaleNq, lastSaleHq),
+            (_, prev) => (
+                minNq,
+                minHq,
+                // Listing events carry no sale info (zeros) — keep the last known sale prices
+                // instead of clobbering them, which the old per-event upsert used to do.
+                lastSaleNq > 0 ? lastSaleNq : prev.LastSaleNq,
+                lastSaleHq > 0 ? lastSaleHq : prev.LastSaleHq));
+    }
+
+    private void FlushDirtyItemPrices()
+    {
+        if (_dirtyItemPrices.IsEmpty) return;
+
+        var keys = _dirtyItemPrices.Keys.ToList();
+        var batch = new List<(int, int, int, int, int, int)>(keys.Count);
+        foreach (var key in keys)
+        {
+            if (_dirtyItemPrices.TryRemove(key, out var v))
+                batch.Add((key.ItemId, key.WorldId, v.MinNq, v.MinHq, v.LastSaleNq, v.LastSaleHq));
+        }
+        if (batch.Count > 0)
+            _dbService.SaveItemPricesBatch(batch);
     }
 
     private void OnPriceUpdate(PriceFeedEntry entry)
@@ -493,10 +538,8 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                         )).ToList();
                         _dbService.SaveSaleRecordsBatch(saleRecords);
 
-                        var salePrices = sales.Select(w => (
-                            w.ItemId, w.WorldId, w.ExistingMinNq, w.ExistingMinHq, w.LastSaleNq, w.LastSaleHq
-                        )).ToList();
-                        _dbService.SaveItemPricesBatch(salePrices);
+                        foreach (var w in sales)
+                            MarkItemPriceDirty(w.ItemId, w.WorldId, w.ExistingMinNq, w.ExistingMinHq, w.LastSaleNq, w.LastSaleHq);
 
                         foreach (var w in sales)
                         {
@@ -528,13 +571,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
                     if (listings.Count > 0)
                     {
-                        var listingPrices = listings.Select(w => (
-                            w.ItemId, w.WorldId, w.CachedMinNq, w.CachedMinHq, 0, 0 // No sale prices for listings
-                        )).ToList();
-                        _dbService.SaveItemPricesBatch(listingPrices);
-
                         foreach (var w in listings)
                         {
+                            // Listings carry no sale info, so pass zeros — MarkItemPriceDirty preserves prior sale prices.
+                            MarkItemPriceDirty(w.ItemId, w.WorldId, w.CachedMinNq, w.CachedMinHq, 0, 0);
                             itemsToNotify.Add(w.ItemId);
                         }
                     }
@@ -713,8 +753,7 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
                 var wid = worldData.GetWorldId(scope);
                 if (wid.HasValue)
                 {
-                    _dbService.SaveItemPrice(itemId, wid.Value, nqPrice, hqPrice,
-                        lastSaleNq: lastSaleNq, lastSaleHq: lastSaleHq);
+                    MarkItemPriceDirty(itemId, wid.Value, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
                 }
             }
 
@@ -964,14 +1003,11 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
             var data = await _universalisService.GetAggregatedDataAsync(scope, batch.Select(i => (uint)i));
             if (data?.Results == null) continue;
 
-            var pricesToSave = data.Results.Select(result =>
+            foreach (var result in data.Results)
             {
                 var (nqPrice, hqPrice, lastSaleNq, lastSaleHq) = result.ExtractPrices();
-                return (result.ItemId, worldId, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
-            }).ToList();
-
-            // Batch save to reduce lock contention
-            _dbService.SaveItemPricesBatch(pricesToSave);
+                MarkItemPriceDirty(result.ItemId, worldId, nqPrice, hqPrice, lastSaleNq, lastSaleHq);
+            }
 
             await Task.Delay(InventoryPriceFetchDelayMs);
         }
@@ -1063,6 +1099,10 @@ public sealed class PriceTrackingService : IDisposable, IRequiredService
 
         try { _backgroundWorker.Wait(TimeSpan.FromSeconds(2)); }
         catch (Exception) { /* Ignore timeout */ }
+
+        // Persist any pending price upserts while _dbService is still usable; best effort on shutdown.
+        try { FlushDirtyItemPrices(); }
+        catch { /* best effort on shutdown */ }
 
         _framework.Update -= OnFrameworkUpdate;
         _webSocketService.OnPriceUpdate -= OnPriceUpdate;

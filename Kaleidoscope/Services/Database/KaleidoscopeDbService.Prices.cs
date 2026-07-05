@@ -6,37 +6,6 @@ namespace Kaleidoscope.Services.Database;
 public sealed partial class KaleidoscopeDbService
 {
 
-    public void SaveItemPrice(int itemId, int worldId, int minPriceNq, int minPriceHq, int avgPriceNq = 0, int avgPriceHq = 0, int lastSaleNq = 0, int lastSaleHq = 0, float saleVelocity = 0)
-    {
-        ExecuteWrite("SaveItemPrice", conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                    INSERT INTO item_prices (item_id, world_id, min_price_nq, min_price_hq, avg_price_nq, avg_price_hq, last_sale_nq, last_sale_hq, sale_velocity, last_updated)
-                    VALUES ($iid, $wid, $mnq, $mhq, $anq, $ahq, $lsnq, $lshq, $sv, $time)
-                    ON CONFLICT(item_id, world_id) DO UPDATE SET
-                        min_price_nq = excluded.min_price_nq,
-                        min_price_hq = excluded.min_price_hq,
-                        avg_price_nq = excluded.avg_price_nq,
-                        avg_price_hq = excluded.avg_price_hq,
-                        last_sale_nq = excluded.last_sale_nq,
-                        last_sale_hq = excluded.last_sale_hq,
-                        sale_velocity = excluded.sale_velocity,
-                        last_updated = excluded.last_updated";
-            cmd.Parameters.AddWithValue("$iid", itemId);
-            cmd.Parameters.AddWithValue("$wid", worldId);
-            cmd.Parameters.AddWithValue("$mnq", minPriceNq);
-            cmd.Parameters.AddWithValue("$mhq", minPriceHq);
-            cmd.Parameters.AddWithValue("$anq", avgPriceNq);
-            cmd.Parameters.AddWithValue("$ahq", avgPriceHq);
-            cmd.Parameters.AddWithValue("$lsnq", lastSaleNq);
-            cmd.Parameters.AddWithValue("$lshq", lastSaleHq);
-            cmd.Parameters.AddWithValue("$sv", saleVelocity);
-            cmd.Parameters.AddWithValue("$time", DateTime.UtcNow.Ticks);
-            cmd.ExecuteNonQuery();
-        });
-    }
-
     /// <summary>
     /// Saves multiple item prices in a single transaction for better performance.
     /// Reduces lock contention by batching writes together.
