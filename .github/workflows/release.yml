@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Setup .NET
-        uses: actions/setup-dotnet@v1
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x.x'
       - name: Restore dependencies
@@ -41,30 +41,14 @@ jobs:
       - name: Archive
         run: Compress-Archive -Path Kaleidoscope/bin/Release/* -DestinationPath Kaleidoscope.zip
       - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: |
             ./Kaleidoscope/bin/Release/*
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Kaleidoscope ${{ github.ref }}
-          draft: false
-          prerelease: false
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./Kaleidoscope.zip
-          asset_name: Kaleidoscope.zip
-          asset_content_type: application/zip
+        run: gh release create "${{ github.ref_name }}" "./Kaleidoscope.zip" --title "Kaleidoscope ${{ github.ref_name }}"
 
       - name: Write out repo.json
         run: |
