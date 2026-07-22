@@ -550,9 +550,10 @@ public sealed partial class KaleidoscopeDbService
 
     /// <summary>
     /// Performs a non-blocking WAL checkpoint using PASSIVE mode.
-    /// Does not block readers or writers — only checkpoints pages that are not in use.
+    /// Does not block readers or writers - only checkpoints pages that are not in use.
     /// Suitable for periodic maintenance during normal operation.
-    /// Use Checkpoint() (TRUNCATE mode) only during Dispose for a full checkpoint.
+    /// Checkpoint() (TRUNCATE mode) runs at startup/Dispose and when the periodic path
+    /// escalates past the WAL size threshold in CheckpointWithTruncateFallback.
     /// </summary>
     /// <returns>True if the checkpoint was executed successfully.</returns>
     public bool CheckpointPassive()
