@@ -63,6 +63,9 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
     // rebuild per interval instead of one per frame.
     private DateTime _lastSeriesBuildTime = DateTime.MinValue;
     private const double SeriesRebuildIntervalMs = 500;
+    // Sale price cache version consumed by the last series build; a mismatch means a background
+    // price refresh landed and the outlier reference price may have changed.
+    private long _lastSalePriceVersion = -1;
 
     private ItemSalesTrackingSettings Settings => _instanceSettings;
 
@@ -269,11 +272,17 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
 
     private void DrawSalesGraph()
     {
+        // Read before the build so a refresh landing mid-build still re-dirties the series.
+        var salePriceVersion = _salePriceCacheService.Version;
+        if (salePriceVersion != _lastSalePriceVersion)
+            _seriesDataDirty = true;
+
         if (_cachedSeriesData == null)
         {
             BuildSeriesData();
             _seriesDataDirty = false;
             _lastSeriesBuildTime = DateTime.UtcNow;
+            _lastSalePriceVersion = salePriceVersion;
         }
         else if (_seriesDataDirty
                  && (DateTime.UtcNow - _lastSeriesBuildTime).TotalMilliseconds >= SeriesRebuildIntervalMs)
@@ -281,6 +290,7 @@ public sealed partial class ItemSalesTrackingTool : ToolComponent
             BuildSeriesData();
             _seriesDataDirty = false;
             _lastSeriesBuildTime = DateTime.UtcNow;
+            _lastSalePriceVersion = salePriceVersion;
         }
 
         var availableSize = ImGui.GetContentRegionAvail();

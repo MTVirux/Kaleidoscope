@@ -37,6 +37,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
     private long _cacheHits;
     private long _cacheMisses;
     private long _dbFetches;
+    private long _version;
     
     private const int DefaultTtlSeconds = 30;
     private const int MaxCacheEntries = 20000;
@@ -55,6 +56,12 @@ public sealed class SalePriceCacheService : IService, IDisposable
     public long CacheMisses => Interlocked.Read(ref _cacheMisses);
     
     public long DbFetches => Interlocked.Read(ref _dbFetches);
+
+    /// <summary>
+    /// Monotonic content version. Bumped whenever cached prices change so memoized consumers
+    /// can rebuild once a background refresh lands.
+    /// </summary>
+    public long Version => Interlocked.Read(ref _version);
     
     public int GlobalCacheCount => _globalSaleCache.Count;
     
@@ -114,6 +121,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
                 Interlocked.Increment(ref _dbFetches);
                 var price = _dbService.GetMostRecentSalePrice(key.ItemId, key.IsHq);
                 _globalSaleCache[key] = new SalePriceCacheEntry(price);
+                Interlocked.Increment(ref _version);
 
                 if (_globalSaleCache.Count > MaxCacheEntries)
                     EvictOldestEntries(_globalSaleCache, MaxCacheEntries / 10);
@@ -133,6 +141,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
         if (price <= 0) return;
         var key = (itemId, isHq);
         _globalSaleCache[key] = new SalePriceCacheEntry(price);
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -178,6 +187,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
                 Interlocked.Increment(ref _dbFetches);
                 var price = _dbService.GetMostRecentSalePriceForWorld(key.ItemId, key.WorldId, key.IsHq);
                 _worldSaleCache[key] = new SalePriceCacheEntry(price);
+                Interlocked.Increment(ref _version);
 
                 if (_worldSaleCache.Count > MaxCacheEntries)
                     EvictOldestEntries(_worldSaleCache, MaxCacheEntries / 10);
@@ -197,6 +207,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
         if (price <= 0) return;
         var key = (itemId, worldId, isHq);
         _worldSaleCache[key] = new SalePriceCacheEntry(price);
+        Interlocked.Increment(ref _version);
     }
     
     /// <summary>
@@ -275,6 +286,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
         {
             _batchSaleCache[itemId] = new BatchSalePriceCacheEntry(lastSaleNq ?? 0, lastSaleHq ?? 0);
         }
+        Interlocked.Increment(ref _version);
     }
     
     public void Clear()
@@ -282,6 +294,7 @@ public sealed class SalePriceCacheService : IService, IDisposable
         _globalSaleCache.Clear();
         _worldSaleCache.Clear();
         _batchSaleCache.Clear();
+        Interlocked.Increment(ref _version);
         LogService.Debug(LogCategory.Cache, "[SalePriceCache] All caches cleared");
     }
     
@@ -297,6 +310,8 @@ public sealed class SalePriceCacheService : IService, IDisposable
         {
             _worldSaleCache.TryRemove(key, out _);
         }
+
+        Interlocked.Increment(ref _version);
     }
     
     public SalePriceCacheStatistics GetStatistics()

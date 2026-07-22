@@ -55,6 +55,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
     private bool _cacheFilterByListing;
     private int _cacheThreshold = -1;
     private int _cacheMaxEntries = -1;
+    private long _cacheSalePriceVersion = -1;
 
     public ItemSalesHistoryTool(
         UniversalisService universalisService,
@@ -219,6 +220,9 @@ public sealed class ItemSalesHistoryTool : ToolComponent
 
         if (FilteredHistoryNeedsRebuild())
         {
+            // Read before the rebuild so a background price refresh landing mid-rebuild still
+            // triggers the next one.
+            var salePriceVersion = _salePriceCacheService.Version;
             RebuildFilteredHistory();
 
             var pts = _configService.Config.PriceTracking;
@@ -229,6 +233,7 @@ public sealed class ItemSalesHistoryTool : ToolComponent
             _cacheFilterByListing = pts.FilterSalesByListingPrice;
             _cacheThreshold = pts.SaleDiscrepancyThreshold;
             _cacheMaxEntries = _maxEntries;
+            _cacheSalePriceVersion = salePriceVersion;
         }
 
         var filteredEntries = _cachedFilteredEntries!;
@@ -311,7 +316,8 @@ public sealed class ItemSalesHistoryTool : ToolComponent
             || _cacheShowNqOnly != _showNqOnly
             || _cacheFilterByListing != pts.FilterSalesByListingPrice
             || _cacheThreshold != pts.SaleDiscrepancyThreshold
-            || _cacheMaxEntries != _maxEntries;
+            || _cacheMaxEntries != _maxEntries
+            || _cacheSalePriceVersion != _salePriceCacheService.Version;
     }
 
     private void RebuildFilteredHistory()
