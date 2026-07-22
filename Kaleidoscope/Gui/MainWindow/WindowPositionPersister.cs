@@ -52,11 +52,13 @@ internal sealed class WindowPositionPersister
     /// </summary>
     public void CaptureCurrentWindowedState()
     {
-        // Save current windowed position/size for restoration later
+        // Save current windowed position/size for restoration later.
+        // A collapsed window reports title-bar-only height, so fall back to the
+        // last-known expanded size from config in that case.
         try
         {
             _savedPos = ImGui.GetWindowPos();
-            _savedSize = ImGui.GetWindowSize();
+            _savedSize = ImGui.IsWindowCollapsed() ? Config.MainWindowSize : ImGui.GetWindowSize();
         }
         catch
         {

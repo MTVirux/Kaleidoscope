@@ -422,9 +422,12 @@ public sealed class MainWindow : Window, IService, IDisposable, ILayoutHost
             {
                 if (!_stateService.IsLocked)
                 {
-                    // About to lock - save current position/size
+                    // About to lock - save current position/size.
+                    // A collapsed window reports title-bar-only height, so keep the
+                    // last-known expanded size to avoid restoring to a collapsed size.
                     Config.MainWindowPos = ImGui.GetWindowPos();
-                    Config.MainWindowSize = ImGui.GetWindowSize();
+                    if (!ImGui.IsWindowCollapsed())
+                        Config.MainWindowSize = ImGui.GetWindowSize();
                 }
                 _stateService.ToggleLocked();
                 _lockButton!.Icon = _stateService.IsLocked ? FontAwesomeIcon.Lock : FontAwesomeIcon.LockOpen;
