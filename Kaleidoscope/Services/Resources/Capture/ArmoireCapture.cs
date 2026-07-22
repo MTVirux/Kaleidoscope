@@ -30,9 +30,10 @@ public sealed class ArmoireCapture : IDisposable, IRequiredService
     private readonly ResourceObservationService _service;
     private readonly GameStateService _gameState;
 
-    // Static game data cached on first scan: (cabinet row id, item id) for every armoire-eligible item.
+    // Static game data, built once off-thread: (cabinet row id, item id) for every armoire-eligible item.
     // The cabinet row id is the stable per-item slot and the argument to Cabinet.IsItemInCabinet.
-    private (ushort RowId, uint ItemId)[]? _cabinetRows;
+    private volatile (ushort RowId, uint ItemId)[]? _cabinetRows;
+    private int _cabinetRowsBuilding;
 
     private bool _active;
     private bool _didInitialScan;
@@ -80,13 +81,22 @@ public sealed class ArmoireCapture : IDisposable, IRequiredService
         var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
 
+        // Lumina sheet iteration can fault sqpack pages (file I/O) - build the row cache off
+        // the framework thread and scan on a later tick once it is ready.
+        if (_cabinetRows == null)
+        {
+            if (Interlocked.CompareExchange(ref _cabinetRowsBuilding, 1, 0) == 0)
+                _ = Task.Run(BuildCabinetRows);
+            return;
+        }
+
         Scan(uiState, pid);
     }
 
     private unsafe void Scan(UIState* uiState, ulong pid)
     {
-        var rows = GetCabinetRows();
-        if (rows.Length == 0) return;
+        var rows = _cabinetRows;
+        if (rows == null || rows.Length == 0) return;
 
         var seen = new HashSet<short>();
         var batch = new List<ResourceObservation>();
@@ -151,10 +161,8 @@ public sealed class ArmoireCapture : IDisposable, IRequiredService
         }
     }
 
-    private (ushort RowId, uint ItemId)[] GetCabinetRows()
+    private void BuildCabinetRows()
     {
-        if (_cabinetRows != null) return _cabinetRows;
-
         var list = new List<(ushort, uint)>();
         var sheet = _dataManager.GetExcelSheet<CabinetSheet>();
         if (sheet != null)
@@ -169,7 +177,6 @@ public sealed class ArmoireCapture : IDisposable, IRequiredService
         }
 
         _cabinetRows = list.ToArray();
-        return _cabinetRows;
     }
 
     public void Dispose()

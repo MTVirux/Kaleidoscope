@@ -31,9 +31,18 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
     private readonly ResourceObservationService _service;
     private readonly GameStateService _gameState;
 
+    private const int SliceSize = 2000;
+
     private bool _active;
     private bool _didInitialScan;
     private DateTime _nextScan;
+
+    // In-flight sweep state: a sweep walks the 8000-entry agent array in SliceSize chunks,
+    // one chunk per framework tick, and only commits once the full pass completes so removal
+    // reconciliation never runs against a partial view.
+    private int _scanIndex;
+    private HashSet<short>? _seen;
+    private List<ResourceObservation>? _batch;
 
     public GlamourChestCapture(IAddonLifecycle lifecycle, IFramework framework, IClientState clientState, ResourceObservationService service, GameStateService gameState)
     {
@@ -59,7 +68,15 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
     private void OnAddonFinalize(AddonEvent type, AddonArgs args)
     {
         _active = false;
+        ResetSweep();
         LogService.Debug(LogCategory.Inventory, "[GlamourChestCapture] Glamour Dresser closed");
+    }
+
+    private void ResetSweep()
+    {
+        _scanIndex = 0;
+        _seen = null;
+        _batch = null;
     }
 
     private unsafe void OnTick(IFramework framework)
@@ -67,8 +84,8 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
         if (!_active || !_clientState.IsLoggedIn) return;
 
         var now = DateTime.UtcNow;
-        if (now < _nextScan) return;
-        _nextScan = now + RescanInterval;
+        var sweepInFlight = _seen != null;
+        if (!sweepInFlight && now < _nextScan) return;
 
         var pid = _gameState.PlayerContentId;
         if (pid == 0) return;
@@ -76,18 +93,28 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
         var agentModule = AgentModule.Instance();
         if (agentModule == null) return;
         var agent = (AgentMiragePrismPrismBox*)agentModule->GetAgentByInternalId(AgentId.MiragePrismPrismBox);
-        if (agent == null || !agent->IsAgentActive() || agent->Data == null) return;
+        if (agent == null || !agent->IsAgentActive() || agent->Data == null)
+        {
+            ResetSweep();
+            return;
+        }
 
-        Scan(agent, pid);
+        if (!sweepInFlight)
+        {
+            _scanIndex = 0;
+            _seen = new HashSet<short>();
+            _batch = new List<ResourceObservation>();
+        }
+
+        ScanSlice(agent, pid, now);
     }
 
-    private unsafe void Scan(AgentMiragePrismPrismBox* agent, ulong pid)
+    private unsafe void ScanSlice(AgentMiragePrismPrismBox* agent, ulong pid, DateTime now)
     {
         var items = agent->Data->PrismBoxItems;
-        var seen = new HashSet<short>();
-        var batch = new List<ResourceObservation>();
+        var end = Math.Min(_scanIndex + SliceSize, PrismBoxSize);
 
-        for (var i = 0; i < PrismBoxSize; i++)
+        for (var i = _scanIndex; i < end; i++)
         {
             var itemId = items[i].ItemId;
             if (itemId == 0) continue;
@@ -100,9 +127,9 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
             }
 
             var slot = (short)i;
-            seen.Add(slot);
+            _seen!.Add(slot);
 
-            batch.Add(new ResourceObservation
+            _batch!.Add(new ResourceObservation
             {
                 Key = new ResourceKey
                 {
@@ -114,14 +141,19 @@ public sealed class GlamourChestCapture : IDisposable, IRequiredService
                 },
                 Quantity      = 1,
                 Flags         = flags,
-                UpdatedAt     = DateTime.UtcNow,
+                UpdatedAt     = now,
                 ParentOwnerId = 0,
             });
         }
 
-        var occupied = batch.Count;
-        ReconcileRemovals(pid, seen, batch);
-        _service.RecordObservations(batch);
+        _scanIndex = end;
+        if (_scanIndex < PrismBoxSize) return;
+
+        var occupied = _batch!.Count;
+        ReconcileRemovals(pid, _seen!, _batch);
+        _service.RecordObservations(_batch);
+        ResetSweep();
+        _nextScan = DateTime.UtcNow + RescanInterval;
 
         if (!_didInitialScan)
         {
