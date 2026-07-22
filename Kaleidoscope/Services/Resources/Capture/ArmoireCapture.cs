@@ -163,20 +163,29 @@ public sealed class ArmoireCapture : IDisposable, IRequiredService
 
     private void BuildCabinetRows()
     {
-        var list = new List<(ushort, uint)>();
-        var sheet = _dataManager.GetExcelSheet<CabinetSheet>();
-        if (sheet != null)
+        try
         {
-            foreach (var row in sheet)
+            var list = new List<(ushort, uint)>();
+            var sheet = _dataManager.GetExcelSheet<CabinetSheet>();
+            if (sheet != null)
             {
-                var itemId = row.Item.RowId;
-                if (itemId == 0) continue;
-                if (row.RowId > short.MaxValue) continue;   // Slot is a short; cabinet ids sit far below this today
-                list.Add(((ushort)row.RowId, itemId));
+                foreach (var row in sheet)
+                {
+                    var itemId = row.Item.RowId;
+                    if (itemId == 0) continue;
+                    if (row.RowId > short.MaxValue) continue;   // Slot is a short; cabinet ids sit far below this today
+                    list.Add(((ushort)row.RowId, itemId));
+                }
             }
-        }
 
-        _cabinetRows = list.ToArray();
+            _cabinetRows = list.ToArray();
+        }
+        catch (Exception ex)
+        {
+            // Reset the guard so a later tick retries instead of leaving capture dead for the session.
+            LogService.Error(LogCategory.Inventory, "[ArmoireCapture] Cabinet sheet build failed", ex);
+            Interlocked.Exchange(ref _cabinetRowsBuilding, 0);
+        }
     }
 
     public void Dispose()
