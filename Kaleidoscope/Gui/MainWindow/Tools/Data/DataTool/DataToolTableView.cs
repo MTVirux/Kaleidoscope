@@ -281,10 +281,12 @@ internal sealed class DataToolTableView
             };
         }
 
-        // Fetch inventories once for all item columns (cache-first, avoids per-column DB calls)
+        // Fetch inventories once for all item columns and inventory-aggregated currency columns
+        // (crystals/ventures) - avoids per-column full-table DB scans.
         List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories = null;
-        var hasItemColumns = columns.Any(c => !c.IsCurrency);
-        if (hasItemColumns && _inventoryCacheService != null)
+        var needsInventories = columns.Any(c =>
+            !c.IsCurrency || CrystalColumnAggregator.UsesInventoryAggregation((TrackedDataType)c.Id));
+        if (needsInventories && _inventoryCacheService != null)
         {
             using (ProfilerService.BeginStaticChildScope("GetAllInventories"))
             {
@@ -299,7 +301,7 @@ internal sealed class DataToolTableView
             {
                 if (column.IsCurrency)
                 {
-                    PopulateCurrencyData(column, rows);
+                    PopulateCurrencyData(column, rows, allInventories);
                 }
                 else
                 {
@@ -373,7 +375,10 @@ internal sealed class DataToolTableView
         public required Dictionary<ulong, int>? ArOrderLookup { get; init; }
     }
 
-    private void PopulateCurrencyData(ItemColumnConfig column, Dictionary<ulong, ItemTableCharacterRow> rows)
+    private void PopulateCurrencyData(
+        ItemColumnConfig column,
+        Dictionary<ulong, ItemTableCharacterRow> rows,
+        List<Kaleidoscope.Models.Inventory.InventoryCacheEntry>? allInventories)
     {
         using (ProfilerService.BeginStaticChildScope("PopulateCurrency"))
         {
@@ -381,6 +386,21 @@ internal sealed class DataToolTableView
             {
                 var dataType = (TrackedDataType)column.Id;
                 var variableName = dataType.ToString();
+
+                // Crystal/venture columns sum from the already-fetched inventory snapshot instead
+                // of running another full-table DB aggregate under the read lock.
+                if (allInventories != null && CrystalColumnAggregator.TryGetItemIds(dataType, out var itemIds))
+                {
+                    using (ProfilerService.BeginStaticChildScope("AggregateCrystalColumn"))
+                    {
+                        foreach (var (charId, value) in CrystalColumnAggregator.SumPerCharacter(allInventories, itemIds))
+                        {
+                            if (rows.TryGetValue(charId, out var row))
+                                row.ItemCounts[column.Id] = value;
+                        }
+                    }
+                    return;
+                }
 
                 using (ProfilerService.BeginStaticChildScope("CacheGetLatestValues"))
                 {
