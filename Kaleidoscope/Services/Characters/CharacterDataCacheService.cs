@@ -258,8 +258,11 @@ public sealed class CharacterDataCacheService : IDisposable, IRequiredService
 
         Interlocked.Increment(ref _version);
 
-        // Persist to DB (only when name actually changed)
-        _dbService?.SaveCharacterName(characterId, name);
+        // Persist to DB off-thread (only when name actually changed) - callers include the
+        // framework-tick projection flush.
+        var db = _dbService;
+        if (db != null)
+            _ = Task.Run(() => db.SaveCharacterName(characterId, name));
 
         OnCharacterUpdated?.Invoke(characterId);
     }

@@ -31,6 +31,8 @@ public sealed class SalePriceCacheService : IService, IDisposable
     private readonly ConcurrentDictionary<(int ItemId, bool IsHq), SalePriceCacheEntry> _globalSaleCache = new();
     private readonly ConcurrentDictionary<(int ItemId, int WorldId, bool IsHq), SalePriceCacheEntry> _worldSaleCache = new();
     private readonly ConcurrentDictionary<int, BatchSalePriceCacheEntry> _batchSaleCache = new();
+    private readonly ConcurrentDictionary<(int ItemId, bool IsHq), byte> _globalRefreshInFlight = new();
+    private readonly ConcurrentDictionary<(int ItemId, int WorldId, bool IsHq), byte> _worldRefreshInFlight = new();
     
     private long _cacheHits;
     private long _cacheMisses;
@@ -72,36 +74,55 @@ public sealed class SalePriceCacheService : IService, IDisposable
     
     /// <summary>
     /// Gets the most recent sale price for an item.
-    /// Cache-first: returns cached value if within TTL, otherwise fetches from DB.
+    /// Serves cached (possibly stale) values and refreshes from DB off-thread; never blocks the caller.
     /// </summary>
     /// <param name="itemId">The item ID.</param>
     /// <param name="isHq">Whether to get HQ price.</param>
-    /// <returns>The most recent sale price, or 0 if not found.</returns>
+    /// <returns>The most recent sale price, or 0 if not found or not yet cached.</returns>
     public int GetMostRecentSalePrice(int itemId, bool isHq)
     {
         var key = (itemId, isHq);
-        
-        if (_globalSaleCache.TryGetValue(key, out var entry) && !entry.IsExpired(TtlSeconds))
+
+        if (_globalSaleCache.TryGetValue(key, out var entry))
         {
-            Interlocked.Increment(ref _cacheHits);
+            if (!entry.IsExpired(TtlSeconds))
+            {
+                Interlocked.Increment(ref _cacheHits);
+                return entry.Price;
+            }
+
+            // Stale - serve the old value and refresh off-thread so draw paths never block on the DB.
+            Interlocked.Increment(ref _cacheMisses);
+            RefreshGlobalPriceAsync(key);
             return entry.Price;
         }
-        
+
         Interlocked.Increment(ref _cacheMisses);
-        
-        if (_dbService == null) return 0;
-        
-        Interlocked.Increment(ref _dbFetches);
-        var price = _dbService.GetMostRecentSalePrice(itemId, isHq);
-        
-        _globalSaleCache[key] = new SalePriceCacheEntry(price);
-        
-        if (_globalSaleCache.Count > MaxCacheEntries)
+        RefreshGlobalPriceAsync(key);
+        return 0;
+    }
+
+    private void RefreshGlobalPriceAsync((int ItemId, bool IsHq) key)
+    {
+        if (_dbService == null) return;
+        if (!_globalRefreshInFlight.TryAdd(key, 0)) return;
+
+        _ = Task.Run(() =>
         {
-            EvictOldestEntries(_globalSaleCache, MaxCacheEntries / 10);
-        }
-        
-        return price;
+            try
+            {
+                Interlocked.Increment(ref _dbFetches);
+                var price = _dbService.GetMostRecentSalePrice(key.ItemId, key.IsHq);
+                _globalSaleCache[key] = new SalePriceCacheEntry(price);
+
+                if (_globalSaleCache.Count > MaxCacheEntries)
+                    EvictOldestEntries(_globalSaleCache, MaxCacheEntries / 10);
+            }
+            finally
+            {
+                _globalRefreshInFlight.TryRemove(key, out _);
+            }
+        });
     }
     
     /// <summary>
@@ -116,37 +137,56 @@ public sealed class SalePriceCacheService : IService, IDisposable
     
     /// <summary>
     /// Gets the most recent sale price for an item on a specific world.
-    /// Cache-first: returns cached value if within TTL, otherwise fetches from DB.
+    /// Serves cached (possibly stale) values and refreshes from DB off-thread; never blocks the caller.
     /// </summary>
     /// <param name="itemId">The item ID.</param>
     /// <param name="worldId">The world ID.</param>
     /// <param name="isHq">Whether to get HQ price.</param>
-    /// <returns>The most recent sale price, or 0 if not found.</returns>
+    /// <returns>The most recent sale price, or 0 if not found or not yet cached.</returns>
     public int GetMostRecentSalePriceForWorld(int itemId, int worldId, bool isHq)
     {
         var key = (itemId, worldId, isHq);
-        
-        if (_worldSaleCache.TryGetValue(key, out var entry) && !entry.IsExpired(TtlSeconds))
+
+        if (_worldSaleCache.TryGetValue(key, out var entry))
         {
-            Interlocked.Increment(ref _cacheHits);
+            if (!entry.IsExpired(TtlSeconds))
+            {
+                Interlocked.Increment(ref _cacheHits);
+                return entry.Price;
+            }
+
+            // Stale - serve the old value and refresh off-thread so draw paths never block on the DB.
+            Interlocked.Increment(ref _cacheMisses);
+            RefreshWorldPriceAsync(key);
             return entry.Price;
         }
-        
+
         Interlocked.Increment(ref _cacheMisses);
-        
-        if (_dbService == null) return 0;
-        
-        Interlocked.Increment(ref _dbFetches);
-        var price = _dbService.GetMostRecentSalePriceForWorld(itemId, worldId, isHq);
-        
-        _worldSaleCache[key] = new SalePriceCacheEntry(price);
-        
-        if (_worldSaleCache.Count > MaxCacheEntries)
+        RefreshWorldPriceAsync(key);
+        return 0;
+    }
+
+    private void RefreshWorldPriceAsync((int ItemId, int WorldId, bool IsHq) key)
+    {
+        if (_dbService == null) return;
+        if (!_worldRefreshInFlight.TryAdd(key, 0)) return;
+
+        _ = Task.Run(() =>
         {
-            EvictOldestEntries(_worldSaleCache, MaxCacheEntries / 10);
-        }
-        
-        return price;
+            try
+            {
+                Interlocked.Increment(ref _dbFetches);
+                var price = _dbService.GetMostRecentSalePriceForWorld(key.ItemId, key.WorldId, key.IsHq);
+                _worldSaleCache[key] = new SalePriceCacheEntry(price);
+
+                if (_worldSaleCache.Count > MaxCacheEntries)
+                    EvictOldestEntries(_worldSaleCache, MaxCacheEntries / 10);
+            }
+            finally
+            {
+                _worldRefreshInFlight.TryRemove(key, out _);
+            }
+        });
     }
     
     /// <summary>

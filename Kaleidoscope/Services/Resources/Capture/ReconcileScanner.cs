@@ -42,10 +42,11 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         var rid = _gameState.GetActiveRetainerId();
         if (rid == 0) return;
 
-        // Persist the retainer's name so the data table can display it.
+        // Persist the retainer's name so the data table can display it. Off-thread: this runs
+        // inside the framework tick and the write lock may be held by a background batch flush.
         var retainerName = _gameState.GetActiveRetainerName();
         if (!string.IsNullOrEmpty(retainerName))
-            _db.UpsertOwnerName(rid, OwnerKind.Retainer, retainerName);
+            _ = Task.Run(() => _db.UpsertOwnerName(rid, OwnerKind.Retainer, retainerName));
 
         // Accumulate every slot across all containers into one batch so the whole retainer sweep
         // commits under a single observation-lock acquisition rather than ~350 of them.

@@ -44,13 +44,15 @@ public sealed class MemoryPoller : IDisposable, IRequiredService
         if (pid == 0) return;
 
         // Stamp the player's name once per character switch so the data table can display it.
+        // Off-thread: UpsertOwnerName takes the shared write lock and must never run on the
+        // framework tick.
         if (_lastNameStampedPid != pid)
         {
             var playerName = _gameState.LocalPlayerName;
             if (!string.IsNullOrEmpty(playerName))
             {
-                _db.UpsertOwnerName(pid, OwnerKind.Player, playerName);
                 _lastNameStampedPid = pid;
+                _ = Task.Run(() => _db.UpsertOwnerName(pid, OwnerKind.Player, playerName));
             }
         }
 
