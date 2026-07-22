@@ -579,16 +579,29 @@ public sealed partial class KaleidoscopeDbService
         }
     }
 
+    private const long WalTruncateThresholdBytes = 64L * 1024 * 1024;
+
     /// <summary>
-    /// Periodic checkpoint: tries a full TRUNCATE checkpoint (shrinks the WAL file); if readers
-    /// keep it from completing, falls back to PASSIVE so WAL pages still drain. Runs on a timer
-    /// thread, never on the framework thread.
+    /// Periodic checkpoint: PASSIVE drains WAL pages without excluding readers or closing the
+    /// read connection, so concurrent DB callers (including the framework thread) never queue
+    /// behind it. The full TRUNCATE dance in <see cref="Checkpoint"/> holds both locks for its
+    /// entire duration - reserve it for a WAL that outgrew the passive path; startup handles
+    /// the routine shrink.
     /// </summary>
     private void CheckpointWithTruncateFallback()
     {
-        var (success, _) = Checkpoint();
-        if (!success)
-            CheckpointPassive();
+        CheckpointPassive();
+
+        try
+        {
+            var walPath = _dbPath + "-wal";
+            if (File.Exists(walPath) && new FileInfo(walPath).Length > WalTruncateThresholdBytes)
+                Checkpoint();
+        }
+        catch (IOException)
+        {
+            // WAL size probe is best-effort; skip escalation this cycle.
+        }
     }
 
     /// <summary>
