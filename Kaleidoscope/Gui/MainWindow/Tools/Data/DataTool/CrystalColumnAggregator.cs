@@ -8,6 +8,7 @@ namespace Kaleidoscope.Gui.MainWindow.Tools.Data;
 /// KaleidoscopeDbService.GetItemSumPerCharacterIncludingRetainers semantics: retainer entries are
 /// keyed by the owning character's id in the snapshot, entries without an owning character
 /// (CharacterId 0) are dropped, and characters whose matching rows sum to zero keep a zero total.
+/// - rows with owner_id 0 (legacy junk) are excluded; the old DB aggregate counted them into the parent.
 /// </summary>
 public static partial class CrystalColumnAggregator
 {

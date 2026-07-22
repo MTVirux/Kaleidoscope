@@ -385,7 +385,6 @@ internal sealed class DataToolTableView
             try
             {
                 var dataType = (TrackedDataType)column.Id;
-                var variableName = dataType.ToString();
 
                 // Crystal/venture columns sum from the already-fetched inventory snapshot instead
                 // of running another full-table DB aggregate under the read lock.
@@ -401,6 +400,8 @@ internal sealed class DataToolTableView
                     }
                     return;
                 }
+
+                var variableName = dataType.ToString();
 
                 using (ProfilerService.BeginStaticChildScope("CacheGetLatestValues"))
                 {

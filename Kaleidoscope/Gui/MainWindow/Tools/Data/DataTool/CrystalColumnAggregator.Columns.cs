@@ -11,14 +11,7 @@ public static partial class CrystalColumnAggregator
 {
     private const uint VentureItemId = 21072;
 
-    public static bool UsesInventoryAggregation(TrackedDataType type) => type switch
-    {
-        TrackedDataType.FireCrystals or TrackedDataType.IceCrystals or TrackedDataType.WindCrystals
-            or TrackedDataType.EarthCrystals or TrackedDataType.LightningCrystals
-            or TrackedDataType.WaterCrystals or TrackedDataType.CrystalsTotal
-            or TrackedDataType.Ventures => true,
-        _ => false,
-    };
+    public static bool UsesInventoryAggregation(TrackedDataType type) => TryGetItemIds(type, out _);
 
     public static bool TryGetItemIds(TrackedDataType type, out HashSet<uint> itemIds)
     {
