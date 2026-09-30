@@ -51,6 +51,11 @@ public sealed class GilFluxToolSettings
     /// <summary>How often to re-fetch API data (minutes). 0 = never auto-refresh.</summary>
     public int RefreshIntervalMinutes { get; set; } = 5;
 
+    /// <summary>Sorted table column, or -1 when the user has not picked one yet.</summary>
+    public int SortColumnIndex { get; set; } = -1;
+
+    public bool SortAscending { get; set; }
+
     // Standard table settings
     /// <summary>Optional custom color for the table header row background.</summary>
     public Vector4? HeaderColor { get; set; }
@@ -157,8 +162,7 @@ public sealed class GilFluxTool : ToolComponent
     private int _cacheIgnoredCount = -1;
     private int _cachePinnedVersion = -1;
     private int _pinnedVersion;             // bumped whenever the pinned-item selection changes
-    private int _sortColumnIndex = -1;
-    private bool _sortAscending;
+    private bool _sortInitialized;
 
     // Background rebuild single-flight guard
     private int _rebuildRunning;
@@ -335,13 +339,25 @@ public sealed class GilFluxTool : ToolComponent
         {
             if (_settings.FreezeHeader)
                 ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.DefaultSort, 200f);
+            var hasSavedSort = _settings.SortColumnIndex >= 0 && _settings.SortColumnIndex < columnCount;
+            var savedSortFlags = _settings.SortAscending
+                ? ImGuiTableColumnFlags.DefaultSort
+                : ImGuiTableColumnFlags.DefaultSort | ImGuiTableColumnFlags.PreferSortDescending;
+
+            var itemFlags = hasSavedSort
+                ? (_settings.SortColumnIndex == 0 ? savedSortFlags : ImGuiTableColumnFlags.None)
+                : ImGuiTableColumnFlags.DefaultSort;
+            ImGui.TableSetupColumn("Item", itemFlags, 200f);
 
             for (var i = 0; i < _timeframeLabels.Count; i++)
             {
-                // Last column (longest timeframe) gets DefaultSort
+                // Last column (longest timeframe) gets DefaultSort unless a sort was saved
                 var isLast = i == _timeframeLabels.Count - 1;
-                var colFlags = isLast ? ImGuiTableColumnFlags.DefaultSort : ImGuiTableColumnFlags.None;
+                ImGuiTableColumnFlags colFlags;
+                if (hasSavedSort)
+                    colFlags = _settings.SortColumnIndex == i + 1 ? savedSortFlags : ImGuiTableColumnFlags.None;
+                else
+                    colFlags = isLast ? ImGuiTableColumnFlags.DefaultSort : ImGuiTableColumnFlags.None;
                 ImGui.TableSetupColumn(_timeframeLabels[i], colFlags, isLast ? 80f : 70f);
             }
 
@@ -356,7 +372,15 @@ public sealed class GilFluxTool : ToolComponent
             var sortSpecs = ImGui.TableGetSortSpecs();
             if (sortSpecs.SpecsDirty)
             {
-                UpdateSortFromSpecs(sortSpecs);
+                // The first dirty pass is ImGui's own initial state, not a user click -
+                // keep the saved sort instead of overwriting it.
+                if (_sortInitialized || !hasSavedSort)
+                {
+                    UpdateSortFromSpecs(sortSpecs);
+                    if (_sortInitialized)
+                        NotifyToolSettingsChanged();
+                }
+                _sortInitialized = true;
                 SortDisplayCache();
                 sortSpecs.SpecsDirty = false;
             }
@@ -540,21 +564,21 @@ public sealed class GilFluxTool : ToolComponent
     {
         if (sortSpecs.SpecsCount == 0)
         {
-            _sortColumnIndex = -1;
+            _settings.SortColumnIndex = -1;
             return;
         }
 
         var spec = sortSpecs.Specs;
-        _sortColumnIndex = spec.ColumnIndex;
-        _sortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
+        _settings.SortColumnIndex = spec.ColumnIndex;
+        _settings.SortAscending = spec.SortDirection == ImGuiSortDirection.Ascending;
     }
 
     private void SortDisplayCache()
     {
-        if (_sortColumnIndex < 0) return;
+        if (_settings.SortColumnIndex < 0) return;
 
-        var colIdx = _sortColumnIndex;
-        var ascending = _sortAscending;
+        var colIdx = _settings.SortColumnIndex;
+        var ascending = _settings.SortAscending;
 
         _displayCache.Sort((a, b) =>
         {
@@ -1045,6 +1069,8 @@ public sealed class GilFluxTool : ToolComponent
         dict["EvenRowColor"] = _settings.EvenRowColor.HasValue ? new float[] { _settings.EvenRowColor.Value.X, _settings.EvenRowColor.Value.Y, _settings.EvenRowColor.Value.Z, _settings.EvenRowColor.Value.W } : null;
         dict["OddRowColor"] = _settings.OddRowColor.HasValue ? new float[] { _settings.OddRowColor.Value.X, _settings.OddRowColor.Value.Y, _settings.OddRowColor.Value.Z, _settings.OddRowColor.Value.W } : null;
         dict["FreezeHeader"] = _settings.FreezeHeader;
+        dict["SortColumnIndex"] = _settings.SortColumnIndex;
+        dict["SortAscending"] = _settings.SortAscending;
 
         return dict;
     }
@@ -1067,6 +1093,8 @@ public sealed class GilFluxTool : ToolComponent
             _settings.EvenRowColor = ImportColorArray(settings, "EvenRowColor");
             _settings.OddRowColor = ImportColorArray(settings, "OddRowColor");
             _settings.FreezeHeader = GetSetting(settings, "FreezeHeader", _settings.FreezeHeader);
+            _settings.SortColumnIndex = GetSetting(settings, "SortColumnIndex", _settings.SortColumnIndex);
+            _settings.SortAscending = GetSetting(settings, "SortAscending", _settings.SortAscending);
 
             if (_worldSelector != null)
             {
