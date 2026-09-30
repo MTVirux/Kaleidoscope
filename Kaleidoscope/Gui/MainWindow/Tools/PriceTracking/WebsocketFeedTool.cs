@@ -49,11 +49,11 @@ public sealed class WebsocketFeedTool : ToolComponent
 
     // Cached display rows for the live feed. Re-filtering the whole queue and formatting every
     // row's text each frame is wasteful when nothing changed, so the result is cached and only
-    // rebuilt when the feed size or a filter/setting input changes. Row text is fully static
+    // rebuilt when the feed version or a filter/setting input changes. Row text is fully static
     // (absolute HH:mm:ss timestamps), so it is formatted once at build time.
     private readonly List<FeedRow> _cachedFeedRows = new();
     private readonly List<PriceFeedEntry> _feedMatchBuffer = new();
-    private int _lastBuiltFeedCount = -1;
+    private long _lastBuiltFeedVersion = -1;
     private int _snapMaxEntries = -1;
     private int _snapFilterItemId = -1;
     private bool _snapShowListingsAdd;
@@ -171,9 +171,9 @@ public sealed class WebsocketFeedTool : ToolComponent
             ? GetEffectiveFilterWorldIds()
             : null;
 
-        var feedCount = _webSocketService.LiveFeedCount;
+        var feedVersion = _webSocketService.LiveFeedVersion;
 
-        if (feedCount != _lastBuiltFeedCount
+        if (feedVersion != _lastBuiltFeedVersion
             || settings.MaxEntries != _snapMaxEntries
             || settings.FilterItemId != _snapFilterItemId
             || settings.ShowListingsAdd != _snapShowListingsAdd
@@ -185,7 +185,7 @@ public sealed class WebsocketFeedTool : ToolComponent
         {
             RebuildFeedRows(settings, effectiveWorldIds);
 
-            _lastBuiltFeedCount = feedCount;
+            _lastBuiltFeedVersion = feedVersion;
             _snapMaxEntries = settings.MaxEntries;
             _snapFilterItemId = settings.FilterItemId;
             _snapShowListingsAdd = settings.ShowListingsAdd;
@@ -353,7 +353,7 @@ public sealed class WebsocketFeedTool : ToolComponent
         }
 
         // World names changed: force the cached rows (which bake in world names) to rebuild.
-        _lastBuiltFeedCount = -1;
+        _lastBuiltFeedVersion = -1;
     }
 
     protected override bool HasToolSettings => true;

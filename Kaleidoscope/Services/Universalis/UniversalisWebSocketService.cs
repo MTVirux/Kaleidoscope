@@ -37,6 +37,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     // Live feed data - thread-safe circular buffer
     private readonly ConcurrentQueue<PriceFeedEntry> _liveFeed = new();
     private int _feedCount = 0;
+    // Count plateaus at MaxFeedEntries once the buffer is full, so consumers detect changes via this instead.
+    private long _feedVersion;
 
     private const int MessageLogIntervalMs = 5000;
     private System.Threading.Timer? _messageLogTimer;
@@ -50,6 +52,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     public bool IsConnected => _isConnected;
     public IEnumerable<PriceFeedEntry> LiveFeed => _liveFeed.ToArray();
     public int LiveFeedCount => _feedCount;
+    public long LiveFeedVersion => Interlocked.Read(ref _feedVersion);
 
     private PriceTrackingSettings Settings => _configService.Config.PriceTracking;
 
@@ -640,6 +643,8 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
             Interlocked.Decrement(ref _feedCount);
         }
 
+        Interlocked.Increment(ref _feedVersion);
+
         OnPriceUpdate?.Invoke(entry);
     }
 
@@ -863,6 +868,7 @@ public sealed class UniversalisWebSocketService : IDisposable, IService
     {
         while (_liveFeed.TryDequeue(out _)) { }
         Interlocked.Exchange(ref _feedCount, 0);
+        Interlocked.Increment(ref _feedVersion);
     }
 
     private void LogMessageCounts(object? state)
