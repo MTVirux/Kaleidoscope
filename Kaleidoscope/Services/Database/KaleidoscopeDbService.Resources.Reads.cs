@@ -280,6 +280,41 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// Most recent quantity per owner for an (item, container) pair. Walks the distinct owners of the
+    /// item through idx_history_item_time and seeks each owner's newest row, so the cost scales with
+    /// the number of owners rather than the number of history rows.
+    /// </summary>
+    public Dictionary<ulong, long> GetLatestHistoryValuesForAllOwners(uint itemId, int container)
+    {
+        var result = new Dictionary<ulong, long>();
+        return ExecuteRead("GetLatestHistoryValuesForAllOwners", result, conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                    WITH RECURSIVE owners(owner_id) AS (
+                        SELECT MIN(owner_id) FROM resource_history WHERE item_id = $iid
+                        UNION ALL
+                        SELECT (SELECT MIN(owner_id) FROM resource_history
+                                WHERE item_id = $iid AND owner_id > owners.owner_id)
+                        FROM owners WHERE owners.owner_id IS NOT NULL
+                    )
+                    SELECT owner_id, quantity FROM (
+                        SELECT owner_id,
+                               (SELECT h.quantity FROM resource_history h
+                                WHERE h.item_id = $iid AND h.owner_id = owners.owner_id AND h.container = $cont
+                                ORDER BY h.timestamp DESC LIMIT 1) AS quantity
+                        FROM owners WHERE owner_id IS NOT NULL AND owner_id != 0
+                    )
+                    WHERE quantity IS NOT NULL";
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            cmd.Parameters.AddWithValue("$cont", container);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) result[(ulong)r.GetInt64(0)] = r.GetInt64(1);
+            return result;
+        });
+    }
+
+    /// <summary>
     /// Most recent quantity for a (item, owner, container) tuple, or null if no data.
     /// Used by callers that only care about the current value.
     /// </summary>

@@ -356,8 +356,8 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
     private Dictionary<ulong, long> GetLatestValuesForVariableViaResources(string variable)
     {
-        if (Kaleidoscope.Services.Resources.ResourceCatalog.TryGetHistoryCoordinates(variable, out _, out _, out var isAlias))
-            return isAlias ? new Dictionary<ulong, long>() : _dbService.GetLatestValuesForVariable(variable);
+        if (Kaleidoscope.Services.Resources.ResourceCatalog.TryGetHistoryCoordinates(variable, out var itemId, out var container, out var isAlias))
+            return isAlias ? new Dictionary<ulong, long>() : _dbService.GetLatestHistoryValuesForAllOwners(itemId, (int)container);
 
         var result = new Dictionary<ulong, long>();
         var pairs = _dbService.GetSeriesByVariablePrefixSuffix(variable, null);
