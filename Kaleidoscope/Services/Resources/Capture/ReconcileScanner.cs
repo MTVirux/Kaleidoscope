@@ -78,14 +78,35 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
 
         var parentOwnerId = kind == OwnerKind.Retainer ? _gameState.PlayerContentId : 0UL;
 
+        var seen = new HashSet<(short Slot, uint ItemId)>();
+        var live = new List<ResourceObservation>();
         for (int i = 0; i < c->GetSize(); i++)
         {
             var slot = c->GetInventorySlot(i);
             if (slot == null || slot->ItemId == 0) continue;
 
             var key = new ResourceKey { OwnerId = ownerId, OwnerKind = kind, Container = container, ItemId = slot->ItemId, Slot = slot->Slot };
-            batch.Add(InventorySlotMapper.FromInventorySlot(slot, key, parentOwnerId));
+            live.Add(InventorySlotMapper.FromInventorySlot(slot, key, parentOwnerId));
+            seen.Add((slot->Slot, slot->ItemId));
         }
+
+        // Zero out stored entries that are no longer in the container. Queued before the live rows
+        // so the store's slot index ends up pointing at the current occupant.
+        foreach (var (slot, itemId) in _service.Store.GetOccupiedSlots(ownerId, kind, container))
+        {
+            if (seen.Contains((slot, itemId))) continue;
+
+            batch.Add(new ResourceObservation
+            {
+                Key           = new ResourceKey { OwnerId = ownerId, OwnerKind = kind, Container = container, ItemId = itemId, Slot = slot },
+                Quantity      = 0,
+                Flags         = ResourceFlags.None,
+                UpdatedAt     = DateTime.UtcNow,
+                ParentOwnerId = parentOwnerId,
+            });
+        }
+
+        batch.AddRange(live);
     }
 
     public void Dispose()

@@ -42,31 +42,21 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
             var slot = (short)e.Item.InventorySlot;
             var parentId = ownerKind == OwnerKind.Player ? 0UL : _gameState.PlayerContentId;
 
-            // ItemId=0 means the slot was cleared (all items traded/consumed). Translate to a
-            // zero-quantity observation on whatever real item was previously in that slot so the
-            // store entry for the real item is zeroed out rather than leaving a stale quantity.
-            if (e.Item.ItemId == 0)
+            // A Removed event carries the item that LEFT the slot (old id and quantity), not an empty
+            // slot, so it must be recorded as zero rather than re-recorded as-is.
+            if (e.Type == GameInventoryEvent.Removed || e.Item.ItemId == 0)
             {
-                var previousItemId = _service.Store.GetItemIdForSlot(ownerId, ownerKind, container, slot);
-                if (previousItemId is null) continue;
-
-                _service.RecordObservation(new ResourceObservation
-                {
-                    Key = new ResourceKey
-                    {
-                        OwnerId   = ownerId,
-                        OwnerKind = ownerKind,
-                        Container = container,
-                        ItemId    = previousItemId.Value,
-                        Slot      = slot,
-                    },
-                    Quantity      = 0,
-                    Flags         = ResourceFlags.None,
-                    UpdatedAt     = DateTime.UtcNow,
-                    ParentOwnerId = parentId,
-                });
+                var removedItemId = e.Item.ItemId != 0
+                    ? e.Item.ItemId
+                    : _service.Store.GetItemIdForSlot(ownerId, ownerKind, container, slot);
+                if (removedItemId is { } id)
+                    RecordCleared(ownerId, ownerKind, container, slot, id, parentId);
                 continue;
             }
+
+            // A different item replaced the slot's previous occupant: zero the old one first.
+            if (e is InventoryItemChangedArgs changed && changed.OldItemState.ItemId != e.Item.ItemId && changed.OldItemState.ItemId != 0)
+                RecordCleared(ownerId, ownerKind, container, slot, changed.OldItemState.ItemId, parentId);
 
             var flags = ResourceFlags.None;
             if (e.Item.IsHq)
@@ -95,6 +85,28 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
                 ParentOwnerId  = parentId,
             });
         }
+    }
+
+    private void RecordCleared(ulong ownerId, OwnerKind ownerKind, Container container, short slot, uint itemId, ulong parentId)
+    {
+        var key = new ResourceKey
+        {
+            OwnerId   = ownerId,
+            OwnerKind = ownerKind,
+            Container = container,
+            ItemId    = itemId,
+            Slot      = slot,
+        };
+        if (_service.Store.Get(key) is not { Quantity: > 0 }) return;
+
+        _service.RecordObservation(new ResourceObservation
+        {
+            Key           = key,
+            Quantity      = 0,
+            Flags         = ResourceFlags.None,
+            UpdatedAt     = DateTime.UtcNow,
+            ParentOwnerId = parentId,
+        });
     }
 
     /// <summary>
