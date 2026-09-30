@@ -129,6 +129,31 @@ public static class ResourceCatalog
     }
 
     /// <summary>
+    /// Resolves a complete legacy variable name to the (item, container) its history rows are
+    /// stored under across all owners, so readers can query resource_history directly instead of
+    /// discovering series by scanning it. Returns false when the name is only a prefix or is
+    /// per-owner (ItemRetainerX_). <paramref name="isAlias"/> marks names like "FireCrystals" that
+    /// point at another variable's rows (Item_2) and so have no history of their own.
+    /// </summary>
+    public static bool TryGetHistoryCoordinates(string variable, out uint itemId, out Container container, out bool isAlias)
+    {
+        itemId = 0;
+        container = default;
+        isAlias = false;
+
+        if (string.IsNullOrEmpty(variable) || variable.StartsWith("ItemRetainerX_", StringComparison.Ordinal))
+            return false;
+        if (ParseLegacyVariableName(variable, 0) is not { } mapping)
+            return false;
+
+        itemId = mapping.ItemId;
+        container = mapping.Container;
+        isAlias = container is Container.PlayerAggregate or Container.RetainerAggregate
+            && !variable.StartsWith("Item", StringComparison.Ordinal);
+        return true;
+    }
+
+    /// <summary>
     /// Public accessor for the TrackedDataType → (Container, ItemId) mapping. Used by
     /// TrackedDataRegistry when reading live values from ResourceStore.
     /// </summary>

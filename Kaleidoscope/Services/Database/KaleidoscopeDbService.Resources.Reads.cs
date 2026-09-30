@@ -252,6 +252,34 @@ public sealed partial class KaleidoscopeDbService
     }
 
     /// <summary>
+    /// All historical points for an (item, container) pair across every owner, ordered by owner
+    /// then timestamp. One indexed query, unlike discovering owners first and reading each series.
+    /// </summary>
+    public List<(ulong OwnerId, long Timestamp, long Value)> GetHistoryPointsForAllOwners(uint itemId, int container, DateTime? since = null)
+    {
+        var result = new List<(ulong, long, long)>();
+        return ExecuteRead("GetHistoryPointsForAllOwners", result, conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            var sql = @"
+                    SELECT owner_id, timestamp, quantity FROM resource_history
+                    WHERE item_id = $iid AND container = $cont AND owner_id != 0";
+            cmd.Parameters.AddWithValue("$iid", (long)itemId);
+            cmd.Parameters.AddWithValue("$cont", container);
+            if (since.HasValue)
+            {
+                sql += " AND timestamp >= $since";
+                cmd.Parameters.AddWithValue("$since", since.Value.Ticks);
+            }
+            sql += " ORDER BY owner_id, timestamp";
+            cmd.CommandText = sql;
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) result.Add(((ulong)r.GetInt64(0), r.GetInt64(1), r.GetInt64(2)));
+            return result;
+        });
+    }
+
+    /// <summary>
     /// Most recent quantity for a (item, owner, container) tuple, or null if no data.
     /// Used by callers that only care about the current value.
     /// </summary>

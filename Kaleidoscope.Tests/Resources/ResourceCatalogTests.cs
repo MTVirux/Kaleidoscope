@@ -118,4 +118,37 @@ public class ResourceCatalogTests
         Assert.Null(ResourceCatalog.ParseLegacyVariableName("ItemRetainerX_5_", 0xABCD));
         Assert.Null(ResourceCatalog.ParseLegacyVariableName("ItemRetainerX__5", 0xABCD));
     }
+
+    [Theory]
+    [InlineData("Item_5057", 5057u, Container.PlayerAggregate)]
+    [InlineData("ItemRetainer_5057", 5057u, Container.RetainerAggregate)]
+    [InlineData("Gil", ResourceCatalog.GilItemId, Container.SpecialPlayer)]
+    [InlineData("TomestonePoetics", 28u, Container.Currency)]
+    public void TryGetHistoryCoordinates_CompleteVariable_Resolves(string variable, uint itemId, Container container)
+    {
+        Assert.True(ResourceCatalog.TryGetHistoryCoordinates(variable, out var actualItemId, out var actualContainer, out var isAlias));
+        Assert.Equal(itemId, actualItemId);
+        Assert.Equal(container, actualContainer);
+        Assert.False(isAlias);
+    }
+
+    [Theory]
+    [InlineData("FireCrystals")]
+    [InlineData("CrystalsTotal")]
+    public void TryGetHistoryCoordinates_CrystalAggregate_IsAliasOfItemRows(string variable)
+    {
+        Assert.True(ResourceCatalog.TryGetHistoryCoordinates(variable, out _, out _, out var isAlias));
+        Assert.True(isAlias);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Item_")]
+    [InlineData("ItemRetainerX_")]
+    [InlineData("ItemRetainerX_123_5057")]
+    [InlineData("RandomGarbage")]
+    public void TryGetHistoryCoordinates_PrefixOrPerOwnerName_ReturnsFalse(string variable)
+    {
+        Assert.False(ResourceCatalog.TryGetHistoryCoordinates(variable, out _, out _, out _));
+    }
 }

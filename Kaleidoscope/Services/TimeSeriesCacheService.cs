@@ -356,6 +356,9 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
 
     private Dictionary<ulong, long> GetLatestValuesForVariableViaResources(string variable)
     {
+        if (Kaleidoscope.Services.Resources.ResourceCatalog.TryGetHistoryCoordinates(variable, out _, out _, out var isAlias))
+            return isAlias ? new Dictionary<ulong, long>() : _dbService.GetLatestValuesForVariable(variable);
+
         var result = new Dictionary<ulong, long>();
         var pairs = _dbService.GetSeriesByVariablePrefixSuffix(variable, null);
         foreach (var (v, charId) in pairs)
@@ -398,6 +401,23 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         string prefix, string? suffix, DateTime? since)
     {
         var result = new Dictionary<string, List<(ulong, DateTime, long)>>();
+
+        // Known variable shapes map straight to an (item, container) pair. Discovering series via
+        // GetSeriesByVariablePrefixSuffix scans all of resource_history on every call.
+        if (string.IsNullOrEmpty(suffix) &&
+            Kaleidoscope.Services.Resources.ResourceCatalog.TryGetHistoryCoordinates(prefix, out var itemId, out var container, out var isAlias))
+        {
+            if (!isAlias)
+                AddHistoryPoints(result, itemId, container, since, _ => prefix);
+            return result;
+        }
+        if (prefix == "ItemRetainerX_" && suffix is ['_', ..] && uint.TryParse(suffix.AsSpan(1), out var retainerItemId))
+        {
+            AddHistoryPoints(result, retainerItemId, Kaleidoscope.Models.Resources.Container.RetainerPage1, since,
+                retainerId => $"ItemRetainerX_{retainerId}_{retainerItemId}");
+            return result;
+        }
+
         var pairs = _dbService.GetSeriesByVariablePrefixSuffix(prefix, suffix);
 
         foreach (var (variable, charId) in pairs)
@@ -419,6 +439,22 @@ public sealed class TimeSeriesCacheService : IDisposable, IRequiredService
         }
 
         return result;
+    }
+
+    private void AddHistoryPoints(
+        Dictionary<string, List<(ulong characterId, DateTime timestamp, long value)>> result,
+        uint itemId, Kaleidoscope.Models.Resources.Container container, DateTime? since, Func<ulong, string> variableForOwner)
+    {
+        foreach (var (ownerId, ts, val) in _dbService.GetHistoryPointsForAllOwners(itemId, (int)container, since))
+        {
+            var variable = variableForOwner(ownerId);
+            if (!result.TryGetValue(variable, out var list))
+            {
+                list = new List<(ulong, DateTime, long)>();
+                result[variable] = list;
+            }
+            list.Add((ownerId, new DateTime(ts, DateTimeKind.Utc), val));
+        }
     }
 
     public IReadOnlyList<string> GetVariablesWithPrefix(string prefix)
