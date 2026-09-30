@@ -120,8 +120,9 @@ public sealed partial class ItemSalesTrackingTool
                         ? history.Entries
                         : FilterEntriesByWorldScope(history.Entries);
 
+                    // SaleDateTime is local time; the graph and live WebSocket sales are UTC.
                     var salesData = filteredEntries
-                        .Select(e => (e.SaleDateTime, (float)e.PricePerUnit));
+                        .Select(e => (e.SaleDateTime.ToUniversalTime(), (float)e.PricePerUnit));
 
                     if (batchSalesData.TryGetValue(itemId, out var existingData))
                     {

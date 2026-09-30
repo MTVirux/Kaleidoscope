@@ -985,7 +985,8 @@ public class GraphRenderer : IDisposable
                 yValues[j] = samples[j].value;
             }
             
-            xValues[samples.Count] = totalTimeSpan;
+            // A sample stamped ahead of the local clock must not pull the "now" point backwards.
+            xValues[samples.Count] = Math.Max(totalTimeSpan, xValues[samples.Count - 1]);
             yValues[samples.Count] = samples[^1].value;
             
             var color = customColor.HasValue 
@@ -1135,10 +1136,10 @@ private void UpdateRealTimeLimits(PreparedGraphData data)
             // Update the synthetic "now" point in each series to extend to current time
             foreach (var series in data.Series)
             {
-                if (series.PointCount > 0)
+                if (series.PointCount > 1)
                 {
                     // The last point is the synthetic "now" point - update its X value
-                    series.XValues[series.PointCount - 1] = newTotalTimeSpan;
+                    series.XValues[series.PointCount - 1] = Math.Max(newTotalTimeSpan, series.XValues[series.PointCount - 2]);
                 }
             }
 
