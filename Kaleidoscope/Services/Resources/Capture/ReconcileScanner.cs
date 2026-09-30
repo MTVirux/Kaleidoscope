@@ -8,7 +8,7 @@ using OtterGui.Services;
 namespace Kaleidoscope.Services.Resources.Capture;
 
 /// <summary>
-/// Full-container scans triggered on retainer-open. Catches drift from offline changes
+/// Full-container scans triggered whenever the selected retainer changes. Catches drift from offline changes
 /// (returned ventures, market sales) that occurred while the container wasn't loaded.
 /// After a successful scan, the relevant (owner, container) entries are added to
 /// LoadedContainerSet; on retainer close, they're removed but the cached snapshot is
@@ -61,9 +61,8 @@ public sealed class ReconcileScanner : IDisposable, IRequiredService
         _service.RecordObservations(batch);
     }
 
-    private void OnRetainerClosed()
+    private void OnRetainerClosed(ulong rid)
     {
-        var rid = _gameState.GetActiveRetainerId();
         foreach (var type in InventoryConstants.RetainerScanContainers)
         {
             if (ResourceCatalog.TryMapContainer((int)type, out var container))

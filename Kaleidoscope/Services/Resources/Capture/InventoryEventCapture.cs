@@ -42,12 +42,16 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
             var slot = (short)e.Item.InventorySlot;
             var parentId = ownerKind == OwnerKind.Player ? 0UL : _gameState.PlayerContentId;
 
+            // BaseItemId, not ItemId: ItemId carries the HQ/collectable offset, which the store keeps
+            // in Flags (ids >= 1,000,000 are reserved for synthetic counters).
+            var itemId = e.Item.BaseItemId;
+
             // A Removed event carries the item that LEFT the slot (old id and quantity), not an empty
             // slot, so it must be recorded as zero rather than re-recorded as-is.
-            if (e.Type == GameInventoryEvent.Removed || e.Item.ItemId == 0)
+            if (e.Type == GameInventoryEvent.Removed || itemId == 0)
             {
-                var removedItemId = e.Item.ItemId != 0
-                    ? e.Item.ItemId
+                var removedItemId = itemId != 0
+                    ? itemId
                     : _service.Store.GetItemIdForSlot(ownerId, ownerKind, container, slot);
                 if (removedItemId is { } id)
                     RecordCleared(ownerId, ownerKind, container, slot, id, parentId);
@@ -55,8 +59,8 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
             }
 
             // A different item replaced the slot's previous occupant: zero the old one first.
-            if (e is InventoryItemChangedArgs changed && changed.OldItemState.ItemId != e.Item.ItemId && changed.OldItemState.ItemId != 0)
-                RecordCleared(ownerId, ownerKind, container, slot, changed.OldItemState.ItemId, parentId);
+            if (e is InventoryItemChangedArgs changed && changed.OldItemState.BaseItemId != itemId && changed.OldItemState.BaseItemId != 0)
+                RecordCleared(ownerId, ownerKind, container, slot, changed.OldItemState.BaseItemId, parentId);
 
             var flags = ResourceFlags.None;
             if (e.Item.IsHq)
@@ -72,7 +76,7 @@ public sealed class InventoryEventCapture : IDisposable, IRequiredService
                     OwnerId   = ownerId,
                     OwnerKind = ownerKind,
                     Container = container,
-                    ItemId    = e.Item.ItemId,
+                    ItemId    = itemId,
                     Slot      = slot,
                 },
                 Quantity       = e.Item.Quantity,

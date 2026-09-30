@@ -45,13 +45,12 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     private readonly object _pendingLock = new();
     private readonly HashSet<TrackedDataType> _pendingTypes = new();
 
-    // Retainer readiness tracking. On open we begin waiting; each tick OnRetainerInventoryReady fires
-    // as soon as GameStateService.AreRetainerContainersLoaded reports every retainer container loaded,
-    // or when RetainerStabilizationDelay elapses as a max-wait fallback (ReconcileScanner safely skips
-    // any still-unloaded container). Fired exactly once per retainer-open; cleared on close.
-    private bool _wasRetainerActive = false;
+    // Retainer readiness tracking. When the selected retainer changes we begin waiting;
+    // OnRetainerInventoryReady fires once per selection, see OnFrameworkUpdate.
+    private ulong _activeRetainerId;
     private DateTime _retainerOpenedTime = DateTime.MinValue;
     private readonly TimeSpan _retainerStabilizationDelay = TimeSpan.FromMilliseconds(ConfigStatic.RetainerStabilizationDelayMs);
+    private readonly TimeSpan _retainerMaxWait = TimeSpan.FromMilliseconds(ConfigStatic.RetainerMaxWaitMs);
     private bool _awaitingRetainerReady = false;
 
     /// <summary>
@@ -65,7 +64,8 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
     /// </summary>
     public event Action? OnRetainerInventoryReady;
 
-    public event Action? OnRetainerClosed;
+    /// <summary>Fired with the id of the retainer that was just closed or switched away from.</summary>
+    public event Action<ulong>? OnRetainerClosed;
 
     public InventoryChangeService(IPluginLog log, IClientState clientState, IFramework framework, TrackedDataRegistry registry, ConfigurationService configService, ResourceObservationService observations, GameStateService gameState)
     {
@@ -91,37 +91,41 @@ public sealed class InventoryChangeService : IDisposable, IRequiredService
 
         var now = DateTime.UtcNow;
 
-        // Track retainer state changes for stabilization
-        // Use IsRetainerActive() which properly checks if a retainer inventory is open
-        var isRetainerActive = _gameState.IsRetainerActive();
+        // Track the selected retainer by id. IsRetainerActive stays true once any retainer has been
+        // selected (the id persists after its window closes), so switching retainers only shows up
+        // as an id change.
+        var retainerId = _gameState.IsRetainerActive() ? _gameState.GetActiveRetainerId() : 0UL;
 
-        if (isRetainerActive != _wasRetainerActive)
+        if (retainerId != _activeRetainerId)
         {
-            _wasRetainerActive = isRetainerActive;
-            if (isRetainerActive)
+            var previousId = _activeRetainerId;
+            _activeRetainerId = retainerId;
+            _awaitingRetainerReady = false;
+
+            if (previousId != 0)
             {
-                // Retainer just opened - begin waiting for its containers to load
+                LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed");
+                try { OnRetainerClosed?.Invoke(previousId); }
+                catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
+            }
+
+            if (retainerId != 0)
+            {
                 _retainerOpenedTime = now;
                 _awaitingRetainerReady = true;
-                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Retainer opened, waiting for containers to load (max {ConfigStatic.RetainerStabilizationDelayMs}ms)");
-            }
-            else
-            {
-                // Retainer closed - stop waiting
-                _awaitingRetainerReady = false;
-                LogService.Debug(LogCategory.Inventory, "[InventoryChangeService] Retainer closed");
-                try { OnRetainerClosed?.Invoke(); }
-                catch (Exception ex) { LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] OnRetainerClosed callback error: {ex.Message}"); }
+                LogService.Debug(LogCategory.Inventory, $"[InventoryChangeService] Retainer opened, waiting {ConfigStatic.RetainerStabilizationDelayMs}ms for containers to load (max {ConfigStatic.RetainerMaxWaitMs}ms)");
             }
         }
 
-        // Fire readiness as soon as all retainer containers report loaded; otherwise fall back to the
-        // fixed delay as a max-wait so a slow/partial load still gets one reconcile pass (the scanner
-        // skips any container still unloaded). Fires exactly once per open — the flag guards re-entry.
+        // The containers keep IsLoaded (and the previous retainer's contents) across a switch, so
+        // always wait out the stabilization delay before trusting them. After that, fire as soon as
+        // every container reports loaded, or at the max wait so a partial load still gets one
+        // reconcile pass (the scanner skips any container still unloaded). Fires once per open.
         if (_awaitingRetainerReady)
         {
-            var loaded = _gameState.AreRetainerContainersLoaded();
-            var timedOut = now - _retainerOpenedTime >= _retainerStabilizationDelay;
+            var elapsed = now - _retainerOpenedTime;
+            var loaded = elapsed >= _retainerStabilizationDelay && _gameState.AreRetainerContainersLoaded();
+            var timedOut = elapsed >= _retainerMaxWait;
             if (loaded || timedOut)
             {
                 _awaitingRetainerReady = false;

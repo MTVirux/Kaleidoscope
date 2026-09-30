@@ -22,7 +22,12 @@ public static class ConfigStatic
     /// Delay (ms) after retainer state changes before reading inventory values.
     /// Allows the game client to fully load retainer data from the server.
     /// </summary>
-    public const int RetainerStabilizationDelayMs = 500;
+    public const int RetainerStabilizationDelayMs = 1000;
+
+    /// <summary>
+    /// Max time (ms) to wait for every retainer container to report loaded before scanning anyway.
+    /// </summary>
+    public const int RetainerMaxWaitMs = 3000;
 
     public const float ComparisonEpsilon = 0.0001f;
     public const int TextInputBufferSize = 128;
